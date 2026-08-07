@@ -28,7 +28,7 @@ public sealed class TranscriptionWorkerClient : IDisposable
             options.AsrEngine,
             options.ModelProfile,
             "final",
-            "en",
+            options.LanguageHint,
             Convert.ToBase64String(audioBytes)));
     }
 
@@ -41,7 +41,7 @@ public sealed class TranscriptionWorkerClient : IDisposable
             options.AsrEngine,
             options.ModelProfile,
             "final",
-            "en",
+            options.LanguageHint,
             ""));
     }
 
@@ -288,7 +288,7 @@ public sealed class TranscriptionWorkerClient : IDisposable
     private static string FindWorkerScript() => WorkerRuntimeLocator.FindWorkerScript();
 }
 
-public sealed record TranscriptionOptions(string AsrEngine, string ModelProfile);
+public sealed record TranscriptionOptions(string AsrEngine, string ModelProfile, string LanguageHint = "en");
 
 public sealed record WorkerRequest(
     string Id,

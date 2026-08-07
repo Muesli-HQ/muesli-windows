@@ -17,6 +17,28 @@ public enum MeetingExportMode
 
 public static class MeetingExporter
 {
+    public static string ExportMarkdownAutomatically(MeetingItem meeting, string directory, Dictionary<string, string>? aliases = null)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+            directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Muesli Meetings");
+        Directory.CreateDirectory(directory);
+        var baseName = $"{meeting.CreatedAt:yyyy-MM-dd}-{SanitizeFilename(meeting.Title)}".TrimEnd('-');
+        if (baseName.Length == 0) baseName = $"meeting-{meeting.CreatedAt:yyyy-MM-dd}";
+        var path = Path.Combine(directory, $"{baseName}.md");
+        if (File.Exists(path)) path = Path.Combine(directory, $"{baseName}-{meeting.Id[^Math.Min(8, meeting.Id.Length)..]}.md");
+        var temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllText(temporaryPath, BuildMarkdown(meeting, MeetingExportMode.FullMeeting, aliases));
+            File.Move(temporaryPath, path, overwrite: false);
+            return path;
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
+    }
+
     public static void Export(MeetingItem meeting, MeetingExportMode mode, Dictionary<string, string>? aliases = null)
     {
         var markdown = BuildMarkdown(meeting, mode, aliases);
@@ -76,6 +98,13 @@ public static class MeetingExporter
             parts.Add($"**Template:** {meeting.TemplateName}");
         }
         parts.Add("");
+        if (!string.IsNullOrWhiteSpace(meeting.ManualNotes))
+        {
+            parts.Add("## Manual Notes");
+            parts.Add("");
+            parts.Add(meeting.ManualNotes);
+            parts.Add("");
+        }
         parts.Add("---");
         parts.Add("");
 

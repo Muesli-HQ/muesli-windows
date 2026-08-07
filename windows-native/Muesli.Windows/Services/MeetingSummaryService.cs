@@ -194,20 +194,35 @@ public static class MeetingSummaryService
         }
 
         var provider = settings.MeetingSummaryProvider.Trim().ToLowerInvariant();
-        var localTemplate = EffectiveLocalTemplate(settings, meetingTitle, transcript);
-        try
-        {
-            return provider switch
-            {
-                "openai" => await SummarizeWithOpenAIAsync(transcript, meetingTitle, settings),
-                "openrouter" => await SummarizeWithOpenRouterAsync(transcript, meetingTitle, settings),
-                _ => CreateLocalSummary(transcript, meetingTitle, settings)
-            };
-        }
-        catch
+        if (provider == "local")
         {
             return CreateLocalSummary(transcript, meetingTitle, settings);
         }
+
+        var attempts = Math.Clamp(settings.MeetingSummaryRetryCount, 0, 5) + 1;
+        Exception? lastError = null;
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                return provider switch
+                {
+                    "openai" => await SummarizeWithOpenAIAsync(transcript, meetingTitle, settings),
+                    "openrouter" => await SummarizeWithOpenRouterAsync(transcript, meetingTitle, settings),
+                    "ollama" => await SummarizeWithCompatibleEndpointAsync(transcript, meetingTitle, settings, "http://localhost:11434/v1/chat/completions", "llama3.2", requiresApiKey: false),
+                    "lmstudio" => await SummarizeWithCompatibleEndpointAsync(transcript, meetingTitle, settings, "http://localhost:1234/v1/chat/completions", settings.CustomSummaryModel, requiresApiKey: false),
+                    "custom" => await SummarizeWithCompatibleEndpointAsync(transcript, meetingTitle, settings, settings.CustomSummaryEndpoint, settings.CustomSummaryModel, requiresApiKey: false),
+                    _ => throw new InvalidOperationException($"Unknown meeting summary provider '{provider}'.")
+                };
+            }
+            catch (Exception exception)
+            {
+                lastError = exception;
+                if (attempt < attempts) await Task.Delay(TimeSpan.FromMilliseconds(350 * attempt));
+            }
+        }
+
+        throw new InvalidOperationException($"The selected '{provider}' summary provider failed after {attempts} attempt(s). The local transcript was preserved.", lastError);
     }
 
     private static string CreateLocalSummary(string transcript, string meetingTitle, MuesliSettings settings)
@@ -247,7 +262,7 @@ public static class MeetingSummaryService
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return CreateSummary(transcript, meetingTitle, EffectiveLocalTemplate(settings, meetingTitle, transcript));
+            throw new InvalidOperationException("OpenAI API key is not configured.");
         }
 
         var model = string.IsNullOrWhiteSpace(settings.OpenAIModel) ? "gpt-5.4-mini" : settings.OpenAIModel;
@@ -271,13 +286,13 @@ public static class MeetingSummaryService
         using var response = await Http.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
-            return CreateSummary(transcript, meetingTitle, EffectiveLocalTemplate(settings, meetingTitle, transcript));
+            throw new HttpRequestException($"OpenAI returned HTTP {(int)response.StatusCode}.");
         }
 
         var json = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(json);
         var text = ExtractOpenAIText(document.RootElement);
-        return string.IsNullOrWhiteSpace(text) ? CreateSummary(transcript, meetingTitle, EffectiveLocalTemplate(settings, meetingTitle, transcript)) : text.Trim();
+        return string.IsNullOrWhiteSpace(text) ? throw new InvalidOperationException("OpenAI returned an empty summary.") : text.Trim();
     }
 
     private static async Task<string> SummarizeWithOpenRouterAsync(string transcript, string meetingTitle, MuesliSettings settings)
@@ -290,7 +305,7 @@ public static class MeetingSummaryService
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return CreateSummary(transcript, meetingTitle, EffectiveLocalTemplate(settings, meetingTitle, transcript));
+            throw new InvalidOperationException("OpenRouter API key is not configured.");
         }
 
         var model = string.IsNullOrWhiteSpace(settings.OpenRouterModel)
@@ -315,13 +330,50 @@ public static class MeetingSummaryService
         using var response = await Http.SendAsync(request);
         if (!response.IsSuccessStatusCode)
         {
-            return CreateSummary(transcript, meetingTitle, EffectiveLocalTemplate(settings, meetingTitle, transcript));
+            throw new HttpRequestException($"OpenRouter returned HTTP {(int)response.StatusCode}.");
         }
 
         var json = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(json);
         var text = ExtractOpenRouterText(document.RootElement);
-        return string.IsNullOrWhiteSpace(text) ? CreateSummary(transcript, meetingTitle, EffectiveLocalTemplate(settings, meetingTitle, transcript)) : text.Trim();
+        return string.IsNullOrWhiteSpace(text) ? throw new InvalidOperationException("OpenRouter returned an empty summary.") : text.Trim();
+    }
+
+    private static async Task<string> SummarizeWithCompatibleEndpointAsync(
+        string transcript,
+        string meetingTitle,
+        MuesliSettings settings,
+        string endpoint,
+        string defaultModel,
+        bool requiresApiKey)
+    {
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme is not ("http" or "https"))
+            throw new InvalidOperationException("The summary endpoint must be an absolute HTTP or HTTPS URL.");
+        var apiKey = settings.CustomSummaryApiKey?.Trim() ?? "";
+        if (requiresApiKey && apiKey.Length == 0)
+            throw new InvalidOperationException("The custom summary endpoint requires an API key.");
+        var model = string.IsNullOrWhiteSpace(settings.CustomSummaryModel) ? defaultModel : settings.CustomSummaryModel.Trim();
+        var body = new
+        {
+            model,
+            messages = new object[]
+            {
+                new { role = "system", content = EffectiveSystemPrompt(settings) },
+                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle) }
+            },
+            max_tokens = 2500,
+            stream = false
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpointUri);
+        if (apiKey.Length > 0) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        request.Content = JsonContent(body);
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"The compatible summary endpoint returned HTTP {(int)response.StatusCode}.");
+        var json = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(json);
+        var text = ExtractOpenRouterText(document.RootElement);
+        return string.IsNullOrWhiteSpace(text) ? throw new InvalidOperationException("The compatible summary endpoint returned an empty summary.") : text.Trim();
     }
 
     private static StringContent JsonContent<T>(T value)

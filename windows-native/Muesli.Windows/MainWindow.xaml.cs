@@ -35,6 +35,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly TrayIconService _trayIconService = new();
     private readonly RuntimeDiagnosticsService _runtimeDiagnosticsService = new();
     private readonly AppLogService _logService = new();
+    private readonly MeetingRecordingPlaybackService _meetingPlayback = new();
+    private readonly System.Windows.Threading.DispatcherTimer _playbackTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly Dictionary<string, DateTime> _ignoredMeetingPrompts = new(StringComparer.OrdinalIgnoreCase);
     private readonly System.Windows.Threading.DispatcherTimer _meetingAutoStopTimer = new()
     {
@@ -53,6 +55,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string? _selectedMicrophone;
     private string _selectedAsrEngine = "whisper";
     private string _selectedModelProfile = "base";
+    private string _selectedDictationLanguage = "en";
+    private string _selectedMeetingAsrEngine = "whisper";
+    private string _selectedMeetingModelProfile = "base";
+    private string? _selectedMeetingMicrophone;
     private string _selectedHotkey = "F8";
     private string _selectedPasteBehavior = "active-app";
     private string _selectedSummaryProvider = "local";
@@ -62,13 +68,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _openAIModel = "gpt-5.4-mini";
     private string _openRouterApiKey = "";
     private string _openRouterModel = "stepfun/step-3.5-flash:free";
+    private string _customSummaryEndpoint = "http://localhost:11434/v1/chat/completions";
+    private string _customSummaryModel = "llama3.2";
+    private string _customSummaryApiKey = "";
     private string _theme = "dark";
     private bool _postProcessingEnabled;
+    private bool _removeFillerWords = true;
     private bool _enableDoubleTapDictation;
     private string _postProcessingPrompt = "";
     private bool _startAtLogin;
     private bool _openDashboardOnLaunch = true;
     private bool _saveMeetingRecordings = true;
+    private string _recordingSavePolicy = "always";
+    private bool _autoExportMeetings;
+    private string _autoExportDirectory = "";
     private bool _showFloatingIndicator = true;
     private string _selectedIndicatorPosition = "Top Center";
     private bool _autoMeetingDetectionEnabled = true;
@@ -123,6 +136,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private UpdateInfo? _pendingUpdate;
     private bool _isUpdateReady;
     private bool _updateCheckInFlight;
+    private MeetingPlaybackTrack? _selectedPlaybackTrack;
+    private double _playbackPositionSeconds;
+    private double _playbackDurationSeconds = 1;
+    private string? _startupRecoveryWarning;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -135,6 +152,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public ObservableCollection<string> MicrophoneDevices { get; } = ["System default microphone"];
     public ObservableCollection<string> AsrEngines { get; } = ["whisper", "parakeet-v3"];
     public ObservableCollection<string> ModelProfiles { get; } = ["tiny", "base", "small", "medium", "large-v3-turbo"];
+    public ObservableCollection<string> LanguageOptions { get; } = ["auto", "en", "es", "fr", "de", "it", "pt", "hi", "ta", "te", "kn", "ml"];
     public ObservableCollection<string> HotkeyOptions { get; } =
     [
         "F6",
@@ -149,11 +167,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         "Ctrl+Shift+D",
         "Ctrl+Alt+D"
     ];
-    public ObservableCollection<string> PasteBehaviors { get; } = ["active-app", "clipboard"];
+    public ObservableCollection<string> PasteBehaviors { get; } = ["active-app", "clipboard", "history-only"];
     public ObservableCollection<string> IndicatorPositions { get; } = ["Top Left", "Top Center", "Top Right", "Bottom Left", "Bottom Center", "Bottom Right", "Custom"];
     public ObservableCollection<string> ThemeOptions { get; } = ["Light", "Dark"];
-    public ObservableCollection<string> SummaryProviders { get; } = ["local", "openai", "openrouter"];
+    public ObservableCollection<string> SummaryProviders { get; } = ["local", "openai", "openrouter", "ollama", "lmstudio", "custom"];
     public ObservableCollection<string> SummaryTemplates { get; } = new(MeetingSummaryService.BuiltInTemplateNames);
+    public ObservableCollection<string> RecordingSavePolicies { get; } = ["always", "prompt", "never"];
+    public ObservableCollection<MeetingPlaybackTrack> MeetingPlaybackTracks { get; } = [];
     public ICollectionView FilteredDictations { get; }
     public ICollectionView FilteredMeetings { get; }
     public ICollectionView SearchDictationResults { get; }
@@ -249,7 +269,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ? "Press a function key or a modifier shortcut such as Ctrl+Shift+Space. Press Esc to cancel."
         : "Choose a shortcut or record one that is free on this Windows laptop.";
     public string AppVersion => $"v{Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.2.0"}";
-    public string SelectedMeetingTitle => _selectedMeeting?.Title ?? "";
+    public string SelectedMeetingTitle
+    {
+        get => _selectedMeeting?.Title ?? "";
+        set
+        {
+            if (_selectedMeeting is null) return;
+            var title = value?.Trim() ?? "";
+            if (title.Length == 0 || title == _selectedMeeting.Title) return;
+            UpdateSelectedMeeting(_selectedMeeting with { Title = title });
+            OnPropertyChanged();
+        }
+    }
     public string SelectedMeetingMetadata => _selectedMeeting?.Metadata ?? "";
     public string SelectedMeetingNotes => string.IsNullOrWhiteSpace(_selectedMeeting?.Summary)
         ? ""
@@ -267,7 +298,67 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
     public string SelectedMeetingNotesActionLabel => string.IsNullOrWhiteSpace(_selectedMeeting?.Summary) ? "Generate Notes" : "Regenerate Notes";
-    public string SelectedMeetingTranscript => ApplySpeakerAliases(_selectedMeeting?.Transcript ?? "", _activeSpeakerAliases);
+    public string SelectedMeetingTranscript
+    {
+        get => ApplySpeakerAliases(_selectedMeeting?.Transcript ?? "", _activeSpeakerAliases);
+        set
+        {
+            if (_selectedMeeting is null || value == SelectedMeetingTranscript) return;
+            UpdateSelectedMeeting(_selectedMeeting with
+            {
+                Transcript = value ?? "",
+                WordCount = CountWords(value ?? "")
+            });
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SelectedMeetingNotesActionLabel));
+        }
+    }
+    public string SelectedMeetingManualNotes
+    {
+        get => _selectedMeeting?.ManualNotes ?? "";
+        set
+        {
+            if (_selectedMeeting is null || value == _selectedMeeting.ManualNotes) return;
+            UpdateSelectedMeeting(_selectedMeeting with { ManualNotes = value ?? "" });
+            OnPropertyChanged();
+        }
+    }
+    public bool HasMeetingPlaybackTracks => MeetingPlaybackTracks.Count > 0;
+    public MeetingPlaybackTrack? SelectedPlaybackTrack
+    {
+        get => _selectedPlaybackTrack;
+        set
+        {
+            if (!SetField(ref _selectedPlaybackTrack, value) || value is null) return;
+            try
+            {
+                _meetingPlayback.Load(value);
+                _playbackPositionSeconds = 0;
+                _playbackDurationSeconds = Math.Max(1, _meetingPlayback.Duration.TotalSeconds);
+                OnPropertyChanged(nameof(PlaybackPositionSeconds));
+                OnPropertyChanged(nameof(PlaybackDurationSeconds));
+                OnPropertyChanged(nameof(PlaybackButtonLabel));
+            }
+            catch (Exception exception)
+            {
+                DictationStatus = $"Could not load recording: {exception.Message}";
+            }
+        }
+    }
+    public double PlaybackPositionSeconds
+    {
+        get => _playbackPositionSeconds;
+        set
+        {
+            var next = Math.Clamp(value, 0, PlaybackDurationSeconds);
+            if (Math.Abs(next - _playbackPositionSeconds) < 0.1) return;
+            _playbackPositionSeconds = next;
+            _meetingPlayback.Seek(TimeSpan.FromSeconds(next));
+            OnPropertyChanged();
+        }
+    }
+    public double PlaybackDurationSeconds => _playbackDurationSeconds;
+    public string PlaybackButtonLabel => _meetingPlayback.IsPlaying ? "Pause" : "Play";
     public string RuntimeDiagnostics
     {
         get => _runtimeDiagnostics;
@@ -407,6 +498,46 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    public string SelectedDictationLanguage
+    {
+        get => _selectedDictationLanguage;
+        set
+        {
+            if (SetField(ref _selectedDictationLanguage, LanguageOptions.Contains(value) ? value : "en"))
+                SaveSettings();
+        }
+    }
+
+    public string SelectedMeetingAsrEngine
+    {
+        get => _selectedMeetingAsrEngine;
+        set
+        {
+            if (SetField(ref _selectedMeetingAsrEngine, AsrEngines.Contains(value) ? value : "whisper"))
+                SaveSettings();
+        }
+    }
+
+    public string SelectedMeetingModelProfile
+    {
+        get => _selectedMeetingModelProfile;
+        set
+        {
+            if (SetField(ref _selectedMeetingModelProfile, ModelProfiles.Contains(value) ? value : "base"))
+                SaveSettings();
+        }
+    }
+
+    public string? SelectedMeetingMicrophone
+    {
+        get => _selectedMeetingMicrophone;
+        set
+        {
+            if (SetField(ref _selectedMeetingMicrophone, value))
+                SaveSettings();
+        }
+    }
+
     public string SelectedHotkey
     {
         get => _selectedHotkey;
@@ -458,6 +589,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 SaveSettings();
             }
+        }
+    }
+
+    public bool RemoveFillerWords
+    {
+        get => _removeFillerWords;
+        set
+        {
+            if (SetField(ref _removeFillerWords, value))
+                SaveSettings();
         }
     }
 
@@ -647,6 +788,51 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    public string RecordingSavePolicy
+    {
+        get => _recordingSavePolicy;
+        set
+        {
+            var normalized = RecordingSavePolicies.Contains(value) ? value : "always";
+            if (SetField(ref _recordingSavePolicy, normalized))
+            {
+                _saveMeetingRecordings = normalized != "never";
+                OnPropertyChanged(nameof(SaveMeetingRecordings));
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool AutoExportMeetings
+    {
+        get => _autoExportMeetings;
+        set { if (SetField(ref _autoExportMeetings, value)) SaveSettings(); }
+    }
+
+    public string AutoExportDirectory
+    {
+        get => _autoExportDirectory;
+        set { if (SetField(ref _autoExportDirectory, value ?? "")) SaveSettings(); }
+    }
+
+    public string CustomSummaryEndpoint
+    {
+        get => _customSummaryEndpoint;
+        set { if (SetField(ref _customSummaryEndpoint, value ?? "")) SaveSettings(); }
+    }
+
+    public string CustomSummaryModel
+    {
+        get => _customSummaryModel;
+        set { if (SetField(ref _customSummaryModel, value ?? "")) SaveSettings(); }
+    }
+
+    public string CustomSummaryApiKey
+    {
+        get => _customSummaryApiKey;
+        set { if (SetField(ref _customSummaryApiKey, value ?? "")) SaveSettings(); }
+    }
+
     public bool AutoMeetingDetectionEnabled
     {
         get => _autoMeetingDetectionEnabled;
@@ -693,6 +879,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var settings = _settingsStore.Load();
         LoadPersistedData();
+        var recoveryWarnings = _settingsStore.RecoveryWarnings.Concat(_dataStore.RecoveryWarnings).ToList();
+        if (recoveryWarnings.Count > 0)
+        {
+            _startupRecoveryWarning = string.Join(" ", recoveryWarnings);
+            _logService.Info($"Persistence recovery: {_startupRecoveryWarning}");
+        }
         foreach (var microphone in _dictationCoordinator.ListMicrophones())
         {
             if (!MicrophoneDevices.Contains(microphone))
@@ -703,6 +895,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _selectedMicrophone = settings.MicrophoneName ?? _dictationCoordinator.PickPreferredMicrophone();
         _selectedAsrEngine = AsrEngines.Contains(settings.AsrEngine) ? settings.AsrEngine : "whisper";
         _selectedModelProfile = ModelProfiles.Contains(settings.ModelProfile) ? settings.ModelProfile : "base";
+        _selectedDictationLanguage = LanguageOptions.Contains(settings.DictationLanguage) ? settings.DictationLanguage : "en";
+        _selectedMeetingAsrEngine = AsrEngines.Contains(settings.MeetingAsrEngine) ? settings.MeetingAsrEngine : _selectedAsrEngine;
+        _selectedMeetingModelProfile = ModelProfiles.Contains(settings.MeetingModelProfile) ? settings.MeetingModelProfile : _selectedModelProfile;
+        _selectedMeetingMicrophone = settings.MeetingMicrophoneName ?? _selectedMicrophone;
         _selectedHotkey = NormalizeHotkey(settings.Hotkey, allowCustom: true);
         AddHotkeyOptionIfMissing(_selectedHotkey);
         _selectedPasteBehavior = PasteBehaviors.Contains(settings.PasteBehavior) ? settings.PasteBehavior : "active-app";
@@ -714,13 +910,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _openAIModel = string.IsNullOrWhiteSpace(settings.OpenAIModel) ? "gpt-5.4-mini" : settings.OpenAIModel;
         _openRouterApiKey = settings.OpenRouterApiKey;
         _openRouterModel = string.IsNullOrWhiteSpace(settings.OpenRouterModel) ? "stepfun/step-3.5-flash:free" : settings.OpenRouterModel;
+        _customSummaryEndpoint = settings.CustomSummaryEndpoint;
+        _customSummaryModel = settings.CustomSummaryModel;
+        _customSummaryApiKey = settings.CustomSummaryApiKey;
         _theme = settings.Theme.Equals("light", StringComparison.OrdinalIgnoreCase) ? "light" : "dark";
         _postProcessingEnabled = settings.PostProcessingEnabled;
+        _removeFillerWords = settings.RemoveFillerWords;
         _enableDoubleTapDictation = settings.EnableDoubleTapDictation;
         _postProcessingPrompt = settings.PostProcessingPrompt;
         _startAtLogin = settings.StartAtLogin && StartupRegistrationService.IsEnabled();
         _openDashboardOnLaunch = settings.OpenDashboardOnLaunch;
         _saveMeetingRecordings = settings.SaveMeetingRecordings;
+        _recordingSavePolicy = RecordingSavePolicies.Contains(settings.RecordingSavePolicy)
+            ? settings.RecordingSavePolicy
+            : settings.SaveMeetingRecordings ? "always" : "never";
+        _autoExportMeetings = settings.AutoExportMeetings;
+        _autoExportDirectory = settings.AutoExportDirectory;
         _showFloatingIndicator = settings.ShowFloatingIndicator;
         _selectedIndicatorPosition = IndicatorPositions.Contains(settings.IndicatorAnchor) ? settings.IndicatorAnchor : "Top Center";
         _autoMeetingDetectionEnabled = settings.AutoMeetingDetectionEnabled;
@@ -737,10 +942,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _meetingDetectionService.ScanCompleted += OnMeetingDetectionScanCompleted;
         _meetingAutoStopTimer.Tick += MeetingAutoStopTimer_Tick;
         _aliasSaveDebounceTimer.Tick += AliasSaveDebounceTimer_Tick;
+        _playbackTimer.Tick += PlaybackTimer_Tick;
+        _playbackTimer.Start();
         _meetingPromptService.Reset();
 OnPropertyChanged(nameof(SelectedMicrophone));
     OnPropertyChanged(nameof(SelectedAsrEngine));
     OnPropertyChanged(nameof(SelectedModelProfile));
+    OnPropertyChanged(nameof(SelectedDictationLanguage));
+    OnPropertyChanged(nameof(SelectedMeetingAsrEngine));
+    OnPropertyChanged(nameof(SelectedMeetingModelProfile));
+    OnPropertyChanged(nameof(SelectedMeetingMicrophone));
     OnPropertyChanged(nameof(SelectedHotkey));
     OnPropertyChanged(nameof(SelectedPasteBehavior));
     OnPropertyChanged(nameof(UserName));
@@ -751,20 +962,35 @@ OnPropertyChanged(nameof(SelectedMicrophone));
     OnPropertyChanged(nameof(OpenAIModel));
     OnPropertyChanged(nameof(OpenRouterApiKey));
     OnPropertyChanged(nameof(OpenRouterModel));
+    OnPropertyChanged(nameof(CustomSummaryEndpoint));
+    OnPropertyChanged(nameof(CustomSummaryModel));
+    OnPropertyChanged(nameof(CustomSummaryApiKey));
     OnPropertyChanged(nameof(PostProcessingEnabled));
+    OnPropertyChanged(nameof(RemoveFillerWords));
     OnPropertyChanged(nameof(EnableDoubleTapDictation));
     OnPropertyChanged(nameof(PostProcessingPrompt));
     OnPropertyChanged(nameof(SelectedTheme));
     OnPropertyChanged(nameof(StartAtLogin));
     OnPropertyChanged(nameof(OpenDashboardOnLaunch));
     OnPropertyChanged(nameof(SaveMeetingRecordings));
+    OnPropertyChanged(nameof(RecordingSavePolicy));
+    OnPropertyChanged(nameof(AutoExportMeetings));
+    OnPropertyChanged(nameof(AutoExportDirectory));
     OnPropertyChanged(nameof(ShowFloatingIndicator));
     OnPropertyChanged(nameof(SelectedIndicatorPosition));
     OnPropertyChanged(nameof(AutoMeetingDetectionEnabled));
     OnPropertyChanged(nameof(MeetingDetectionStatus));
     ApplyTheme(_theme);
     ShowPage(DictationsPage, DictationsNav);
-    Loaded += (_, _) => StartRuntime(showOnboarding: !_isParkedForBackground);
+    Loaded += (_, _) =>
+    {
+        StartRuntime(showOnboarding: !_isParkedForBackground);
+        if (!string.IsNullOrWhiteSpace(_startupRecoveryWarning))
+        {
+            DictationStatus = _startupRecoveryWarning;
+            _toastNotificationService.Show("Muesli recovered local data", _startupRecoveryWarning, ToastState.Error, 9000);
+        }
+    };
     Closing += (_, _) =>
     {
         _logService.Info("Main window closing.");
@@ -777,6 +1003,8 @@ OnPropertyChanged(nameof(SelectedMicrophone));
         _meetingPromptService.Close();
         _meetingTranscriptionClient.Dispose();
         _meetingRecordingCoordinator.Dispose();
+        _playbackTimer.Stop();
+        _meetingPlayback.Dispose();
         _trayIconService.Dispose();
     };
 }
@@ -1338,7 +1566,7 @@ private async Task StopDictationAsync()
     {
         DictationStatus = "Transcribing";
         _toastNotificationService.Show("Transcribing", "Processing local audio", ToastState.Transcribing, 0);
-        result = await _dictationCoordinator.StopAsync(new TranscriptionOptions(SelectedAsrEngine, SelectedModelProfile));
+        result = await _dictationCoordinator.StopAsync(new TranscriptionOptions(SelectedAsrEngine, SelectedModelProfile, WorkerLanguageHint(SelectedDictationLanguage)));
     }
     catch (Exception exception)
     {
@@ -1350,7 +1578,8 @@ private async Task StopDictationAsync()
     var textToUse = "";
     if (!string.IsNullOrWhiteSpace(result.Text))
     {
-        textToUse = DictionaryCorrectionService.Apply(result.Text, DictionaryEntries.Select(entry => entry.Record));
+        textToUse = RemoveFillerWords ? FillerWordFilter.Apply(result.Text) : result.Text;
+        textToUse = DictionaryCorrectionService.Apply(textToUse, DictionaryEntries.Select(entry => entry.Record));
         textToUse = await PostProcessIfEnabledAsync(textToUse, "dictation", _dictationCoordinator.PostProcessAsync);
         Dictations.Insert(0, new DictationItem(
             $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
@@ -1358,7 +1587,8 @@ private async Task StopDictationAsync()
             DateTime.Now.ToString("hh:mm tt"),
             textToUse,
             SelectedModelProfile,
-            result.DurationMs));
+            result.DurationMs,
+            SelectedPasteBehavior));
         SaveDictations();
         OnPropertyChanged(nameof(DayStreak));
         OnPropertyChanged(nameof(WordsDictated));
@@ -1370,7 +1600,12 @@ private async Task StopDictationAsync()
     {
         try
         {
-            if (_shouldPasteToActiveApp && SelectedPasteBehavior == "active-app")
+            if (SelectedPasteBehavior == "history-only")
+            {
+                DictationStatus = "Voice note saved";
+                _toastNotificationService.Show("Voice note saved", "Stored in dictation history without pasting", ToastState.Success);
+            }
+            else if (_shouldPasteToActiveApp && SelectedPasteBehavior == "active-app")
             {
                 await _activeAppPasteService.PasteTextAsync(textToUse, _pasteTargetWindow);
                 DictationStatus = "Pasted";
@@ -1460,7 +1695,7 @@ private async void TestMic_Click(object sender, RoutedEventArgs e)
         _toastNotificationService.Show("Testing microphone", SelectedMicrophone ?? "Selected microphone", ToastState.Recording, 0);
         await _dictationCoordinator.StartAsync(SelectedMicrophone);
         await Task.Delay(2000);
-        var result = await _dictationCoordinator.StopAsync(new TranscriptionOptions(SelectedAsrEngine, SelectedModelProfile));
+        var result = await _dictationCoordinator.StopAsync(new TranscriptionOptions(SelectedAsrEngine, SelectedModelProfile, WorkerLanguageHint(SelectedDictationLanguage)));
         var diagnostic = FirstDiagnosticLine(result.Diagnostic);
         DictationStatus = string.IsNullOrWhiteSpace(diagnostic) ? "Mic test completed" : diagnostic;
         _toastNotificationService.Show("Mic test completed", DictationStatus, ToastState.Success, 3600);
@@ -1555,18 +1790,69 @@ private void OpenMeetingDetail(MeetingItem item)
     BuildSpeakerAliasPanel();
     BuildMeetingWarningsPanel(item);
     BuildMeetingNotesContent();
+    _meetingPlayback.Close();
+    MeetingPlaybackTracks.Clear();
+    foreach (var track in MeetingRecordingPlaybackService.SelectTracks(item.SourcePath)) MeetingPlaybackTracks.Add(track);
+    _selectedPlaybackTrack = MeetingPlaybackTracks.FirstOrDefault();
+    if (_selectedPlaybackTrack is not null) _meetingPlayback.Load(_selectedPlaybackTrack);
+    _playbackPositionSeconds = 0;
+    _playbackDurationSeconds = Math.Max(1, _meetingPlayback.Duration.TotalSeconds);
+    OnPropertyChanged(nameof(HasMeetingPlaybackTracks));
+    OnPropertyChanged(nameof(SelectedPlaybackTrack));
+    OnPropertyChanged(nameof(PlaybackPositionSeconds));
+    OnPropertyChanged(nameof(PlaybackDurationSeconds));
+    OnPropertyChanged(nameof(PlaybackButtonLabel));
     OnPropertyChanged(nameof(SelectedMeetingTitle));
     OnPropertyChanged(nameof(SelectedMeetingMetadata));
     OnPropertyChanged(nameof(SelectedMeetingNotes));
     OnPropertyChanged(nameof(SelectedMeetingTemplate));
     OnPropertyChanged(nameof(SelectedMeetingNotesActionLabel));
     OnPropertyChanged(nameof(SelectedMeetingTranscript));
+    OnPropertyChanged(nameof(SelectedMeetingManualNotes));
     MeetingsBrowserView.Visibility = Visibility.Collapsed;
     MeetingDetailView.Visibility = Visibility.Visible;
     var showTranscript = string.IsNullOrWhiteSpace(item.Summary) && !string.IsNullOrWhiteSpace(item.Transcript)
         ? true
         : _lastMeetingDetailShowTranscript;
     ShowMeetingDetailTab(showTranscript);
+}
+private void PlaybackTimer_Tick(object? sender, EventArgs e)
+{
+    _playbackPositionSeconds = _meetingPlayback.Position.TotalSeconds;
+    OnPropertyChanged(nameof(PlaybackPositionSeconds));
+    OnPropertyChanged(nameof(PlaybackButtonLabel));
+}
+
+private void ToggleMeetingPlayback_Click(object sender, RoutedEventArgs e)
+{
+    try
+    {
+        if (_meetingPlayback.IsPlaying) _meetingPlayback.Pause(); else _meetingPlayback.Play();
+        OnPropertyChanged(nameof(PlaybackButtonLabel));
+    }
+    catch (Exception exception)
+    {
+        DictationStatus = $"Playback failed: {exception.Message}";
+    }
+}
+
+private void StopMeetingPlayback_Click(object sender, RoutedEventArgs e)
+{
+    _meetingPlayback.Stop();
+    _playbackPositionSeconds = 0;
+    OnPropertyChanged(nameof(PlaybackPositionSeconds));
+    OnPropertyChanged(nameof(PlaybackButtonLabel));
+}
+private void UpdateSelectedMeeting(MeetingItem updated)
+{
+    if (_selectedMeeting is null) return;
+    var index = Meetings.IndexOf(_selectedMeeting);
+    if (index < 0) return;
+    Meetings[index] = updated;
+    _selectedMeeting = updated;
+    SaveMeetings();
+    RefreshMeetingViews();
+    RefreshSearchResults();
 }
 private void OpenMeetingAudio(MeetingItem item)
 {
@@ -2020,8 +2306,11 @@ private async Task GenerateSelectedMeetingNotesAsync()
     {
         DictationStatus = "Generating meeting notes";
         _toastNotificationService.Show("Generating notes", SelectedMeetingTemplate, ToastState.Transcribing, 0);
+        var summaryInput = string.IsNullOrWhiteSpace(_selectedMeeting.ManualNotes)
+            ? _selectedMeeting.Transcript
+            : $"{_selectedMeeting.Transcript}{Environment.NewLine}{Environment.NewLine}Manual notes supplied by the user:{Environment.NewLine}{_selectedMeeting.ManualNotes}";
         var summary = await MeetingSummaryService.CreateSummaryAsync(
-            _selectedMeeting.Transcript,
+            summaryInput,
             _selectedMeeting.Title,
             CurrentSettingsSnapshot() with
             {
@@ -2213,8 +2502,10 @@ private async void ImportMeeting_Click(object sender, RoutedEventArgs e)
         var result = await _meetingTranscriptionClient.TranscribeFileAsync(
             System.IO.Path.GetFileNameWithoutExtension(dialog.FileName),
             dialog.FileName,
-            new TranscriptionOptions(SelectedAsrEngine, SelectedModelProfile));
-        var transcript = DictionaryCorrectionService.Apply(result.Text, DictionaryEntries.Select(entry => entry.Record));
+            new TranscriptionOptions(SelectedMeetingAsrEngine, SelectedMeetingModelProfile, WorkerLanguageHint(SelectedDictationLanguage)));
+        var rawTranscript = result.Text;
+        var transcript = RemoveFillerWords ? FillerWordFilter.Apply(rawTranscript) : rawTranscript;
+        transcript = DictionaryCorrectionService.Apply(transcript, DictionaryEntries.Select(entry => entry.Record));
         transcript = await PostProcessIfEnabledAsync(transcript, "meeting import", _meetingTranscriptionClient.PostProcessAsync);
         if (string.IsNullOrWhiteSpace(transcript))
         {
@@ -2231,13 +2522,16 @@ private async void ImportMeeting_Click(object sender, RoutedEventArgs e)
             transcript,
             summary,
             dialog.FileName,
-            SelectedModelProfile,
+            SelectedMeetingModelProfile,
             result.DurationMs,
             _selectedMeetingFolderId,
             wordCount,
-            SelectedSummaryTemplate);
+            SelectedSummaryTemplate,
+            RawTranscript: rawTranscript,
+            Origin: "import");
         Meetings.Insert(0, meeting);
         SaveMeetings();
+        AutoExportMeeting(meeting);
         RefreshMeetingViews();
         RefreshSearchResults();
         DictationStatus = "Meeting transcribed";
@@ -2266,10 +2560,13 @@ private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
         {
             DictationStatus = "Recording meeting";
             _toastNotificationService.Show("Recording meeting", "Capturing microphone and system audio", ToastState.Recording, 0);
-            await _meetingRecordingCoordinator.StartAsync(SelectedMicrophone);
+            await _meetingRecordingCoordinator.StartAsync(SelectedMeetingMicrophone);
             _currentMeetingTitle = detectedTitle;
             _isMeetingRecording = true;
-            StartMeetingAutoStopMonitor();
+            if (!string.IsNullOrWhiteSpace(detectedTitle))
+            {
+                StartMeetingAutoStopMonitor();
+            }
             OnPropertyChanged(nameof(MeetingRecordingButtonText));
             ShowPage(MeetingsPage, MeetingsNav);
         }
@@ -2292,21 +2589,54 @@ private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
             : _currentMeetingTitle;
         var result = await _meetingRecordingCoordinator.StopAsync(
             title,
-            new TranscriptionOptions(SelectedAsrEngine, SelectedModelProfile));
+            new TranscriptionOptions(SelectedMeetingAsrEngine, SelectedMeetingModelProfile, WorkerLanguageHint(SelectedDictationLanguage)));
         _currentMeetingTitle = null;
-        var transcript = DictionaryCorrectionService.Apply(result.Transcript, DictionaryEntries.Select(entry => entry.Record));
+        var retainRecording = ShouldRetainMeetingRecording(result.Title);
+        var rawTranscript = result.Transcript;
+        var transcript = RemoveFillerWords ? FillerWordFilter.Apply(rawTranscript) : rawTranscript;
+        transcript = DictionaryCorrectionService.Apply(transcript, DictionaryEntries.Select(entry => entry.Record));
         transcript = await PostProcessIfEnabledAsync(transcript, "meeting", _meetingTranscriptionClient.PostProcessAsync);
         if (string.IsNullOrWhiteSpace(transcript))
         {
+            var retainedAudioPath = retainRecording
+                ? result.SystemAudioPath is null ? result.MicAudioPath : $"{result.MicAudioPath}; {result.SystemAudioPath}"
+                : "";
+            if (!retainRecording)
+            {
+                DeleteFileIfExists(result.MicAudioPath);
+                DeleteFileIfExists(result.SystemAudioPath);
+            }
+            var warnings = (result.HealthWarnings ?? []).ToList();
+            warnings.Add("No speech was detected. This session is retained as failed so its outcome is not silently lost.");
+            var failedMeeting = new MeetingItem(
+                $"meet_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+                result.Title,
+                result.StartedAt,
+                "",
+                "",
+                retainedAudioPath,
+                SelectedMeetingModelProfile,
+                result.DurationMs,
+                _selectedMeetingFolderId,
+                0,
+                SelectedSummaryTemplate,
+                HealthWarnings: warnings,
+                RawTranscript: rawTranscript,
+                Status: "failed");
+            Meetings.Insert(0, failedMeeting);
+            SaveMeetings();
+            AutoExportMeeting(failedMeeting);
+            RefreshMeetingViews();
+            RefreshSearchResults();
             DictationStatus = "No speech detected in meeting";
-            _toastNotificationService.Show("No speech detected", "Meeting audio was captured but no transcript was produced", ToastState.Error, 4200);
+            _toastNotificationService.Show("Meeting retained: no speech detected", retainRecording ? "The recording is still available for recovery" : "The failed session was saved without audio", ToastState.Error, 5200);
             return;
         }
         var summary = await CreateMeetingSummaryAsync(transcript, result.Title);
-        var sourceAudioPath = SaveMeetingRecordings
+        var sourceAudioPath = retainRecording
             ? result.SystemAudioPath is null ? result.MicAudioPath : $"{result.MicAudioPath}; {result.SystemAudioPath}"
             : "";
-        if (!SaveMeetingRecordings)
+        if (!retainRecording)
         {
             DeleteFileIfExists(result.MicAudioPath);
             DeleteFileIfExists(result.SystemAudioPath);
@@ -2319,14 +2649,17 @@ private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
             transcript,
             summary,
             sourceAudioPath,
-            SelectedModelProfile,
+            SelectedMeetingModelProfile,
             result.DurationMs,
             _selectedMeetingFolderId,
             wordCount,
             SelectedSummaryTemplate,
-            HealthWarnings: result.HealthWarnings ?? new List<string>());
+            HealthWarnings: result.HealthWarnings ?? new List<string>(),
+            RawTranscript: rawTranscript,
+            Status: "completed");
         Meetings.Insert(0, meeting);
         SaveMeetings();
+        AutoExportMeeting(meeting);
         RefreshMeetingViews();
         RefreshSearchResults();
         DictationStatus = string.IsNullOrWhiteSpace(transcript) ? "Meeting saved with no detected speech" : "Meeting ready";
@@ -2436,6 +2769,89 @@ private void SaveDictionaryEntry_Click(object sender, RoutedEventArgs e)
     SaveDictionary();
     DictationStatus = "Dictionary saved";
     OnPropertyChanged(nameof(HasDictionaryEntries));
+}
+private void ImportDictionary_Click(object sender, RoutedEventArgs e)
+{
+    var dialog = new Microsoft.Win32.OpenFileDialog
+    {
+        Title = "Import Muesli dictionary",
+        Filter = "JSON files|*.json|All files|*.*"
+    };
+    if (dialog.ShowDialog(this) != true) return;
+    try
+    {
+        var imported = DictionaryPortabilityService.Import(dialog.FileName);
+        foreach (var record in imported)
+        {
+            var existing = DictionaryEntries.FirstOrDefault(item => item.Phrase.Equals(record.Phrase, StringComparison.OrdinalIgnoreCase));
+            if (existing is null)
+            {
+                DictionaryEntries.Add(new DictionaryEntryItem(record));
+            }
+            else
+            {
+                existing.Replacement = record.Replacement;
+                existing.MatchingThreshold = record.MatchingThreshold;
+            }
+        }
+        SaveDictionary();
+        OnPropertyChanged(nameof(HasDictionaryEntries));
+        DictationStatus = $"Imported {imported.Count} dictionary entries";
+        _toastNotificationService.Show("Dictionary imported", $"{imported.Count} entries processed", ToastState.Success, 2800);
+    }
+    catch (Exception exception)
+    {
+        DictationStatus = $"Dictionary import failed: {exception.Message}";
+        _toastNotificationService.Show("Dictionary import failed", exception.Message, ToastState.Error, 4200);
+    }
+}
+private bool ShouldRetainMeetingRecording(string title)
+{
+    if (RecordingSavePolicy == "always") return true;
+    if (RecordingSavePolicy == "never") return false;
+    return System.Windows.MessageBox.Show(
+        $"Keep the local audio recording for \"{title}\"?",
+        "Keep meeting recording",
+        MessageBoxButton.YesNo,
+        MessageBoxImage.Question) == MessageBoxResult.Yes;
+}
+
+private void AutoExportMeeting(MeetingItem meeting)
+{
+    if (!AutoExportMeetings) return;
+    try
+    {
+        var path = MeetingExporter.ExportMarkdownAutomatically(meeting, AutoExportDirectory, meeting.SpeakerAliases);
+        _logService.Info($"Automatically exported meeting markdown: {path}");
+    }
+    catch (Exception exception)
+    {
+        _logService.Error("Automatic meeting export failed.", exception);
+        DictationStatus = $"Meeting saved; automatic export failed: {exception.Message}";
+    }
+}
+
+private void ExportDictionary_Click(object sender, RoutedEventArgs e)
+{
+    var dialog = new Microsoft.Win32.SaveFileDialog
+    {
+        Title = "Export Muesli dictionary",
+        Filter = "JSON files|*.json",
+        FileName = "muesli-dictionary.json",
+        DefaultExt = ".json"
+    };
+    if (dialog.ShowDialog(this) != true) return;
+    try
+    {
+        DictionaryPortabilityService.Export(dialog.FileName, DictionaryEntries.Select(item => item.Record));
+        DictationStatus = "Dictionary exported";
+        _toastNotificationService.Show("Dictionary exported", dialog.FileName, ToastState.Success, 2800);
+    }
+    catch (Exception exception)
+    {
+        DictationStatus = $"Dictionary export failed: {exception.Message}";
+        _toastNotificationService.Show("Dictionary export failed", exception.Message, ToastState.Error, 4200);
+    }
 }
 private async void RefreshRuntimeDiagnostics_Click(object sender, RoutedEventArgs e)
 {
@@ -3618,7 +4034,17 @@ private async Task<string> CreateMeetingSummaryAsync(string transcript, string t
 {
     DictationStatus = SelectedSummaryProvider == "local" ? "Creating local summary" : "Creating AI summary";
     _toastNotificationService.Show("Summarizing meeting", SelectedSummaryProvider, ToastState.Transcribing, 0);
-    return await MeetingSummaryService.CreateSummaryAsync(transcript, title, CurrentSettingsSnapshot());
+    try
+    {
+        return await MeetingSummaryService.CreateSummaryAsync(transcript, title, CurrentSettingsSnapshot());
+    }
+    catch (Exception exception)
+    {
+        _logService.Error($"The selected '{SelectedSummaryProvider}' summary provider failed; preserving the transcript without generated notes.", exception);
+        DictationStatus = $"Transcript saved; {SelectedSummaryProvider} summary failed";
+        _toastNotificationService.Show("Transcript preserved", $"{SelectedSummaryProvider} summary failed: {exception.Message}", ToastState.Error, 5200);
+        return "";
+    }
 }
 private async Task RefreshRuntimeDiagnosticsAsync()
 {
@@ -3884,9 +4310,14 @@ private MuesliSettings CurrentSettingsSnapshot()
         UserName = UserName,
         AsrEngine = SelectedAsrEngine,
         ModelProfile = SelectedModelProfile,
+        DictationLanguage = SelectedDictationLanguage,
+        MeetingAsrEngine = SelectedMeetingAsrEngine,
+        MeetingModelProfile = SelectedMeetingModelProfile,
+        MeetingMicrophoneName = SelectedMeetingMicrophone,
         PasteBehavior = SelectedPasteBehavior,
         OnboardingCompleted = _onboardingCompleted,
         PostProcessingEnabled = PostProcessingEnabled,
+        RemoveFillerWords = RemoveFillerWords,
         EnableDoubleTapDictation = EnableDoubleTapDictation,
         PostProcessingPrompt = PostProcessingPrompt,
         StartAtLogin = StartAtLogin,
@@ -3897,12 +4328,18 @@ private MuesliSettings CurrentSettingsSnapshot()
             template.Name.Equals(SelectedSummaryTemplate, StringComparison.OrdinalIgnoreCase))?.Prompt ?? "",
         OpenDashboardOnLaunch = OpenDashboardOnLaunch,
         SaveMeetingRecordings = SaveMeetingRecordings,
+        RecordingSavePolicy = RecordingSavePolicy,
+        AutoExportMeetings = AutoExportMeetings,
+        AutoExportDirectory = AutoExportDirectory,
         ShowFloatingIndicator = ShowFloatingIndicator,
         IndicatorAnchor = SelectedIndicatorPosition,
         OpenAIApiKey = OpenAIApiKey,
         OpenAIModel = OpenAIModel,
         OpenRouterApiKey = OpenRouterApiKey,
         OpenRouterModel = OpenRouterModel,
+        CustomSummaryEndpoint = CustomSummaryEndpoint,
+        CustomSummaryModel = CustomSummaryModel,
+        CustomSummaryApiKey = CustomSummaryApiKey,
         Theme = _theme,
         MicrophoneName = SelectedMicrophone,
         IndicatorLeft = _indicatorLeft,
@@ -4051,8 +4488,9 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
 
     private void CheckMeetingDetection_Click(object sender, RoutedEventArgs e)
     {
-        AutoMeetingDetectionEnabled = true;
-        var scan = _meetingDetectionService.CheckNow();
+        // One-shot scan; do not toggle AutoMeetingDetectionEnabled — the user
+        // controls that via the checkbox above this button.
+        var scan = _meetingDetectionService.CheckNow(publish: AutoMeetingDetectionEnabled);
         MeetingDetectionStatus = scan.Found
             ? scan.Summary
             : $"No meeting found. {scan.Summary}";
@@ -4091,7 +4529,8 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
                 dictation.Timestamp.ToString("hh:mm tt"),
                 dictation.Text,
                 dictation.ModelProfile,
-                dictation.DurationMs));
+                dictation.DurationMs,
+                dictation.DeliveryMode));
         }
 
         foreach (var meeting in _dataStore.LoadMeetings().OrderByDescending(item => item.CreatedAt))
@@ -4109,7 +4548,11 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
                 meeting.WordCount,
                 meeting.TemplateName,
                 meeting.SpeakerAliases,
-                MeetingRecordingCoordinator.CleanupHealthWarnings(meeting.HealthWarnings, meeting.Transcript)));
+                MeetingRecordingCoordinator.CleanupHealthWarnings(meeting.HealthWarnings, meeting.Transcript),
+                meeting.RawTranscript,
+                meeting.ManualNotes,
+                meeting.Status,
+                meeting.Origin));
         }
 
         foreach (var entry in _dataStore.LoadDictionary())
@@ -4138,7 +4581,8 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
             item.Timestamp,
             item.Text,
             item.DurationMs,
-            item.ModelProfile)));
+            item.ModelProfile,
+            item.DeliveryMode)));
     }
 
     private void SaveMeetings()
@@ -4150,14 +4594,18 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
             CreatedAt = item.CreatedAt,
             DurationMs = item.DurationMs,
             Transcript = item.Transcript,
+            RawTranscript = item.RawTranscript,
             Summary = item.Summary,
+            ManualNotes = item.ManualNotes,
             SourcePath = item.SourcePath,
             ModelProfile = item.ModelProfile,
             FolderId = item.FolderId,
             WordCount = item.WordCount,
             TemplateName = item.TemplateName,
             SpeakerAliases = item.SpeakerAliases ?? new Dictionary<string, string>(),
-            HealthWarnings = MeetingRecordingCoordinator.CleanupHealthWarnings(item.HealthWarnings, item.Transcript)
+            HealthWarnings = MeetingRecordingCoordinator.CleanupHealthWarnings(item.HealthWarnings, item.Transcript),
+            Status = item.Status,
+            Origin = item.Origin
         }));
     }
 
@@ -4167,6 +4615,9 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
             return 0;
         return text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
     }
+
+    private static string WorkerLanguageHint(string selectedLanguage) =>
+        selectedLanguage.Equals("auto", StringComparison.OrdinalIgnoreCase) ? "" : selectedLanguage;
 
     private int ComputeDayStreak()
     {
@@ -4302,7 +4753,8 @@ public sealed record DictationItem(
     string Time,
     string Text,
     string ModelProfile,
-    int DurationMs)
+    int DurationMs,
+    string DeliveryMode = "active-app")
 {
     private DateTime LocalTimestamp => Timestamp.Kind == DateTimeKind.Utc ? Timestamp.ToLocalTime() : Timestamp;
 
@@ -4327,9 +4779,14 @@ public sealed record MeetingItem(
     int WordCount = 0,
     string TemplateName = "",
     Dictionary<string, string>? SpeakerAliases = null,
-    List<string>? HealthWarnings = null)
+    List<string>? HealthWarnings = null,
+    string RawTranscript = "",
+    string ManualNotes = "",
+    string Status = "completed",
+    string Origin = "recording")
 {
-    public string Metadata => $"{CreatedAt:yyyy-MM-dd HH:mm} • {DurationLabel}";
+    public string Metadata => $"{CreatedAt:yyyy-MM-dd HH:mm} • {DurationLabel}" +
+                              (Status.Equals("completed", StringComparison.OrdinalIgnoreCase) ? "" : $" • {Status}");
 
     public string DurationLabel
     {

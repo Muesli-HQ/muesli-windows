@@ -8,10 +8,12 @@ namespace Muesli.Windows.Services;
 
 public sealed class MeetingDetectionService : IDisposable
 {
+    private const int AbsenceScansToRearm = 5; // 5 scans * 3s interval = ~15s before we consider the meeting gone
+
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly AppLogService _logService = new();
-    private string _lastDetectedKey = "";
-    private DateTime _lastDetectedAt = DateTime.MinValue;
+    private string _publishedKey = "";
+    private int _absenceScans;
     private int _scanCount;
 
     public event EventHandler<DetectedMeeting>? MeetingDetected;
@@ -54,6 +56,7 @@ public sealed class MeetingDetectionService : IDisposable
 
         if (TryDetectMeeting(handle, out var meeting))
         {
+            _absenceScans = 0;
             if (publish)
             {
                 PublishMeeting(meeting);
@@ -96,11 +99,19 @@ public sealed class MeetingDetectionService : IDisposable
 
         if (detected is null)
         {
-            _lastDetectedKey = "";
-            _lastDetectedAt = DateTime.MinValue;
+            if (_absenceScans < AbsenceScansToRearm)
+            {
+                _absenceScans++;
+                if (_absenceScans >= AbsenceScansToRearm)
+                {
+                    _publishedKey = "";
+                }
+            }
+
             return CompleteScan(MeetingDetectionScan.NotFound(foregroundSummary, visibleWindows));
         }
 
+        _absenceScans = 0;
         if (publish)
         {
             PublishMeeting(detected);
@@ -143,7 +154,9 @@ public sealed class MeetingDetectionService : IDisposable
         }
 
         var meetingTitle = CleanMeetingTitle(title, platform, browserUrl);
-        var key = $"{platform}|{processName}|{meetingTitle}|{browserUrl}".ToLowerInvariant();
+        // Key intentionally excludes the title — window titles flap (participant counts, tab badges)
+        // and would otherwise refire the prompt every few seconds during a single meeting.
+        var key = $"{platform}|{processName}|{browserUrl}".ToLowerInvariant();
         meeting = new DetectedMeeting(platform, meetingTitle, title, processName, browserUrl, key);
         return true;
     }
@@ -161,14 +174,12 @@ public sealed class MeetingDetectionService : IDisposable
 
     private void PublishMeeting(DetectedMeeting meeting)
     {
-        if (meeting.Key == _lastDetectedKey &&
-            DateTime.Now - _lastDetectedAt < TimeSpan.FromSeconds(45))
+        if (meeting.Key == _publishedKey)
         {
             return;
         }
 
-        _lastDetectedKey = meeting.Key;
-        _lastDetectedAt = DateTime.Now;
+        _publishedKey = meeting.Key;
         MeetingDetected?.Invoke(this, meeting);
     }
 

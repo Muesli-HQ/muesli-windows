@@ -664,12 +664,24 @@
                           <ColumnDefinition Width="*" />
                           <ColumnDefinition Width="220" />
                         </Grid.ColumnDefinitions>
+                        <TextBlock Text="Language hint" Style="{StaticResource SettingsRowLabel}" />
+                        <ComboBox Grid.Column="1" Style="{StaticResource MuesliComboBox}" ItemsSource="{Binding LanguageOptions}" SelectedItem="{Binding SelectedDictationLanguage}" />
+                      </Grid>
+                      <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="220" />
+                        </Grid.ColumnDefinitions>
                         <StackPanel>
                           <TextBlock Text="Hands-Free Mode" Style="{StaticResource SettingsRowLabel}" />
                           <TextBlock Text="Double-tap the shortcut to start, tap again to stop." Margin="0,4,0,0" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                         <CheckBox Grid.Column="1" Style="{StaticResource MuesliCheckBox}" IsChecked="{Binding EnableDoubleTapDictation}" HorizontalAlignment="Right" />
                       </Grid>
+                      <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
+                      <CheckBox Style="{StaticResource MuesliCheckBox}" Content="Remove filler words locally" IsChecked="{Binding RemoveFillerWords}" />
+                      <TextBlock Text="Deterministically removes common speech fillers before dictionary correction; no model or network is used." Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
                       <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
                       <CheckBox Style="{StaticResource MuesliCheckBox}" Content="AI transcript cleanup" IsChecked="{Binding PostProcessingEnabled}" />
                       <TextBlock Text="Uses Qwen post-processing for punctuation, grammar, casing, deletion cues, and spoken lists." Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
@@ -693,7 +705,10 @@
                           <ColumnDefinition Width="*" />
                           <ColumnDefinition Width="220" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="Paste behavior" Style="{StaticResource SettingsRowLabel}" />
+                        <StackPanel>
+                          <TextBlock Text="Delivery mode" Style="{StaticResource SettingsRowLabel}" />
+                          <TextBlock Text="history-only saves a voice note without changing the clipboard or active app." Margin="0,4,12,0" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
                         <ComboBox Grid.Column="1" Style="{StaticResource MuesliComboBox}" ItemsSource="{Binding PasteBehaviors}" SelectedItem="{Binding SelectedPasteBehavior}" />
                       </Grid>
                       <Button Margin="0,16,0,0" HorizontalAlignment="Left" Style="{StaticResource PrimaryButton}" PreviewMouseDown="HoldToDictate_MouseDown" PreviewMouseUp="HoldToDictate_MouseUp" Content="Hold to dictate" />
@@ -707,9 +722,34 @@
                   <TextBlock Text="RECORDING" Style="{StaticResource SectionLabel}" />
                   <Border Style="{StaticResource ContentCard}">
                     <StackPanel>
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="Meeting microphone" Style="{StaticResource SettingsRowLabel}" />
+                        <ComboBox Grid.Column="1" Style="{StaticResource MuesliComboBox}" ItemsSource="{Binding MicrophoneDevices}" SelectedItem="{Binding SelectedMeetingMicrophone}" />
+                      </Grid>
+                      <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="Meeting backend" Style="{StaticResource SettingsRowLabel}" />
+                        <ComboBox Grid.Column="1" Style="{StaticResource MuesliComboBox}" ItemsSource="{Binding AsrEngines}" SelectedItem="{Binding SelectedMeetingAsrEngine}" />
+                      </Grid>
+                      <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="Meeting model" Style="{StaticResource SettingsRowLabel}" />
+                        <ComboBox Grid.Column="1" Style="{StaticResource MuesliComboBox}" ItemsSource="{Binding ModelProfiles}" SelectedItem="{Binding SelectedMeetingModelProfile}" />
+                      </Grid>
+                      <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
                       <CheckBox Style="{StaticResource MuesliCheckBox}" Content="Notify when meeting detected" IsChecked="{Binding AutoMeetingDetectionEnabled}" />
                       <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
-                      <CheckBox Style="{StaticResource MuesliCheckBox}" Content="Save meeting recording" IsChecked="{Binding SaveMeetingRecordings}" />
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="Recording retention" Style="{StaticResource SettingsRowLabel}" />
+                        <ComboBox Grid.Column="1" Style="{StaticResource MuesliComboBox}" ItemsSource="{Binding RecordingSavePolicies}" SelectedItem="{Binding RecordingSavePolicy}" />
+                      </Grid>
+                      <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
+                      <CheckBox Style="{StaticResource MuesliCheckBox}" Content="Automatically export completed meetings as Markdown" IsChecked="{Binding AutoExportMeetings}" />
+                      <TextBox Margin="0,10,0,0" Style="{StaticResource MuesliTextBox}" Text="{Binding AutoExportDirectory, UpdateSourceTrigger=LostFocus}" ToolTip="Leave blank to use Documents\Muesli Meetings" />
                       <TextBlock Text="Windows checks active app titles, supported browser URLs where accessible, and meeting app process names." Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
                       <Button Margin="0,12,0,0" HorizontalAlignment="Left" Style="{StaticResource SecondaryButton}" Content="Check meeting detection now" Click="CheckMeetingDetection_Click" />
                       <TextBlock Text="{Binding MeetingDetectionStatus}" Margin="0,10,0,0" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
@@ -771,6 +811,27 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="OpenRouter model" Style="{StaticResource SettingsRowLabel}" />
                         <TextBox Grid.Column="1" Style="{StaticResource MuesliTextBox}" Text="{Binding OpenRouterModel, UpdateSourceTrigger=PropertyChanged}" />
+                      </Grid>
+                      <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                          <TextBlock Text="Compatible endpoint" Style="{StaticResource SettingsRowLabel}" />
+                          <TextBlock Text="Used by custom; Ollama and LM Studio have standard local defaults." FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <TextBox Grid.Column="1" Style="{StaticResource MuesliTextBox}" Text="{Binding CustomSummaryEndpoint, UpdateSourceTrigger=LostFocus}" />
+                      </Grid>
+                      <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="Compatible model" Style="{StaticResource SettingsRowLabel}" />
+                        <TextBox Grid.Column="1" Style="{StaticResource MuesliTextBox}" Text="{Binding CustomSummaryModel, UpdateSourceTrigger=LostFocus}" />
+                      </Grid>
+                      <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="Compatible API key (optional)" Style="{StaticResource SettingsRowLabel}" />
+                        <TextBox Grid.Column="1" Style="{StaticResource MuesliTextBox}" Text="{Binding CustomSummaryApiKey, UpdateSourceTrigger=LostFocus}" />
                       </Grid>
                     </StackPanel>
                   </Border>
@@ -1313,7 +1374,10 @@
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <StackPanel>
-                <TextBlock Text="{Binding SelectedMeetingTitle}" Style="{StaticResource PageTitle}" />
+                <TextBox Text="{Binding SelectedMeetingTitle, UpdateSourceTrigger=LostFocus}"
+                         FontSize="28" FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextPrimaryBrush}"
+                         Background="Transparent" BorderThickness="0" Padding="0" />
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="{Binding SelectedMeetingMetadata}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
                   <Border Margin="10,-2,0,0" Padding="8,4" CornerRadius="12" Background="{DynamicResource AccentBadgeBackgroundBrush}">
@@ -1395,6 +1459,22 @@
                 </Border>
               </StackPanel>
 
+              <Border Margin="0,14,0,0" Padding="14" Style="{StaticResource ContentCard}"
+                      Visibility="{Binding HasMeetingPlaybackTracks, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="180" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <ComboBox Style="{StaticResource MuesliComboBox}" ItemsSource="{Binding MeetingPlaybackTracks}" SelectedItem="{Binding SelectedPlaybackTrack}" />
+                  <Button Grid.Column="1" Margin="10,0,0,0" Style="{StaticResource PrimaryButton}" Content="{Binding PlaybackButtonLabel}" Click="ToggleMeetingPlayback_Click" />
+                  <Button Grid.Column="2" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Content="Stop" Click="StopMeetingPlayback_Click" />
+                  <Slider Grid.Column="3" Margin="14,0,0,0" Minimum="0" Maximum="{Binding PlaybackDurationSeconds}" Value="{Binding PlaybackPositionSeconds, Mode=TwoWay}" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
               <StackPanel x:Name="MeetingNotesPanel">
                 <DockPanel Margin="0,14,0,12">
                   <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
@@ -1427,6 +1507,19 @@
                         Margin="0,0,0,24">
                   <StackPanel x:Name="MeetingNotesContent" />
                 </Border>
+                <TextBlock Text="MANUAL NOTES" Style="{StaticResource SectionLabel}" />
+                <Border Background="{DynamicResource BackgroundRaisedBrush}"
+                        BorderBrush="{DynamicResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="18"
+                        Margin="0,0,0,24">
+                  <TextBox Text="{Binding SelectedMeetingManualNotes, UpdateSourceTrigger=LostFocus}"
+                           TextWrapping="Wrap" AcceptsReturn="True" MinHeight="120"
+                           Background="Transparent" BorderThickness="0"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           ToolTip="Your notes are stored separately and are never overwritten by generated notes." />
+                </Border>
               </StackPanel>
 
               <StackPanel x:Name="MeetingTranscriptPanel" Visibility="Collapsed">
@@ -1447,12 +1540,12 @@
                         BorderThickness="1"
                         CornerRadius="10"
                         Padding="24">
-                  <TextBox Text="{Binding SelectedMeetingTranscript, Mode=OneWay}"
+                  <TextBox Text="{Binding SelectedMeetingTranscript, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                            TextWrapping="Wrap"
                            AcceptsReturn="True"
                            Background="Transparent"
                            BorderThickness="0"
-                           IsReadOnly="True"
+                           IsReadOnly="False"
                            Foreground="{DynamicResource TextPrimaryBrush}"
                            Cursor="IBeam"
                            FontFamily="Consolas"
@@ -1478,6 +1571,8 @@
                 <TextBlock Text="Add new" />
               </StackPanel>
             </Button>
+            <Button DockPanel.Dock="Right" Margin="0,0,8,0" Style="{StaticResource SecondaryButton}" Content="Export JSON" Click="ExportDictionary_Click" />
+            <Button DockPanel.Dock="Right" Margin="0,0,8,0" Style="{StaticResource SecondaryButton}" Content="Import JSON" Click="ImportDictionary_Click" />
             <StackPanel>
               <TextBlock Text="Dictionary" Style="{StaticResource PageTitle}" />
               <TextBlock Text="Add custom words for names, brands, and domain terms, and tune how aggressively each entry should fuzzy-match transcription errors." Style="{StaticResource PageSubtitle}" />

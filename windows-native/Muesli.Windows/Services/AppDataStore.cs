@@ -1,19 +1,21 @@
 using System.IO;
-using System.Text.Json;
-
 namespace Muesli.Windows.Services;
 
 public sealed class AppDataStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
+    private readonly string _dataDirectory;
+    private readonly AtomicJsonFile _json;
 
-    private readonly string _dataDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "muesli",
-        "data");
+    public AppDataStore(string? dataDirectory = null)
+    {
+        _dataDirectory = dataDirectory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "muesli",
+            "data");
+        _json = new AtomicJsonFile(warning => RecoveryWarnings.Add(warning));
+    }
+
+    public List<string> RecoveryWarnings { get; } = [];
 
     public IReadOnlyList<PersistedDictation> LoadDictations()
     {
@@ -68,27 +70,13 @@ public sealed class AppDataStore
     private T ReadJson<T>(string fileName, T fallback)
     {
         var path = Path.Combine(_dataDirectory, fileName);
-        if (!File.Exists(path))
-        {
-            return fallback;
-        }
-
-        try
-        {
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<T>(json) ?? fallback;
-        }
-        catch
-        {
-            return fallback;
-        }
+        return _json.Load(path, fallback).Value;
     }
 
     private void WriteJson<T>(string fileName, T value)
     {
-        Directory.CreateDirectory(_dataDirectory);
         var path = Path.Combine(_dataDirectory, fileName);
-        File.WriteAllText(path, JsonSerializer.Serialize(value, JsonOptions));
+        _json.Save(path, value);
     }
 }
 
@@ -97,7 +85,8 @@ public sealed record PersistedDictation(
     DateTime Timestamp,
     string Text,
     int DurationMs,
-    string ModelProfile);
+    string ModelProfile,
+    string DeliveryMode = "active-app");
 
 public sealed record PersistedMeeting
 {
@@ -106,7 +95,9 @@ public sealed record PersistedMeeting
     public DateTime CreatedAt { get; init; }
     public int DurationMs { get; init; }
     public string Transcript { get; init; } = "";
+    public string RawTranscript { get; init; } = "";
     public string Summary { get; init; } = "";
+    public string ManualNotes { get; init; } = "";
     public string SourcePath { get; init; } = "";
     public string ModelProfile { get; init; } = "";
     public string? FolderId { get; init; }
@@ -114,6 +105,8 @@ public sealed record PersistedMeeting
     public string TemplateName { get; init; } = "";
     public Dictionary<string, string> SpeakerAliases { get; init; } = new();
     public List<string> HealthWarnings { get; init; } = new();
+    public string Status { get; init; } = "completed";
+    public string Origin { get; init; } = "recording";
 }
 
 public sealed record PersistedMeetingFolder(

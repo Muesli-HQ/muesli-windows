@@ -7,11 +7,19 @@ public partial class App : System.Windows.Application
 {
     private readonly Services.AppLogService _logService = new();
     private IDisposable? _sentryDisposable;
+    private static Services.SingleInstanceCoordinator? _singleInstance;
 
     [STAThread]
     public static void Main(string[] args)
     {
         VelopackApp.Build().Run();
+        _singleInstance = Services.SingleInstanceCoordinator.AcquireForCurrentUser();
+        if (!_singleInstance.IsPrimary)
+        {
+            _singleInstance.SignalActivationAsync().GetAwaiter().GetResult();
+            _singleInstance.Dispose();
+            return;
+        }
         var app = new App();
         app.InitializeComponent();
         app.Run();
@@ -103,10 +111,12 @@ public partial class App : System.Windows.Application
         Exit += (_, _) =>
         {
             _sentryDisposable?.Dispose();
+            _singleInstance?.Dispose();
         };
 
         var window = new MainWindow();
         MainWindow = window;
+        _singleInstance?.StartListening(() => Dispatcher.BeginInvoke(window.ShowDashboardFromBackground));
 
         if (!window.OpenDashboardOnLaunch)
         {

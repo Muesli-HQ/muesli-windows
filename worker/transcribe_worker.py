@@ -91,32 +91,6 @@ def get_whisper_model(model_profile: str) -> Any:
     raise RuntimeError(f"Unable to load Whisper model '{model_name}'.") from last_error
 
 
-def mock_transcript(title: str, source: str, model: str, reason: str) -> dict[str, Any]:
-    text = (
-        f"This is a mock local transcript for {title}. "
-        "Install the worker dependencies to enable real local transcription. "
-        f"Source was {source}, model profile was {model}."
-    )
-    return {
-        "transcriptText": text,
-        "detectedLanguage": "en",
-        "durationMs": 0,
-        "segments": [
-            {
-                "id": "seg_1",
-                "speaker": "Speaker ?",
-                "startMs": 0,
-                "endMs": 0,
-                "text": text,
-            }
-        ],
-        "warnings": [
-            "Mock worker output is active.",
-            f"Reason: {reason}",
-        ],
-    }
-
-
 def cleanup_prompt(text: str, context: str, system_prompt: str = "") -> list[dict[str, str]]:
     default_prompt = (
         "You clean up speech-to-text transcripts for a local dictation app. "
@@ -526,7 +500,7 @@ def transcribe(
         try:
             return transcribe_parakeet(title, input_path, source, audio_base64)
         except Exception as exc:
-            return mock_transcript(title, source, model_profile, f"Parakeet unavailable: {exc}")
+            raise RuntimeError(f"Parakeet transcription failed: {exc}") from exc
 
     try:
         return transcribe_whisper(
@@ -539,9 +513,9 @@ def transcribe(
             audio_base64,
         )
     except ModuleNotFoundError as exc:
-        return mock_transcript(title, source, model_profile, str(exc))
+        raise RuntimeError(f"Whisper transcription dependency is unavailable: {exc}") from exc
     except Exception as exc:
-        return mock_transcript(title, source, model_profile, str(exc))
+        raise RuntimeError(f"Whisper transcription failed: {exc}") from exc
 
 
 def get_diarization_pipeline() -> Any:
