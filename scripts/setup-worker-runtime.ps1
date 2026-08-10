@@ -7,11 +7,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (Test-Path (Join-Path $root "Muesli.exe")) {
-    $appDir = $root
+$scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repositoryRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$sourceProject = Join-Path $repositoryRoot "windows-native\Muesli.Windows\Muesli.Windows.csproj"
+$isSourceCheckout = Test-Path $sourceProject
+
+if (Test-Path (Join-Path $scriptDirectory "Muesli.exe")) {
+    # The script is copied beside Muesli.exe in packaged builds.
+    $appDir = $scriptDirectory
+} elseif ($isSourceCheckout) {
+    # Development builds use the repository worker and the same .venv-worker
+    # location that WorkerRuntimeLocator searches at runtime.
+    $appDir = $repositoryRoot
 } else {
-    $appDir = Resolve-Path (Join-Path $PSScriptRoot "..\publish\muesli-windows-win-x64")
+    throw "Could not identify a Muesli source checkout or packaged installation."
 }
 
 $requirements = Join-Path $appDir "worker\requirements.txt"
@@ -76,7 +85,11 @@ if ($useBundled) {
     return
 }
 
-$venv = Join-Path $appDir ".venv"
+$venv = if ($isSourceCheckout) {
+    Join-Path $repositoryRoot ".venv-worker"
+} else {
+    Join-Path $appDir ".venv"
+}
 $python = Join-Path $venv "Scripts\python.exe"
 
 function Find-PythonLauncher {

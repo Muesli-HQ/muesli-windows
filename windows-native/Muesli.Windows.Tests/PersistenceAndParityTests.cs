@@ -78,6 +78,24 @@ public sealed class PersistenceAndParityTests
         Assert.DoesNotContain("secret-openai", persisted);
         Assert.DoesNotContain("secret-router", persisted);
     }
+
+    [Fact]
+    public void SourceBuildFindsRepositoryRootPastCopiedWorkerDirectory()
+    {
+        var root = WorkerRuntimeLocator.FindRepoRoot(AppContext.BaseDirectory);
+
+        Assert.NotNull(root);
+        Assert.True(File.Exists(Path.Combine(root!, "worker", "transcribe_worker.py")));
+        Assert.True(File.Exists(Path.Combine(
+            root!,
+            "windows-native",
+            "Muesli.Windows",
+            "Muesli.Windows.csproj")));
+        Assert.NotEqual(
+            Path.GetFullPath(AppContext.BaseDirectory),
+            Path.GetFullPath(root!),
+            StringComparer.OrdinalIgnoreCase);
+    }
 }
 
 internal sealed class TestDirectory : IDisposable

@@ -37,7 +37,7 @@ public static class WorkerRuntimeLocator
             return parentVenv;
         }
 
-        var repoRoot = FindRepoRoot();
+        var repoRoot = FindRepoRoot(AppContext.BaseDirectory);
         if (repoRoot is not null)
         {
             var devWorkerVenv = Path.Combine(repoRoot, ".venv-worker", "Scripts", "python.exe");
@@ -192,13 +192,18 @@ public static class WorkerRuntimeLocator
                File.Exists(Path.Combine(workerDirectory, "requirements-parakeet.txt"));
     }
 
-    private static string? FindRepoRoot()
+    internal static string? FindRepoRoot(string startingDirectory)
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        var directory = new DirectoryInfo(startingDirectory);
         while (directory is not null)
         {
             var workerScript = Path.Combine(directory.FullName, "worker", "transcribe_worker.py");
-            if (File.Exists(workerScript))
+            var sourceProject = Path.Combine(
+                directory.FullName,
+                "windows-native",
+                "Muesli.Windows",
+                "Muesli.Windows.csproj");
+            if (File.Exists(workerScript) && File.Exists(sourceProject))
             {
                 return directory.FullName;
             }
