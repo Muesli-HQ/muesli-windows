@@ -18,6 +18,10 @@ $reports = @($ReportPaths | ForEach-Object {
     $report
 })
 $requiredKinds = @("Notepad", "Chrome", "Office", "Other")
+$unexpectedReportCount = $reports.Count -ne $requiredKinds.Count
+if ($unexpectedReportCount) { throw "Exactly one passed report for each of Notepad, Chrome, Office, and Other is required; received $($reports.Count)." }
+$duplicateKinds = @($reports | Group-Object -Property targetKind | Where-Object Count -ne 1 | Select-Object -ExpandProperty Name)
+if ($duplicateKinds.Count -gt 0) { throw "Duplicate target qualification reports are not allowed: $($duplicateKinds -join ', ')." }
 $missing = @($requiredKinds | Where-Object { $_ -notin @($reports.targetKind) })
 $models = @($reports.requiredModelId | Sort-Object -Unique)
 $traceIds = @($reports.traceId | Sort-Object -Unique)
