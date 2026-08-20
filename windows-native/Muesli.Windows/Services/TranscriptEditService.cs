@@ -21,6 +21,7 @@ public sealed class TranscriptEditService : IDisposable
     private readonly CaptureStorageService? _captureStorage;
     private readonly ConcurrentDictionary<string, InFlightRetranscribe> _flights = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, TranscriptEditSession> _edits = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, object> MeetingMutationGates = new(StringComparer.Ordinal);
     private bool _disposed;
 
     public TranscriptEditService(
@@ -219,7 +220,7 @@ public sealed class TranscriptEditService : IDisposable
     public RetranscriptionCandidate? GetPendingCandidate(string meetingId)
     {
         var scratch = _candidates.TryLoad(meetingId);
-        return scratch is null ? null : ToCandidate(scratch);
+        return scratch is null || !IsActiveCandidate(scratch) ? null : ToCandidate(scratch);
     }
 
     public async Task<RetranscriptionResult> RetranscribeAsync(
@@ -298,7 +299,31 @@ public sealed class TranscriptEditService : IDisposable
         using var flightCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         flightCts.CancelAfter(_retranscribeTimeout);
         var flight = new InFlightRetranscribe(candidateId, flightCts);
-        if (!_flights.TryAdd(meetingId, flight))
+        Exception? admissionException = null;
+        var admitted = false;
+        lock (MeetingMutationGate(meetingId))
+        {
+            // The preflight above is only a fast path. A second service instance has its own
+            // flight dictionary, so the shared scratch state must be rechecked while holding the
+            // process-wide meeting gate before this flight can overwrite it.
+            if (!_flights.ContainsKey(meetingId) && !IsScratchBusy(meetingId) && _flights.TryAdd(meetingId, flight))
+            {
+                admitted = true;
+                try
+                {
+                    // Admission owns the per-meeting flight before the shared candidate path is
+                    // touched. A recovery/delete cannot interleave between these two writes.
+                    _candidates.Save(scratch);
+                }
+                catch (Exception exception)
+                {
+                    admissionException = exception;
+                    RemoveFlight(meetingId, flight);
+                }
+            }
+        }
+
+        if (!admitted)
         {
             return RetranscribeClosed(
                 RetranscriptionOutcome.Busy,
@@ -306,25 +331,18 @@ public sealed class TranscriptEditService : IDisposable
                 original);
         }
 
+        if (admissionException is not null)
+        {
+            _log?.Error($"Retranscribe could not write in-flight scratch. meetingId={meetingId}", admissionException);
+            return RetranscribeClosed(
+                RetranscriptionOutcome.PersistFailed,
+                "Re-transcription could not start because candidate scratch could not be written. The original transcript was not changed.",
+                original,
+                HonestException(admissionException));
+        }
+
         try
         {
-            // Admission owns the per-meeting flight before the shared candidate path is touched.
-            // A concurrent caller that lost the admission race must leave the winner's scratch
-            // untouched; deleting the path here could erase the winning candidate.
-            try
-            {
-                _candidates.Save(scratch);
-            }
-            catch (Exception exception)
-            {
-                _log?.Error($"Retranscribe could not write in-flight scratch. meetingId={meetingId}", exception);
-                return RetranscribeClosed(
-                    RetranscriptionOutcome.PersistFailed,
-                    "Re-transcription could not start because candidate scratch could not be written. The original transcript was not changed.",
-                    original,
-                    HonestException(exception));
-            }
-
             _log?.Info(
                 $"Retranscribe started. meetingId={meetingId}; candidate={candidateId}; audioFile={audio.FileName}; bytes={audio.ByteLength}");
             TranscriptionResult asrResult;
@@ -339,7 +357,7 @@ public sealed class TranscriptEditService : IDisposable
                 var abandoned = current is null ||
                     !string.Equals(current.CandidateId, candidateId, StringComparison.Ordinal) ||
                     !string.Equals(current.Status, nameof(RetranscriptionCandidateStatus.InFlight), StringComparison.Ordinal);
-                AssertOriginalIntact(meetingId, original);
+                AssertOriginalIntact(meetingId, original, flight);
                 if (cancellationToken.IsCancellationRequested)
                 {
                     AbandonScratch(meetingId, candidateId, "cancelled");
@@ -371,8 +389,8 @@ public sealed class TranscriptEditService : IDisposable
             }
             catch (Exception exception) when (exception is InvalidDataException or EndOfStreamException or IOException)
             {
+                AssertOriginalIntact(meetingId, original, flight);
                 AbandonScratch(meetingId, candidateId, "corrupt-audio");
-                AssertOriginalIntact(meetingId, original);
                 _log?.Error($"Retranscribe audio could not be decoded. meetingId={meetingId}; candidate={candidateId}", exception);
                 return RetranscribeClosed(
                     RetranscriptionOutcome.CorruptAudio,
@@ -382,8 +400,8 @@ public sealed class TranscriptEditService : IDisposable
             }
             catch (Exception exception)
             {
+                AssertOriginalIntact(meetingId, original, flight);
                 AbandonScratch(meetingId, candidateId, "asr-failed");
-                AssertOriginalIntact(meetingId, original);
                 _log?.Error($"Retranscribe ASR failed. meetingId={meetingId}; candidate={candidateId}", exception);
                 return RetranscribeClosed(
                     RetranscriptionOutcome.AsrFailed,
@@ -397,7 +415,7 @@ public sealed class TranscriptEditService : IDisposable
                 !string.Equals(scratchAfterAsr.CandidateId, candidateId, StringComparison.Ordinal) ||
                 !string.Equals(scratchAfterAsr.Status, nameof(RetranscriptionCandidateStatus.InFlight), StringComparison.Ordinal))
             {
-                AssertOriginalIntact(meetingId, original);
+                AssertOriginalIntact(meetingId, original, flight);
                 _log?.Info($"Retranscribe result discarded after recovery. meetingId={meetingId}; candidate={candidateId}");
                 return RetranscribeClosed(
                     RetranscriptionOutcome.RecoveredInFlight,
@@ -409,8 +427,8 @@ public sealed class TranscriptEditService : IDisposable
             var transcript = asrResult.Text?.Trim() ?? "";
             if (transcript.Length == 0)
             {
+                AssertOriginalIntact(meetingId, original, flight);
                 AbandonScratch(meetingId, candidateId, "empty-transcript");
-                AssertOriginalIntact(meetingId, original);
                 _log?.Info($"Retranscribe produced an empty transcript. meetingId={meetingId}; candidate={candidateId}");
                 return RetranscribeClosed(
                     RetranscriptionOutcome.EmptyTranscript,
@@ -428,14 +446,22 @@ public sealed class TranscriptEditService : IDisposable
                 DurationMs = asrResult.DurationMs
             };
 
+            var persisted = false;
             try
             {
-                _candidates.Save(ready);
+                lock (MeetingMutationGate(meetingId))
+                {
+                    if (OwnsCandidate(meetingId, flight))
+                    {
+                        _candidates.Save(ready);
+                        persisted = true;
+                    }
+                }
             }
             catch (Exception exception)
             {
+                AssertOriginalIntact(meetingId, original, flight);
                 AbandonScratch(meetingId, candidateId, "persist-failed");
-                AssertOriginalIntact(meetingId, original);
                 _log?.Error($"Retranscribe could not persist the candidate. meetingId={meetingId}; candidate={candidateId}", exception);
                 return RetranscribeClosed(
                     RetranscriptionOutcome.PersistFailed,
@@ -444,18 +470,53 @@ public sealed class TranscriptEditService : IDisposable
                     HonestException(exception));
             }
 
-            AssertOriginalIntact(meetingId, original);
+            if (!persisted)
+            {
+                AssertOriginalIntact(meetingId, original, flight);
+                AbandonScratch(meetingId, candidateId, "abandoned-before-persist");
+                _log?.Info($"Retranscribe result discarded before candidate persistence. meetingId={meetingId}; candidate={candidateId}");
+                return RetranscribeClosed(
+                    RetranscriptionOutcome.RecoveredInFlight,
+                    "Re-transcription was interrupted. The original transcript was not changed.",
+                    original,
+                    "abandoned-before-persist");
+            }
+
             _log?.Info(
                 $"Retranscribe candidate ready. meetingId={meetingId}; candidate={candidateId}; fingerprint={ready.TranscriptFingerprint}; durationMs={ready.DurationMs}");
-            return new RetranscriptionResult
+
+            // Acceptance/recovery can retire the candidate after the integrity assertion but
+            // before this method returns. Revalidate while holding the mutation gate so the
+            // ownership decision and CandidateReady result cannot be separated by retirement.
+            InFlightRetranscribe? retiredFlight = null;
+            lock (MeetingMutationGate(meetingId))
             {
-                Succeeded = true,
-                AppliedToMeeting = false,
-                Outcome = RetranscriptionOutcome.CandidateReady,
-                Status = "Re-transcription produced a candidate. Accept it to replace the current transcript, or reject it to keep the original.",
-                Meeting = Clone(original),
-                Candidate = ToCandidate(ready)
-            };
+                if (OwnsCandidate(meetingId, flight))
+                {
+                    return new RetranscriptionResult
+                    {
+                        Succeeded = true,
+                        AppliedToMeeting = false,
+                        Outcome = RetranscriptionOutcome.CandidateReady,
+                        Status = "Re-transcription produced a candidate. Accept it to replace the current transcript, or reject it to keep the original.",
+                        Meeting = Clone(original),
+                        Candidate = ToCandidate(ready)
+                    };
+                }
+
+                // Remove only this exact same-service flight while the gate is held. Cancellation
+                // happens after releasing the gate so a non-cooperative ASR cannot deadlock a
+                // newer admission.
+                retiredFlight = RemoveExactFlight(meetingId, flight);
+            }
+
+            CancelFlight(retiredFlight);
+            _log?.Info($"Retranscribe result discarded after candidate retirement. meetingId={meetingId}; candidate={candidateId}");
+            return RetranscribeClosed(
+                RetranscriptionOutcome.RecoveredInFlight,
+                "Re-transcription was interrupted. The original transcript was not changed.",
+                original,
+                "candidate-retired-before-return");
         }
         finally
         {
@@ -469,106 +530,168 @@ public sealed class TranscriptEditService : IDisposable
     public RetranscriptionResult AcceptCandidate(string meetingId, string candidateId)
     {
         ThrowIfDisposed();
-        var meeting = _store.Find(meetingId);
-        if (meeting is null)
+        lock (MeetingMutationGate(meetingId))
         {
-            return RetranscribeClosed(
-                RetranscriptionOutcome.MeetingNotFound,
-                "That meeting could not be found. No transcript was changed.");
-        }
+            var meeting = _store.Find(meetingId);
+            if (meeting is null)
+            {
+                return RetranscribeClosed(
+                    RetranscriptionOutcome.MeetingNotFound,
+                    "That meeting could not be found. No transcript was changed.");
+            }
 
-        var original = Clone(meeting);
-        var scratch = _candidates.TryLoad(meetingId);
-        if (scratch is null ||
-            !string.Equals(scratch.CandidateId, candidateId, StringComparison.Ordinal) ||
-            !string.Equals(scratch.Status, nameof(RetranscriptionCandidateStatus.Ready), StringComparison.Ordinal) ||
-            string.IsNullOrWhiteSpace(scratch.Transcript))
-        {
-            return RetranscribeClosed(
-                RetranscriptionOutcome.NoCandidate,
-                "There is no ready retranscription candidate to accept. The original transcript was not changed.",
-                original);
-        }
+            var original = Clone(meeting);
+            var scratch = _candidates.TryLoad(meetingId);
+            if (scratch is null ||
+                !string.Equals(scratch.CandidateId, candidateId, StringComparison.Ordinal) ||
+                !string.Equals(scratch.Status, nameof(RetranscriptionCandidateStatus.Ready), StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(scratch.Transcript))
+            {
+                return RetranscribeClosed(
+                    RetranscriptionOutcome.NoCandidate,
+                    "There is no ready retranscription candidate to accept. The original transcript was not changed.",
+                    original);
+            }
 
-        var updated = WithTranscript(meeting, scratch.Transcript);
-        try
-        {
-            _store.Save(updated);
-        }
-        catch (Exception exception)
-        {
-            var restored = TryRestore(original);
-            _log?.Error($"Accepting a retranscription candidate failed. meetingId={meetingId}; restoredFromBackup={restored}", exception);
+            var updated = WithTranscript(meeting, scratch.Transcript);
+            var retired = scratch with
+            {
+                Status = nameof(RetranscriptionCandidateStatus.Abandoned),
+                Error = "accepted",
+                UpdatedAtUtc = _time.GetUtcNow()
+            };
+
+            // Retire the candidate before changing the meeting. This is the durable acceptance
+            // boundary: any old ASR continuation (including one in another service instance)
+            // will fail OwnsCandidate and cannot restore its pre-acceptance transcript.
+            try
+            {
+                _candidates.Save(retired);
+            }
+            catch (Exception exception)
+            {
+                _log?.Error($"Accepting a retranscription candidate could not retire its scratch. meetingId={meetingId}", exception);
+                return RetranscribeClosed(
+                    RetranscriptionOutcome.PersistFailed,
+                    "The candidate could not be retired safely. The original transcript was not changed.",
+                    original,
+                    HonestException(exception));
+            }
+
+            if (_flights.TryGetValue(meetingId, out var activeFlight) &&
+                string.Equals(activeFlight.CandidateId, candidateId, StringComparison.Ordinal))
+            {
+                RemoveFlight(meetingId, activeFlight);
+            }
+
+            try
+            {
+                _store.Save(updated);
+            }
+            catch (Exception exception)
+            {
+                var restored = TryRestore(original);
+                var candidateRestored = TryRestoreCandidateScratch(scratch);
+                _log?.Error($"Accepting a retranscription candidate failed. meetingId={meetingId}; restoredFromBackup={restored}", exception);
+                return new RetranscriptionResult
+                {
+                    Succeeded = false,
+                    AppliedToMeeting = false,
+                    Outcome = RetranscriptionOutcome.PersistFailed,
+                    Status = restored
+                        ? candidateRestored
+                            ? "The candidate could not be saved. The original transcript was restored."
+                            : "The candidate could not be saved. The original transcript was restored, but the candidate could not be restored for retry."
+                        : "The candidate could not be saved, and the original transcript could not be rewritten.",
+                    Error = HonestException(exception),
+                    Meeting = restored ? Clone(original) : _store.Find(meetingId) ?? Clone(original)
+                };
+            }
+
+            var requestsResummary = HasGeneratedNotes(original);
+            Exception? cleanupException = null;
+            try
+            {
+                _candidates.Delete(meetingId);
+            }
+            catch (Exception exception)
+            {
+                cleanupException = exception;
+                _log?.Error($"Accepted retranscription candidate cleanup failed. meetingId={meetingId}", exception);
+            }
+
+            if (requestsResummary)
+            {
+                try
+                {
+                    _candidates.SetGeneratedNotesStale(meetingId, "retranscribe-accepted", _time.GetUtcNow());
+                }
+                catch (Exception exception)
+                {
+                    cleanupException ??= exception;
+                    _log?.Error($"Accepted retranscription stale marker could not be saved. meetingId={meetingId}", exception);
+                }
+            }
+
+            var cleanupIncomplete = cleanupException is not null;
+
+            _log?.Info(
+                $"Retranscribe candidate accepted. meetingId={meetingId}; candidate={candidateId}; fingerprint={scratch.TranscriptFingerprint}; requestsResummary={requestsResummary}; cleanupIncomplete={cleanupIncomplete}; titleOwned={updated.TitleIsManual}");
             return new RetranscriptionResult
             {
-                Succeeded = false,
-                AppliedToMeeting = false,
-                Outcome = RetranscriptionOutcome.PersistFailed,
-                Status = restored
-                    ? "The candidate could not be saved. The original transcript was restored."
-                    : "The candidate could not be saved, and the original transcript could not be rewritten.",
-                Error = HonestException(exception),
-                Meeting = restored ? Clone(original) : _store.Find(meetingId) ?? Clone(original)
+                Succeeded = true,
+                AppliedToMeeting = true,
+                Outcome = RetranscriptionOutcome.Accepted,
+                Status = cleanupIncomplete
+                    ? "Candidate accepted, but cleanup could not be completed. The accepted transcript was kept; cleanup can be retried later."
+                    : requestsResummary
+                        ? "Candidate accepted. Generated notes may no longer match. Re-summarize to update them. Your written notes were not changed."
+                        : "Candidate accepted. The previous transcript was replaced.",
+                Error = cleanupIncomplete ? "candidate-cleanup-failed" : null,
+                Meeting = Clone(updated),
+                Candidate = ToCandidate(scratch with { Status = nameof(RetranscriptionCandidateStatus.Ready) }),
+                GeneratedNotesStale = requestsResummary,
+                RequestsResummary = requestsResummary,
+                TitleRemainsUserOwned = original.TitleIsManual && updated.TitleIsManual
             };
         }
-
-        _candidates.Delete(meetingId);
-        var requestsResummary = HasGeneratedNotes(original);
-        if (requestsResummary)
-        {
-            _candidates.SetGeneratedNotesStale(meetingId, "retranscribe-accepted", _time.GetUtcNow());
-        }
-
-        _log?.Info(
-            $"Retranscribe candidate accepted. meetingId={meetingId}; candidate={candidateId}; fingerprint={scratch.TranscriptFingerprint}; requestsResummary={requestsResummary}; titleOwned={updated.TitleIsManual}");
-        return new RetranscriptionResult
-        {
-            Succeeded = true,
-            AppliedToMeeting = true,
-            Outcome = RetranscriptionOutcome.Accepted,
-            Status = requestsResummary
-                ? "Candidate accepted. Generated notes may no longer match. Re-summarize to update them. Your written notes were not changed."
-                : "Candidate accepted. The previous transcript was replaced.",
-            Meeting = Clone(updated),
-            Candidate = ToCandidate(scratch with { Status = nameof(RetranscriptionCandidateStatus.Ready) }),
-            GeneratedNotesStale = requestsResummary,
-            RequestsResummary = requestsResummary,
-            TitleRemainsUserOwned = original.TitleIsManual && updated.TitleIsManual
-        };
     }
 
     public RetranscriptionResult RejectCandidate(string meetingId, string candidateId)
     {
         ThrowIfDisposed();
-        var meeting = _store.Find(meetingId);
-        if (meeting is null)
+        lock (MeetingMutationGate(meetingId))
         {
-            return RetranscribeClosed(
-                RetranscriptionOutcome.MeetingNotFound,
-                "That meeting could not be found. No transcript was changed.");
-        }
+            var meeting = _store.Find(meetingId);
+            if (meeting is null)
+            {
+                return RetranscribeClosed(
+                    RetranscriptionOutcome.MeetingNotFound,
+                    "That meeting could not be found. No transcript was changed.");
+            }
 
-        var original = Clone(meeting);
-        var scratch = _candidates.TryLoad(meetingId);
-        if (scratch is null || !string.Equals(scratch.CandidateId, candidateId, StringComparison.Ordinal))
-        {
-            return RetranscribeClosed(
-                RetranscriptionOutcome.NoCandidate,
-                "There is no retranscription candidate to reject. The original transcript was not changed.",
-                original);
-        }
+            var original = Clone(meeting);
+            var scratch = _candidates.TryLoad(meetingId);
+            if (scratch is null || !string.Equals(scratch.CandidateId, candidateId, StringComparison.Ordinal))
+            {
+                return RetranscribeClosed(
+                    RetranscriptionOutcome.NoCandidate,
+                    "There is no retranscription candidate to reject. The original transcript was not changed.",
+                    original);
+            }
 
-        _candidates.Delete(meetingId);
-        AssertOriginalIntact(meetingId, original);
-        _log?.Info($"Retranscribe candidate rejected. meetingId={meetingId}; candidate={candidateId}");
-        return new RetranscriptionResult
-        {
-            Succeeded = true,
-            AppliedToMeeting = false,
-            Outcome = RetranscriptionOutcome.Rejected,
-            Status = "Candidate rejected. The original transcript was kept.",
-            Meeting = Clone(original)
-        };
+            _candidates.Delete(meetingId);
+            AssertOriginalIntact(meetingId, original);
+            _log?.Info($"Retranscribe candidate rejected. meetingId={meetingId}; candidate={candidateId}");
+            return new RetranscriptionResult
+            {
+                Succeeded = true,
+                AppliedToMeeting = false,
+                Outcome = RetranscriptionOutcome.Rejected,
+                Status = "Candidate rejected. The original transcript was kept.",
+                Meeting = Clone(original)
+            };
+        }
     }
 
     /// <summary>
@@ -578,38 +701,84 @@ public sealed class TranscriptEditService : IDisposable
     public RetranscriptionResult RecoverInFlight(string meetingId)
     {
         ThrowIfDisposed();
-        var meeting = _store.Find(meetingId);
-        var original = meeting is null ? null : Clone(meeting);
-        var scratch = _candidates.TryLoad(meetingId);
-        if (scratch is null)
+        var expected = _candidates.TryLoad(meetingId);
+        if (expected is null)
         {
+            // A caller that observed no candidate must not recover a candidate admitted after
+            // that observation. Return the no-candidate result instead of treating the later
+            // admission as the caller's recovery target.
             return RetranscribeClosed(
                 RetranscriptionOutcome.NoCandidate,
                 "No retranscription candidate needed recovery.",
-                original);
+                _store.Find(meetingId));
         }
 
-        if (string.Equals(scratch.Status, nameof(RetranscriptionCandidateStatus.Ready), StringComparison.Ordinal) &&
-            !string.IsNullOrWhiteSpace(scratch.Transcript))
+        _log?.Info($"Preparing retranscription recovery. meetingId={meetingId}; candidate={expected.CandidateId}");
+        return RecoverInFlightCore(meetingId, expected.CandidateId);
+    }
+
+    private RetranscriptionResult RecoverInFlightCore(string meetingId, string expectedCandidateId)
+    {
+        ThrowIfDisposed();
+        var meeting = _store.Find(meetingId);
+        var original = meeting is null ? null : Clone(meeting);
+        InFlightRetranscribe? flightToCancel = null;
+        RetranscriptionScratchState scratch;
+        lock (MeetingMutationGate(meetingId))
         {
-            _log?.Info($"Recovered a ready retranscription candidate. meetingId={meetingId}; candidate={scratch.CandidateId}");
-            return new RetranscriptionResult
+            var loaded = _candidates.TryLoad(meetingId);
+            if (loaded is null)
             {
-                Succeeded = true,
-                AppliedToMeeting = false,
-                Outcome = RetranscriptionOutcome.CandidateReady,
-                Status = "A retranscription candidate was recovered and is waiting to be accepted or rejected. The original transcript was not changed.",
-                Meeting = original,
-                Candidate = ToCandidate(scratch)
-            };
+                return RetranscribeClosed(
+                    RetranscriptionOutcome.NoCandidate,
+                    "No retranscription candidate needed recovery.",
+                    original);
+            }
+
+            scratch = loaded;
+            if (!string.Equals(scratch.CandidateId, expectedCandidateId, StringComparison.Ordinal))
+            {
+                // RecoverAbandonedFlights captured an older candidate while it was enumerating
+                // scratch. Admission may have replaced it before this gate was acquired. Never
+                // apply the old recovery decision to the newer candidate.
+                return RetranscribeClosed(
+                    RetranscriptionOutcome.NoCandidate,
+                    "The retranscription candidate changed before recovery. No candidate was changed.",
+                    original,
+                    "candidate-changed-before-recovery");
+            }
+
+            if (string.Equals(scratch.Status, nameof(RetranscriptionCandidateStatus.Ready), StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(scratch.Transcript))
+            {
+                _log?.Info($"Recovered a ready retranscription candidate. meetingId={meetingId}; candidate={scratch.CandidateId}");
+                return new RetranscriptionResult
+                {
+                    Succeeded = true,
+                    AppliedToMeeting = false,
+                    Outcome = RetranscriptionOutcome.CandidateReady,
+                    Status = "A retranscription candidate was recovered and is waiting to be accepted or rejected. The original transcript was not changed.",
+                    Meeting = original,
+                    Candidate = ToCandidate(scratch)
+                };
+            }
+
+            // Validate and delete the exact scratch while admission/recovery are serialized. If
+            // this instance's old flight has already been replaced, do not remove the replacement.
+            AbandonScratch(meetingId, scratch.CandidateId, "recovered-in-flight");
+            if (_flights.TryGetValue(meetingId, out var active) &&
+                string.Equals(active.CandidateId, scratch.CandidateId, StringComparison.Ordinal) &&
+                RemoveFlight(meetingId, active))
+            {
+                flightToCancel = active;
+            }
         }
 
-        AbandonScratch(meetingId, scratch.CandidateId, "recovered-in-flight");
-        if (_flights.TryRemove(meetingId, out var flight))
+        if (flightToCancel is not null)
         {
             try
             {
-                flight.Cancellation.Cancel();
+                flightToCancel.Cancellation.Cancel();
             }
             catch (ObjectDisposedException)
             {
@@ -630,7 +799,21 @@ public sealed class TranscriptEditService : IDisposable
         var results = new List<RetranscriptionResult>();
         foreach (var meetingId in _candidates.ListMeetingIds())
         {
-            results.Add(RecoverInFlight(meetingId));
+            // Capture the identity before entering recovery. The candidate can be replaced by
+            // another service instance after this read; RecoverInFlightCore rechecks this exact
+            // identity under the shared meeting gate before deleting anything.
+            var expected = _candidates.TryLoad(meetingId);
+            if (expected is null)
+            {
+                results.Add(RetranscribeClosed(
+                    RetranscriptionOutcome.NoCandidate,
+                    "No retranscription candidate needed recovery.",
+                    _store.Find(meetingId)));
+                continue;
+            }
+
+            _log?.Info($"Preparing retranscription recovery. meetingId={meetingId}; candidate={expected.CandidateId}");
+            results.Add(RecoverInFlightCore(meetingId, expected.CandidateId));
         }
 
         return results;
@@ -639,7 +822,19 @@ public sealed class TranscriptEditService : IDisposable
     public void DeleteMeetingScratch(string meetingId)
     {
         ThrowIfDisposed();
-        if (_flights.TryRemove(meetingId, out var flight))
+        InFlightRetranscribe? flight = null;
+        lock (MeetingMutationGate(meetingId))
+        {
+            if (_flights.TryGetValue(meetingId, out var active) && RemoveFlight(meetingId, active))
+            {
+                flight = active;
+            }
+
+            _edits.TryRemove(meetingId, out _);
+            _candidates.DeleteAllForMeeting(meetingId);
+        }
+
+        if (flight is not null)
         {
             try
             {
@@ -650,8 +845,6 @@ public sealed class TranscriptEditService : IDisposable
             }
         }
 
-        _edits.TryRemove(meetingId, out _);
-        _candidates.DeleteAllForMeeting(meetingId);
         _log?.Info($"Retranscribe scratch deleted. meetingId={meetingId}");
     }
 
@@ -692,41 +885,126 @@ public sealed class TranscriptEditService : IDisposable
 
     private void AbandonScratch(string meetingId, string candidateId, string reason)
     {
-        var existing = _candidates.TryLoad(meetingId);
-        if (existing is null || !string.Equals(existing.CandidateId, candidateId, StringComparison.Ordinal))
+        lock (MeetingMutationGate(meetingId))
+        {
+            var existing = _candidates.TryLoad(meetingId);
+            if (existing is null || !string.Equals(existing.CandidateId, candidateId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            try
+            {
+                _candidates.Delete(meetingId);
+            }
+            catch (Exception exception)
+            {
+                _log?.Error($"Could not delete abandoned retranscription scratch. meetingId={meetingId}; reason={reason}", exception);
+            }
+        }
+    }
+
+    private bool TryRestoreCandidateScratch(RetranscriptionScratchState scratch)
+    {
+        try
+        {
+            _candidates.Save(scratch);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _log?.Error($"Candidate rollback after acceptance failure failed. meetingId={scratch.MeetingId}", exception);
+            return false;
+        }
+    }
+
+    private bool RemoveFlight(string meetingId, InFlightRetranscribe flight)
+    {
+        lock (MeetingMutationGate(meetingId))
+        {
+            return ((ICollection<KeyValuePair<string, InFlightRetranscribe>>)_flights)
+                .Remove(new KeyValuePair<string, InFlightRetranscribe>(meetingId, flight));
+        }
+    }
+
+    private InFlightRetranscribe? RemoveExactFlight(string meetingId, InFlightRetranscribe flight)
+    {
+        lock (MeetingMutationGate(meetingId))
+        {
+            if (!_flights.TryGetValue(meetingId, out var active) ||
+                !ReferenceEquals(active, flight) ||
+                !RemoveFlight(meetingId, flight))
+            {
+                return null;
+            }
+
+            return flight;
+        }
+    }
+
+    private void AssertOriginalIntact(
+        string meetingId,
+        PersistedMeeting original,
+        InFlightRetranscribe? owner = null)
+    {
+        lock (MeetingMutationGate(meetingId))
+        {
+            var current = _store.Find(meetingId);
+            if (current is null ||
+                string.Equals(current.Transcript, original.Transcript, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            // An abandoned continuation must never restore its snapshot over a transcript that
+            // belongs to a newer candidate. The exact flight identity handles recovery on this
+            // service; the candidate identity handles recovery/acceptance by another instance.
+            if (owner is not null && !OwnsCandidate(meetingId, owner))
+            {
+                _log?.Info($"Skipped stale retranscription restore. meetingId={meetingId}; candidate={owner.CandidateId}");
+                return;
+            }
+
+            TryRestore(original);
+        }
+    }
+
+    private bool OwnsCandidate(string meetingId, InFlightRetranscribe owner)
+    {
+        if (!_flights.TryGetValue(meetingId, out var active) || !ReferenceEquals(active, owner))
+        {
+            return false;
+        }
+
+        var scratch = _candidates.TryLoad(meetingId);
+        return scratch is not null &&
+               string.Equals(scratch.CandidateId, owner.CandidateId, StringComparison.Ordinal) &&
+               IsActiveCandidate(scratch);
+    }
+
+    private static void CancelFlight(InFlightRetranscribe? flight)
+    {
+        if (flight is null)
         {
             return;
         }
 
         try
         {
-            _candidates.Delete(meetingId);
+            flight.Cancellation.Cancel();
         }
-        catch (Exception exception)
+        catch (ObjectDisposedException)
         {
-            _log?.Error($"Could not delete abandoned retranscription scratch. meetingId={meetingId}; reason={reason}", exception);
+            // The flight is already tearing down.
         }
     }
 
-    private void RemoveFlight(string meetingId, InFlightRetranscribe flight)
-    {
-        ((ICollection<KeyValuePair<string, InFlightRetranscribe>>)_flights)
-            .Remove(new KeyValuePair<string, InFlightRetranscribe>(meetingId, flight));
-    }
+    private static bool IsActiveCandidate(RetranscriptionScratchState scratch) =>
+        string.Equals(scratch.Status, nameof(RetranscriptionCandidateStatus.InFlight), StringComparison.Ordinal) ||
+        string.Equals(scratch.Status, nameof(RetranscriptionCandidateStatus.Ready), StringComparison.Ordinal);
 
-    private void AssertOriginalIntact(string meetingId, PersistedMeeting original)
-    {
-        var current = _store.Find(meetingId);
-        if (current is null)
-        {
-            return;
-        }
-
-        if (!string.Equals(current.Transcript, original.Transcript, StringComparison.Ordinal))
-        {
-            TryRestore(original);
-        }
-    }
+    private static object MeetingMutationGate(string meetingId) =>
+        MeetingMutationGates.GetOrAdd(meetingId, static _ => new object());
 
     private bool IsScratchBusy(string meetingId)
     {
@@ -736,8 +1014,7 @@ public sealed class TranscriptEditService : IDisposable
             return false;
         }
 
-        return string.Equals(scratch.Status, nameof(RetranscriptionCandidateStatus.InFlight), StringComparison.Ordinal) ||
-               string.Equals(scratch.Status, nameof(RetranscriptionCandidateStatus.Ready), StringComparison.Ordinal);
+        return IsActiveCandidate(scratch);
     }
 
     private AudioResolve ResolveRetainedAudio(PersistedMeeting meeting) =>

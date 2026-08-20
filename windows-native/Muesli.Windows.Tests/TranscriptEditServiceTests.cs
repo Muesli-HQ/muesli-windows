@@ -12,6 +12,8 @@ public sealed class TranscriptEditServiceTests
     private const string OriginalTranscript = "[09:00:00] You: we agreed to ship on Friday and Priya will own the release notes.";
     private const string EditedTranscript = "[09:00:00] You: we agreed to ship on Monday and Priya will own the release notes.";
     private const string CandidateTranscript = "[09:00:00] You: the candidate transcript from retranscription.";
+    private const string NewerCandidateTranscript = "[09:00:00] You: the newer accepted candidate transcript.";
+    private const string StaleCandidateTranscript = "[09:00:00] You: the stale recovered candidate transcript.";
     private const string ManualNotes = "Remember: Priya is on leave next week.";
     private const string GeneratedNotes = "## Summary\n- Ship on Friday";
     private const string ManualTitle = "Board sync";
@@ -210,6 +212,48 @@ public sealed class TranscriptEditServiceTests
     }
 
     [Fact]
+    public async Task ConcurrentServiceInstancesCannotOverwriteSharedCandidateScratch()
+    {
+        using var directory = new TestDirectory();
+        var audio = directory.File("microphone.wav");
+        File.WriteAllBytes(audio, [1, 2, 3, 4]);
+        var store = new MemoryTranscriptMeetingStore();
+        store.Save(Meeting(audio));
+
+        var scratchDirectory = Path.Combine(directory.Path, "scratch");
+        var time = new FirstTwoCallsSynchronizingTimeProvider();
+        using var first = CreateService(
+            store,
+            scratchDirectory,
+            new FakeRetranscriptionAsr { Handler = (_, _) => Task.FromResult(new TranscriptionResult(CandidateTranscript)) },
+            time: time);
+        using var second = CreateService(
+            store,
+            scratchDirectory,
+            new FakeRetranscriptionAsr { Handler = (_, _) => Task.FromResult(new TranscriptionResult(NewerCandidateTranscript)) },
+            time: time);
+
+        var results = await Task.WhenAll(
+            Task.Run(() => first.RetranscribeAsync("meet_1")),
+            Task.Run(() => second.RetranscribeAsync("meet_1")));
+
+        var ready = Assert.Single(results, result => result.Outcome == RetranscriptionOutcome.CandidateReady);
+        var busy = Assert.Single(results, result => result.Outcome == RetranscriptionOutcome.Busy);
+        Assert.False(busy.AppliedToMeeting);
+        Assert.NotNull(ready.Candidate);
+
+        var pending = first.GetPendingCandidate("meet_1");
+        Assert.NotNull(pending);
+        Assert.Equal(ready.Candidate!.CandidateId, pending!.CandidateId);
+        Assert.Equal(ready.Candidate.Transcript, pending.Transcript);
+        Assert.Equal(OriginalTranscript, store.Find("meet_1")!.Transcript);
+
+        var accepted = first.AcceptCandidate("meet_1", pending.CandidateId);
+        Assert.Equal(RetranscriptionOutcome.Accepted, accepted.Outcome);
+        Assert.Equal(pending.Transcript, store.Find("meet_1")!.Transcript);
+    }
+
+    [Fact]
     public async Task RetranscribeSuccessProducesCandidateAcceptReplacesRejectKeepsOriginal()
     {
         using var harness = Harness();
@@ -377,6 +421,347 @@ public sealed class TranscriptEditServiceTests
         Assert.Null(recovered.GetPendingCandidate("meet_1"));
         Assert.NotEqual(RetranscriptionOutcome.CandidateReady, liveResult.Outcome);
         Assert.NotEqual(RetranscriptionOutcome.Accepted, liveResult.Outcome);
+    }
+
+    [Fact]
+    public async Task RecoveredFlightCannotRestoreOverNewerAcceptedCandidate()
+    {
+        using var directory = new TestDirectory();
+        var audio = directory.File("microphone.wav");
+        File.WriteAllBytes(audio, [1, 2, 3, 4]);
+        var store = new MemoryTranscriptMeetingStore();
+        store.Save(Meeting(audio));
+
+        var firstAsrEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstAsr = new TaskCompletionSource<TranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var asr = new FakeRetranscriptionAsr
+        {
+            Handler = async (_, _) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    firstAsrEntered.TrySetResult(true);
+                    return await releaseFirstAsr.Task;
+                }
+
+                return new TranscriptionResult(NewerCandidateTranscript);
+            }
+        };
+        var scratchDirectory = Path.Combine(directory.Path, "scratch");
+        using var service = CreateService(store, scratchDirectory, asr);
+
+        var staleTask = service.RetranscribeAsync("meet_1");
+        await firstAsrEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntil(() => service.GetPendingCandidate("meet_1") is not null);
+
+        var recovery = service.RecoverInFlight("meet_1");
+        Assert.Equal(RetranscriptionOutcome.RecoveredInFlight, recovery.Outcome);
+        Assert.Null(service.GetPendingCandidate("meet_1"));
+
+        var newer = await service.RetranscribeAsync("meet_1");
+        Assert.Equal(RetranscriptionOutcome.CandidateReady, newer.Outcome);
+        var accepted = service.AcceptCandidate("meet_1", newer.Candidate!.CandidateId);
+        Assert.Equal(RetranscriptionOutcome.Accepted, accepted.Outcome);
+        Assert.Equal(NewerCandidateTranscript, store.Find("meet_1")!.Transcript);
+
+        // The old ASR ignores cancellation and completes after the newer candidate was accepted.
+        // Its stale snapshot must not be restored over the accepted transcript.
+        releaseFirstAsr.TrySetResult(new TranscriptionResult(StaleCandidateTranscript));
+        var staleResult = await staleTask;
+
+        Assert.Equal(RetranscriptionOutcome.RecoveredInFlight, staleResult.Outcome);
+        Assert.False(staleResult.AppliedToMeeting);
+        Assert.Equal(NewerCandidateTranscript, store.Find("meet_1")!.Transcript);
+        Assert.Null(service.GetPendingCandidate("meet_1"));
+    }
+
+    [Fact]
+    public async Task StaleAsrFailureCannotAbandonNewerCandidateScratch()
+    {
+        using var directory = new TestDirectory();
+        var audio = directory.File("microphone.wav");
+        File.WriteAllBytes(audio, [1, 2, 3, 4]);
+        var store = new MemoryTranscriptMeetingStore();
+        store.Save(Meeting(audio));
+
+        var firstAsrEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstAsr = new TaskCompletionSource<TranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var asr = new FakeRetranscriptionAsr
+        {
+            Handler = async (_, _) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    firstAsrEntered.TrySetResult(true);
+                    return await releaseFirstAsr.Task;
+                }
+
+                return new TranscriptionResult(NewerCandidateTranscript);
+            }
+        };
+        var scratchDirectory = Path.Combine(directory.Path, "scratch");
+        using var service = CreateService(store, scratchDirectory, asr);
+
+        var staleTask = service.RetranscribeAsync("meet_1");
+        await firstAsrEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntil(() => service.GetPendingCandidate("meet_1") is not null);
+        var recovery = service.RecoverInFlight("meet_1");
+        Assert.Equal(RetranscriptionOutcome.RecoveredInFlight, recovery.Outcome);
+
+        var newer = await service.RetranscribeAsync("meet_1");
+        Assert.Equal(RetranscriptionOutcome.CandidateReady, newer.Outcome);
+        var candidateId = newer.Candidate!.CandidateId;
+
+        releaseFirstAsr.TrySetException(new InvalidOperationException("stale ASR failure"));
+        var staleResult = await staleTask;
+
+        Assert.Equal(RetranscriptionOutcome.AsrFailed, staleResult.Outcome);
+        var pending = service.GetPendingCandidate("meet_1");
+        Assert.NotNull(pending);
+        Assert.Equal(candidateId, pending!.CandidateId);
+        Assert.Equal(NewerCandidateTranscript, pending.Transcript);
+
+        var accepted = service.AcceptCandidate("meet_1", candidateId);
+        Assert.Equal(RetranscriptionOutcome.Accepted, accepted.Outcome);
+        Assert.Equal(NewerCandidateTranscript, store.Find("meet_1")!.Transcript);
+    }
+
+    [Fact]
+    public async Task OldRecoveredContinuationCannotRemoveNewerInFlightAdmission()
+    {
+        using var directory = new TestDirectory();
+        var audio = directory.File("microphone.wav");
+        File.WriteAllBytes(audio, [1, 2, 3, 4]);
+        var store = new MemoryTranscriptMeetingStore();
+        store.Save(Meeting(audio));
+
+        var firstAsrEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstAsr = new TaskCompletionSource<TranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondAsrStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecondAsr = new TaskCompletionSource<TranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var asr = new FakeRetranscriptionAsr
+        {
+            Handler = async (_, token) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    firstAsrEntered.TrySetResult(true);
+                    return await releaseFirstAsr.Task;
+                }
+
+                secondAsrStarted.TrySetResult(true);
+                return await releaseSecondAsr.Task.WaitAsync(token);
+            }
+        };
+        var scratchDirectory = Path.Combine(directory.Path, "scratch");
+        using var service = CreateService(store, scratchDirectory, asr);
+
+        var staleTask = service.RetranscribeAsync("meet_1");
+        await firstAsrEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var recovery = service.RecoverInFlight("meet_1");
+        Assert.Equal(RetranscriptionOutcome.RecoveredInFlight, recovery.Outcome);
+
+        var newerTask = service.RetranscribeAsync("meet_1");
+        await secondAsrStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        releaseFirstAsr.TrySetResult(new TranscriptionResult(StaleCandidateTranscript));
+        var staleResult = await staleTask;
+        Assert.Equal(RetranscriptionOutcome.RecoveredInFlight, staleResult.Outcome);
+        Assert.False(newerTask.IsCompleted);
+
+        releaseSecondAsr.TrySetResult(new TranscriptionResult(NewerCandidateTranscript));
+        var newer = await newerTask;
+        Assert.Equal(RetranscriptionOutcome.CandidateReady, newer.Outcome);
+        var accepted = service.AcceptCandidate("meet_1", newer.Candidate!.CandidateId);
+        Assert.Equal(RetranscriptionOutcome.Accepted, accepted.Outcome);
+        Assert.Equal(NewerCandidateTranscript, store.Find("meet_1")!.Transcript);
+    }
+
+    [Fact]
+    public async Task AcceptRetiresActiveFlightWhenCandidateCleanupFails()
+    {
+        using var directory = new TestDirectory();
+        var audio = directory.File("microphone.wav");
+        File.WriteAllBytes(audio, [1, 2, 3, 4]);
+        var store = new MemoryTranscriptMeetingStore();
+        store.Save(Meeting(audio));
+
+        var readyLogged = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowReadyReturn = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var log = new CollectingDiagnostics
+        {
+            InfoHook = message =>
+            {
+                if (message.StartsWith("Retranscribe candidate ready.", StringComparison.Ordinal))
+                {
+                    readyLogged.TrySetResult(true);
+                    allowReadyReturn.Task.GetAwaiter().GetResult();
+                }
+            }
+        };
+        var scratchDirectory = Path.Combine(directory.Path, "scratch");
+        using var service = CreateService(
+            store,
+            scratchDirectory,
+            new FakeRetranscriptionAsr { Handler = (_, _) => Task.FromResult(new TranscriptionResult(CandidateTranscript)) },
+            log);
+
+        var retranscribeTask = Task.Run(() => service.RetranscribeAsync("meet_1"));
+        await readyLogged.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var candidatePath = Path.Combine(scratchDirectory, "meet_1-candidate.json.blocked");
+        File.WriteAllText(candidatePath, "cleanup blocker");
+        using var cleanupBlocker = File.Open(candidatePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var pending = service.GetPendingCandidate("meet_1");
+        Assert.NotNull(pending);
+        var accepted = service.AcceptCandidate("meet_1", pending!.CandidateId);
+
+        Assert.True(accepted.Succeeded);
+        Assert.True(accepted.AppliedToMeeting);
+        Assert.Equal(RetranscriptionOutcome.Accepted, accepted.Outcome);
+        Assert.Equal("candidate-cleanup-failed", accepted.Error);
+        Assert.Contains("cleanup", accepted.Status, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(CandidateTranscript, store.Find("meet_1")!.Transcript);
+        Assert.Null(service.GetPendingCandidate("meet_1"));
+
+        allowReadyReturn.TrySetResult(true);
+        var retranscribe = await retranscribeTask;
+        Assert.Equal(RetranscriptionOutcome.RecoveredInFlight, retranscribe.Outcome);
+        Assert.False(retranscribe.AppliedToMeeting);
+        Assert.Equal("candidate-retired-before-return", retranscribe.Error);
+        Assert.Equal(CandidateTranscript, store.Find("meet_1")!.Transcript);
+    }
+
+    [Fact]
+    public async Task RecoveryDoesNotRemoveNewerCandidateAfterAbandonedMarkerIsEnumerated()
+    {
+        using var directory = new TestDirectory();
+        var audio = directory.File("microphone.wav");
+        File.WriteAllBytes(audio, [1, 2, 3, 4]);
+        var store = new MemoryTranscriptMeetingStore();
+        store.Save(Meeting(audio));
+        var scratchDirectory = Path.Combine(directory.Path, "scratch");
+        var candidateStore = new RetranscriptionCandidateStore(scratchDirectory);
+        candidateStore.Save(new RetranscriptionScratchState
+        {
+            MeetingId = "meet_1",
+            CandidateId = "retired-old-candidate",
+            Status = nameof(RetranscriptionCandidateStatus.Abandoned),
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            Error = "accepted"
+        });
+
+        var recoveryEnumerated = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowRecovery = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var log = new CollectingDiagnostics
+        {
+            InfoHook = message =>
+            {
+                if (message.StartsWith("Preparing retranscription recovery.", StringComparison.Ordinal))
+                {
+                    recoveryEnumerated.TrySetResult(true);
+                    allowRecovery.Task.GetAwaiter().GetResult();
+                }
+            }
+        };
+        using var service = CreateService(
+            store,
+            scratchDirectory,
+            new FakeRetranscriptionAsr
+            {
+                Handler = (_, _) => Task.FromResult(new TranscriptionResult(NewerCandidateTranscript))
+            },
+            log);
+
+        var recoveryTask = Task.Run(() => service.RecoverAbandonedFlights());
+        await recoveryEnumerated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Admission replaces the abandoned marker while recovery is between its directory
+        // enumeration and the gate-protected identity check.
+        var newer = await service.RetranscribeAsync("meet_1");
+        Assert.Equal(RetranscriptionOutcome.CandidateReady, newer.Outcome);
+        Assert.NotNull(newer.Candidate);
+
+        allowRecovery.TrySetResult(true);
+        var recovered = Assert.Single(await recoveryTask);
+        Assert.Equal(RetranscriptionOutcome.NoCandidate, recovered.Outcome);
+        Assert.Equal("candidate-changed-before-recovery", recovered.Error);
+
+        var pending = service.GetPendingCandidate("meet_1");
+        Assert.NotNull(pending);
+        Assert.Equal(newer.Candidate!.CandidateId, pending!.CandidateId);
+        Assert.Equal(NewerCandidateTranscript, pending.Transcript);
+        var accepted = service.AcceptCandidate("meet_1", pending.CandidateId);
+        Assert.Equal(RetranscriptionOutcome.Accepted, accepted.Outcome);
+        Assert.Equal(NewerCandidateTranscript, store.Find("meet_1")!.Transcript);
+    }
+
+    [Fact]
+    public async Task DirectRecoveryDoesNotRemoveNewerCandidateAfterIdentitySnapshot()
+    {
+        using var directory = new TestDirectory();
+        var audio = directory.File("microphone.wav");
+        File.WriteAllBytes(audio, [1, 2, 3, 4]);
+        var store = new MemoryTranscriptMeetingStore();
+        store.Save(Meeting(audio));
+        var scratchDirectory = Path.Combine(directory.Path, "scratch");
+        var candidateStore = new RetranscriptionCandidateStore(scratchDirectory);
+        candidateStore.Save(new RetranscriptionScratchState
+        {
+            MeetingId = "meet_1",
+            CandidateId = "retired-old-candidate",
+            Status = nameof(RetranscriptionCandidateStatus.Abandoned),
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            Error = "accepted"
+        });
+
+        var recoveryStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowRecovery = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var log = new CollectingDiagnostics
+        {
+            InfoHook = message =>
+            {
+                if (message.StartsWith("Preparing retranscription recovery.", StringComparison.Ordinal))
+                {
+                    recoveryStarted.TrySetResult(true);
+                    allowRecovery.Task.GetAwaiter().GetResult();
+                }
+            }
+        };
+        using var service = CreateService(
+            store,
+            scratchDirectory,
+            new FakeRetranscriptionAsr
+            {
+                Handler = (_, _) => Task.FromResult(new TranscriptionResult(NewerCandidateTranscript))
+            },
+            log);
+
+        var recoveryTask = Task.Run(() => service.RecoverInFlight("meet_1"));
+        await recoveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // The public recovery call captured the old marker before this newer admission. Its
+        // identity must be revalidated under the gate before any scratch or flight is removed.
+        var newer = await service.RetranscribeAsync("meet_1");
+        Assert.Equal(RetranscriptionOutcome.CandidateReady, newer.Outcome);
+        Assert.NotNull(newer.Candidate);
+
+        allowRecovery.TrySetResult(true);
+        var recovered = await recoveryTask;
+        Assert.Equal(RetranscriptionOutcome.NoCandidate, recovered.Outcome);
+        Assert.Equal("candidate-changed-before-recovery", recovered.Error);
+
+        var pending = service.GetPendingCandidate("meet_1");
+        Assert.NotNull(pending);
+        Assert.Equal(newer.Candidate!.CandidateId, pending!.CandidateId);
+        var accepted = service.AcceptCandidate("meet_1", pending.CandidateId);
+        Assert.Equal(RetranscriptionOutcome.Accepted, accepted.Outcome);
+        Assert.Equal(NewerCandidateTranscript, store.Find("meet_1")!.Transcript);
     }
 
     [Fact]
@@ -692,11 +1077,32 @@ public sealed class TranscriptEditServiceTests
         }
     }
 
+    private sealed class FirstTwoCallsSynchronizingTimeProvider : TimeProvider
+    {
+        private readonly Barrier _barrier = new(2);
+        private int _calls;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            if (Interlocked.Increment(ref _calls) <= 2)
+            {
+                _barrier.SignalAndWait(TimeSpan.FromSeconds(5));
+            }
+
+            return new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
+        }
+    }
+
     private sealed class CollectingDiagnostics : ITranscriptEditDiagnostics
     {
         public List<string> Messages { get; } = [];
+        public Action<string>? InfoHook { get; init; }
 
-        public void Info(string message) => Messages.Add(message);
+        public void Info(string message)
+        {
+            Messages.Add(message);
+            InfoHook?.Invoke(message);
+        }
 
         public void Error(string message, Exception? exception = null) =>
             Messages.Add(exception is null ? message : $"{message} {exception.GetType().Name}");
