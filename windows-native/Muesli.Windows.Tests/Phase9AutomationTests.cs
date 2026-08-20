@@ -352,21 +352,27 @@ public sealed class Phase9AutomationTests
     [Fact]
     public async Task ConcurrentAutoExportsPublishExactlyOneMarkdownFile()
     {
-        using var directory = new TestDirectory();
-        var options = new PostMeetingAutomationOptions
+        const int rounds = 8;
+        const int concurrentRuns = 12;
+        for (var round = 0; round < rounds; round++)
         {
-            AutoExportEnabled = true,
-            AutoExportDirectory = directory.Path,
-            RetryPolicy = new PostMeetingRetryPolicy { MaxAttempts = 3 }
-        };
-        var service = new PostMeetingAutomationService();
+            using var directory = new TestDirectory();
+            var options = new PostMeetingAutomationOptions
+            {
+                AutoExportEnabled = true,
+                AutoExportDirectory = directory.Path,
+                RetryPolicy = new PostMeetingRetryPolicy { MaxAttempts = 3 }
+            };
+            var service = new PostMeetingAutomationService();
 
-        var runs = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => Task.Run(() =>
-            service.RunAsync(Meeting(), options, PostMeetingCompletionEvent.RecordingCompleted))));
+            var runs = await Task.WhenAll(Enumerable.Range(0, concurrentRuns).Select(_ => Task.Run(() =>
+                service.RunAsync(Meeting(), options, PostMeetingCompletionEvent.RecordingCompleted))));
 
-        Assert.All(runs, result => Assert.True(result.Export.Completed, result.Export.Error));
-        Assert.Single(runs.Select(result => result.Export.DestinationPath).Distinct(StringComparer.OrdinalIgnoreCase));
-        Assert.Single(Directory.GetFiles(directory.Path, "*.md"));
+            Assert.All(runs, result => Assert.True(result.Export.Completed, result.Export.Error));
+            Assert.Single(runs.Select(result => result.Export.DestinationPath).Distinct(StringComparer.OrdinalIgnoreCase));
+            Assert.Single(Directory.GetFiles(directory.Path, "*.md"));
+            Assert.Empty(Directory.GetFiles(directory.Path, "*.tmp"));
+        }
     }
 
     [Fact]
