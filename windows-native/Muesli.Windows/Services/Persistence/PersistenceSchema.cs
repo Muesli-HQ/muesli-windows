@@ -19,7 +19,7 @@ public sealed record SchemaMigration(int Version, string Description, Action<Sql
 public static class PersistenceSchema
 {
     /// <summary>The schema this build writes and expects.</summary>
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 
     public const string DictationKind = "dictation";
     public const string MeetingKind = "meeting";
@@ -194,6 +194,21 @@ public static class PersistenceSchema
         );
         """;
 
+    private const string CutoverStateSchema = """
+        CREATE TABLE persistence_cutover_state (
+            id                              INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+            authority                       TEXT NOT NULL CHECK (authority IN ('json', 'sqlite')),
+            source_fingerprint              TEXT NOT NULL DEFAULT '',
+            activated_at_utc                INTEGER NULL,
+            retained_backup_path            TEXT NULL,
+            first_post_cutover_write_at_utc INTEGER NULL,
+            first_post_cutover_write        TEXT NULL
+        ) STRICT;
+
+        INSERT INTO persistence_cutover_state (id, authority)
+        VALUES (1, 'json');
+        """;
+
     public static IReadOnlyList<SchemaMigration> Migrations { get; } =
     [
         new SchemaMigration(
@@ -203,7 +218,11 @@ public static class PersistenceSchema
             {
                 Execute(connection, InitialSchema);
                 Execute(connection, SearchIndexSchema);
-            })
+            }),
+        new SchemaMigration(
+            2,
+            "Durable JSON/SQLite cutover authority and first-write state.",
+            connection => Execute(connection, CutoverStateSchema))
     ];
 
     internal static void Execute(SqliteConnection connection, string sql)

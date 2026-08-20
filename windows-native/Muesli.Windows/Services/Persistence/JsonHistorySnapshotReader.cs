@@ -122,6 +122,12 @@ public static class JsonHistorySnapshotReader
             ? parsed
             : 0;
 
+        if (originalSchemaVersion > AppDataStore.CurrentMeetingSchemaVersion)
+        {
+            throw new InvalidDataException(
+                $"Meeting '{meeting.Id}' uses unsupported schema {originalSchemaVersion}.");
+        }
+
         // The automation payload is carried across as its own JSON text so a field this build does
         // not know about still arrives intact on the other side.
         var automation = TryGetProperty(element, "automationResult", out var result) &&
@@ -156,10 +162,18 @@ public static class JsonHistorySnapshotReader
         {
             return Parse(path, map);
         }
-        catch (Exception exception) when (exception is JsonException or InvalidDataException)
+        catch (InvalidDataException exception)
+        {
+            // Envelope schema > 1 and meeting schema > 5 are not "unreadable JSON". Falling back to
+            // a .bak would look like a successful import of an older snapshot. Fail closed.
+            problems.Add(new SnapshotProblem(fileName, exception.Message, Blocking: true));
+            return [];
+        }
+        catch (JsonException)
         {
             // The app keeps a .bak alongside each history file. Reading it here is recovery, not
-            // repair: nothing is renamed, restored or written back.
+            // repair: nothing is renamed, restored or written back. Do not include the parser's
+            // payload snippet: logs and Failure strings must not carry transcript or title text.
             var backupPath = $"{path}.bak";
             if (File.Exists(backupPath))
             {
@@ -168,15 +182,16 @@ public static class JsonHistorySnapshotReader
                     var recovered = Parse(backupPath, map);
                     problems.Add(new SnapshotProblem(
                         fileName,
-                        $"{fileName} could not be read ({exception.Message}); its backup was used instead.",
+                        $"{fileName} could not be read; its backup was used instead.",
                         Blocking: false));
                     return recovered;
                 }
                 catch (Exception backupException) when (backupException is JsonException or InvalidDataException)
                 {
+                    _ = backupException;
                     problems.Add(new SnapshotProblem(
                         fileName,
-                        $"Neither {fileName} nor its backup could be read: {exception.Message}",
+                        $"Neither {fileName} nor its backup could be read.",
                         Blocking: true));
                     return [];
                 }
@@ -184,7 +199,7 @@ public static class JsonHistorySnapshotReader
 
             problems.Add(new SnapshotProblem(
                 fileName,
-                $"{fileName} could not be read: {exception.Message}",
+                $"{fileName} could not be read.",
                 Blocking: true));
             return [];
         }
@@ -205,7 +220,7 @@ public static class JsonHistorySnapshotReader
                 version < 1 ||
                 version > AtomicJsonFile.CurrentSchemaVersion)
             {
-                throw new JsonException("The persisted JSON envelope has an unsupported schema version.");
+                throw new InvalidDataException("The persisted JSON envelope has an unsupported schema version.");
             }
 
             root = data;

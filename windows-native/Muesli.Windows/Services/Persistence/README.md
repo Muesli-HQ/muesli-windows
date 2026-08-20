@@ -19,8 +19,12 @@ rewrite.
 | `MigrationPlan.cs` | Maps that snapshot onto records, resolving duplicates and orphans. |
 | `JsonToSqliteMigrationService.cs` | Runs the import, verifies it, and can undo it. |
 | `PersistenceDigest.cs` | Content hashes used to prove an import was faithful. |
+| `Adapters/PersistenceCutover.cs` | L27 `EnsureMigrated`: JSON snapshot, digest import, durable authority transition, fail closed. Unused at startup. |
+| `Adapters/SqliteLibraryHistoryAdapter.cs` | SQLite-backed `ILibraryHistoryAdapter` for tests. Dictionary stays JSON. |
+| `Adapters/PersistenceCutoverGate.cs` | Feature flag `L27SqliteHistoryCutover`, default **off**; qualification uses `MUESLI_SQLITE_HISTORY_CUTOVER=1`. |
+| `Adapters/PersistenceCutoverState.cs` | Singleton schema-v2 authority row and first-post-cutover-write marker. |
 
-Start at `MuesliPersistenceStore`, which opens a database and hands back the five repositories.
+Start at `MuesliPersistenceStore`, which opens a database and hands back the five repositories. Production still uses `AppDataStore` until Agent E wires `PersistenceCutoverGate`.
 
 ## Decisions worth knowing before you change something
 
@@ -50,6 +54,14 @@ See the comment on `SqliteSearchRepository.Sql`.
 **Settings and in-progress meeting journals stay as atomic JSON.** They are small, single-writer
 documents rewritten constantly during a recording, and crash recovery reads them before the app has
 a database open. `AtomicJsonFile` is the better fit and this layer deliberately leaves them alone.
+
+**SQLite authority is durable and one-way for normal startup.** Schema migration 2 creates a
+singleton `persistence_cutover_state` row with `json` authority. `PersistenceCutover` snapshots the
+source JSON and marks that row `sqlite` only after the import's count and digest verification has
+committed. Once it is `sqlite`, startup ignores retained-JSON fingerprint changes and never falls
+back or re-imports from that snapshot. Every adapter mutation records the first write's UTC and
+operation; JSON rollback is allowed only before that marker exists. Afterward an operator must use
+an explicit SQLite backup/restore procedure.
 
 ## Migrating from JSON
 

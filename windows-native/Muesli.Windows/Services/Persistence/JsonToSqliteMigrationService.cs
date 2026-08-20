@@ -63,6 +63,12 @@ public sealed record JsonToSqliteMigrationResult
 
     public string? Failure { get; init; }
 
+    /// <summary>
+    /// Dated copy of the JSON history files taken before import. Null when there was nothing to copy.
+    /// L27 does not delete this directory; retention is a later point.
+    /// </summary>
+    public string? JsonSnapshotDirectory { get; init; }
+
     public bool Succeeded => Outcome is JsonMigrationOutcome.Migrated
         or JsonMigrationOutcome.AlreadyCurrent
         or JsonMigrationOutcome.NothingToMigrate;
@@ -144,13 +150,15 @@ public sealed class JsonToSqliteMigrationService
         using (var database = MuesliDatabase.Open(_databasePath))
         {
             var store = new MuesliPersistenceStore(database, ownsDatabase: false);
-            if (HasCompletedRun(database, plan.Fingerprint))
+            var completed = FindCompletedRun(database, plan.Fingerprint);
+            if (completed.Found)
             {
                 _report?.Invoke("The SQLite history already matches the JSON history; nothing to do.");
                 return new JsonToSqliteMigrationResult
                 {
                     Outcome = JsonMigrationOutcome.AlreadyCurrent,
                     DatabasePath = _databasePath,
+                    BackupPath = completed.BackupPath,
                     SourceFingerprint = plan.Fingerprint,
                     Counts = plan.Counts,
                     Warnings = plan.Warnings
@@ -192,6 +200,14 @@ public sealed class JsonToSqliteMigrationService
             catch (Exception exception) when (exception is SqliteException or PersistenceException)
             {
                 failure = exception.Message;
+                try
+                {
+                    transaction.Rollback();
+                }
+                catch (Exception rollbackException) when (rollbackException is SqliteException or PersistenceException)
+                {
+                    _report?.Invoke("The failed migration transaction could not be reopened; no cutover was activated.");
+                }
             }
 
             if (failure is not null)
@@ -340,15 +356,26 @@ public sealed class JsonToSqliteMigrationService
                 """)
             .ScalarInt32()) > 0;
 
-    private static bool HasCompletedRun(MuesliDatabase database, string fingerprint) =>
-        database.Read(connection => Db.Command(
+    private static (bool Found, string? BackupPath) FindCompletedRun(
+        MuesliDatabase database,
+        string fingerprint) =>
+        database.Read(connection =>
+        {
+            using var command = Db.Command(
                 connection,
                 """
-                SELECT count(*) FROM migration_runs
-                WHERE state = 'completed' AND source_fingerprint = $fingerprint;
+                SELECT backup_path
+                FROM migration_runs
+                WHERE state = 'completed' AND source_fingerprint = $fingerprint
+                ORDER BY completed_at_utc DESC
+                LIMIT 1;
                 """)
-            .Bind("$fingerprint", fingerprint)
-            .ScalarInt32()) > 0;
+                .Bind("$fingerprint", fingerprint);
+            using var reader = command.ExecuteReader();
+            return reader.Read()
+                ? (true, reader.Text(0))
+                : (false, null);
+        });
 
     /// <summary>
     /// Closes out any run that was started but never finished. The import commits as one

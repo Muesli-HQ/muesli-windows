@@ -157,7 +157,20 @@ public sealed class SqliteMeetingRepository : IMeetingRepository
         _database.Write(connection =>
         {
             RequireMeeting(connection, meetingId);
-            WriteNote(connection, meetingId, kind, content, DateTimeOffset.UtcNow);
+            if (string.IsNullOrEmpty(content))
+            {
+                Db.Command(
+                        connection,
+                        "DELETE FROM meeting_notes WHERE meeting_id = $meetingId AND kind = $kind;")
+                    .Bind("$meetingId", meetingId)
+                    .Bind("$kind", PersistenceEnums.ToStorage(kind))
+                    .Execute();
+            }
+            else
+            {
+                WriteNote(connection, meetingId, kind, content, DateTimeOffset.UtcNow);
+            }
+
             SearchIndexWriter.IndexMeeting(connection, meetingId);
         });
 
@@ -168,7 +181,20 @@ public sealed class SqliteMeetingRepository : IMeetingRepository
         _database.Write(connection =>
         {
             RequireMeeting(connection, meetingId);
-            WriteTranscript(connection, meetingId, kind, content, DateTimeOffset.UtcNow);
+            if (string.IsNullOrEmpty(content))
+            {
+                Db.Command(
+                        connection,
+                        "DELETE FROM meeting_transcripts WHERE meeting_id = $meetingId AND kind = $kind;")
+                    .Bind("$meetingId", meetingId)
+                    .Bind("$kind", PersistenceEnums.ToStorage(kind))
+                    .Execute();
+            }
+            else
+            {
+                WriteTranscript(connection, meetingId, kind, content, DateTimeOffset.UtcNow);
+            }
+
             SearchIndexWriter.IndexMeeting(connection, meetingId);
         });
 
