@@ -135,10 +135,30 @@ internal sealed class MuesliUiSession : IDisposable
 
     public void ClickAutomationId(string automationId)
     {
-        var element = FindByAutomationId(automationId, TimeSpan.FromSeconds(10));
+        ClickElement(
+            FindByAutomationId(automationId, TimeSpan.FromSeconds(10)),
+            $"Automation id '{automationId}'");
+    }
+
+    public void ClickAccessibleName(string name)
+    {
+        ClickElement(
+            FindByName(name, TimeSpan.FromSeconds(10)),
+            $"Accessible name '{name}'");
+    }
+
+    private void ClickElement(AutomationElement element, string description)
+    {
         if (element.TryGetCurrentPattern(InvokePattern.Pattern, out var invoke))
         {
             ((InvokePattern)invoke).Invoke();
+            WaitForIdle();
+            return;
+        }
+
+        if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
+        {
+            ((SelectionItemPattern)selection).Select();
             WaitForIdle();
             return;
         }
@@ -152,7 +172,7 @@ internal sealed class MuesliUiSession : IDisposable
             return;
         }
 
-        Fail($"Automation id '{automationId}' is not invokable and has no clickable point.");
+        Fail($"{description} is not invokable and has no clickable point.");
     }
 
     public void RestartProduction()

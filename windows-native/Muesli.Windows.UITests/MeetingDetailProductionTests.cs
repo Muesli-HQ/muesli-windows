@@ -66,7 +66,7 @@ public sealed class MeetingDetailProductionTests
     private static void OpenSeededMeeting(MuesliUiSession session)
     {
         session.RequireAccessibleName("Seeded launch meeting", mustBeOnscreen: true);
-        session.ClickAutomationId("MeetingCard");
+        session.ClickAccessibleName("Seeded launch meeting");
         session.RequireAccessibleName("Meeting title", mustBeOnscreen: true);
     }
 }
