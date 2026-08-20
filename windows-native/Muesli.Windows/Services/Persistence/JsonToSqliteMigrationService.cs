@@ -174,7 +174,23 @@ public sealed class JsonToSqliteMigrationService
             if (databaseExisted && options.RetainBackup && HasRows(database))
             {
                 backupPath = options.BackupPath ?? BackupPathFor(_databasePath);
-                database.BackupTo(backupPath);
+                try
+                {
+                    database.BackupTo(backupPath);
+                }
+                catch (PersistenceException)
+                {
+                    return new JsonToSqliteMigrationResult
+                    {
+                        Outcome = JsonMigrationOutcome.Failed,
+                        DatabasePath = _databasePath,
+                        BackupPath = backupPath,
+                        SourceFingerprint = plan.Fingerprint,
+                        Warnings = plan.Warnings,
+                        Failure = "The pre-migration SQLite backup could not be retained; nothing was imported."
+                    };
+                }
+
                 _report?.Invoke($"Kept a pre-migration copy at {Path.GetFileName(backupPath)}.");
             }
 
@@ -182,19 +198,21 @@ public sealed class JsonToSqliteMigrationService
             StartRun(database, runId, plan.Fingerprint, backupPath);
 
             string? failure = null;
+            IPersistenceTransaction? transaction = null;
             try
             {
-                using var transaction = database.BeginTransaction();
+                transaction = database.BeginTransaction();
+                var activeTransaction = transaction!;
                 Import(store, plan);
                 failure = Verify(store, plan);
                 if (failure is null)
                 {
                     CompleteRun(database, runId, plan.Counts);
-                    transaction.Commit();
+                    activeTransaction.Commit();
                 }
                 else
                 {
-                    transaction.Rollback();
+                    activeTransaction.Rollback();
                 }
             }
             catch (Exception exception) when (exception is SqliteException or PersistenceException)
@@ -202,12 +220,16 @@ public sealed class JsonToSqliteMigrationService
                 failure = exception.Message;
                 try
                 {
-                    transaction.Rollback();
+                    transaction?.Rollback();
                 }
-                catch (Exception rollbackException) when (rollbackException is SqliteException or PersistenceException)
+                catch (Exception)
                 {
                     _report?.Invoke("The failed migration transaction could not be reopened; no cutover was activated.");
                 }
+            }
+            finally
+            {
+                transaction?.Dispose();
             }
 
             if (failure is not null)

@@ -131,6 +131,36 @@ public sealed class PersistenceCutoverImplementationTests
     }
 
     [Fact]
+    public void MigrationFailureLeavesExistingDatabaseRowsIntact()
+    {
+        using var directory = new TestDirectory();
+        WriteClonedProfile(directory.Path);
+        var databasePath = PersistencePaths.DatabasePathFor(directory.Path);
+        using (var store = MuesliPersistenceStore.Open(databasePath))
+        {
+            store.Dictations.Upsert(new DictationRecord
+            {
+                Id = "id-existing",
+                Text = "existing-token",
+                CreatedAtUtc = new DateTimeOffset(Created, TimeSpan.Zero),
+                UpdatedAtUtc = new DateTimeOffset(Created, TimeSpan.Zero)
+            });
+        }
+
+        // A pre-existing backup path fails after the migration has opened the database but before
+        // import. The cutover must fail closed and retain the pre-existing row.
+        var invalidBackupPath = Path.Combine(directory.Path, "already-present-backup.db");
+        File.WriteAllText(invalidBackupPath, "reserved");
+        var result = new JsonToSqliteMigrationService(directory.Path, databasePath)
+            .Migrate(new JsonMigrationOptions { BackupPath = invalidBackupPath });
+
+        Assert.Equal(JsonMigrationOutcome.Failed, result.Outcome);
+        using var reopened = MuesliPersistenceStore.Open(databasePath);
+        Assert.NotNull(reopened.Dictations.Find("id-existing"));
+        Assert.Equal(1, reopened.Dictations.Count());
+    }
+
+    [Fact]
     public void EmptyProfileCreatesUsableAuthoritativeDatabase()
     {
         using var directory = new TestDirectory();
