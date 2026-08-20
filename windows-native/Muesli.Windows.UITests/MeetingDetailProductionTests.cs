@@ -19,7 +19,7 @@ public sealed class MeetingDetailProductionTests
 
             session.NavigateTo("meetings", "Navigate to Meetings", "Manage Templates");
             OpenSeededMeeting(session);
-            session.ClickAutomationId("MeetingTranscriptTab");
+            session.ClickAccessibleName("Transcript");
             session.RequireAccessibleName("Re-transcription candidate ready", mustBeOnscreen: true);
             Assert.Contains(
                 "Ready candidate must be explicitly accepted or rejected.",
@@ -42,7 +42,7 @@ public sealed class MeetingDetailProductionTests
             session.InvokeAutomationId("MeetingTranscriptSaveButton");
             Assert.Equal(savedTranscript, session.ReadValueAutomationId("MeetingTranscriptReadOnly"));
 
-            session.ClickAutomationId("MeetingNotesTab");
+            session.ClickAccessibleName("Notes");
             Assert.Equal("Seeded launch meeting", session.ReadValueAutomationId("MeetingTitleEditor"));
             Assert.Equal(
                 "Manual note survives transcript editing.",
@@ -52,9 +52,9 @@ public sealed class MeetingDetailProductionTests
             session.RestartProduction();
             session.NavigateTo("meetings-after-restart", "Navigate to Meetings", "Manage Templates");
             OpenSeededMeeting(session);
-            session.ClickAutomationId("MeetingTranscriptTab");
+            session.ClickAccessibleName("Transcript");
             Assert.Equal(savedTranscript, session.ReadValueAutomationId("MeetingTranscriptReadOnly"));
-            session.ClickAutomationId("MeetingNotesTab");
+            session.ClickAccessibleName("Notes");
             Assert.Equal("Seeded launch meeting", session.ReadValueAutomationId("MeetingTitleEditor"));
             Assert.Equal(
                 "Manual note survives transcript editing.",
