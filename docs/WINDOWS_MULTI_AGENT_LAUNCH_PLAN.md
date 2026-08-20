@@ -1,6 +1,6 @@
 # Muesli Windows multi-agent launch plan
 
-Review baseline: 2026-08-20, `codex/wave0-launch-foundation` at `3bff598`.
+Review baseline: 2026-08-20, `codex/wave0-launch-foundation` at `e66a67a`.
 
 Authoritative product status remains `WINDOWS_LAUNCH_LEDGER.md`. Capability IDs and macOS behavioral source mappings remain in `WINDOWS_MACOS_PARITY_MATRIX.md`. This document is the execution and ownership plan: it does not replace either status source.
 
@@ -53,15 +53,26 @@ Qualification modules additionally require dated machine/provider/device evidenc
 Only the designated integration owner for a wave may edit these collision-prone files:
 
 - `Features/Runtime/FeatureRuntime.xaml.cs`
+- `Features/Runtime/FeatureRuntime.About.cs`
+- `Features/Runtime/FeatureRuntime.ComputerUse.cs`
+- `Features/Runtime/FeatureRuntime.Dialogs.cs`
 - `Features/Runtime/FeatureRuntime.Meetings.cs`
 - `Features/Runtime/FeatureRuntime.Dictations.cs`
+- `Features/Runtime/FeatureRuntime.Dictionary.cs`
+- `Features/Runtime/FeatureRuntime.MeetingDetail.cs`
+- `Features/Runtime/FeatureRuntime.MeetingsList.cs`
 - `Features/Runtime/FeatureRuntime.Models.cs`
+- `Features/Runtime/FeatureRuntime.Navigation.cs`
+- `Features/Runtime/FeatureRuntime.Search.cs`
 - `Features/Runtime/FeatureRuntime.Settings.cs`
+- `Features/Runtime/FeatureRuntime.Shortcuts.cs`
 - `Services/AppServices.cs`
 - `Services/SettingsStore.cs`
 - `MainWindow.xaml` and `MainWindow.xaml.cs`
 - `App.xaml` and `App.xaml.cs`
 - `Muesli.Windows.csproj`
+
+The lock now covers every `FeatureRuntime.*` partial because the L23/L27 review proved that the previous list was incomplete. This expands the shared-file boundary only; lane assignments remain unchanged.
 
 Feature agents should first add focused services, models, views, and tests in owned files. The integration owner then wires them into shared runtime composition. This keeps four or five agents productive without repeatedly merging the same 1,000–2,000-line files.
 
@@ -143,6 +154,7 @@ The modules below are deliberately smaller than phases. Most are one focused pul
 | L37 | Computer Use sandbox qualification | Phase 10 / CU-01 | Qualification | L09 | Quality/security |
 | L38 | Local-only insights analyzer | Phase 12 / INSIGHT-01 | Optional implementation | D4 scope | Library/data |
 | L39 | Final release-candidate qualification | Phase 13 / QUAL-01 | Release gate | all required modules | Integration/quality |
+| L40 | Tracked Windows source reproducibility | Phase 0/13 / TEST-01, PKG-01 | Release integrity | L00 | Shell/release |
 
 ## Module specifications
 
@@ -573,6 +585,17 @@ Scope:
 
 Exit gate: zero unresolved launch blockers, every shipped claim backed by current-candidate evidence, rollback prepared, and release owner approval.
 
+### L40 — Tracked Windows source reproducibility
+
+Scope:
+
+- narrow the root model-cache ignore rule so required Windows source cannot be hidden by a broad `models/` pattern;
+- track all required `Muesli.Windows/Models/*.cs` files and `Features/Models/ModelsView.xaml` plus its code-behind;
+- audit every `.cs`, `.xaml`, and `.csproj` under `windows-native`, excluding generated `bin/` and `obj/`, for ignored required source;
+- prove the committed tree is independently buildable without copying locally present source files.
+
+Exit gate: a clean isolated checkout from the focused commit contains every required source file, has no ignored source outside generated `bin/`/`obj/`, and passes the Release build and test commands with exact results recorded in this dashboard.
+
 ## Recommended five-agent allocation
 
 Keep stable lanes across waves so agents build context and do not repeatedly relearn ownership.
@@ -593,13 +616,13 @@ Agent E acts as integration owner by default. Rotate that role only at wave boun
 
 Run in parallel:
 
+- Agent E: L40 tracked-source reproducibility first, then L00, L02, L03, and L09 shell navigation skeleton.
 - Agent A: L10 design/fixture inventory and L11 CUDA provenance gap analysis; no CUDA claim or packaging yet.
 - Agent B: L14 corpus manifest preparation and L15 target-run rehearsal tooling.
 - Agent C: L23 transcript-edit/retranscribe service contract and failure tests, without shared runtime wiring.
 - Agent D: L01 + L27 cutover design and production behavior characterization.
-- Agent E: L00, L02, L03, and L09 shell navigation skeleton.
 
-Wave exit: ledger corrected, DPI/package-truth defects fixed, persistence cutover approved, shared-file ownership enforced, full suite/package smoke green.
+Wave exit: tracked source is reproducible from a clean checkout, ledger corrected, DPI/package-truth defects fixed, persistence cutover approved, shared-file ownership enforced, full suite/package smoke green.
 
 ### Wave 2 — Prove the native core on real hardware
 
@@ -639,11 +662,11 @@ Wave exit: signed, upgradeable, clean-machine-qualified release candidate or a p
 
 ## First five assignments to start now
 
-1. **Agent E — L04:** rebase/cherry-pick the focused L04 commits onto `3bff598`, then run `rehearse-windows-release.ps1` and `test-windows-package.ps1`; do not merge the divergent module branch wholesale.
-2. **Agent A — L10:** integrate the catalog manifest/tests, supply reviewed real-speech fixtures, and run `smoke-transcription-models.ps1` across all seven advertised CPU IDs.
-3. **Agent D — L27:** integrate the gated cutover behind the Agent E hook, run `PersistenceCutoverImplementationTests`, then prove a cloned real profile preserves counts/digests and second-launch idempotence.
-4. **Agent C — L23:** wire the existing candidate/edit service through the shared runtime under Agent E's lock; close with `TranscriptEditServiceTests` plus L09 meeting-detail UI automation.
-5. **Agent B — L14/L15:** collect human references and run `test-transcription-corpus.ps1`, `qualify-dictation-corpus.ps1`, and the four `qualify-dictation-target.ps1` reports followed by `qualify-dictation-target-suite.ps1`.
+1. **Agent E — L40:** narrow `.gitignore`, track the hidden Windows source, audit ignored files, and verify a clean isolated checkout with the Release build/test commands.
+2. **Agent E — L04:** rebase/cherry-pick the focused L04 commits onto the L40 commit, then run `rehearse-windows-release.ps1` and `test-windows-package.ps1`; do not merge the divergent module branch wholesale.
+3. **Agent A — L10/L11:** integrate the catalog manifest/tests and CUDA provenance gap, then run `smoke-transcription-models.ps1` across all seven advertised CPU IDs once reviewed fixtures exist.
+4. **Agent D — L27:** integrate the gated cutover behind the Agent E hook, run `PersistenceCutoverImplementationTests`, then prove a cloned real profile preserves counts/digests and second-launch idempotence.
+5. **Agent E/C — L09/L23:** retarget the UI harness and wire the existing transcript edit/retranscribe service through the shared runtime; close with meeting-detail UI automation and restart evidence.
 
 No lane assignment or shared-file lock changed in this review. L02/L03 implementation work left the first-five list because only physical/current-package evidence remains; those gates now ride with L04/L34/L35/L39.
 
@@ -693,5 +716,6 @@ Snapshot date: 2026-08-20. “Current suite” means the Release run recorded in
 | L37 | CU-01 | Qualification pending | Agent E | Agent E | `3bff598` | none | Planner/allowlist/redaction tests pass | No sandboxed local/browser workflow | Two live sandbox workflows with clean logs | not warranted |
 | L38 | INSIGHT-01 | Not started | Agent D | Agent E | `3bff598` | none | Dashboard stat tests only | D4 contribution decision absent; local-only remains optional | Schedule only after blockers; no launch delay | not warranted |
 | L39 | QUAL-01 | Blocked | Agent E | Agent E | `3bff598` | all release-owned files at freeze | Current source build/test and CPU benchmark only | Signing, VM, hardware, provider, accessibility evidence absent | Freeze a commit after all required module gates close | not warranted |
+| L40 | Phase 0/13, TEST-01, PKG-01 | Complete | Agent E | Agent E | `08c4b3f` | `.gitignore`, required Windows model/view source, this plan | Clean isolated checkout contains all required source; Release build 0 warnings/0 errors; Release tests 705 passed, 0 failed, 4 skipped; ignored-source audit 0 outside `bin/`/`obj` | Not required for source reproducibility | No L40 gate remains; preserve focused commit before integrating other modules | included |
 
 Review priority is always: data loss/security/privacy, crashes and false success, release truth/signing/update, core dictation and meeting correctness, then parity polish. Test count alone is never a priority signal.

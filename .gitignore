@@ -41,7 +41,7 @@ BenchmarkDotNet.Artifacts/
 # Local packages, downloaded runtimes, and model caches
 packages/
 .nuget/
-models/
+/models/
 downloads/
 *.gguf
 *.onnx
