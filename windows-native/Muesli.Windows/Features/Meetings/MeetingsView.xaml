@@ -91,6 +91,8 @@
                            Padding="16"
                            Margin="0,0,0,10"
                            Cursor="Hand"
+                           AutomationProperties.AutomationId="MeetingCard"
+                           AutomationProperties.Name="{Binding Title}"
                            MouseLeftButtonUp="ForwardMouseButton" features:FeatureAction.Name="MeetingCard_Click">
                      <Grid>
                        <Grid.ColumnDefinitions>

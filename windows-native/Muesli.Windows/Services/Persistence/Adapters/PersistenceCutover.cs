@@ -9,10 +9,9 @@ namespace Muesli.Windows.Services.Persistence;
 /// <see cref="PersistenceCutoverGate.IsEnabled"/> is true — never from FeatureRuntime.
 /// </summary>
 /// <remarks>
-/// Agent E hook (do not add from this slice):
-/// <code>
-/// if (PersistenceCutoverGate.IsEnabled) { var r = new PersistenceCutover(PersistencePaths.DefaultDataDirectory).EnsureMigrated(); if (!r.Succeeded) throw new InvalidOperationException(r.Failure ?? "History cutover failed."); }
-/// </code>
+/// The composition root calls <see cref="EnsureMigrated"/> before it opens the SQLite adapter.
+/// A failure is surfaced as a redacted startup error and does not fall back to JSON after the
+/// enabled cutover was attempted.
 /// </remarks>
 public sealed class PersistenceCutover : IPersistenceCutover
 {

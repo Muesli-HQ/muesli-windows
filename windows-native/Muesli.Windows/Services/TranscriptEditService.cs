@@ -5,8 +5,8 @@ namespace Muesli.Windows.Services;
 
 /// <summary>
 /// MTG-03 service slice: explicit transcript save/cancel with optimistic backup, and candidate-based
-/// retranscription so failure or cancellation cannot destroy the prior transcript. Does not generate
-/// notes and does not touch FeatureRuntime.
+/// retranscription so failure or cancellation cannot destroy the prior transcript. The composition
+/// root owns this service and the UI prompts for re-summarization when generated notes go stale.
 /// </summary>
 public sealed class TranscriptEditService : IDisposable
 {
@@ -746,10 +746,15 @@ public sealed class TranscriptEditService : IDisposable
             var owned = candidates
                 .Where(path => captureStorage.IsOwnedMeetingAudioPath(meeting.Id, path))
                 .ToList();
-            if (owned.Count > 0)
+            if (owned.Count == 0)
             {
-                ordered = owned.Concat(candidates.Except(owned, StringComparer.OrdinalIgnoreCase));
+                // Imported SourcePath values and arbitrary user-selected files are deliberately
+                // excluded from production retranscription. Only audio copied into the retained
+                // per-meeting capture directory is eligible when the ownership guard is present.
+                return new AudioResolve(AudioResolveKind.Missing, null, null, 0);
             }
+
+            ordered = owned;
         }
 
         string? missingPath = null;

@@ -1,9 +1,8 @@
 # Persistence
 
-The SQLite substrate for dictation and meeting history. **Nothing in the running app uses it yet.**
-The JSON stores in `AppDataStore` remain authoritative until a later integration wave switches the UI
-over; this directory exists so that switch is a wiring change against a tested store rather than a
-rewrite.
+The SQLite substrate for dictation and meeting history. The JSON stores in `AppDataStore` remain
+authoritative while the L27 gate is disabled; production switches the active history adapter only
+after a verified startup cutover.
 
 ## Layout
 
@@ -19,12 +18,13 @@ rewrite.
 | `MigrationPlan.cs` | Maps that snapshot onto records, resolving duplicates and orphans. |
 | `JsonToSqliteMigrationService.cs` | Runs the import, verifies it, and can undo it. |
 | `PersistenceDigest.cs` | Content hashes used to prove an import was faithful. |
-| `Adapters/PersistenceCutover.cs` | L27 `EnsureMigrated`: JSON snapshot, digest import, durable authority transition, fail closed. Unused at startup. |
-| `Adapters/SqliteLibraryHistoryAdapter.cs` | SQLite-backed `ILibraryHistoryAdapter` for tests. Dictionary stays JSON. |
+| `Adapters/PersistenceCutover.cs` | L27 `EnsureMigrated`: JSON snapshot, digest import, durable authority transition, fail closed. |
+| `Adapters/SqliteLibraryHistoryAdapter.cs` | SQLite-backed `ILibraryHistoryAdapter` used after the verified production cutover. Dictionary stays JSON. |
 | `Adapters/PersistenceCutoverGate.cs` | Feature flag `L27SqliteHistoryCutover`, default **off**; qualification uses `MUESLI_SQLITE_HISTORY_CUTOVER=1`. |
 | `Adapters/PersistenceCutoverState.cs` | Singleton schema-v2 authority row and first-post-cutover-write marker. |
 
-Start at `MuesliPersistenceStore`, which opens a database and hands back the five repositories. Production still uses `AppDataStore` until Agent E wires `PersistenceCutoverGate`.
+Start at `MuesliPersistenceStore`, which opens a database and hands back the five repositories. The
+production composition root owns the gate and selects the active adapter before history loads.
 
 ## Decisions worth knowing before you change something
 

@@ -46,6 +46,13 @@ private void OpenMeetingDetail(MeetingItem item)
 {
     _appServices.Navigation.OpenMeetingDetail(item.Id);
     _selectedMeeting = item;
+    _transcriptEditSession = null;
+    IsEditingTranscript = false;
+    TranscriptEditDraft = item.Transcript;
+    PendingRetranscriptionCandidate = _transcriptEditService.GetPendingCandidate(item.Id);
+    RetranscriptionStatus = PendingRetranscriptionCandidate is null
+        ? ""
+        : "A retranscription candidate is ready. Accept it to replace the current transcript, or reject it to keep the original.";
     _selectedMeetingTemplate = NormalizeSummaryTemplateName(string.IsNullOrWhiteSpace(item.TemplateName) ? SelectedSummaryTemplate : item.TemplateName);
     _activeSpeakerAliases = new Dictionary<string, string>(item.SpeakerAliases ?? new Dictionary<string, string>());
     BuildSpeakerAliasPanel();
@@ -106,6 +113,7 @@ private void DeleteMeeting(MeetingItem item)
         }
     }
 
+    _transcriptEditService.DeleteMeetingScratch(item.Id);
     Meetings.Remove(item);
     SaveMeetings(afterExplicitDeletion: true);
     RefreshMeetingViews();
@@ -134,6 +142,11 @@ private void BackToMeetings_Click(object sender, RoutedEventArgs e)
     _meetingPlaybackTimer.Stop();
     _meetingPlaybackService.Close();
     _selectedMeeting = null;
+    _transcriptEditSession = null;
+    IsEditingTranscript = false;
+    PendingRetranscriptionCandidate = null;
+    TranscriptEditDraft = "";
+    RetranscriptionStatus = "";
     _selectedMeetingTemplate = NormalizeSummaryTemplateName(SelectedSummaryTemplate);
     MeetingsBrowserView.Visibility = Visibility.Visible;
     MeetingDetailView.Visibility = Visibility.Collapsed;
@@ -559,6 +572,7 @@ private async Task GenerateSelectedMeetingNotesAsync()
         Meetings[index] = updated;
         _selectedMeeting = updated;
         SaveMeetings();
+        _transcriptEditService.ClearGeneratedNotesStale(updated.Id);
         RefreshSearchResults();
         BuildMeetingWarningsPanel(updated);
         BuildMeetingNotesContent();

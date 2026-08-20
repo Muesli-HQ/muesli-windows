@@ -19,8 +19,9 @@ internal sealed class MuesliCleanProfile : IDisposable
     private bool _profileInstalled;
     private bool _parkedOriginalProfile;
 
-    public MuesliCleanProfile()
+    public MuesliCleanProfile(bool seedDeterministicMeeting = false)
     {
+        SeedDeterministicMeeting = seedDeterministicMeeting;
         AppDataRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         MuesliRoot = Path.Combine(AppDataRoot, "muesli");
         ParkedProfile = Path.Combine(AppDataRoot, ParkFolderName);
@@ -47,6 +48,7 @@ internal sealed class MuesliCleanProfile : IDisposable
     public string AppDataRoot { get; }
     public string MuesliRoot { get; }
     public string ParkedProfile { get; }
+    public bool SeedDeterministicMeeting { get; }
 
     public void AssertIsolatedFromDeveloperProfile()
     {
@@ -85,6 +87,8 @@ internal sealed class MuesliCleanProfile : IDisposable
         Directory.CreateDirectory(MuesliRoot);
         _profileInstalled = true;
         SeedCompletedFirstRun();
+        if (SeedDeterministicMeeting)
+            SeedMeetingDetailFixture();
         File.WriteAllText(
             Path.Combine(MuesliRoot, MarkerFileName),
             "L09 UI automation seed profile. Safe to delete if a test run was interrupted; restore muesli.l09-harness-park to muesli.");
@@ -150,6 +154,65 @@ internal sealed class MuesliCleanProfile : IDisposable
             {
               "schemaVersion": 1,
               "completed": true
+            }
+            """);
+    }
+
+    private void SeedMeetingDetailFixture()
+    {
+        var dataDirectory = Path.Combine(MuesliRoot, "data");
+        var retranscriptionDirectory = Path.Combine(dataDirectory, "retranscription");
+        Directory.CreateDirectory(retranscriptionDirectory);
+        File.WriteAllText(
+            Path.Combine(dataDirectory, "windows-meetings.json"),
+            """
+            [
+              {
+                "schemaVersion": 5,
+                "id": "l09-seeded-meeting",
+                "title": "Seeded launch meeting",
+                "createdAt": "2026-08-19T10:00:00Z",
+                "durationMs": 42000,
+                "transcript": "Original transcript survives the UI flow.",
+                "summary": "",
+                "sourcePath": "",
+                "modelProfile": "parakeet-tdt-0.6b-v3",
+                "folderId": null,
+                "wordCount": 6,
+                "templateName": "Default",
+                "speakerAliases": { "SPEAKER_00": "Alex" },
+                "healthWarnings": [],
+                "sessionState": 6,
+                "microphoneAudioPath": null,
+                "systemAudioPath": null,
+                "systemCaptureMode": "legacy-unknown",
+                "recoveredFromInterruption": false,
+                "livePreviewModelId": null,
+                "liveTranscriptOwnership": "off",
+                "finalTranscriptOwnerModelId": "parakeet-tdt-0.6b-v3",
+                "gapRecoveryModelId": null,
+                "manualNotes": "Manual note survives transcript editing.",
+                "titleIsManual": true,
+                "automationResult": null
+              }
+            ]
+            """);
+        File.WriteAllText(
+            Path.Combine(retranscriptionDirectory, "l09-seeded-meeting-candidate.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "meetingId": "l09-seeded-meeting",
+              "candidateId": "l09-seeded-candidate",
+              "status": "Ready",
+              "createdAtUtc": "2026-08-19T10:01:00Z",
+              "updatedAtUtc": "2026-08-19T10:01:00Z",
+              "transcript": "Ready candidate must be explicitly accepted or rejected.",
+              "transcriptFingerprint": "fixture",
+              "error": null,
+              "audioFileName": null,
+              "audioByteLength": 0,
+              "durationMs": 42000
             }
             """);
     }

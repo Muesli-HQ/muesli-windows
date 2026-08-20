@@ -13,6 +13,7 @@ using System.Windows.Media;
 using Microsoft.Win32;
 using Muesli.Windows.Features;
 using Muesli.Windows.Services;
+using Muesli.Windows.Services.Persistence;
 using WpfButton = System.Windows.Controls.Button;
 using WpfListBox = System.Windows.Controls.ListBox;
 using WpfOrientation = System.Windows.Controls.Orientation;
@@ -34,7 +35,8 @@ public sealed partial class FeatureRuntime : INotifyPropertyChanged
     private readonly DictationCoordinator _dictationCoordinator;
     private readonly GlobalHotkeyService _globalHotkeyService;
     private readonly SettingsStore _settingsStore;
-    private readonly AppDataStore _dataStore;
+    private readonly ILibraryHistoryAdapter _dataStore;
+    private readonly TranscriptEditService _transcriptEditService;
     private readonly ToastNotificationService _toastNotificationService;
     private readonly ActiveAppPasteService _activeAppPasteService;
     private readonly NativeTranscriptionClient _meetingTranscriptionClient;
@@ -659,7 +661,8 @@ public sealed partial class FeatureRuntime : INotifyPropertyChanged
             _ => Task.CompletedTask));
         _globalHotkeyService = _featureServices.GlobalHotkeyService;
         _settingsStore = _featureServices.SettingsStore;
-        _dataStore = _featureServices.DataStore;
+        _dataStore = _featureServices.HistoryAdapter;
+        _transcriptEditService = _featureServices.TranscriptEditService;
         _toastNotificationService = _featureServices.ToastNotificationService;
         _activeAppPasteService = _featureServices.ActiveAppPasteService;
         _meetingTranscriptionClient = _featureServices.MeetingTranscriptionClient;
@@ -727,6 +730,11 @@ public sealed partial class FeatureRuntime : INotifyPropertyChanged
 
         var settings = _settingsStore.Load();
         LoadPersistedData();
+        var recoveredCandidates = _transcriptEditService.RecoverAbandonedFlights();
+        if (recoveredCandidates.Any(result => result.Outcome == RetranscriptionOutcome.CandidateReady))
+        {
+            _logService.Info("Recovered ready retranscription candidate(s) at startup; no transcript was changed.");
+        }
         _persistenceWarning = _dataStore.LastWarning ?? _settingsStore.LastWarning;
         if (!string.IsNullOrWhiteSpace(_persistenceWarning))
         {
@@ -972,6 +980,7 @@ public void Dispose()
         _globalHotkeyService = null!;
         _settingsStore = null!;
         _dataStore = null!;
+        _transcriptEditService = null!;
         _toastNotificationService = null!;
         _activeAppPasteService = null!;
         _meetingTranscriptionClient = null!;
@@ -1325,7 +1334,7 @@ private static string AutoExportContentSetting(string? value) => value switch
             item.ModelProfile));
         if (afterExplicitDeletion)
         {
-            _dataStore.SaveDictationsAfterDeletion(dictations);
+            _dataStore.SaveDictations(dictations, afterExplicitDeletion: true);
         }
         else
         {
@@ -1366,7 +1375,7 @@ private static string AutoExportContentSetting(string? value) => value switch
         });
         if (afterExplicitDeletion)
         {
-            _dataStore.SaveMeetingsAfterDeletion(meetings);
+            _dataStore.SaveMeetings(meetings, afterExplicitDeletion: true);
         }
         else
         {

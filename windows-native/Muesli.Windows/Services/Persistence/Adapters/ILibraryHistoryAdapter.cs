@@ -1,10 +1,8 @@
 namespace Muesli.Windows.Services.Persistence;
 
 /// <summary>
-/// FeatureRuntime-facing history contract. Wave 1 keeps this unwired: the running app still talks
-/// to <see cref="AppDataStore"/> through locked runtime files. L27 supplies
-/// <see cref="SqliteLibraryHistoryAdapter"/>; Agent E (integration) is the only owner allowed to swap
-/// <c>AppServices</c> / <c>FeatureRuntime</c> onto it after <see cref="PersistenceCutoverGate"/> is enabled.
+/// FeatureRuntime-facing history contract. The production composition root selects the JSON
+/// adapter while the L27 gate is off and the SQLite adapter after a verified cutover.
 /// </summary>
 /// <remarks>
 /// Dictionary entries have no SQLite repository today. A repository-backed adapter must keep

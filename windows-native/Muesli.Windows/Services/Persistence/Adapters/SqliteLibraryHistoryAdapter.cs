@@ -3,9 +3,9 @@ using System.IO;
 namespace Muesli.Windows.Services.Persistence;
 
 /// <summary>
-/// SQLite-backed <see cref="ILibraryHistoryAdapter"/>. Used by L27 tests. Agent E wires it into
-/// FeatureRuntime after <see cref="PersistenceCutover.EnsureMigrated"/>; this slice does not.
-/// Dictionary entries stay on <c>windows-dictionary.json</c>.
+/// SQLite-backed <see cref="ILibraryHistoryAdapter"/>. The production composition root opens it
+/// only after <see cref="PersistenceCutover.EnsureMigrated"/> succeeds. Dictionary entries stay
+/// on <c>windows-dictionary.json</c>.
 /// </summary>
 public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, IDisposable
 {

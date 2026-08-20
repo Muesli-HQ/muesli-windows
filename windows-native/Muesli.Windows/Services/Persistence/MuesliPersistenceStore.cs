@@ -25,8 +25,9 @@ public static class PersistencePaths
 /// <summary>
 /// The persistence layer's entry point: one database and the repositories over it.
 /// <para>
-/// This is deliberately not wired into the running app yet. It is the substrate the next
-/// integration wave adopts, and until then the JSON stores remain authoritative.
+/// The production composition root opens this store after a verified L27 cutover and hands it
+/// to the active SQLite history adapter. The gate remains off by default, so JSON remains
+/// authoritative unless the process explicitly opts in.
 /// </para>
 /// </summary>
 public sealed class MuesliPersistenceStore : IDisposable

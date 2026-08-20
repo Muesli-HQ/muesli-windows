@@ -2,12 +2,12 @@ namespace Muesli.Windows.Services.Persistence;
 
 /// <summary>
 /// L27 production gate. Default is off: JSON <see cref="AppDataStore"/> remains the running app's
-/// history until Agent E wires <see cref="PersistenceCutover"/> in
-/// <c>FeatureServiceScope.CreateProduction</c>. This type is not referenced from locked runtime files.
+/// history until the process-scoped flag enables <see cref="PersistenceCutover"/> in
+/// <c>FeatureServiceScope.CreateProduction</c>. This type is not referenced from FeatureRuntime.
 /// </summary>
 public static class PersistenceCutoverGate
 {
-    /// <summary>Stable flag name for settings/env binding when Agent E wires the cutover.</summary>
+    /// <summary>Stable flag name for settings/env binding when the cutover is qualified.</summary>
     public const string FeatureFlagName = "L27SqliteHistoryCutover";
 
     public const string EnvironmentVariableName = "MUESLI_SQLITE_HISTORY_CUTOVER";

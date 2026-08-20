@@ -26,6 +26,8 @@
               </Grid.ColumnDefinitions>
               <StackPanel>
                 <TextBox Text="{Binding SelectedMeetingTitle, UpdateSourceTrigger=LostFocus}"
+                         AutomationProperties.AutomationId="MeetingTitleEditor"
+                         AutomationProperties.Name="Meeting title"
                          Style="{StaticResource MuesliTextBox}"
                          FontSize="26" FontWeight="Bold" Padding="6,2"
                          Background="Transparent" BorderThickness="0"
@@ -51,6 +53,8 @@
                             Background="{DynamicResource SurfaceSelectedBrush}"
                             CornerRadius="6"
                             Cursor="Hand"
+                            AutomationProperties.AutomationId="MeetingNotesTab"
+                            AutomationProperties.Name="Notes tab"
                             MouseLeftButtonUp="ForwardMouseButton" features:FeatureAction.Name="ShowMeetingNotesTab_Click">
                       <TextBlock x:Name="MeetingNotesTabLabel" Text="Notes" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                     </Border>
@@ -60,6 +64,8 @@
                             Background="Transparent"
                             CornerRadius="6"
                             Cursor="Hand"
+                            AutomationProperties.AutomationId="MeetingTranscriptTab"
+                            AutomationProperties.Name="Transcript tab"
                             MouseLeftButtonUp="ForwardMouseButton" features:FeatureAction.Name="ShowMeetingTranscriptTab_Click">
                       <TextBlock x:Name="MeetingTranscriptTabLabel" Text="Transcript" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
@@ -207,6 +213,8 @@
                     <TextBlock Text="Your own notes. Kept exactly as written when notes are regenerated."
                                Margin="0,4,0,10" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
                     <TextBox Text="{Binding SelectedMeetingManualNotes, UpdateSourceTrigger=LostFocus}"
+                             AutomationProperties.AutomationId="MeetingManualNotesEditor"
+                             AutomationProperties.Name="Manual meeting notes"
                              Style="{StaticResource MuesliTextBox}"
                              MinHeight="110"
                              AcceptsReturn="True"
@@ -219,16 +227,51 @@
 
               <StackPanel x:Name="MeetingTranscriptPanel" Visibility="Collapsed">
                 <DockPanel Margin="0,14,0,12">
-                  <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="CopySelectedMeetingTranscript_Click">
-                    <StackPanel Orientation="Horizontal">
-                      <TextBlock Text="&#xE8C8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,6,0" />
-                      <TextBlock Text="Copy Transcript" />
-                    </StackPanel>
-                  </Button>
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Margin="0,0,8,0" Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="EditSelectedMeetingTranscript_Click"
+                            IsEnabled="{Binding IsNotEditingTranscript}" AutomationProperties.AutomationId="MeetingTranscriptEditButton" AutomationProperties.Name="Edit transcript" Content="Edit transcript" />
+                    <Button Margin="0,0,8,0" Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="RetranscribeSelectedMeeting_Click"
+                            IsEnabled="{Binding IsNotEditingTranscript}" AutomationProperties.AutomationId="MeetingTranscriptRetranscribeButton" AutomationProperties.Name="Re-transcribe meeting" Content="Re-transcribe" />
+                    <Button Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="CopySelectedMeetingTranscript_Click" AutomationProperties.AutomationId="MeetingTranscriptCopyButton">
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8C8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,6,0" />
+                        <TextBlock Text="Copy Transcript" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
                   <TextBlock Text="TRANSCRIPT" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <StackPanel x:Name="SpeakerAliasPanel" Margin="0,0,0,12" />
+
+                <Border Visibility="{Binding IsEditingTranscript, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        Background="{DynamicResource BackgroundRaisedBrush}"
+                        BorderBrush="{DynamicResource AccentBlueBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16"
+                        Margin="0,0,0,12">
+                  <StackPanel>
+                    <TextBlock Text="Edit transcript" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="Save keeps your changes. Cancel restores the original transcript and leaves notes, title ownership, aliases, and follow-ups untouched."
+                               Margin="0,4,0,10" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
+                    <TextBox Text="{Binding TranscriptEditDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.AutomationId="MeetingTranscriptEditor"
+                             AutomationProperties.Name="Transcript editor"
+                             Style="{StaticResource MuesliTextBox}"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto"
+                             VerticalContentAlignment="Top"
+                             MinHeight="220" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                      <Button Margin="0,0,8,0" Style="{StaticResource PrimaryButton}" Click="ForwardClick" features:FeatureAction.Name="SaveSelectedMeetingTranscript_Click"
+                              AutomationProperties.AutomationId="MeetingTranscriptSaveButton" AutomationProperties.Name="Save transcript" Content="Save" />
+                      <Button Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="CancelSelectedMeetingTranscript_Click"
+                              AutomationProperties.AutomationId="MeetingTranscriptCancelButton" AutomationProperties.Name="Cancel transcript edit" Content="Cancel" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
 
                 <Border Background="{DynamicResource BackgroundRaisedBrush}"
                         BorderBrush="{DynamicResource BorderBrushSoft}"
@@ -236,6 +279,9 @@
                         CornerRadius="10"
                         Padding="24">
                   <TextBox Text="{Binding SelectedMeetingTranscript, Mode=OneWay}"
+                           Visibility="{Binding IsNotEditingTranscript, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           AutomationProperties.AutomationId="MeetingTranscriptReadOnly"
+                           AutomationProperties.Name="Meeting transcript"
                            TextWrapping="Wrap"
                            AcceptsReturn="True"
                            Background="Transparent"
@@ -247,6 +293,27 @@
                            FontSize="13"
                            MinHeight="420"
                            SelectionBrush="{DynamicResource AccentBlueBrush}" />
+                </Border>
+
+                <Border Visibility="{Binding HasRetranscriptionCandidate, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        Background="{DynamicResource AccentBadgeBackgroundBrush}"
+                        BorderBrush="{DynamicResource AccentBlueBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16"
+                        Margin="0,12,0,0">
+                  <StackPanel>
+                    <TextBlock Text="Re-transcription candidate ready" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding RetranscriptionStatus}" Margin="0,4,0,8" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                    <TextBox Text="{Binding PendingRetranscriptionCandidate.Transcript}" IsReadOnly="True" TextWrapping="Wrap" MinHeight="90"
+                             AutomationProperties.AutomationId="MeetingRetranscriptionCandidate" AutomationProperties.Name="Re-transcription candidate" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                      <Button Margin="0,0,8,0" Style="{StaticResource PrimaryButton}" Click="ForwardClick" features:FeatureAction.Name="AcceptSelectedMeetingCandidate_Click"
+                              IsEnabled="{Binding CanAcceptRetranscriptionCandidate}" AutomationProperties.AutomationId="MeetingTranscriptAcceptCandidateButton" AutomationProperties.Name="Accept re-transcription candidate" Content="Accept candidate" />
+                      <Button Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="RejectSelectedMeetingCandidate_Click"
+                              IsEnabled="{Binding CanRejectRetranscriptionCandidate}" AutomationProperties.AutomationId="MeetingTranscriptRejectCandidateButton" AutomationProperties.Name="Reject re-transcription candidate" Content="Reject candidate" />
+                    </StackPanel>
+                  </StackPanel>
                 </Border>
               </StackPanel>
             </StackPanel>
