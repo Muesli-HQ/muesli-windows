@@ -12,7 +12,7 @@ The macOS implementation is the behavioral reference, not a library compatibilit
 
 Status meanings match the launch ledger: **Complete and verified**, **Implemented with verification debt**, **Partial**, **Missing**, **Excluded**, **Externally blocked**.
 
-Owner modules are launch-program Phase 0–13. They are not the historical P0–P8 labels. The reviewed Wave 0 working tree expands to **634** cases: 630 hardware-free passes and 4 explicit real-fixture qualification skips. This inventory does not re-claim 2026-08-01 CUDA/package/UI evidence.
+Owner modules are launch-program Phase 0–13. They are not the historical P0–P8 labels. The reviewed 2026-08-20 Release tree expands to **709** cases: 705 hardware-free passes and 4 explicit real-fixture qualification skips. This inventory does not re-claim 2026-08-01 CUDA/package/UI evidence.
 
 ## Models and model lifecycle
 
@@ -79,8 +79,8 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 | SEC-01 | Secret storage and migration | Keychain tests | `SecretStore.cs`, `SecretsAndSettingsTests.cs` | Complete and verified | Phase 7 |
 | TPL-01 | Templates and re-summary | `MeetingTemplates.swift` | Built-in/custom templates in store/UI; Phase 7 tests | Implemented with verification debt | Phase 7 |
 | NOTE-01 | Manual notes vs generated summary | `MeetingNotesView.swift` | `PersistedMeeting.ManualNotes`, `MeetingNotesComposer.cs`; Phase 7 tests | Implemented with verification debt | Phase 7 |
-| ORG-01 | Nested folders | Meetings store/navigation | One-level `PersistedMeetingFolder`; no `ParentId` | Partial | Phase 8 |
-| SEARCH-01 | Search dictations and meetings | `SearchResultsView.swift` | Title/summary/transcript/metadata. Manual notes not indexed | Partial | Phase 8 / 12 |
+| ORG-01 | Nested folders | Meetings store/navigation | SQLite repository has tested `ParentId`/subtree support; production JSON-backed UI remains one-level | Partial | Phase 8 |
+| SEARCH-01 | Search dictations and meetings | `SearchResultsView.swift` | SQLite FTS indexes manual notes, but production UI still uses title/summary/transcript/metadata filtering | Partial | Phase 8 / 12 |
 
 ## Import, export, automation
 
@@ -123,7 +123,7 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 | UPD-01 | Signed auto-update | Sparkle | About → GitHub Releases only | Missing | Phase 13 |
 | SIGN-01 | Authenticode | codesign/notarize | `sign-windows-release.ps1`; artifacts unsigned | Externally blocked | Phase 13 / D5 |
 | PKG-01 | x64 zip + Inno installer | DMG/release scripts | Package/installer scripts exist; unsigned; public inventory is CPU-only; upgrade/VM open | Partial | Phase 13 |
-| TEST-01 | Automated coverage | Swift test suite | 634 cases in the reviewed Wave 0 tree: 630 pass, 4 explicit qualification skips; no full GUI automation | Partial | Continuous |
+| TEST-01 | Automated coverage | Swift test suite | 709 cases in the reviewed Release tree: 705 pass, 4 explicit qualification skips; no integrated full GUI automation | Partial | Continuous |
 | QUAL-01 | Hardware/package gates | macOS release scripts | Scripts exist; current-tree hardware evidence not re-run | Partial | Phase 13 |
 | API-04 | Sparkle/AppKit/codesign equivalents | Updater/status-bar | NotifyIcon yes; signed updater no | Partial | Phase 13 |
 | STORE-01 | Microsoft Store | — | — | Excluded | — |

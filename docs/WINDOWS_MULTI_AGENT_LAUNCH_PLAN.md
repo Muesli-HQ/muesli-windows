@@ -1,19 +1,19 @@
 # Muesli Windows multi-agent launch plan
 
-Inventory baseline: 2026-08-18, `codex/wave0-launch-foundation` at `efa961c`.
+Review baseline: 2026-08-20, `codex/wave0-launch-foundation` at `3bff598`.
 
 Authoritative product status remains `WINDOWS_LAUNCH_LEDGER.md`. Capability IDs and macOS behavioral source mappings remain in `WINDOWS_MACOS_PARITY_MATRIX.md`. This document is the execution and ownership plan: it does not replace either status source.
 
 ## Launch thesis
 
-Muesli is not mainly behind because the native transcription engine is absent. The core application is broad, the Wave 0 suite has 634 expanded cases, and native CPU dictation is fast. The gap is the final third of product work:
+Muesli is not mainly behind because the native transcription engine is absent. The core application is broad, the current Release suite has 709 expanded cases, and native CPU dictation is fast. The gap is the final third of product work:
 
-1. only 5 capability rows are **Complete and verified**, while 40 are **Implemented with verification debt**;
+1. only 5 capability rows are **Complete and verified**, while 40 are **Implemented with verification debt**; the current Release suite is 705 passed, 0 failed, and 4 explicit qualification skips;
 2. 14 rows are **Partial** and 2 are **Missing**;
 3. several user-facing workflows still run through the legacy JSON `AppDataStore`, while the new SQLite repositories already contain stronger folder, search, follow-up, migration, and transactional behavior;
 4. physical audio, real conferencing apps, paste targets, multi-monitor DPI, live providers, clean-machine installation, and signing cannot be proven by unit tests;
 5. the highest-collision WPF integration files remain large, especially `FeatureRuntime.Meetings.cs`, `FeatureRuntime.xaml.cs`, `FeatureRuntime.Dictations.cs`, `FeatureRuntime.Models.cs`, and `FeatureRuntime.Settings.cs`;
-6. release truth has drifted in places: the executable manifest lacks the documented PerMonitorV2 declaration and the third-party notice incorrectly says the public package contains a CUDA provider.
+6. the PerMonitorV2 manifest and CPU-only public-package disclosures are corrected in source, but the retained 2026-08-17 package predates those fixes and therefore cannot close current-candidate release truth.
 
 The plan therefore separates implementation, integration, qualification, and release evidence. An agent does not get to mark a module complete merely because a service or button exists.
 
@@ -150,10 +150,10 @@ The modules below are deliberately smaller than phases. Most are one focused pul
 
 Scope:
 
-- record `efa961c` as the committed Wave 0 baseline;
+- record `3bff598` as the current committed review baseline and retain `efa961c` as the Wave 0 integration point;
 - remove stale “uncommitted” and obsolete-current-branch wording;
-- correct the ORG-01 rationale: repository `ParentId` support exists, product UI nesting does not;
-- downgrade SHELL-01 to **Partial** until the executable manifest and physical DPI proof are corrected;
+- keep ORG-01/SEARCH-01 explicit about the stronger SQLite substrate versus the production JSON-backed UI;
+- record PerMonitorV2 as implemented while leaving SHELL-01 at **Implemented with verification debt** until physical DPI proof exists;
 - keep statuses synchronized between the ledger and parity matrix.
 
 Exit gate: document-only diff passes status-vocabulary checks and names the exact evidence commit.
@@ -639,30 +639,59 @@ Wave exit: signed, upgradeable, clean-machine-qualified release candidate or a p
 
 ## First five assignments to start now
 
-1. **Agent E — L02:** fix the DPI manifest, add built-manifest assertion, and capture one 100% DPI smoke. This is the highest-confidence current defect.
-2. **Agent E2 or release specialist — L03:** correct CUDA/package disclosures and generate a native DLL/license inventory. If only five agents exist, keep this with Agent E after L02.
-3. **Agent D — L01/L27 design slice:** map every live `AppDataStore` call to the new repository, add characterization tests, and propose the atomic cutover. Do not wire UI yet.
-4. **Agent C — L23 service slice:** implement candidate-based retranscription and transcript-edit ownership tests without touching shared runtime files.
-5. **Agent B — L14/L15 evidence setup:** prepare the human corpus manifest and execute the four-app target protocol; file product bugs separately from evidence.
+1. **Agent E — L04:** rebase/cherry-pick the focused L04 commits onto `3bff598`, then run `rehearse-windows-release.ps1` and `test-windows-package.ps1`; do not merge the divergent module branch wholesale.
+2. **Agent A — L10:** integrate the catalog manifest/tests, supply reviewed real-speech fixtures, and run `smoke-transcription-models.ps1` across all seven advertised CPU IDs.
+3. **Agent D — L27:** integrate the gated cutover behind the Agent E hook, run `PersistenceCutoverImplementationTests`, then prove a cloned real profile preserves counts/digests and second-launch idempotence.
+4. **Agent C — L23:** wire the existing candidate/edit service through the shared runtime under Agent E's lock; close with `TranscriptEditServiceTests` plus L09 meeting-detail UI automation.
+5. **Agent B — L14/L15:** collect human references and run `test-transcription-corpus.ps1`, `qualify-dictation-corpus.ps1`, and the four `qualify-dictation-target.ps1` reports followed by `qualify-dictation-target-suite.ps1`.
 
-Agent A should start L10 fixture/model-matrix preparation as soon as a sixth slot is available, or replace Agent B temporarily if qualification requires human coordination before it can proceed.
+No lane assignment or shared-file lock changed in this review. L02/L03 implementation work left the first-five list because only physical/current-package evidence remains; those gates now ride with L04/L34/L35/L39.
 
 ## Review dashboard
 
-Track each module with these fields:
+Snapshot date: 2026-08-20. “Current suite” means the Release run recorded in `WINDOWS_LAUNCH_LEDGER.md`: 705 passed, 0 failed, 4 explicit qualification skips. Branch-only evidence was inspected but not trusted or merged; the four active Wave 1 module branches merge-base with HEAD at `ba38e56` and require focused cherry-picks or rebases.
 
-| Field | Allowed values |
-|---|---|
-| Module | L00–L39 |
-| Capability IDs | ledger IDs only |
-| State | Not started / In progress / In review / Code complete / Qualification pending / Blocked / Complete |
-| Owner | one agent |
-| Integration owner | one agent |
-| Base commit | exact SHA |
-| Changed shared files | explicit list or none |
-| Automated evidence | commands + result artifact |
-| Human/physical evidence | reviewer, machine, device/provider, date |
-| Remaining gate | one concrete sentence |
-| Ledger update | pending / included / not warranted |
+| Module | Capability IDs | State | Owner | Integration owner | Base commit | Changed shared files | Automated evidence | Human/physical evidence | Remaining gate | Ledger update |
+|---|---|---|---|---|---|---|---|---|---|---|
+| L00 | Phase 0 | In review | Agent E | Agent E | `3bff598` | `docs/WINDOWS_LAUNCH_LEDGER.md`, matrix, this plan | Release build green; 705/0/4; status-count and skip-message audit | Foreground Release dashboard and clean 4,865-byte log slice, current machine, 2026-08-20 | Review and commit this document-only reconciliation | included |
+| L01 | data foundation | Complete | Agent D | Agent E | `efa961c` | none | `PersistenceCutoverCharacterizationTests`; current suite green | Not required for design gate | Design, rollback, adapters, and characterization exist; implementation is L27 | not warranted |
+| L02 | SHELL-01, FLOAT-01, FLOAT-02 | Qualification pending | Agent E | Agent E | `efa961c` | `Muesli.Windows.csproj` | `DpiManifestAndPlacementTests`; built manifest assertion passes in current suite | Foreground 100% dashboard clean; no 125/150/200% or two-monitor capture | Remaining physical DPI matrix and clean-log captures | not warranted |
+| L03 | MOD-01, PKG-01, EXP-01 | Qualification pending | Agent E | Agent E | `efa961c` | none | `PackageDisclosureAndNativeInventoryTests`; source inventory/license checks pass | QuestPDF eligibility not approved; current package not rebuilt | Current-tree package inventory/smoke and release-owner license approval | included |
+| L04 | PKG-01, TEST-01 | In review | Agent E | Agent E | `60fcb31` | none in focused commits | Branch `agent-e3-l04-package-ci`; diff inspected, tests not run | None | Rebase focused commits; two clean package inventories must match | pending |
+| L05 | SIGN-01 | Blocked | Agent E | Agent E | `3bff598` | none | Existing unsigned-rehearsal scripts only | No production certificate (D5) | Valid timestamped app and installer signatures | not warranted |
+| L06 | UPD-01, API-04 | Blocked | Agent E | Agent E | `3bff598` | none | none | D5 absent | Signed fixture update/rollback implementation, then production signing | not warranted |
+| L07 | PKG-01 | Blocked | Agent E | Agent E | `3bff598` | none | Prior 2026-08-17 smoke is stale | No current Win10/Win11 clean-VM run | L04-L06 then install/upgrade/uninstall reports | not warranted |
+| L08 | DIAG-01 | Not started | Agent E | Agent E | `3bff598` | none | Existing redaction/unit coverage only | None | User-visible previewable support bundle | not warranted |
+| L09 | TEST-01 | In review | Agent E | Agent E | `60fcb31` | none | Branch `agent-e2-l09-uia-skeleton`; diff inspected, tests not run | None | Rebase, run stable production-startup/navigation smoke in CI | pending |
+| L10 | MOD-02 | In review | Agent A | Agent E | `60fcb31` | none | Branch `agent-a-l10-l11-inventory`; catalog tests/fixtures inspected, not run | No seven-model real-speech run | Integrate then pass all seven CPU models with WER/CER/RTF | pending |
+| L11 | MOD-01, QUAL-01 | In review | Agent A | Agent E | `60fcb31` | none | CUDA provenance-gap docs/tests inspected; current runtime reports CPU | No packaged NVIDIA run | Version-matched staged provider and full NVIDIA qualification | not warranted |
+| L12 | MOD-03 | Not started | Agent A | Agent E | `3bff598` | none | Lifecycle unit tests in current suite | No destructive Models-page run | Recorded all-state UI/destructive cache matrix | not warranted |
+| L13 | MOD-05 | Blocked | Agent A | Agent E | `3bff598` | none | Manual-placement fail-closed tests only | Approved GGUF absent | Product-approved model/hash/license/prompt contract | not warranted |
+| L14 | DIC-01, TXT-01, TXT-02 | Qualification pending | Agent B | Agent E | `efa961c` | none | Corpus schema/tests pass; current CPU RTF 0.071 | No human references; WER/CER unmeasured | Reviewed corpus at WER <=0.15, CER <=0.08, RTF <=0.20 | not warranted |
+| L15 | DIC-02, DIC-03, HOT-01, HOT-02, API-03 | Qualification pending | Agent B | Agent E | `efa961c` | `FeatureRuntime.Dictations.cs` | Clipboard-safe direct-input tests pass; 12 historical deliveries had 0 failures | ChatGPT/Cursor/Claude only; no Notepad/Chrome/Office/fourth editor | Four current target reports plus hotkey/UIPI matrix | not warranted |
+| L16 | AUD-01, AUD-02 | Not started | Agent B | Agent E | `3bff598` | none | Recovery/unit coverage in current suite | No current physical route matrix | Default/unplug/Bluetooth/privacy/sleep matrix | not warranted |
+| L17 | TXT-03 | Blocked | Agent B | Agent E | `3bff598` | none | Existing workflow-specific tests | Product ordering decision absent | One approved cross-workflow pipeline and goldens | not warranted |
+| L18 | MTG-01, API-01 | Not started | Agent C | Agent E | `3bff598` | none | Capture/process-attribution unit coverage | No live Zoom/Teams/Meet/Webex run | Retained four-app listening/attribution matrix | not warranted |
+| L19 | MTG-02 | Not started | Agent C | Agent E | `3bff598` | none | Lifecycle/recovery unit coverage | No forced-kill/disk-full physical run | Fault injection plus real recovery proof | not warranted |
+| L20 | MOD-04, LIVE-01, LIVE-02, LIVE-04, FLOAT-02 | Qualification pending | Agent C | Agent E | `3bff598` | none | Streaming contract tests pass; real fixture still skips | No long meeting/noisy-room/route/DPI soak | Run streaming fixture and long-soak limits | not warranted |
+| L21 | DIA-01, DIA-02 | Qualification pending | Agent C | Agent E | `3bff598` | none | Finalization tests pass; multi-speaker test still skips | No reviewed multi-speaker/alias UI run | Multi-speaker test must run and UI alias round-trip pass | not warranted |
+| L22 | DET-01, DET-02, JOIN-01 | Qualification pending | Agent C | Agent E | `3bff598` | none | Detection policy tests pass | No live conferencing false-positive/negative matrix | Live prompt/join/leave/rejoin evidence | not warranted |
+| L23 | MTG-03 | In progress | Agent C | Agent E | `efa961c` | none | `TranscriptEditServiceTests` pass in current suite | No meeting-detail edit/retranscribe UI run | Wire service/UI under shared lock and automate destructive flow | included |
+| L24 | PLAY-01 | Not started | Agent C | Agent E | `3bff598` | none | Existing playback service tests | No waveform/output-device-loss run | Waveform UI/cache plus physical device-loss recovery | not warranted |
+| L25 | SUM-01, SUM-02 | Not started | Agent D | Agent E | `3bff598` | none | Existing provider/mock tests | No live provider run | LM Studio/custom contract and redacted live qualification | not warranted |
+| L26 | SUM-04, TPL-01, NOTE-01 | Qualification pending | Agent D | Agent E | `3bff598` | none | Notes/title/template unit coverage | No GUI/live-provider matrix | GUI ownership/cancel/timeout/retry evidence | not warranted |
+| L27 | data foundation | In review | Agent D | Agent E | `60fcb31` | none; runtime wiring intentionally absent | Branch `agent-d-l27-cutover-gate`; implementation/tests inspected, not run | No cloned-profile migration | Rebase, wire gate, prove equal digests and idempotent restart | pending |
+| L28 | ORG-01 | Not started | Agent D | Agent E | `3bff598` | none | SQLite `ParentId`/subtree tests pass | No nested-folder UI | Production tree, breadcrumbs, subtree moves/search | included |
+| L29 | SEARCH-01 | Not started | Agent D | Agent E | `3bff598` | none | SQLite FTS tests include manual notes | Production UI still uses in-memory filter | Repository-backed UI with notes, filters, snippets, latency | included |
+| L30 | IMP-01 | Qualification pending | Agent D | Agent E | `3bff598` | none | Import unit tests pass; two real-media tests still skip | No reviewed eight-format speech set | Run real-media tests and manifest across all advertised formats | not warranted |
+| L31 | EXP-01, AUTO-01 | Not started | Agent D | Agent E | `3bff598` | none | Manual MD/PDF and auto-MD tests pass | No human open/license approval | Auto-PDF, file failure cases, human open, license decision | not warranted |
+| L32 | FOLLOW-01 | Not started | Agent D | Agent E | `3bff598` | none | Persistence link substrate tests only | None | User-facing linked follow-up workflow through production store | not warranted |
+| L33 | HOOK-01 | Qualification pending | Agent D | Agent E | `3bff598` | none | Hook success/failure/timeout tests pass | No packaged benign executable smoke | Packaged real `.exe` smoke with redaction review | not warranted |
+| L34 | ONB-01, TRAY-01, START-01 | Qualification pending | Agent E | Agent E | `3bff598` | none | Current product-experience unit coverage | Normal-profile foreground dashboard passed; no clean-profile VM/startup upgrade run | Clean-profile onboarding/tray/startup/install evidence | not warranted |
+| L35 | FLOAT-01, SOUND-01 | Qualification pending | Agent E | Agent E | `3bff598` | none | Indicator/sound contract tests pass | No physical DPI/audio-route confirmation | Multi-monitor captures and audible route matrix | not warranted |
+| L36 | PRIV-01 | Qualification pending | Agent E | Agent E | `3bff598` | none | Path-boundary/redaction/cleanup tests pass | No destructive cloned prepared-data run | Full deletion/cache/retention disclosure review | not warranted |
+| L37 | CU-01 | Qualification pending | Agent E | Agent E | `3bff598` | none | Planner/allowlist/redaction tests pass | No sandboxed local/browser workflow | Two live sandbox workflows with clean logs | not warranted |
+| L38 | INSIGHT-01 | Not started | Agent D | Agent E | `3bff598` | none | Dashboard stat tests only | D4 contribution decision absent; local-only remains optional | Schedule only after blockers; no launch delay | not warranted |
+| L39 | QUAL-01 | Blocked | Agent E | Agent E | `3bff598` | all release-owned files at freeze | Current source build/test and CPU benchmark only | Signing, VM, hardware, provider, accessibility evidence absent | Freeze a commit after all required module gates close | not warranted |
 
 Review priority is always: data loss/security/privacy, crashes and false success, release truth/signing/update, core dictation and meeting correctness, then parity polish. Test count alone is never a priority signal.

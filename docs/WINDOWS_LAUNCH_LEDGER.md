@@ -1,6 +1,6 @@
 # Muesli Windows launch ledger
 
-Inventory date: 2026-08-18.
+Inventory date: 2026-08-20.
 
 This is the **authoritative product-status source** for Windows Muesli. It replaces status claims in older phase plans, the 2026-08-01 parity matrix, and `ROADMAP.md`. Code under `windows-native/Muesli.Windows` and tests under `windows-native/Muesli.Windows.Tests` are the evidence. The macOS tree at `C:\Users\madha\Downloads\muesli-main\muesli-main` is the behavioral reference, not a library to port.
 
@@ -22,7 +22,7 @@ Capability IDs and macOS file mapping: `WINDOWS_MACOS_PARITY_MATRIX.md` (statuse
 
 Implemented never means macOS parity. A source file, button, or historical benchmark is not hardware verification.
 
-## Current baseline (2026-08-18)
+## Current baseline (2026-08-20)
 
 | Item | Fact |
 |---|---|
@@ -33,11 +33,11 @@ Implemented never means macOS parity. A source file, button, or historical bench
 | Onboarding progress schema | 1 |
 | Offline ASR | Seven pinned sherpa-onnx choices; independent Dictation and Final meeting/import roles. |
 | Live ASR | Opt-in Nemotron 3.5; default Off; prepare does not select. CoreML Parakeet Realtime EOU absent. |
-| Hardware-free Wave 0 integration suite | **634** expanded xUnit cases in `Muesli.Windows.Tests`: **630 passed, 0 failed, 4 skipped** in both Debug and Release on .NET 10. This includes shell-view structure, complete action-handler wiring, and nested feature-event routing coverage. The four skips report their absent real-media, streaming-model, or multi-speaker qualification prerequisites instead of silently returning as passes. |
-| Wave 0 integration re-run | User-scoped SDK `10.0.400`; `dotnet build … --no-restore` completed with **0 warnings, 0 errors** in Debug and Release. `dotnet test … --no-restore` completed with **630 passed, 0 failed, 4 explicitly skipped** in each configuration. This is the reviewed working-tree baseline and remains uncommitted pending user review. |
-| Wave 0 package smoke | Self-contained `muesli-windows-0.2.0-win-x64.zip` built successfully; required/forbidden artifact checks, fresh-machine QA, native startup diagnostic, and visible launch smoke passed. The diagnostic loaded the packaged CPU provider. Release metadata explicitly records that CUDA is not included. Inno Setup 6.7.1 also compiled `MuesliSetup-0.2.0-win-x64.exe` successfully; it was not installed or signed. |
+| Hardware-free integration suite | **709** expanded xUnit cases in `Muesli.Windows.Tests`: **705 passed, 0 failed, 4 skipped** in Release on .NET 10. The four skips still name `MUESLI_MEDIA_FIXTURE_DIR` (two tests), `MUESLI_STREAMING_QUALIFICATION_MODEL`, and `MUESLI_MULTISPEAKER_FIXTURE_SOURCE` instead of silently returning as passes. Debug was not re-run in the 2026-08-20 review. |
+| Current integration re-run | Branch `codex/wave0-launch-foundation` at `3bff598`; working tree was clean before this review. SDK `10.0.400`; `dotnet build windows-native\\Muesli.Windows\\Muesli.Windows.csproj -c Release` completed with **0 warnings, 0 errors**. `dotnet test windows-native\\Muesli.Windows.Tests\\Muesli.Windows.Tests.csproj -c Release` completed with **705 passed, 0 failed, 4 explicitly skipped**. |
+| Package evidence | The retained ZIP, installer, and `publish/` tree are dated 2026-08-17 and predate the manifest, package-truth, transcript-edit, qualification-tooling, and clipboard-safe commits now in HEAD. Their prior smoke remains historical evidence only; a current-tree package rehearsal is still required by L04. The retained installer and packaged executable are unsigned. |
 | L03 package truth (this branch) | Public notices, package metadata, and the generated native-runtime inventory now agree that Wave 0 ships the CPU Sherpa provider only. The false “primary package includes CUDA provider” sentence was removed. CUDA remains Partial / not in the public package (L11). QuestPDF 2026.5.0 still selects `LicenseType.Community`; EXP-01 is not complete. |
-| Wave 0 visible shell check | After shell decomposition, Dashboard/Dictations, Meetings, Models, Settings, and About navigated successfully in dark and light themes. About showed `v0.2.0`; the original dark theme and foreground dashboard were restored. The 4,983-byte fresh log slice contained no `ERROR`, `Unhandled UI exception`, or `XamlParseException`. |
+| Current visible shell check | Release `Muesli.exe` launched with one foreground Dictations dashboard on 2026-08-20. The 4,865-byte fresh slice beginning `01:20:01.231` contained no `ERROR`, `Unhandled UI exception`, or `XamlParseException`; Parakeet v3 warmed on CPU (2,071 ms load + 311 ms warmup). Process was responsive at about 956 MB working set / 882 MB private. |
 | Historical CUDA/package/UI evidence from 2026-08-01–02 | Retained under `artifacts/` and older PHASE docs. **Not re-run for this ledger.** It does not promote any hardware-dependent row to Complete and verified. |
 | Architecture | x64 only. ARM64 packaging is excluded. |
 
@@ -151,8 +151,8 @@ Remaining class: **None** (done at the stated status), **Implementation**, **Qua
 | SEC-01 | Credential Manager keys; plaintext migration | Complete and verified | Phase 7 | None |
 | TPL-01 | Built-in/custom templates and re-summary | Implemented with verification debt | Phase 7 | Qualification: UI CRUD |
 | NOTE-01 | Manual notes separate from generated summary | Implemented with verification debt | Phase 7 | Qualification: editor UX. Re-summarize must not overwrite manual notes (unit-covered) |
-| ORG-01 | Nested meeting folders | Partial | Phase 8 | Implementation: one-level folders only; no `ParentId` |
-| SEARCH-01 | Search dictations and meetings | Partial | Phase 8 / 12 | Implementation: meeting search is title/summary/transcript/metadata only; **manual notes are not indexed** |
+| ORG-01 | Nested meeting folders | Partial | Phase 8 | Implementation: SQLite repositories support tested `ParentId`, ancestry, subtree moves, and cycle rejection, but the production JSON-backed UI remains one-level and cannot expose nesting |
+| SEARCH-01 | Search dictations and meetings | Partial | Phase 8 / 12 | Implementation: SQLite FTS indexes manual notes, but the production in-memory UI filter still searches only title/summary/transcript/metadata and does not use that repository |
 
 ### Import, export, automation
 
@@ -180,7 +180,7 @@ Remaining class: **None** (done at the stated status), **Implementation**, **Qua
 | TRAY-01 | Tray menu from real state | Implemented with verification debt | Phase 12 | Qualification: menu actions. Upcoming meetings row is honestly disabled (no calendar) |
 | FLOAT-01 | Draggable indicator with real levels and stop/cancel | Implemented with verification debt | Phase 2 / 12 | Qualification: DPI/multi-monitor/click |
 | FLOAT-02 | Optional live waveform on hover | Implemented with verification debt | Phase 4 | Qualification: hover DPI review |
-| SHELL-01 | Light/dark dashboard and navigation | Implemented with verification debt | Phase 12 | Qualification: keyboard, 100–200% DPI, multi-monitor. Uncommitted navigation extraction by another agent is not this ledger's evidence |
+| SHELL-01 | Light/dark dashboard and navigation | Implemented with verification debt | Phase 12 | Qualification: keyboard, 100–200% DPI, and multi-monitor. PerMonitorV2 is now embedded and asserted in the built manifest, but physical DPI evidence remains open |
 | START-01 | Launch at login | Implemented with verification debt | Phase 12 | Qualification: install/uninstall/elevation |
 | INSTANCE-01 | Single-instance activation | Complete and verified | Phase 12 | Visible second-instance click is optional manual confirmation |
 | INSIGHT-01 | Insights analyzer and contribution | Partial | Phase 12 / D4 | Implementation: dashboard stat cards only. Analyzer/share missing. Contribution telemetry is D4 |
@@ -249,7 +249,9 @@ This is not missing code. Do not treat it as implementation backlog.
 
 ## Obsolete branches — do not merge wholesale
 
-Current line of work: `docs/native-architecture-and-roadmap` (`e8c1778` at inventory start). `main` is an ancestor at `ba38e56` (“Checkpoint launch-ready Python pipeline”) and must not be used as a merge source for native work.
+Current line of work: `codex/wave0-launch-foundation` (`3bff598` at this review). `main` is an ancestor at `ba38e56` (“Checkpoint launch-ready Python pipeline”) and must not be used as a merge source for native work.
+
+The open Wave 1 module branches currently merge-base with HEAD at `ba38e56` despite containing useful focused tip commits. Rebase or cherry-pick only the reviewed module commits; do not merge those branches wholesale. This applies to `agent-a-l10-l11-inventory`, `agent-d-l27-cutover-gate`, `agent-e2-l09-uia-skeleton`, and `agent-e3-l04-package-ci`.
 
 Feature/refactor/test branches that **are already merged** into HEAD are historical slices. Re-merging them is unnecessary.
 
@@ -297,7 +299,7 @@ These remain useful as contracts or old evidence. They are **not** status source
 
 | Old claim (2026-08-01 matrix / roadmap) | Current fact |
 |---|---|
-| 46 / 56 / 74 / 128 / 165 / 195 / 337 / 484 tests | Wave 0 integration suite expands to **634** cases (630 hardware-free passes plus 4 explicit qualification skips) |
+| 46 / 56 / 74 / 128 / 165 / 195 / 337 / 484 / 634 tests | Current integration suite expands to **709** cases (705 hardware-free passes plus 4 explicit qualification skips) |
 | Manual notes missing | `PersistedMeeting.ManualNotes`, editor, export, Phase 7 tests |
 | Ollama missing | `MeetingSummaryService` Ollama path + settings. LM Studio still missing |
 | Live transcription missing | `MeetingLiveTranscriptionSession` + window + Phase 4 tests; default Off |
@@ -312,4 +314,4 @@ These remain useful as contracts or old evidence. They are **not** status source
 
 ## Concurrent work notice
 
-Wave 0 integration reviewed the uncommitted `.NET 10` retarget, release identity, installer/CI script edits, `MainWindow` partial-class split, navigation/dialog abstractions, meeting-pipeline extraction, SQLite repository substrate, sound-feedback slice, and expanded tests together. The build and test facts above describe this reviewed working tree; do not merge stale feature branches wholesale on top of it.
+Wave 0 integration is committed at `efa961c`; the reviewed line now ends at `3bff598` with focused Wave 1 source/tooling slices. The build and test facts above describe that committed source plus this review's document edits. Do not merge stale feature or divergent module branches wholesale on top of it.
