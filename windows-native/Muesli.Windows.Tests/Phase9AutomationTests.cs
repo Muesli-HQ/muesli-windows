@@ -350,6 +350,80 @@ public sealed class Phase9AutomationTests
     }
 
     [Fact]
+    public async Task ModifiedManifestDestinationIsNeverOverwrittenAndPublishesFreshCandidate()
+    {
+        using var directory = new TestDirectory();
+        var meeting = Meeting();
+        var options = new PostMeetingAutomationOptions
+        {
+            AutoExportEnabled = true,
+            AutoExportDirectory = directory.Path
+        };
+        var service = new PostMeetingAutomationService();
+
+        var first = await service.RunAsync(
+            meeting,
+            options,
+            PostMeetingCompletionEvent.RecordingCompleted);
+        Assert.True(first.Export.Completed, first.Export.Error);
+
+        var userContent = "user-modified export; preserve this file";
+        File.WriteAllText(first.Export.DestinationPath!, userContent);
+
+        var second = await service.RunAsync(
+            meeting,
+            options,
+            PostMeetingCompletionEvent.RecordingCompleted);
+        var expectedMarkdown = MeetingExporter.BuildMarkdown(meeting, MeetingExportMode.FullMeeting, null);
+
+        Assert.True(second.Export.Completed, second.Export.Error);
+        Assert.NotEqual(first.Export.DestinationPath, second.Export.DestinationPath);
+        Assert.Equal(userContent, File.ReadAllText(first.Export.DestinationPath!));
+        Assert.Equal(expectedMarkdown, File.ReadAllText(second.Export.DestinationPath!));
+        Assert.Equal(2, Directory.GetFiles(directory.Path, "*.md").Length);
+
+        var third = await service.RunAsync(
+            meeting,
+            options,
+            PostMeetingCompletionEvent.RecordingCompleted);
+        Assert.Equal(second.Export.DestinationPath, third.Export.DestinationPath);
+        Assert.Equal(2, Directory.GetFiles(directory.Path, "*.md").Length);
+    }
+
+    [Fact]
+    public async Task ChangedRenderedContentInvalidatesManifestAndPublishesCollisionFreeCandidate()
+    {
+        using var directory = new TestDirectory();
+        var original = Meeting();
+        var options = new PostMeetingAutomationOptions
+        {
+            AutoExportEnabled = true,
+            AutoExportDirectory = directory.Path
+        };
+        var service = new PostMeetingAutomationService();
+
+        var first = await service.RunAsync(
+            original,
+            options,
+            PostMeetingCompletionEvent.RecordingCompleted);
+        Assert.True(first.Export.Completed, first.Export.Error);
+        var originalMarkdown = File.ReadAllText(first.Export.DestinationPath!);
+
+        var changed = Meeting(transcript: "updated transcript exact value δ");
+        var second = await service.RunAsync(
+            changed,
+            options,
+            PostMeetingCompletionEvent.RecordingCompleted);
+        var changedMarkdown = MeetingExporter.BuildMarkdown(changed, MeetingExportMode.FullMeeting, null);
+
+        Assert.True(second.Export.Completed, second.Export.Error);
+        Assert.NotEqual(first.Export.DestinationPath, second.Export.DestinationPath);
+        Assert.Equal(originalMarkdown, File.ReadAllText(first.Export.DestinationPath!));
+        Assert.Equal(changedMarkdown, File.ReadAllText(second.Export.DestinationPath!));
+        Assert.Equal(2, Directory.GetFiles(directory.Path, "*.md").Length);
+    }
+
+    [Fact]
     public async Task ConcurrentAutoExportsPublishExactlyOneMarkdownFile()
     {
         const int rounds = 8;

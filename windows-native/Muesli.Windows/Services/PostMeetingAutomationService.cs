@@ -524,7 +524,7 @@ internal static class PostMeetingMarkdownAutoExporter
         var controlError = EnsureOwnedControlDirectory(directory, paths.ControlDirectory);
         if (controlError is not null) return Failure(controlError, 0);
 
-        var existing = ReadManifest(paths.ManifestPath, directory);
+        var existing = ReadManifest(paths.ManifestPath, directory, contentHash);
         if (existing is not null) return existing;
 
         var attempts = Math.Clamp(requestedAttempts, 1, 3);
@@ -548,7 +548,7 @@ internal static class PostMeetingMarkdownAutoExporter
             ClaimAcquisition acquired;
             try
             {
-                acquired = await AcquireClaimAsync(paths, directory, claim, cancellationToken).ConfigureAwait(false);
+                acquired = await AcquireClaimAsync(paths, directory, claim, contentHash, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -565,6 +565,13 @@ internal static class PostMeetingMarkdownAutoExporter
             var exportTemporaryOwned = false;
             try
             {
+                var manifestAfterClaim = PrepareManifestForPublication(paths.ManifestPath, directory, contentHash);
+                if (manifestAfterClaim is not null)
+                {
+                    DeleteClaimIfOwned(paths.ClaimPath, ownerToken);
+                    return manifestAfterClaim;
+                }
+
                 var priorPath = ValidPreviousPath(previousExport, directory, contentHash);
                 if (priorPath is not null)
                 {
@@ -725,12 +732,13 @@ internal static class PostMeetingMarkdownAutoExporter
         ExportControlPaths paths,
         string directory,
         ExportClaim claim,
+        string expectedContentHash,
         CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + ClaimWaitLimit;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var manifest = ReadManifest(paths.ManifestPath, directory);
+            var manifest = ReadManifest(paths.ManifestPath, directory, expectedContentHash);
             if (manifest is not null) return new ClaimAcquisition(false, manifest, null);
 
             var claimTemporaryPath = $"{paths.ClaimPath}.{NextTemporaryToken()}.tmp";
@@ -748,7 +756,7 @@ internal static class PostMeetingMarkdownAutoExporter
                 // becomes visible (the previous owner publishes it before releasing its claim).
                 // Recheck while we own the claim so a waiter cannot create a second Markdown file
                 // after the winning export has already committed.
-                var publishedAfterClaim = ReadManifest(paths.ManifestPath, directory);
+                var publishedAfterClaim = ReadManifest(paths.ManifestPath, directory, expectedContentHash);
                 if (publishedAfterClaim is not null)
                 {
                     DeleteClaimIfOwned(paths.ClaimPath, claim.OwnerToken);
@@ -767,7 +775,7 @@ internal static class PostMeetingMarkdownAutoExporter
 
                 if (!IsClaimOwnerAlive(existingClaim))
                 {
-                    var recovered = RecoverPublishedClaim(existingClaim, paths, directory);
+                    var recovered = RecoverPublishedClaim(existingClaim, paths, directory, expectedContentHash);
                     if (recovered is not null) return new ClaimAcquisition(false, recovered, null);
                     DeleteServiceFile(paths.ClaimPath);
                     continue;
@@ -791,22 +799,34 @@ internal static class PostMeetingMarkdownAutoExporter
     private static PostMeetingExportDiagnostic? RecoverPublishedClaim(
         ExportClaim? claim,
         ExportControlPaths paths,
-        string directory)
+        string directory,
+        string expectedContentHash)
     {
         if (claim is null
             || !string.Equals(claim.Owner, ControlOwner, StringComparison.Ordinal)
-            || !SafeFileName(claim.FileName)) return null;
-        var candidate = Path.Combine(directory, claim.FileName!);
+            || !TryGetManifestDestination(directory, claim.FileName, out var candidate)
+            || !HashesEqual(claim.ContentSha256, expectedContentHash)) return null;
         if (!File.Exists(candidate)) return null;
         try
         {
             using var stream = File.OpenRead(candidate);
             var actualHash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-            if (!string.Equals(actualHash, claim.ContentSha256, StringComparison.Ordinal)) return null;
+            if (!string.Equals(actualHash, expectedContentHash, StringComparison.Ordinal)) return null;
+
+            var manifestAfterRecovery = PrepareManifestForPublication(
+                paths.ManifestPath,
+                directory,
+                expectedContentHash);
+            if (manifestAfterRecovery is not null)
+            {
+                if (manifestAfterRecovery.Completed) DeleteServiceFile(paths.ClaimPath);
+                return manifestAfterRecovery;
+            }
+
             PublishManifest(paths.ManifestPath, new ExportManifest(
                 ManifestVersion,
                 claim.FileName!,
-                claim.ContentSha256,
+                expectedContentHash,
                 DateTimeOffset.UtcNow));
             DeleteServiceFile(paths.ClaimPath);
             return Success(candidate, 0);
@@ -817,24 +837,94 @@ internal static class PostMeetingMarkdownAutoExporter
         }
     }
 
-    private static PostMeetingExportDiagnostic? ReadManifest(string manifestPath, string directory)
+    private static PostMeetingExportDiagnostic? ReadManifest(
+        string manifestPath,
+        string directory,
+        string expectedContentHash)
     {
-        if (!File.Exists(manifestPath)) return null;
+        var inspection = InspectManifest(manifestPath, directory);
+        return inspection.State switch
+        {
+            ManifestInspectionState.Missing or ManifestInspectionState.Stale => null,
+            ManifestInspectionState.Invalid => Failure(inspection.Error!, 0),
+            ManifestInspectionState.Valid when !HashesEqual(
+                inspection.Manifest!.ContentSha256,
+                expectedContentHash) => null,
+            ManifestInspectionState.Valid => Success(inspection.DestinationPath!, 0),
+            _ => Failure("The auto-export manifest is invalid and was left untouched.", 0)
+        };
+    }
+
+    private static PostMeetingExportDiagnostic? PrepareManifestForPublication(
+        string manifestPath,
+        string directory,
+        string expectedContentHash)
+    {
+        var inspection = InspectManifest(manifestPath, directory);
+        switch (inspection.State)
+        {
+            case ManifestInspectionState.Missing:
+                return null;
+            case ManifestInspectionState.Invalid:
+                return Failure(inspection.Error!, 0);
+            case ManifestInspectionState.Valid when HashesEqual(
+                inspection.Manifest!.ContentSha256,
+                expectedContentHash):
+                return Success(inspection.DestinationPath!, 0);
+            case ManifestInspectionState.Valid:
+            case ManifestInspectionState.Stale:
+                try
+                {
+                    if (File.Exists(manifestPath)) File.Delete(manifestPath);
+                    return null;
+                }
+                catch (Exception ex) when (
+                    ex is IOException or UnauthorizedAccessException or NotSupportedException)
+                {
+                    return Failure(
+                        $"The stale auto-export manifest could not be invalidated ({ex.GetType().Name}) and was left untouched.",
+                        0);
+                }
+            default:
+                return Failure("The auto-export manifest is invalid and was left untouched.", 0);
+        }
+    }
+
+    private static ManifestInspection InspectManifest(string manifestPath, string directory)
+    {
+        if (!File.Exists(manifestPath))
+            return new(ManifestInspectionState.Missing, null, null, null);
+
         try
         {
-            var manifest = JsonSerializer.Deserialize<ExportManifest>(File.ReadAllText(manifestPath), ControlJsonOptions);
-            if (manifest?.SchemaVersion != ManifestVersion || !SafeFileName(manifest.FileName))
-                return Failure("The auto-export manifest is invalid and was left untouched.", 0);
+            var manifest = JsonSerializer.Deserialize<ExportManifest>(
+                File.ReadAllText(manifestPath),
+                ControlJsonOptions);
+            if (manifest?.SchemaVersion != ManifestVersion
+                || !TryGetManifestDestination(directory, manifest.FileName, out var destination)
+                || !IsSha256Hash(manifest.ContentSha256))
+            {
+                return InvalidManifestInspection();
+            }
 
-            var destination = Path.Combine(directory, manifest.FileName);
             if (!File.Exists(destination))
-                return Failure("The auto-export manifest destination is missing; the manifest was left untouched.", 0);
+                return new(ManifestInspectionState.Stale, manifest, destination, null);
 
-            return Success(destination, 0);
+            using var stream = File.OpenRead(destination);
+            var actualHash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+            if (!HashesEqual(actualHash, manifest.ContentSha256))
+                return new(ManifestInspectionState.Stale, manifest, destination, null);
+
+            return new(ManifestInspectionState.Valid, manifest, destination, null);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or NotSupportedException or JsonException)
         {
-            return Failure($"The auto-export manifest could not be read ({ex.GetType().Name}) and was left untouched.", 0);
+            return new(
+                ManifestInspectionState.Invalid,
+                null,
+                null,
+                $"The auto-export manifest could not be read ({ex.GetType().Name}) and was left untouched.");
         }
     }
 
@@ -956,10 +1046,72 @@ internal static class PostMeetingMarkdownAutoExporter
         try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 
-    private static bool SafeFileName(string? filename) =>
-        !string.IsNullOrWhiteSpace(filename)
-        && string.Equals(filename, Path.GetFileName(filename), StringComparison.Ordinal)
-        && filename.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+    private static bool SafeFileName(string? filename)
+    {
+        if (string.IsNullOrWhiteSpace(filename)) return false;
+        try
+        {
+            return !string.Equals(filename, ".", StringComparison.Ordinal)
+                && !string.Equals(filename, "..", StringComparison.Ordinal)
+                && string.Equals(filename, Path.GetFileName(filename), StringComparison.Ordinal)
+                && filename.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetManifestDestination(
+        string directory,
+        string? filename,
+        out string destination)
+    {
+        destination = string.Empty;
+        if (!SafeFileName(filename)) return false;
+
+        try
+        {
+            var normalizedDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+            var candidate = Path.GetFullPath(Path.Combine(normalizedDirectory, filename!));
+            var candidateDirectory = Path.TrimEndingDirectorySeparator(Path.GetDirectoryName(candidate)!);
+            if (!string.Equals(candidateDirectory, normalizedDirectory, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            destination = candidate;
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsSha256Hash(string? value)
+    {
+        if (value is null || value.Length != 64) return false;
+        foreach (var character in value)
+        {
+            var isDecimal = character is >= '0' and <= '9';
+            var isLowerHex = character is >= 'a' and <= 'f';
+            var isUpperHex = character is >= 'A' and <= 'F';
+            if (!isDecimal && !isLowerHex && !isUpperHex) return false;
+        }
+
+        return true;
+    }
+
+    private static bool HashesEqual(string? left, string? right) =>
+        IsSha256Hash(left)
+        && IsSha256Hash(right)
+        && string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+
+    private static ManifestInspection InvalidManifestInspection() =>
+        new(
+            ManifestInspectionState.Invalid,
+            null,
+            null,
+            "The auto-export manifest is invalid and was left untouched.");
 
     private static string NextTemporaryToken() =>
         TemporaryTokenFactoryForTests?.Invoke() ?? Guid.NewGuid().ToString("N");
@@ -969,6 +1121,20 @@ internal static class PostMeetingMarkdownAutoExporter
 
     private static PostMeetingExportDiagnostic Failure(string error, int attempts) =>
         new(true, false, null, AutomationDestinationOwnership.None, error, attempts);
+
+    private enum ManifestInspectionState
+    {
+        Missing,
+        Valid,
+        Stale,
+        Invalid
+    }
+
+    private sealed record ManifestInspection(
+        ManifestInspectionState State,
+        ExportManifest? Manifest,
+        string? DestinationPath,
+        string? Error);
 
     internal sealed record ExportControlPaths(string Key, string ControlDirectory, string ClaimPath, string ManifestPath);
     internal sealed record ExportClaim(
