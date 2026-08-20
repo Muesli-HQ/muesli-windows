@@ -25,16 +25,10 @@ function Assert-MuesliPinnedSdk {
         throw "dotnet --version failed; cannot verify the pinned SDK $pinnedText."
     }
     $actualText = $actualText.Trim()
-    $pinned = [Version]$pinnedText
-    $actual = [Version]$actualText
-    if ($actual.Major -ne $pinned.Major -or $actual.Minor -ne $pinned.Minor) {
-        throw "SDK $actualText does not match pinned $pinnedText in global.json (major.minor must match)."
+    if ($rollForward -ne "disable") {
+        throw "global.json must set rollForward=disable for reproducible release inputs; found '$rollForward'."
     }
-    if ($rollForward -eq "latestPatch") {
-        if ($actual.Build -lt $pinned.Build) {
-            throw "SDK $actualText is older than pinned $pinnedText (rollForward=latestPatch)."
-        }
-    } elseif ($actualText -ne $pinnedText) {
+    if ($actualText -ne $pinnedText) {
         throw "SDK $actualText does not exactly match pinned $pinnedText."
     }
     Write-Host "Using pinned .NET SDK $actualText (global.json $pinnedText, rollForward=$rollForward)."

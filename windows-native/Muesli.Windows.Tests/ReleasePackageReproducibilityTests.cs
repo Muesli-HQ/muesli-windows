@@ -45,11 +45,17 @@ public sealed class ReleasePackageReproducibilityTests
         var package = Read("scripts/package-windows-v1.ps1");
         var common = Read("scripts/release-common.ps1");
         var assertInputs = Read("scripts/assert-release-inputs.ps1");
+        using var globalJson = JsonDocument.Parse(Read("global.json"));
+        var sdk = globalJson.RootElement.GetProperty("sdk");
+        Assert.Equal("10.0.400", sdk.GetProperty("version").GetString());
+        Assert.Equal("disable", sdk.GetProperty("rollForward").GetString());
         Assert.Contains("Assert-MuesliCleanReleaseInputs", package, StringComparison.Ordinal);
         Assert.Contains("AllowDirty", package, StringComparison.Ordinal);
         Assert.Contains("Deterministic=true", common, StringComparison.Ordinal);
         Assert.Contains("ContinuousIntegrationBuild=true", common, StringComparison.Ordinal);
         Assert.Contains("global.json", common, StringComparison.Ordinal);
+        Assert.Contains("$rollForward -ne \"disable\"", common, StringComparison.Ordinal);
+        Assert.Contains("does not exactly match pinned", common, StringComparison.Ordinal);
         Assert.Contains("Refusing to build a release package from a dirty work tree", common, StringComparison.Ordinal);
         Assert.Contains("dirty-release-override.json", common, StringComparison.Ordinal);
         Assert.Contains("Assert-MuesliCleanReleaseInputs", assertInputs, StringComparison.Ordinal);
