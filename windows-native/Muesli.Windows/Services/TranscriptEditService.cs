@@ -295,36 +295,38 @@ public sealed class TranscriptEditService : IDisposable
             AudioByteLength = audio.ByteLength
         };
 
-        try
-        {
-            _candidates.Save(scratch);
-        }
-        catch (Exception exception)
-        {
-            _log?.Error($"Retranscribe could not write in-flight scratch. meetingId={meetingId}", exception);
-            return RetranscribeClosed(
-                RetranscriptionOutcome.PersistFailed,
-                "Re-transcription could not start because candidate scratch could not be written. The original transcript was not changed.",
-                original,
-                HonestException(exception));
-        }
-
         using var flightCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         flightCts.CancelAfter(_retranscribeTimeout);
         var flight = new InFlightRetranscribe(candidateId, flightCts);
         if (!_flights.TryAdd(meetingId, flight))
         {
-            _candidates.Delete(meetingId);
             return RetranscribeClosed(
                 RetranscriptionOutcome.Busy,
                 "A retranscription candidate is already in progress. The original transcript was not changed.",
                 original);
         }
 
-        _log?.Info(
-            $"Retranscribe started. meetingId={meetingId}; candidate={candidateId}; audioFile={audio.FileName}; bytes={audio.ByteLength}");
         try
         {
+            // Admission owns the per-meeting flight before the shared candidate path is touched.
+            // A concurrent caller that lost the admission race must leave the winner's scratch
+            // untouched; deleting the path here could erase the winning candidate.
+            try
+            {
+                _candidates.Save(scratch);
+            }
+            catch (Exception exception)
+            {
+                _log?.Error($"Retranscribe could not write in-flight scratch. meetingId={meetingId}", exception);
+                return RetranscribeClosed(
+                    RetranscriptionOutcome.PersistFailed,
+                    "Re-transcription could not start because candidate scratch could not be written. The original transcript was not changed.",
+                    original,
+                    HonestException(exception));
+            }
+
+            _log?.Info(
+                $"Retranscribe started. meetingId={meetingId}; candidate={candidateId}; audioFile={audio.FileName}; bytes={audio.ByteLength}");
             TranscriptionResult asrResult;
             try
             {
@@ -457,7 +459,10 @@ public sealed class TranscriptEditService : IDisposable
         }
         finally
         {
-            _flights.TryRemove(meetingId, out _);
+            // Recovery/deletion can deliberately remove this flight and admit a newer one while
+            // the old ASR call is still unwinding. Remove only this exact flight so its teardown
+            // cannot clear the newer admission.
+            RemoveFlight(meetingId, flight);
         }
     }
 
@@ -701,6 +706,12 @@ public sealed class TranscriptEditService : IDisposable
         {
             _log?.Error($"Could not delete abandoned retranscription scratch. meetingId={meetingId}; reason={reason}", exception);
         }
+    }
+
+    private void RemoveFlight(string meetingId, InFlightRetranscribe flight)
+    {
+        ((ICollection<KeyValuePair<string, InFlightRetranscribe>>)_flights)
+            .Remove(new KeyValuePair<string, InFlightRetranscribe>(meetingId, flight));
     }
 
     private void AssertOriginalIntact(string meetingId, PersistedMeeting original)

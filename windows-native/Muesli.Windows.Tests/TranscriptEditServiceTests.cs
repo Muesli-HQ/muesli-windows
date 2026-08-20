@@ -145,6 +145,71 @@ public sealed class TranscriptEditServiceTests
     }
 
     [Fact]
+    public async Task ConcurrentSameMeetingRetranscriptionsKeepTheAdmittedCandidateAndCleanUp()
+    {
+        using var directory = new TestDirectory();
+        var audio = directory.File("microphone.wav");
+        File.WriteAllBytes(audio, [1, 2, 3, 4]);
+        var store = new MemoryTranscriptMeetingStore();
+        store.Save(Meeting(audio));
+
+        var secondAsrStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseAsr = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var time = new FirstCallWaitsForSecondAsrTimeProvider(secondAsrStarted);
+        var asr = new FakeRetranscriptionAsr
+        {
+            Handler = async (_, token) =>
+            {
+                secondAsrStarted.TrySetResult(true);
+                await releaseAsr.Task.WaitAsync(token);
+                return new TranscriptionResult(CandidateTranscript);
+            }
+        };
+        var scratchDirectory = Path.Combine(directory.Path, "scratch");
+        using var service = CreateService(store, scratchDirectory, asr, time: time);
+
+        // Hold the first caller after all preflight checks, then let the second caller acquire
+        // the flight and begin ASR. This deterministically exercises the old save-before-admit
+        // interleaving: the first caller must not overwrite or delete the admitted scratch.
+        var firstTask = Task.Run(() => service.RetranscribeAsync("meet_1"));
+        await time.FirstCallEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var secondTask = Task.Run(() => service.RetranscribeAsync("meet_1"));
+        await secondAsrStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var first = await firstTask;
+        Assert.Equal(RetranscriptionOutcome.Busy, first.Outcome);
+        Assert.False(first.AppliedToMeeting);
+        Assert.Equal(OriginalTranscript, store.Find("meet_1")!.Transcript);
+
+        releaseAsr.TrySetResult(true);
+        var second = await secondTask;
+        Assert.Equal(RetranscriptionOutcome.CandidateReady, second.Outcome);
+        Assert.True(second.Succeeded);
+        Assert.False(second.AppliedToMeeting);
+        Assert.NotNull(second.Candidate);
+        Assert.Equal(CandidateTranscript, second.Candidate!.Transcript);
+        Assert.Equal(OriginalTranscript, store.Find("meet_1")!.Transcript);
+
+        // Exercise a small same-meeting request burst while the ready candidate is pending. The
+        // burst must remain fail-closed and must not disturb the winner before explicit acceptance.
+        var contenders = await Task.WhenAll(
+            Enumerable.Range(0, 16)
+                .Select(_ => Task.Run(() => service.RetranscribeAsync("meet_1"))));
+        Assert.All(contenders, result => Assert.Equal(RetranscriptionOutcome.Busy, result.Outcome));
+        var pending = service.GetPendingCandidate("meet_1");
+        Assert.NotNull(pending);
+        Assert.Equal(second.Candidate.CandidateId, pending!.CandidateId);
+        Assert.Equal(CandidateTranscript, pending.Transcript);
+
+        var accepted = service.AcceptCandidate("meet_1", pending.CandidateId);
+        Assert.True(accepted.AppliedToMeeting);
+        Assert.Equal(CandidateTranscript, store.Find("meet_1")!.Transcript);
+        Assert.Empty(Directory.GetFiles(scratchDirectory, "*-candidate.json*"));
+        service.DeleteMeetingScratch("meet_1");
+        Assert.Empty(Directory.GetFiles(scratchDirectory));
+    }
+
+    [Fact]
     public async Task RetranscribeSuccessProducesCandidateAcceptReplacesRejectKeepsOriginal()
     {
         using var harness = Harness();
@@ -445,13 +510,14 @@ public sealed class TranscriptEditServiceTests
         string scratchDirectory,
         IMeetingRetranscriptionAsr? asr = null,
         ITranscriptEditDiagnostics? log = null,
-        TimeSpan? timeout = null) =>
+        TimeSpan? timeout = null,
+        TimeProvider? time = null) =>
         new(
             store,
             new RetranscriptionCandidateStore(scratchDirectory),
             asr,
             log,
-            TimeProvider.System,
+            time ?? TimeProvider.System,
             timeout);
 
     private static PersistedMeeting Meeting(string? audioPath = null) => new()
@@ -599,6 +665,30 @@ public sealed class TranscriptEditServiceTests
             return Handler is null
                 ? Task.FromResult(new TranscriptionResult(CandidateTranscript))
                 : Handler(filePath, cancellationToken);
+        }
+    }
+
+    private sealed class FirstCallWaitsForSecondAsrTimeProvider(
+        TaskCompletionSource<bool> secondAsrStarted) : TimeProvider
+    {
+        private int _calls;
+
+        public TaskCompletionSource<bool> FirstCallEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            var call = Interlocked.Increment(ref _calls);
+            if (call == 1)
+            {
+                FirstCallEntered.TrySetResult(true);
+                if (!secondAsrStarted.Task.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    throw new TimeoutException("The second retranscription did not reach ASR.");
+                }
+            }
+
+            return new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
         }
     }
 
