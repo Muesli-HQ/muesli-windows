@@ -80,14 +80,36 @@ public sealed class PersistenceCutover : IPersistenceCutover
             }
         }
 
+        CapturedJsonHistory captured;
+        try
+        {
+            captured = CaptureJsonHistory();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _ = exception;
+            const string failure = "The JSON history could not be captured, so nothing was imported.";
+            SafeReport(failure);
+            return Failed(failure);
+        }
+
+        using var capturedScope = captured;
+
         JsonHistorySnapshot snapshot;
         try
         {
-            snapshot = JsonHistorySnapshotReader.Read(_jsonDirectory);
+            snapshot = JsonHistorySnapshotReader.Read(captured.StagingDirectory);
         }
         catch (InvalidDataException exception)
         {
             return Failed(SafeFailure(exception.Message));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _ = exception;
+            const string failure = "The captured JSON history could not be read, so nothing was imported.";
+            SafeReport(failure);
+            return Failed(failure);
         }
 
         var warnings = snapshot.Problems
@@ -105,7 +127,23 @@ public sealed class PersistenceCutover : IPersistenceCutover
 
         var plan = MigrationPlan.Build(snapshot, warnings);
 
-        var snapshotDirectory = SnapshotJsonHistory();
+        string? snapshotDirectory;
+        try
+        {
+            snapshotDirectory = SnapshotJsonHistory(captured.StagingDirectory);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _ = exception;
+            const string failure =
+                "The captured JSON history could not be retained, so nothing was imported.";
+            SafeReport(failure);
+            return Failed(failure, plan.Warnings.ToList()) with
+            {
+                SourceFingerprint = plan.Fingerprint,
+                Counts = plan.Counts
+            };
+        }
         if (_options.FailAfterJsonSnapshot)
         {
             return new JsonToSqliteMigrationResult
@@ -123,7 +161,7 @@ public sealed class PersistenceCutover : IPersistenceCutover
         JsonToSqliteMigrationResult migrated;
         try
         {
-            migrated = _migration.Migrate();
+            migrated = _migration.Migrate(plan);
         }
         catch (Exception exception) when (exception is PersistenceException or SqliteException or IOException)
         {
@@ -235,13 +273,53 @@ public sealed class PersistenceCutover : IPersistenceCutover
             Warnings = warnings ?? []
         };
 
-    private string? SnapshotJsonHistory()
+    private CapturedJsonHistory CaptureJsonHistory()
+    {
+        var stagingDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"muesli-json-cutover-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(stagingDirectory);
+
+        try
+        {
+            foreach (var name in HistoryFileNames)
+            {
+                CaptureFile(
+                    Path.Combine(_jsonDirectory, name),
+                    Path.Combine(stagingDirectory, name));
+                CaptureFile(
+                    Path.Combine(_jsonDirectory, name + ".bak"),
+                    Path.Combine(stagingDirectory, name + ".bak"));
+            }
+
+            return new CapturedJsonHistory(stagingDirectory);
+        }
+        catch
+        {
+            DeleteDirectory(stagingDirectory);
+            throw;
+        }
+    }
+
+    private static void CaptureFile(string source, string destination)
+    {
+        if (!File.Exists(source))
+        {
+            return;
+        }
+
+        var sourceTimestampUtc = File.GetLastWriteTimeUtc(source);
+        File.Copy(source, destination, overwrite: false);
+        File.SetLastWriteTimeUtc(destination, sourceTimestampUtc);
+    }
+
+    private string? SnapshotJsonHistory(string capturedDirectory)
     {
         var sources = HistoryFileNames
             .SelectMany(name => new[]
             {
-                Path.Combine(_jsonDirectory, name),
-                Path.Combine(_jsonDirectory, name + ".bak")
+                Path.Combine(capturedDirectory, name),
+                Path.Combine(capturedDirectory, name + ".bak")
             })
             .Where(File.Exists)
             .ToList();
@@ -261,6 +339,33 @@ public sealed class PersistenceCutover : IPersistenceCutover
 
         SafeReport($"Kept a JSON history snapshot as {Path.GetFileName(directory)}.");
         return directory;
+    }
+
+    private sealed class CapturedJsonHistory(string stagingDirectory) : IDisposable
+    {
+        public string StagingDirectory { get; } = stagingDirectory;
+
+        public void Dispose() => DeleteDirectory(StagingDirectory);
+    }
+
+    private static void DeleteDirectory(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // The staging copy is best-effort cleanup only; it is not user history and the next
+            // cutover receives a fresh, uniquely named snapshot.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // See the IOException case above.
+        }
     }
 
     private string? ExistingSnapshotDirectory()

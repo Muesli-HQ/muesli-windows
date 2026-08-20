@@ -111,6 +111,63 @@ public sealed class PersistenceCutoverImplementationTests
     }
 
     [Fact]
+    public void MutationAfterCapturedJsonSnapshotDoesNotChangeImportFingerprintOrRetainedSnapshot()
+    {
+        using var directory = new TestDirectory();
+        WriteClonedProfile(directory.Path);
+        var capturedSnapshot = JsonHistorySnapshotReader.Read(directory.Path);
+        var capturedPlan = MigrationPlan.Build(capturedSnapshot, []);
+        var capturedDictations = File.ReadAllBytes(directory.File(JsonHistorySnapshotReader.DictationsFileName));
+        var reports = new List<string>();
+        var mutated = false;
+
+        var result = new PersistenceCutover(
+            directory.Path,
+            report: message =>
+            {
+                reports.Add(message);
+                if (!mutated && message.StartsWith("Kept a JSON history snapshot", StringComparison.Ordinal))
+                {
+                    mutated = true;
+                    new AppDataStore(directory.Path).SaveDictations([
+                        new PersistedDictation(
+                            "id-d-after-capture",
+                            Created.AddDays(1),
+                            "body-after-capture",
+                            999,
+                            "model-after-capture")
+                    ]);
+                }
+            }).EnsureMigrated();
+
+        Assert.True(mutated);
+        Assert.Equal(JsonMigrationOutcome.Migrated, result.Outcome);
+        Assert.Equal(capturedPlan.Fingerprint, result.SourceFingerprint);
+        Assert.Equal(capturedPlan.Counts, result.Counts);
+        Assert.DoesNotContain(reports, report => report.Contains("id-d-after-capture", StringComparison.Ordinal));
+
+        using (var store = MuesliPersistenceStore.Open(result.DatabasePath))
+        {
+            Assert.Null(store.Dictations.Find("id-d-after-capture"));
+            Assert.Equal(
+                PersistenceDigest.OfDictations(capturedPlan.Dictations),
+                PersistenceDigest.OfDictations(store.Dictations.List(UnboundedHistoryQuery.Dictations)));
+        }
+
+        Assert.NotNull(result.JsonSnapshotDirectory);
+        Assert.Equal(
+            capturedDictations,
+            File.ReadAllBytes(Path.Combine(result.JsonSnapshotDirectory!, JsonHistorySnapshotReader.DictationsFileName)));
+        Assert.Contains(
+            "id-d-after-capture",
+            File.ReadAllText(directory.File(JsonHistorySnapshotReader.DictationsFileName)),
+            StringComparison.Ordinal);
+
+        using var database = MuesliDatabase.Open(result.DatabasePath);
+        Assert.Equal(result.SourceFingerprint, PersistenceCutoverState.Read(database).SourceFingerprint);
+    }
+
+    [Fact]
     public void ForcedFailureAfterSnapshotRetainsOriginalJson()
     {
         using var directory = new TestDirectory();

@@ -132,6 +132,19 @@ public sealed class JsonToSqliteMigrationService
         }
 
         var plan = MigrationPlan.Build(snapshot, warnings);
+        return Migrate(plan, options);
+    }
+
+    /// <summary>
+    /// Imports an already captured plan. The cutover path calls this overload so the migration does
+    /// not read live JSON a second time after it has calculated the authority fingerprint.
+    /// </summary>
+    internal JsonToSqliteMigrationResult Migrate(
+        MigrationPlan plan,
+        JsonMigrationOptions? options = null)
+    {
+        options ??= new JsonMigrationOptions();
+
         if (plan.Counts.Total == 0)
         {
             return new JsonToSqliteMigrationResult
