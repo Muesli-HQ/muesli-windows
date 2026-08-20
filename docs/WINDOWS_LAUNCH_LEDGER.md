@@ -33,13 +33,31 @@ Implemented never means macOS parity. A source file, button, or historical bench
 | Onboarding progress schema | 1 |
 | Offline ASR | Seven pinned sherpa-onnx choices; independent Dictation and Final meeting/import roles. |
 | Live ASR | Opt-in Nemotron 3.5; default Off; prepare does not select. CoreML Parakeet Realtime EOU absent. |
-| Hardware-free integration suite | **709** expanded xUnit cases in `Muesli.Windows.Tests`: **705 passed, 0 failed, 4 skipped** in Release on .NET 10. The four skips still name `MUESLI_MEDIA_FIXTURE_DIR` (two tests), `MUESLI_STREAMING_QUALIFICATION_MODEL`, and `MUESLI_MULTISPEAKER_FIXTURE_SOURCE` instead of silently returning as passes. Debug was not re-run in the 2026-08-20 review. |
-| Current integration re-run | Branch `codex/wave0-launch-foundation` at `3bff598`; working tree was clean before this review. SDK `10.0.400`; `dotnet build windows-native\\Muesli.Windows\\Muesli.Windows.csproj -c Release` completed with **0 warnings, 0 errors**. `dotnet test windows-native\\Muesli.Windows.Tests\\Muesli.Windows.Tests.csproj -c Release` completed with **705 passed, 0 failed, 4 explicitly skipped**. |
-| Package evidence | The retained ZIP, installer, and `publish/` tree are dated 2026-08-17 and predate the manifest, package-truth, transcript-edit, qualification-tooling, and clipboard-safe commits now in HEAD. Their prior smoke remains historical evidence only; a current-tree package rehearsal is still required by L04. The retained installer and packaged executable are unsigned. |
+| Hardware-free integration suite | The integrated Release evidence expands to **742** discovered xUnit cases in `Muesli.Windows.Tests`: **738 passed, 0 failed, 4 explicitly skipped** on .NET 10. The four skips still name `MUESLI_MEDIA_FIXTURE_DIR` (two tests), `MUESLI_STREAMING_QUALIFICATION_MODEL`, and `MUESLI_MULTISPEAKER_FIXTURE_SOURCE` instead of silently returning as passes. |
+| Current integration re-run | The reviewed integrated line is `codex/wave0-launch-foundation` through `2972192`. SDK `10.0.400`; integrated Debug and Release app builds each completed with **0 warnings, 0 errors**. The integrated Release test evidence is **738 passed, 0 failed, 4 explicitly skipped**. |
+| Focused and UI evidence | The focused L23/L27 run is **42 passed, 0 failed**. The full elevated Windows UI suite is **6 passed, 0 skipped, 0 failed** after the L23 navigation/accessibility fixes (`437f046`, `c1168e7`, `1829702`). |
+| Qualification evidence | Three-run Parakeet v3 CPU dictation benchmark: 8.33 s audio, warm 1,227 ms, RTF 0.147, deterministic with model reuse; WER/CER unavailable without a reviewed reference. Mic-only meeting benchmark: warm 1,283 ms, RTF 0.154, deterministic with model reuse; no diarization input. Twelve real dictation traces: 12/12 success, median release-to-paste 1,296 ms, p95 6,066 ms, 0 paste failures, foreground rate 1.0. L14/L15 rehearsal passed negative controls but remains `qualified=false` and human-blocked. CPU catalog smoke fails closed because `qualification/cpu-catalog/audio/english-speech.wav` is absent. |
+| Package evidence | The retained 2026-08-17 ZIP/installer remains historical. The final clean isolated rehearsal at `2972192` passed with two-build content-inventory digest `779a9d67b8d71c18556fe95074b8cc8cf95ce740edc7f02352aa15f5dc47e35a`; version `0.3.0`, SDK `10.0.400`, `dirtyTree=false`, tracked models, CPU included, CUDA false, unsigned. Package smoke/native CPU, Inno 6.7.1, and PerMonitorV2 manifest checks passed. ZIP is 109,464,301 bytes; installer is 73,650,464 bytes. PKG-01 remains Partial because clean-VM and signing gates remain. |
+| Release rehearsal gate | L41 commit `2972192` fixes the concurrent auto-export race. Its regression stress is **8 rounds × 12 concurrent exports (96 runs), exactly one Markdown, no temp files**, with focused tests, full Release 738/4/0, and Debug 0/0 green. The final clean isolated rehearsal and package smoke passed; remaining report gates are SIGN-01/L05 and clean-VM PKG-01/L07. |
 | L03 package truth (this branch) | Public notices, package metadata, and the generated native-runtime inventory now agree that Wave 0 ships the CPU Sherpa provider only. The false “primary package includes CUDA provider” sentence was removed. CUDA remains Partial / not in the public package (L11). QuestPDF 2026.5.0 still selects `LicenseType.Community`; EXP-01 is not complete. |
 | Current visible shell check | Release `Muesli.exe` launched with one foreground Dictations dashboard on 2026-08-20. The 4,865-byte fresh slice beginning `01:20:01.231` contained no `ERROR`, `Unhandled UI exception`, or `XamlParseException`; Parakeet v3 warmed on CPU (2,071 ms load + 311 ms warmup). Process was responsive at about 956 MB working set / 882 MB private. |
 | Historical CUDA/package/UI evidence from 2026-08-01–02 | Retained under `artifacts/` and older PHASE docs. **Not re-run for this ledger.** It does not promote any hardware-dependent row to Complete and verified. |
 | Architecture | x64 only. ARM64 packaging is excluded. |
+
+## Evidence commits and review packet
+
+| Scope | Commit(s) | Evidence recorded for this review |
+|---|---|---|
+| Baseline | `08c4b3f` | Launch-readiness baseline and status vocabulary established. |
+| L40 tracked-source reproducibility | `353ba52` | Required Windows model/view source is tracked; clean-checkout evidence closes the L40 gate. |
+| L10 CPU catalog | `c9278ee` | Seven-model inventory, manifests, and fail-closed smoke tooling are present; real reviewed speech is still missing. |
+| L11 CUDA provenance | `8c93279` | CUDA provenance/qualification gap is explicit; public package remains CPU-only. |
+| L04 reproducible release | `4f408f4` | Rehearsal, package inventory, installer, manifest, and CI parity tooling; prior clean two-build digest is recorded above and the final rerun remains open. |
+| L14/L15 qualification setup | `f67584f`, `bf04aa2` | Locale-safe L14 parser and exactly-four-report L15 suite; negative controls pass, but human/device qualification remains debt. |
+| L27 persistence cutover | `f0dcef3`, `53dc577` | Feature-gated migration, digest/rollback coverage, and transaction-scoped rollback fix; focused L23/L27 run passes 42/42. |
+| L09 UI automation | `74a0a97` | Out-of-process production UI harness and clean-profile setup. |
+| L23 transcript editing | `24c14ae`, `437f046`, `c1168e7`, `1829702` | Runtime wiring, meeting navigation, accessible card, and tab fixes; focused live flow 1/1 and elevated UI 6/6. |
+| L41 concurrent auto-export | `2972192` | Destination/manifest race fixed; 8 rounds × 12 concurrent exports (96) publish exactly one Markdown with no temporary files. Focused tests, full Release 738/4/0, Debug 0/0, and final clean isolated package rehearsal pass; two-build digest `779a9d67b8d71c18556fe95074b8cc8cf95ce740edc7f02352aa15f5dc47e35a`. |
 
 ## Launch program modules
 
@@ -120,7 +138,7 @@ Remaining class: **None** (done at the stated status), **Implementation**, **Qua
 |---|---|---|---|---|
 | MTG-01 | Simultaneous You/Others capture, retained local audio | Implemented with verification debt | Phase 3 | Qualification: Zoom/Teams/Meet process-target vs endpoint-loopback |
 | MTG-02 | Suspend/resume, cancel, shutdown, crash recovery | Implemented with verification debt | Phase 3 | Qualification: physical suspend, forced kill, disk-full |
-| MTG-03 | Edit title/transcript/notes; retranscribe or re-summarize | Partial | Phase 7 / 5 | Implementation: L23 service slice adds candidate retranscribe + transcript save/cancel tests, unwired. UI transcript remains read-only; no retranscribe button pending FeatureRuntime integration. Title edit, manual notes, and re-summarize exist |
+| MTG-03 | Edit title/transcript/notes; retranscribe or re-summarize | Implemented with verification debt | Phase 7 / 5 | L23 now wires transcript edit/cancel/save and candidate retranscription through meeting detail; focused L23/L27 flow is 1/1 and the elevated UI suite is 6/6. Physical retained-audio quality and broader meeting qualification remain evidence debt |
 | LIVE-01 | Live meeting transcription and floating window | Implemented with verification debt | Phase 4 | Qualification: simultaneous meeting + UI soak |
 | LIVE-02 | Silero VAD natural-boundary commits (no fixed-duration cut) | Implemented with verification debt | Phase 4 | Qualification: noisy-room |
 | LIVE-03 | Explicit live-preview vs unified final ownership | Complete and verified | Phase 4 | None at contract level. Physical live soak stays on LIVE-01 |
@@ -161,7 +179,7 @@ Remaining class: **None** (done at the stated status), **Implementation**, **Qua
 | IMP-01 | Import supported media with cancel, progress, no fake success | Implemented with verification debt | Phase 8 | Qualification: ASR+diarization on each advertised format. Advertised set is wav/mp3/m4a/aac/mp4/mov/mkv/webm. **ogg is rejected with guidance** |
 | EXP-01 | Manual Markdown/PDF export with aliases and manual notes | Implemented with verification debt | Phase 8 | Qualification: human open of PDF/MD. QuestPDF 2026.5.0 is used with `LicenseType.Community`; community-license eligibility remains a Phase 13 release-owner check. Do not treat EXP-01 as complete |
 | HOOK-01 | Post-meeting `.exe` hook, JSON stdin, timeout, Job Object | Complete and verified | Phase 9 | None at contract level. Real third-party executables are optional later smoke |
-| AUTO-01 | Automatic Markdown export, atomic collision-safe | Implemented with verification debt | Phase 9 | Implementation: PDF auto-export is missing. Markdown contract is unit-covered |
+| AUTO-01 | Automatic Markdown export, atomic collision-safe | Implemented with verification debt | Phase 9 | L41 commit `2972192` adds atomic destination/manifest collision handling; focused 96-run concurrency stress and final package rehearsal are green. PDF auto-export remains missing, so AUTO-01 retains verification debt |
 | FOLLOW-01 | Configurable follow-up/linked workflow | Missing | Phase 9 | Implementation after a destination contract. Summary “Follow-ups” bullets are not this feature |
 
 ### Computer Use and sync
@@ -190,7 +208,7 @@ Remaining class: **None** (done at the stated status), **Implementation**, **Qua
 | UPD-01 | Signed automatic updates | Missing | Phase 13 | Implementation after D5. About currently opens GitHub Releases |
 | SIGN-01 | Authenticode signed app and installer | Externally blocked | Phase 13 / D5 | Decision: production certificate |
 | PKG-01 | Self-contained x64 zip and Inno installer | Partial | Phase 13 | Implementation/qualification: unsigned; upgrade and clean-VM gates open. Public package inventory and notices now record CPU-only; CUDA packaging is L11 |
-| TEST-01 | Automated success/failure/cancel/recovery coverage | Partial | Continuous | Implementation: no GUI automation suite; live OS detection/paste/mic remain outside unit tests |
+| TEST-01 | Automated success/failure/cancel/recovery coverage | Partial | Continuous | The out-of-process GUI automation suite exists and passes 6/6 elevated Windows UI tests; live OS detection, paste, mic, accessibility, and physical coverage remain incomplete |
 | QUAL-01 | Repeatable CPU/CUDA/hardware/package gates | Partial | Phase 13 | Qualification: current-tree evidence. Historical Parakeet-era reports are not this catalog |
 | STORE-01 | Microsoft Store | Excluded | — | Excluded |
 | ARM-01 | ARM64 | Excluded | — | Excluded |
@@ -207,7 +225,6 @@ Ordered by launch module. Calendar/OAuth, Store, ChatGPT OAuth, CloudKit, audio 
 |---|---|
 | Phase 1 | Guided Qwen cleanup catalog/download only after an approved GGUF (MOD-05). |
 | Phase 2 | Optional: apply filler filtering to meeting/import with the same settings as dictation (TXT-03). AUD-03 stays decision-gated. |
-| Phase 5 / 7 | Editable transcript and safe retranscribe that cannot destroy the prior record (MTG-03). |
 | Phase 7 | LM Studio or documented custom HTTP summary adapter (SUM-02 remainder). |
 | Phase 8 | Nested folders (ORG-01). Index manual notes in search (SEARCH-01). Playback waveform if still desired (PLAY-01 remainder). |
 | Phase 9 | PDF auto-export if product still wants AUTO-01 parity. FOLLOW-01 only after a destination contract. |
@@ -226,7 +243,7 @@ This is not missing code. Do not treat it as implementation backlog.
 | Phase 2 | Human dictation corpus; four paste targets; device/Bluetooth/unplug; real hook. Spec: `PHASE2_DICTATION_QUALIFICATION.md` (still the fail-closed dictation gate). |
 | Phase 3 | Zoom/Teams/Meet dual capture; process-target vs loopback; suspend/kill/disk-full. Spec: `PHASE3_QUALIFICATION.md`. |
 | Phase 4 | Long live meeting, route change, CUDA-live, multilingual review. Investigation notes in `WINDOWS_STREAMING_ASR_INVESTIGATION.md` are historical evidence, not a fresh pass. |
-| Phase 5 | Multi-speaker diarization quality on CPU and CUDA. |
+| Phase 5 | Multi-speaker diarization quality on CPU and CUDA; retained-audio quality review for the implemented L23 candidate retranscription flow. |
 | Phase 6 | Live detection false-positive/negative matrix. |
 | Phase 7 | Live OpenAI/OpenRouter/Ollama; no secrets in logs. |
 | Phase 8 | Per-format import ASR/diarization; human PDF/MD open. |
@@ -249,7 +266,7 @@ This is not missing code. Do not treat it as implementation backlog.
 
 ## Obsolete branches — do not merge wholesale
 
-Current line of work: `codex/wave0-launch-foundation` (`3bff598` at this review). `main` is an ancestor at `ba38e56` (“Checkpoint launch-ready Python pipeline”) and must not be used as a merge source for native work.
+Current line of work: `codex/wave0-launch-foundation` (`2972192` at this review). `main` is an ancestor at `ba38e56` (“Checkpoint launch-ready Python pipeline”) and must not be used as a merge source for native work.
 
 The open Wave 1 module branches currently merge-base with HEAD at `ba38e56` despite containing useful focused tip commits. Rebase or cherry-pick only the reviewed module commits; do not merge those branches wholesale. This applies to `agent-a-l10-l11-inventory`, `agent-d-l27-cutover-gate`, `agent-e2-l09-uia-skeleton`, and `agent-e3-l04-package-ci`.
 
@@ -299,7 +316,7 @@ These remain useful as contracts or old evidence. They are **not** status source
 
 | Old claim (2026-08-01 matrix / roadmap) | Current fact |
 |---|---|
-| 46 / 56 / 74 / 128 / 165 / 195 / 337 / 484 / 634 tests | Current integration suite expands to **709** cases (705 hardware-free passes plus 4 explicit qualification skips) |
+| 46 / 56 / 74 / 128 / 165 / 195 / 337 / 484 / 634 / 709 tests | Current integrated Release evidence is **742** cases (738 passes, 0 failures, 4 explicit prerequisite skips) |
 | Manual notes missing | `PersistedMeeting.ManualNotes`, editor, export, Phase 7 tests |
 | Ollama missing | `MeetingSummaryService` Ollama path + settings. LM Studio still missing |
 | Live transcription missing | `MeetingLiveTranscriptionSession` + window + Phase 4 tests; default Off |
@@ -314,4 +331,4 @@ These remain useful as contracts or old evidence. They are **not** status source
 
 ## Concurrent work notice
 
-Wave 0 integration is committed at `efa961c`; the reviewed line now ends at `3bff598` with focused Wave 1 source/tooling slices. The build and test facts above describe that committed source plus this review's document edits. Do not merge stale feature or divergent module branches wholesale on top of it.
+Wave 0 integration is committed at `efa961c`; the reviewed line now ends at `2972192` with focused Wave 1 source/tooling slices. The build and test facts above describe that committed source plus this review's document edits. Do not merge stale feature or divergent module branches wholesale on top of it.

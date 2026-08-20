@@ -1,6 +1,6 @@
 # Muesli macOS-to-Windows parity matrix
 
-Inventory date: 2026-08-18.
+Inventory date: 2026-08-20.
 
 **Status authority:** [`WINDOWS_LAUNCH_LEDGER.md`](WINDOWS_LAUNCH_LEDGER.md). This file keeps capability IDs and macOS/Windows source mapping. If a status here disagrees with the ledger, the ledger wins.
 
@@ -12,7 +12,7 @@ The macOS implementation is the behavioral reference, not a library compatibilit
 
 Status meanings match the launch ledger: **Complete and verified**, **Implemented with verification debt**, **Partial**, **Missing**, **Excluded**, **Externally blocked**.
 
-Owner modules are launch-program Phase 0–13. They are not the historical P0–P8 labels. The reviewed 2026-08-20 Release tree expands to **709** cases: 705 hardware-free passes and 4 explicit real-fixture qualification skips. This inventory does not re-claim 2026-08-01 CUDA/package/UI evidence.
+Owner modules are launch-program Phase 0–13. They are not the historical P0–P8 labels. The reviewed integrated 2026-08-20 tree expands to **742** Release cases: **738 passed, 0 failed, 4 explicit prerequisite skips**. The focused L23/L27 run is **42 passed, 0 failed** and the elevated Windows UI suite is **6 passed, 0 skipped, 0 failed**. This inventory does not re-claim historical CUDA/package/UI evidence.
 
 ## Models and model lifecycle
 
@@ -48,7 +48,7 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 |---|---|---|---|---|---|
 | MTG-01 | Simultaneous mic/system capture | `MeetingSession.swift`, `MeetingMicrophoneRecorder.swift`, `CoreAudioSystemRecorder.swift` | `MeetingRecordingCoordinator.cs`, `AudioCaptureService.cs`, `SystemAudioCaptureService.cs` | Implemented with verification debt | Phase 3 |
 | MTG-02 | Suspend/resume, cancel, crash recovery | `MeetingResumePolicy.swift`, repair/termination policies | `MeetingSessionStateMachine.cs`, `MeetingSessionJournalStore.cs`; `Phase3MeetingLifecycleTests.cs` | Implemented with verification debt | Phase 3 |
-| MTG-03 | Edit title/transcript/notes; retranscribe | `MeetingDetailView.swift`, `MeetingNotesView.swift` | Title edit, manual notes, re-summarize exist. Transcript read-only. No retranscribe UI. L23 service (`TranscriptEditService`) is unwired | Partial | Phase 7 / 5 |
+| MTG-03 | Edit title/transcript/notes; retranscribe | `MeetingDetailView.swift`, `MeetingNotesView.swift` | Meeting-detail transcript edit/cancel/save and candidate retranscription are wired. Focused live flow is 1/1 and the elevated UI suite is 6/6; retained-audio quality and broader meeting qualification remain evidence debt | Implemented with verification debt | Phase 7 / 5 |
 | LIVE-01 | Live transcription + floating UI | `MeetingStreamingPartialSession.swift`, `LiveTranscriptView.swift` | `MeetingLiveTranscriptionSession.cs`, `MeetingLiveTranscriptWindow.xaml`; `Phase4LiveTranscriptionTests.cs` | Implemented with verification debt | Phase 4 |
 | LIVE-02 | VAD natural-boundary rotation | `StreamingVadController.swift`, `PCMChunkRecorder.swift` | Native Silero; `MaxSpeechDuration=0` | Implemented with verification debt | Phase 4 |
 | LIVE-03 | Explicit final ownership modes | `MeetingSession.swift`, `Models.swift` | `LiveTranscriptOwnershipDescriptor.cs`; settings/journal persistence | Complete and verified | Phase 4 |
@@ -89,7 +89,7 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 | IMP-01 | Import media, diarize, cancel | `AudioFileImportController.swift` | `MediaImportFormats.cs` (no ogg); `Phase8MediaImportTests.cs`, `Phase8ImportCancellationTests.cs` | Implemented with verification debt | Phase 8 |
 | EXP-01 | Export PDF/Markdown | `MeetingExporter.swift` | `MeetingExporter.cs`; `Phase8ExportTests.cs`. QuestPDF 2026.5.0 Community selection recorded; eligibility is a Phase 13 owner check | Implemented with verification debt | Phase 8 |
 | HOOK-01 | Post-meeting executable hook | `MeetingHookRunner.swift` | `PostMeetingAutomationService.cs`; `Phase9AutomationTests.cs` | Complete and verified | Phase 9 |
-| AUTO-01 | Auto Markdown/PDF export | `MeetingMarkdownAutoExporter.swift` | Markdown auto-export implemented. PDF auto-export missing | Implemented with verification debt | Phase 9 |
+| AUTO-01 | Auto Markdown/PDF export | `MeetingMarkdownAutoExporter.swift` | L41 commit `2972192` makes concurrent Markdown publication atomic; 96-run stress publishes exactly one file with no temp files. PDF auto-export remains missing | Implemented with verification debt | Phase 9 |
 | FOLLOW-01 | Follow-up workflow | `MeetingFollowUpPolicy.swift` | None | Missing | Phase 9 |
 
 ## Computer Use and sync
@@ -123,7 +123,7 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 | UPD-01 | Signed auto-update | Sparkle | About → GitHub Releases only | Missing | Phase 13 |
 | SIGN-01 | Authenticode | codesign/notarize | `sign-windows-release.ps1`; artifacts unsigned | Externally blocked | Phase 13 / D5 |
 | PKG-01 | x64 zip + Inno installer | DMG/release scripts | Package/installer scripts exist; unsigned; public inventory is CPU-only; upgrade/VM open | Partial | Phase 13 |
-| TEST-01 | Automated coverage | Swift test suite | 709 cases in the reviewed Release tree: 705 pass, 4 explicit qualification skips; no integrated full GUI automation | Partial | Continuous |
+| TEST-01 | Automated coverage | Swift test suite | Integrated Release: 742 cases, 738 pass, 0 fail, 4 explicit prerequisite skips; elevated Windows UI: 6 pass, 0 skip, 0 fail. Physical OS detection/paste/mic and human/provider gates remain outside this suite | Partial | Continuous |
 | QUAL-01 | Hardware/package gates | macOS release scripts | Scripts exist; current-tree hardware evidence not re-run | Partial | Phase 13 |
 | API-04 | Sparkle/AppKit/codesign equivalents | Updater/status-bar | NotifyIcon yes; signed updater no | Partial | Phase 13 |
 | STORE-01 | Microsoft Store | — | — | Excluded | — |
