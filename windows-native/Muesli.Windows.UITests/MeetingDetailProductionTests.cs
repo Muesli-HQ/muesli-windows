@@ -17,6 +17,7 @@ public sealed class MeetingDetailProductionTests
             var databasePath = Path.Combine(session.ProfileMuesliRoot, "data", "muesli.db");
             Assert.True(File.Exists(databasePath), "The enabled L27 cutover did not create muesli.db in the isolated profile.");
 
+            session.NavigateTo("meetings", "Navigate to Meetings", "Manage Templates");
             OpenSeededMeeting(session);
             session.ClickAutomationId("MeetingTranscriptTab");
             session.RequireAccessibleName("Re-transcription candidate ready", mustBeOnscreen: true);
