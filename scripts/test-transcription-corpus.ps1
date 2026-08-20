@@ -104,11 +104,26 @@ foreach ($case in $cases) {
             throw "no-speech audio must be explicitly human-reviewed"
         }
         $reviewedBy = ([string](Get-Value $case "reviewedBy" "")).Trim()
-        $reviewedAt = [string](Get-Value $case "reviewedAt" "")
+        $reviewedAtValue = Get-Value $case "reviewedAt" ""
+        $reviewedAt = [string]$reviewedAtValue
         $parsedReviewDate = [DateTimeOffset]::MinValue
+        $reviewedAtValid = $false
+        if ($reviewedAtValue -is [DateTimeOffset]) {
+            $parsedReviewDate = [DateTimeOffset]$reviewedAtValue
+            $reviewedAtValid = $true
+        } elseif ($reviewedAtValue -is [DateTime]) {
+            $parsedReviewDate = [DateTimeOffset]$reviewedAtValue
+            $reviewedAtValid = $true
+        } elseif (-not [string]::IsNullOrWhiteSpace($reviewedAt)) {
+            $reviewedAtValid = [DateTimeOffset]::TryParse(
+                $reviewedAt,
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::RoundtripKind,
+                [ref]$parsedReviewDate)
+        }
         if ([string]::IsNullOrWhiteSpace($reviewedBy) -or
             (Test-PlaceholderIdentity $reviewedBy) -or
-            -not [DateTimeOffset]::TryParse($reviewedAt, [ref]$parsedReviewDate)) {
+            -not $reviewedAtValid) {
             throw "reviewedBy must be a real human reviewer identity and reviewedAt must be a valid timestamp"
         }
 
