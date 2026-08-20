@@ -38,6 +38,244 @@ public sealed class PersistenceCutoverImplementationTests
     }
 
     [Fact]
+    public void CaptureUsesHiddenProfileStagingAndScavengesStalePlaintextAtStartup()
+    {
+        using var directory = new TestDirectory();
+        var stagingRoot = Path.Combine(directory.Path, PersistenceCutover.JsonCaptureStagingDirectoryName);
+        var staleDirectory = Path.Combine(
+            stagingRoot,
+            PersistenceCutover.JsonCaptureStagingDirectoryPrefix + "stale");
+        Directory.CreateDirectory(staleDirectory);
+        File.WriteAllText(Path.Combine(staleDirectory, ".capture.lock"), TranscriptToken);
+        File.WriteAllText(Path.Combine(staleDirectory, "stale.json"), TranscriptToken);
+        File.WriteAllText(directory.File(JsonHistorySnapshotReader.DictationsFileName), "[]");
+
+        string? createdCapture = null;
+        var createdCaptureWasHidden = false;
+        var result = new PersistenceCutover(
+            directory.Path,
+            options: new PersistenceCutoverOptions
+            {
+                FailAfterJsonSnapshot = true,
+                CaptureDirectoryCreated = path =>
+                {
+                    createdCapture = path;
+                    createdCaptureWasHidden = File.GetAttributes(path).HasFlag(FileAttributes.Hidden);
+                }
+            }).EnsureMigrated();
+
+        Assert.Equal(JsonMigrationOutcome.Failed, result.Outcome);
+        Assert.False(Directory.Exists(staleDirectory));
+        Assert.NotNull(createdCapture);
+        Assert.StartsWith(stagingRoot, createdCapture!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            Path.Combine(Path.GetFullPath(Path.GetTempPath()), "muesli-json-cutover-"),
+            createdCapture!,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.True(createdCaptureWasHidden);
+        Assert.StartsWith(directory.Path, result.JsonSnapshotDirectory!, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(Path.Combine(staleDirectory, "stale.json")));
+    }
+
+    [Fact]
+    public void LiveCaptureMarkerPreventsScavengingAndLeavesLockedStageUntouched()
+    {
+        using var directory = new TestDirectory();
+        File.WriteAllText(directory.File(JsonHistorySnapshotReader.DictationsFileName), "[]");
+        var captureDirectory = Path.Combine(
+            directory.Path,
+            PersistenceCutover.JsonCaptureStagingDirectoryName,
+            PersistenceCutover.JsonCaptureStagingDirectoryPrefix + "live");
+        Directory.CreateDirectory(captureDirectory);
+        var markerPath = Path.Combine(captureDirectory, ".capture.lock");
+        using var marker = new FileStream(
+            markerPath,
+            FileMode.CreateNew,
+            FileAccess.ReadWrite,
+            FileShare.Read,
+            1,
+            FileOptions.WriteThrough);
+        File.WriteAllText(Path.Combine(captureDirectory, "sentinel.json"), TranscriptToken);
+
+        var result = new PersistenceCutover(
+            directory.Path,
+            options: new PersistenceCutoverOptions { FailAfterJsonSnapshot = true }).EnsureMigrated();
+
+        Assert.Equal(JsonMigrationOutcome.Failed, result.Outcome);
+        Assert.True(Directory.Exists(captureDirectory));
+        Assert.True(File.Exists(Path.Combine(captureDirectory, "sentinel.json")));
+    }
+
+    [Fact]
+    public async Task ProfileLockCoversImportAndAuthorityCommitAcrossTwoInstances()
+    {
+        using var directory = new TestDirectory();
+        WriteClonedProfile(directory.Path);
+        using var authorityCommitStarted = new ManualResetEventSlim();
+        using var releaseAuthorityCommit = new ManualResetEventSlim();
+
+        var firstTask = Task.Run(() => new PersistenceCutover(
+            directory.Path,
+            options: new PersistenceCutoverOptions
+            {
+                BeforeAuthorityCommit = () =>
+                {
+                    authorityCommitStarted.Set();
+                    releaseAuthorityCommit.Wait();
+                }
+            }).EnsureMigrated());
+
+        try
+        {
+            Assert.True(
+                authorityCommitStarted.Wait(TimeSpan.FromSeconds(10)),
+                "The first cutover did not reach the authority transaction in time.");
+
+            var second = new PersistenceCutover(directory.Path).EnsureMigrated();
+            Assert.Equal(JsonMigrationOutcome.Failed, second.Outcome);
+            Assert.Contains("capture area", second.Failure, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            releaseAuthorityCommit.Set();
+        }
+
+        var first = await firstTask;
+        Assert.Equal(JsonMigrationOutcome.Migrated, first.Outcome);
+        Assert.Equal(
+            JsonMigrationOutcome.AlreadyCurrent,
+            new PersistenceCutover(directory.Path).EnsureMigrated().Outcome);
+    }
+
+    [Fact]
+    public void ReparseCaptureDirectoryFailsClosedWithoutDeletingJunctionTarget()
+    {
+        using var directory = new TestDirectory();
+        using var outside = new TestDirectory();
+        File.WriteAllText(directory.File(JsonHistorySnapshotReader.DictationsFileName), "[]");
+        File.WriteAllText(outside.File("sentinel.json"), TranscriptToken);
+        var root = Path.Combine(directory.Path, PersistenceCutover.JsonCaptureStagingDirectoryName);
+        var junction = Path.Combine(
+            root,
+            PersistenceCutover.JsonCaptureStagingDirectoryPrefix + "junction");
+        Directory.CreateDirectory(root);
+
+        CreateJunction(junction, outside.Path);
+
+        var result = new PersistenceCutover(directory.Path).EnsureMigrated();
+
+        Assert.Equal(JsonMigrationOutcome.Failed, result.Outcome);
+        Assert.True(File.Exists(outside.File("sentinel.json")));
+        Assert.Equal(TranscriptToken, File.ReadAllText(outside.File("sentinel.json")));
+    }
+
+    [Fact]
+    public void ReparseSourceInputFailsClosedWithoutReadingOutsideProfile()
+    {
+        using var directory = new TestDirectory();
+        using var outside = new TestDirectory();
+        File.WriteAllText(outside.File("source.json"), "[]");
+        var source = directory.File(JsonHistorySnapshotReader.DictationsFileName);
+
+        // A directory junction is sufficient here: the source path itself is a reparse point,
+        // so capture must reject it before attempting to interpret the target as JSON.
+        CreateJunction(source, outside.Path);
+
+        var result = new PersistenceCutover(directory.Path).EnsureMigrated();
+
+        Assert.Equal(JsonMigrationOutcome.Failed, result.Outcome);
+        Assert.False(File.Exists(PersistencePaths.DatabasePathFor(directory.Path)));
+        Assert.Equal("[]", File.ReadAllText(outside.File("source.json")));
+    }
+
+    [Fact]
+    public void ReparseDatabasePathFailsClosedWithoutTouchingJunctionTarget()
+    {
+        using var directory = new TestDirectory();
+        using var outside = new TestDirectory();
+        File.WriteAllText(outside.File("sentinel.json"), TranscriptToken);
+        var databasePath = PersistencePaths.DatabasePathFor(directory.Path);
+
+        CreateJunction(databasePath, outside.Path);
+
+        var result = new PersistenceCutover(directory.Path).EnsureMigrated();
+
+        Assert.Equal(JsonMigrationOutcome.Failed, result.Outcome);
+        Assert.Equal(TranscriptToken, File.ReadAllText(outside.File("sentinel.json")));
+    }
+
+    [Fact]
+    public void MutationDuringMultiFileCaptureRetriesAndImportsOneCoherentGeneration()
+    {
+        using var directory = new TestDirectory();
+        WriteClonedProfile(directory.Path);
+        var mutationCount = 0;
+        var changed = false;
+
+        var result = new PersistenceCutover(
+            directory.Path,
+            options: new PersistenceCutoverOptions
+            {
+                AfterCaptureFile = name =>
+                {
+                    if (!name.Equals(JsonHistorySnapshotReader.DictationsFileName, StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+
+                    mutationCount++;
+                    if (!changed)
+                    {
+                        changed = true;
+                        WriteCaptureGeneration(directory.Path, "new-generation");
+                    }
+                }
+            }).EnsureMigrated();
+
+        Assert.Equal(JsonMigrationOutcome.Migrated, result.Outcome);
+        Assert.True(mutationCount >= 2);
+        using var store = MuesliPersistenceStore.Open(result.DatabasePath);
+        Assert.Equal(
+            "id-d-new-generation",
+            Assert.Single(store.Dictations.List(UnboundedHistoryQuery.Dictations)).Id);
+        Assert.Equal(
+            "id-m-new-generation",
+            Assert.Single(store.Meetings.List(new MeetingQuery())).Id);
+    }
+
+    [Fact]
+    public void RepeatedMutationDuringCaptureFailsClosedWithoutCreatingDatabase()
+    {
+        using var directory = new TestDirectory();
+        WriteClonedProfile(directory.Path);
+        var mutationCount = 0;
+
+        var result = new PersistenceCutover(
+            directory.Path,
+            options: new PersistenceCutoverOptions
+            {
+                CaptureAttemptCount = 2,
+                AfterCaptureFile = name =>
+                {
+                    if (name.Equals(JsonHistorySnapshotReader.DictationsFileName, StringComparison.Ordinal))
+                    {
+                        mutationCount++;
+                        WriteCaptureGeneration(directory.Path, $"generation-{mutationCount}");
+                    }
+                }
+            }).EnsureMigrated();
+
+        Assert.Equal(JsonMigrationOutcome.Failed, result.Outcome);
+        Assert.False(File.Exists(PersistencePaths.DatabasePathFor(directory.Path)));
+        Assert.Equal(2, mutationCount);
+        Assert.Contains("captured", result.Failure, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "id-d-generation-2",
+            File.ReadAllText(directory.File(JsonHistorySnapshotReader.DictationsFileName)),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ClonedProfileMigratesWithEqualCountsAndDigestsAndLeavesJsonInPlace()
     {
         using var directory = new TestDirectory();
@@ -670,6 +908,29 @@ public sealed class PersistenceCutoverImplementationTests
         ]);
     }
 
+    private static void WriteCaptureGeneration(string dataDirectory, string generation)
+    {
+        var store = new AppDataStore(dataDirectory);
+        store.SaveDictations([
+            new PersistedDictation(
+                $"id-d-{generation}",
+                Created.AddMinutes(10),
+                $"body-{generation}",
+                100,
+                "model-token")
+        ]);
+        store.SaveMeetings([
+            new PersistedMeeting
+            {
+                SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+                Id = $"id-m-{generation}",
+                Title = $"title-{generation}",
+                CreatedAt = Created.AddMinutes(10),
+                Transcript = $"transcript-{generation}"
+            }
+        ]);
+    }
+
     private static List<string> FingerprintJson(string directory) =>
         Directory.EnumerateFiles(directory, "windows-*.json*")
             .OrderBy(path => path, StringComparer.Ordinal)
@@ -683,5 +944,32 @@ public sealed class PersistenceCutoverImplementationTests
         Assert.DoesNotContain(TitleToken, text, StringComparison.Ordinal);
         Assert.DoesNotContain(TranscriptToken, text, StringComparison.Ordinal);
         Assert.DoesNotContain(AudioPathToken, text, StringComparison.Ordinal);
+    }
+
+    private static void CreateJunction(string junctionPath, string targetPath)
+    {
+        using var process = new System.Diagnostics.Process
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            }
+        };
+        process.StartInfo.ArgumentList.Add("/c");
+        process.StartInfo.ArgumentList.Add("mklink");
+        process.StartInfo.ArgumentList.Add("/J");
+        process.StartInfo.ArgumentList.Add(junctionPath);
+        process.StartInfo.ArgumentList.Add(targetPath);
+        Assert.True(process.Start(), "Could not launch the Windows junction fixture helper.");
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Could not create the deterministic Windows junction fixture: {process.StandardError.ReadToEnd()}" );
+        }
     }
 }

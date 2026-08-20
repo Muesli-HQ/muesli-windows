@@ -95,16 +95,19 @@ public sealed class JsonToSqliteMigrationService
     private readonly string _jsonDirectory;
     private readonly string _databasePath;
     private readonly Action<string>? _report;
+    private readonly Func<bool>? _validateDatabasePathBeforeOpen;
 
     public JsonToSqliteMigrationService(
         string jsonDirectory,
         string? databasePath = null,
-        Action<string>? report = null)
+        Action<string>? report = null,
+        Func<bool>? validateDatabasePathBeforeOpen = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(jsonDirectory);
         _jsonDirectory = Path.GetFullPath(jsonDirectory);
         _databasePath = Path.GetFullPath(databasePath ?? PersistencePaths.DatabasePathFor(jsonDirectory));
         _report = report;
+        _validateDatabasePathBeforeOpen = validateDatabasePathBeforeOpen;
     }
 
     public string DatabasePath => _databasePath;
@@ -156,9 +159,15 @@ public sealed class JsonToSqliteMigrationService
             };
         }
 
-        var databaseExisted = File.Exists(_databasePath);
+        var databaseExisted = _validateDatabasePathBeforeOpen?.Invoke() ?? File.Exists(_databasePath);
         string? backupPath = null;
         var resumed = false;
+
+        if (_validateDatabasePathBeforeOpen is not null &&
+            _validateDatabasePathBeforeOpen() != databaseExisted)
+        {
+            throw new IOException("The SQLite history path changed while the migration was starting.");
+        }
 
         using (var database = MuesliDatabase.Open(_databasePath))
         {
