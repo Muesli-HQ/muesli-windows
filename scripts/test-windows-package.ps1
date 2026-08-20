@@ -1,6 +1,7 @@
 param(
     [string]$ZipPath = "",
     [string]$WorkDir = "",
+    [string]$ReportPath = "",
     [switch]$SkipLaunch
 )
 
@@ -8,6 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 . (Join-Path $PSScriptRoot "read-release-properties.ps1")
+. (Join-Path $PSScriptRoot "release-common.ps1")
 $release = Get-MuesliReleaseProperties -Root $root
 if ([string]::IsNullOrWhiteSpace($ZipPath)) {
     $ZipPath = Join-Path $root "artifacts\muesli-windows-$($release.Version)-win-x64.zip"
@@ -15,7 +17,32 @@ if ([string]::IsNullOrWhiteSpace($ZipPath)) {
 if ([string]::IsNullOrWhiteSpace($WorkDir)) {
     $WorkDir = Join-Path $env:TEMP "muesli-$($release.Channel)-qa"
 }
+if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+    $ReportPath = Join-Path $root "artifacts\package-smoke-report.json"
+}
 
+$smoke = [ordered]@{
+    schemaVersion = 1
+    passed = $false
+    zipPath = $ZipPath
+    workDir = $WorkDir
+    skipLaunch = [bool]$SkipLaunch
+    startedAtUtc = [DateTime]::UtcNow.ToString("o")
+    nativeRuntime = $null
+    inventoryPassed = $false
+    cudaProviderIncluded = $false
+    cpuProviderIncluded = $true
+    signed = $false
+    failures = @()
+}
+
+function Write-MuesliSmokeReport {
+    param($Report)
+    $Report.finishedAtUtc = [DateTime]::UtcNow.ToString("o")
+    Write-Utf8NoBomFile -Path $ReportPath -Content (($Report | ConvertTo-Json -Depth 8) + "`n")
+}
+
+try {
 if (-not (Test-Path $ZipPath)) {
     throw "Package not found: $ZipPath"
 }
@@ -213,5 +240,20 @@ if (-not $SkipLaunch) {
     Get-Process Muesli -ErrorAction SilentlyContinue | Stop-Process -Force
 }
 
+$smoke.passed = $true
+$smoke.inventoryPassed = $true
+$smoke.workDir = $WorkDir
+$smoke.nativeRuntime = $nativeDiagnostic.Report.SelectedRuntime
+$smoke.cpuProviderIncluded = $true
+$smoke.cudaProviderIncluded = $false
+Write-MuesliSmokeReport $smoke
 Write-Host "Package QA passed: $ZipPath"
 Write-Host "Extracted to: $WorkDir"
+Write-Host "Wrote package smoke report: $ReportPath"
+} catch {
+    $smoke.passed = $false
+    $smoke.workDir = $WorkDir
+    $smoke.failures = @("$($_.Exception.Message)")
+    Write-MuesliSmokeReport $smoke
+    throw
+}

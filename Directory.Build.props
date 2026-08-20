@@ -4,7 +4,7 @@
       This is the single release identity source. Packaging scripts read these
       properties directly so assembly metadata and release artifacts cannot drift.
     -->
-    <MuesliVersion>0.2.0</MuesliVersion>
+    <MuesliVersion>0.3.0</MuesliVersion>
     <MuesliReleaseChannel>v1</MuesliReleaseChannel>
     <MuesliMinimumWindowsVersion>10.0.19045.0</MuesliMinimumWindowsVersion>
     <MuesliSupportedEnvironments>Windows 10 22H2 x64 (build 19045);Current serviced Windows 11 x64 releases</MuesliSupportedEnvironments>

@@ -1,4 +1,4 @@
-# Muesli Windows 0.2.0 Release Checklist
+# Muesli Windows 0.3.0 Release Checklist
 
 ## Build Artifacts
 
@@ -10,8 +10,8 @@
 Expected outputs:
 
 ```text
-artifacts\muesli-windows-0.2.0-win-x64.zip
-artifacts\MuesliSetup-0.2.0-win-x64.exe
+artifacts\muesli-windows-0.3.0-win-x64.zip
+artifacts\MuesliSetup-0.3.0-win-x64.exe
 artifacts\native-runtime-inventory.json
 ```
 
@@ -53,8 +53,8 @@ artifacts\native-runtime-inventory.json
 ## Clean Install QA
 
 ```powershell
-Expand-Archive .\artifacts\muesli-windows-0.2.0-win-x64.zip -DestinationPath $env:TEMP\muesli-0.2.0 -Force
-cd $env:TEMP\muesli-0.2.0
+Expand-Archive .\artifacts\muesli-windows-0.3.0-win-x64.zip -DestinationPath $env:TEMP\muesli-0.3.0 -Force
+cd $env:TEMP\muesli-0.3.0
 .\Muesli.exe
 ```
 

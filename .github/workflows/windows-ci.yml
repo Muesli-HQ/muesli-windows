@@ -4,49 +4,57 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# Unsigned public package path (L04 / PKG-01).
+# Local and CI both run scripts/rehearse-windows-release.ps1 against the SDK
+# pinned in global.json and the release identity in Directory.Build.props.
+# Authenticode signing is L05 / SIGN-01 / D5 and must not run here.
+# Do not call scripts/sign-windows-release.ps1 from this workflow.
+# The unsigned Inno installer is collected as a review artifact. A later
+# signed-release workflow (L05) will timestamp and Authenticode-sign; this
+# job stays CPU-only and unsigned.
 
 jobs:
-  build-and-test:
+  unsigned-release:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
+      DOTNET_MULTILEVEL_LOOKUP: "0"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
-      - name: Restore
-        run: dotnet restore windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj
+      - name: Install Inno Setup for the unsigned installer
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
 
-      - name: Build Release
-        run: dotnet build windows-native\Muesli.Windows\Muesli.Windows.csproj -c Release --no-restore
-
-      - name: Run hardware-free regression tests
-        run: dotnet test windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=windows-tests.trx"
-
-      - name: Validate PowerShell syntax
+      - name: Non-signing release rehearsal
         shell: pwsh
         run: |
-          $scripts = Get-ChildItem -LiteralPath scripts -Filter *.ps1 -File
-          foreach ($script in $scripts) {
-            [scriptblock]::Create((Get-Content -LiteralPath $script.FullName -Raw)) | Out-Null
-          }
+          pwsh -ExecutionPolicy Bypass -File .\scripts\rehearse-windows-release.ps1 -SkipTwoBuildCompare
 
-      - name: Build public win-x64 package
-        shell: pwsh
-        run: ./scripts/package-windows-v1.ps1 -Configuration Release -Runtime win-x64
-
-      - name: Smoke-test public package
-        shell: pwsh
-        run: ./scripts/test-windows-package.ps1
-
-      - name: Upload test report
+      - name: Upload unsigned release artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-test-report
-          path: windows-native/Muesli.Windows.Tests/TestResults/*.trx
+          name: windows-unsigned-release
+          if-no-files-found: warn
+          path: |
+            artifacts/muesli-windows-*-win-x64.zip
+            artifacts/MuesliSetup-*-win-x64.exe
+            artifacts/test-results/*.trx
+            artifacts/package-smoke-report.json
+            artifacts/muesli-win32-manifest.xml
+            artifacts/release-hashes.json
+            artifacts/native-runtime-inventory.json
+            artifacts/package-content-inventory.json
+            artifacts/package-content-inventory-comparison.json
+            artifacts/release-rehearsal-report.json
+            artifacts/dirty-release-override.json
+            windows-native/Muesli.Windows.Tests/TestResults/*.trx

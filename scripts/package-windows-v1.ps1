@@ -1,18 +1,18 @@
 param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
-    [string]$SentryDsn = ""
+    [switch]$AllowDirty
 )
 
 $ErrorActionPreference = "Stop"
 
-if ([string]::IsNullOrWhiteSpace($SentryDsn) -and -not [string]::IsNullOrWhiteSpace($env:SENTRY_DSN)) {
-    $SentryDsn = $env:SENTRY_DSN
-}
-
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 . (Join-Path $PSScriptRoot "read-release-properties.ps1")
+. (Join-Path $PSScriptRoot "release-common.ps1")
 $release = Get-MuesliReleaseProperties -Root $root
+Assert-MuesliModelSourcesPresent -Root $root | Out-Null
+Assert-MuesliPinnedSdk -Root $root | Out-Null
+Assert-MuesliCleanReleaseInputs -Root $root -AllowDirty:$AllowDirty | Out-Null
 $project = Join-Path $root "windows-native\Muesli.Windows\Muesli.Windows.csproj"
 $publishRoot = Join-Path $root "publish"
 $publishDir = Join-Path $publishRoot "muesli-windows-$Runtime"
@@ -44,21 +44,15 @@ if (Test-Path $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }
 
-$publishArgs = @(
-    $project,
-    "-c", $Configuration,
-    "-r", $Runtime,
-    "--self-contained", "true",
-    "-p:PublishSingleFile=false",
-    "-p:PublishReadyToRun=true",
-    "-o", $publishDir
-)
-if (-not [string]::IsNullOrWhiteSpace($SentryDsn)) {
-    $publishArgs += "-p:SentryDsn=$SentryDsn"
-    Write-Host "Embedding Sentry DSN into release build."
+$publishArgs = Get-MuesliDeterministicPublishArguments
+dotnet publish $project `
+    -c $Configuration `
+    -r $Runtime `
+    @publishArgs `
+    -o $publishDir
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet publish failed with exit code $LASTEXITCODE. No release package was produced."
 }
-dotnet publish @publishArgs
-if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE. No release package was produced." }
 
 $satelliteCultureDirs = @(
     "cs", "de", "es", "fr", "it", "ja", "ko", "pl", "pt-BR", "ru", "tr", "zh-Hans", "zh-Hant"
@@ -122,7 +116,7 @@ Notes:
   - Logs are stored in `%APPDATA%\muesli\logs`; use About > Open Logs when reporting issues.
 "@
 
-Set-Content -LiteralPath (Join-Path $publishDir "README-WINDOWS.txt") -Value $readme -Encoding UTF8
+Write-Utf8NoBomFile -Path (Join-Path $publishDir "README-WINDOWS.txt") -Content $readme
 $releaseNotes = @"
 Muesli Windows v$($release.Version) Release Notes
 ===================================
@@ -170,7 +164,7 @@ Automated gates completed during package creation do not replace the human check
 Signing, target-application paste confirmation, transcription-quality review, and a true
 fresh-machine installer run require separate release evidence.
 "@
-Set-Content -LiteralPath (Join-Path $publishDir "RELEASE-NOTES.txt") -Value $releaseNotes -Encoding UTF8
+Write-Utf8NoBomFile -Path (Join-Path $publishDir "RELEASE-NOTES.txt") -Content $releaseNotes
 
 $releaseMetadata = [ordered]@{
     schemaVersion = 1
@@ -204,7 +198,7 @@ $releaseMetadata = [ordered]@{
         cudaQualificationModule = "Wave 5"
     }
 }
-$releaseMetadata | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $publishDir $release.MetadataFileName) -Encoding UTF8
+Write-Utf8NoBomFile -Path (Join-Path $publishDir $release.MetadataFileName) -Content (($releaseMetadata | ConvertTo-Json -Depth 10) + "`n")
 
 $shipChecklist = @"
 Muesli Windows Human Ship Checklist
@@ -214,9 +208,8 @@ This checklist is intentionally human-owned. Automated build or benchmark JSON d
 mark any item below complete.
 
 Installer / ZIP:
-  [ ] Muesli-win-Setup.exe (Velopack) installs cleanly to %LocalAppData%\Muesli.
+  [ ] Installer launches and completes on a fresh Windows account.
   [ ] ZIP extracts and smoke test launches Muesli.exe.
-  [ ] About > Check Now picks up a newer published release.
   [ ] uninstall-windows.ps1 removes shortcuts/startup registration.
   [ ] install-windows.ps1 can set StartAtLogin when requested.
 
@@ -262,7 +255,7 @@ Release:
   [ ] Release notes reviewed.
   [ ] Known limitations documented.
 "@
-Set-Content -LiteralPath (Join-Path $publishDir "SHIP-CHECKLIST.txt") -Value $shipChecklist -Encoding UTF8
+Write-Utf8NoBomFile -Path (Join-Path $publishDir "SHIP-CHECKLIST.txt") -Content $shipChecklist
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "install-windows.ps1") -Destination (Join-Path $publishDir "install-windows.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "uninstall-windows.ps1") -Destination (Join-Path $publishDir "uninstall-windows.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $root "THIRD-PARTY-NOTICES.md") -Destination (Join-Path $publishDir "THIRD-PARTY-NOTICES.md") -Force
@@ -274,54 +267,12 @@ $inventoryPath = Join-Path $artifactsDir "native-runtime-inventory.json"
 if ($LASTEXITCODE -ne 0) {
     throw "Native-runtime inventory generation failed."
 }
-Copy-Item -LiteralPath $inventoryPath -Destination (Join-Path $publishDir "native-runtime-inventory.json") -Force
-Set-Content -LiteralPath $lastPublishFile -Value $publishDir -Encoding UTF8
+Write-StablePackagedNativeInventory -SourcePath $inventoryPath -DestinationPath (Join-Path $publishDir "native-runtime-inventory.json")
+Write-Utf8NoBomFile -Path $lastPublishFile -Content ($publishDir.Trim() + "`n")
 
 Compress-Archive -Path (Join-Path $publishDir "*") -DestinationPath $zipPath
 
+$contentInventoryPath = Join-Path $artifactsDir "package-content-inventory.json"
+& (Join-Path $PSScriptRoot "write-package-content-inventory.ps1") -ZipPath $zipPath -OutputPath $contentInventoryPath
+
 Write-Host "Created $zipPath"
-
-$velopackDir = Join-Path $artifactsDir "velopack"
-$velopackVersion = ([xml](Get-Content (Join-Path $root "windows-native\Muesli.Windows\Muesli.Windows.csproj"))).Project.PropertyGroup.Version
-if ([string]::IsNullOrWhiteSpace($velopackVersion)) {
-    throw "Could not read <Version> from Muesli.Windows.csproj for Velopack packaging."
-}
-
-if (-not (Get-Command vpk -ErrorAction SilentlyContinue)) {
-    Write-Host "Installing vpk CLI globally"
-    dotnet tool install -g vpk
-    if ($LASTEXITCODE -ne 0) { throw "dotnet tool install -g vpk failed." }
-    $toolsBin = Join-Path $env:USERPROFILE ".dotnet\tools"
-    if (-not ($env:PATH -split ';' | Where-Object { $_ -eq $toolsBin })) {
-        $env:PATH = "$toolsBin;$env:PATH"
-    }
-}
-
-New-Item -ItemType Directory -Force -Path $velopackDir | Out-Null
-try {
-    $prevManifest = Join-Path $velopackDir "releases.win.json"
-    if (Test-Path $prevManifest) { Remove-Item -LiteralPath $prevManifest -Force }
-    Invoke-WebRequest `
-        -Uri "https://github.com/Muesli-HQ/Muesli-Windows/releases/latest/download/releases.win.json" `
-        -OutFile $prevManifest -UseBasicParsing -ErrorAction Stop
-    Write-Host "Pulled previous release manifest for delta packaging."
-} catch {
-    Write-Host "No previous release manifest available; full package only."
-}
-
-$icon = Join-Path $root "windows-native\Muesli.Windows\Assets\muesli.ico"
-$packArgs = @(
-    "pack",
-    "--packId", "Muesli",
-    "--packVersion", $velopackVersion,
-    "--packDir", $publishDir,
-    "--mainExe", "Muesli.exe",
-    "--outputDir", $velopackDir,
-    "--packAuthors", "Muesli",
-    "--packTitle", "Muesli"
-)
-if (Test-Path $icon) { $packArgs += @("--icon", $icon) }
-& vpk @packArgs
-if ($LASTEXITCODE -ne 0) { throw "vpk pack failed with exit $LASTEXITCODE." }
-
-Write-Host "Velopack artifacts written to $velopackDir"
