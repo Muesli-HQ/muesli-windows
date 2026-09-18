@@ -19,7 +19,8 @@ param(
     [string]$ExpectedSegmentSha256 = "",
     [string]$ExpectedProvider = "",
     [switch]$RequireDeterministic,
-    [switch]$RequireModelReuse
+    [switch]$RequireModelReuse,
+    [switch]$RequireReference
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,18 +28,24 @@ $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $resolvedAudio = (Resolve-Path -LiteralPath $AudioPath).Path
 
-if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
-    $packagedExecutable = Join-Path $PSScriptRoot "Muesli.exe"
-    $debugExecutable = Join-Path $root "windows-native\Muesli.Windows\bin\Debug\net10.0-windows\Muesli.exe"
-    $ExecutablePath = if (Test-Path $packagedExecutable) {
-        $packagedExecutable
-    } else {
-        $debugExecutable
+$qualityGateRequested = $MaxWordErrorRate -ge 0 -or $MaxCharacterErrorRate -ge 0 -or $RequireReference
+if ($qualityGateRequested -and [string]::IsNullOrWhiteSpace($ReferencePath)) {
+    throw "A human-reviewed -ReferencePath is required when WER/CER or -RequireReference is requested."
+}
+if (-not [string]::IsNullOrWhiteSpace($ReferencePath)) {
+    $resolvedReference = (Resolve-Path -LiteralPath $ReferencePath).Path
+    $referenceText = [System.IO.File]::ReadAllText($resolvedReference)
+    if ($qualityGateRequested -and [string]::IsNullOrWhiteSpace($referenceText)) {
+        throw "The reference transcript is empty: $resolvedReference"
     }
 }
 
+if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
+    $ExecutablePath = Join-Path $root "windows-native\Muesli.Windows.CommandHost\bin\Debug\net10.0-windows\Muesli.Windows.CommandHost.exe"
+}
+
 if (-not (Test-Path -LiteralPath $ExecutablePath)) {
-    throw "Muesli executable not found: $ExecutablePath. Build the WPF project first or pass -ExecutablePath."
+    throw "Muesli command host not found: $ExecutablePath. Build Muesli.Windows.CommandHost first or pass -ExecutablePath."
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
@@ -74,7 +81,7 @@ $arguments = @(
 
 if (-not [string]::IsNullOrWhiteSpace($ReferencePath)) {
     $arguments += "--reference"
-    $arguments += (Resolve-Path -LiteralPath $ReferencePath).Path
+    $arguments += $resolvedReference
 }
 
 $startInfo.Arguments = ($arguments | ForEach-Object {
@@ -104,10 +111,25 @@ if ($result.Count -eq 0) {
 }
 
 $result = $result[0]
+$failures = [System.Collections.Generic.List[string]]::new()
+$requiredRunCount = $Runs
+if ($result.RunCount -lt $requiredRunCount) {
+    $failures.Add("benchmark recorded $($result.RunCount) run(s), but $requiredRunCount were required")
+}
 if ($result.ModelName -ne $ModelId) {
     throw "Benchmark routed to '$($result.ModelName)' instead of requested model '$ModelId'."
 }
-$failures = [System.Collections.Generic.List[string]]::new()
+if (-not $result.Success) {
+    $failures.Add("benchmark result was not successful: $($result.ErrorMessage)")
+}
+if ([int]$result.AudioDurationMs -le 0) {
+    $failures.Add("decoded audio duration was not positive")
+}
+if ([double]::IsNaN([double]$result.RealtimeFactor) -or
+    [double]::IsInfinity([double]$result.RealtimeFactor) -or
+    [double]$result.RealtimeFactor -lt 0) {
+    $failures.Add("RTF was not a finite non-negative number")
+}
 if ($MaxRealtimeFactor -gt 0 -and $result.RealtimeFactor -gt $MaxRealtimeFactor) {
     $failures.Add("RTF $($result.RealtimeFactor) exceeds $MaxRealtimeFactor")
 }
@@ -137,15 +159,18 @@ if (-not [string]::IsNullOrWhiteSpace($ExpectedSegmentSha256) -and
     $failures.Add("segment SHA-256 $($result.SegmentLayoutSha256) does not match $ExpectedSegmentSha256")
 }
 if (-not [string]::IsNullOrWhiteSpace($ExpectedProvider) -and
-    $result.WarmBackend -ne $ExpectedProvider.ToLowerInvariant()) {
-    $failures.Add("provider $($result.WarmBackend) does not match $ExpectedProvider")
+    ($result.WarmBackend -ne $ExpectedProvider.ToLowerInvariant() -or
+     $result.FirstRunBackend -ne $ExpectedProvider.ToLowerInvariant())) {
+    $failures.Add("provider first=$($result.FirstRunBackend), warm=$($result.WarmBackend) does not match $ExpectedProvider")
 }
 if ($RequireDeterministic -and
-    (-not $result.DeterministicOutput -or -not $result.DeterministicSegments)) {
-    $failures.Add("transcript or segment output was not deterministic")
+    (-not $result.DeterministicOutput -or -not $result.DeterministicSegments -or
+     [int]$result.DistinctTranscriptCount -ne 1 -or
+     [int]$result.DistinctSegmentLayoutCount -ne 1)) {
+    $failures.Add("transcript or segment output was not deterministic across $($result.RunCount) runs")
 }
-if ($RequireModelReuse -and -not $result.ModelInstanceReused) {
-    $failures.Add("model instance was not reused")
+if ($RequireModelReuse -and ([int]$result.RunCount -lt 2 -or -not $result.ModelInstanceReused)) {
+    $failures.Add("model instance was not reused across the required warm runs")
 }
 
 if ($failures.Count -gt 0) {
@@ -160,7 +185,8 @@ if ($MaxRealtimeFactor -gt 0 -or
     -not [string]::IsNullOrWhiteSpace($ExpectedSegmentSha256) -or
     -not [string]::IsNullOrWhiteSpace($ExpectedProvider) -or
     $RequireDeterministic -or
-    $RequireModelReuse) {
+    $RequireModelReuse -or
+    $RequireReference) {
     Write-Host "Native transcription regression gates passed."
 }
 

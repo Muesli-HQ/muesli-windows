@@ -645,7 +645,7 @@ public sealed class PersistenceCutoverImplementationTests
         adapter.SaveMeetingFolders(
         [
             new PersistedMeetingFolder("id-f-keep", "folder-token"),
-            new PersistedMeetingFolder("id-child", "child-renamed")
+            new PersistedMeetingFolder("id-child", "child-renamed", "id-f-keep")
         ]);
 
         Assert.Equal("id-f-keep", adapter.Store.Folders.Find("id-child")!.ParentId);
@@ -676,7 +676,7 @@ public sealed class PersistenceCutoverImplementationTests
         adapter.SaveMeetingFolders(
             [
                 new PersistedMeetingFolder("id-f-keep", "folder-token"),
-                new PersistedMeetingFolder("id-child", "child-renamed")
+            new PersistedMeetingFolder("id-child", "child-renamed", "id-f-keep")
             ]);
         Assert.Equal("id-f-keep", adapter.Store.Folders.Find("id-child")!.ParentId);
 
@@ -840,6 +840,61 @@ public sealed class PersistenceCutoverImplementationTests
         Assert.False(File.Exists(result.DatabasePath));
         Assert.False(File.Exists(result.DatabasePath + "-wal"));
         Assert.False(File.Exists(result.DatabasePath + "-shm"));
+    }
+
+    [QualificationFact("MUESLI_CLONED_PROFILE_DIR")]
+    public void OperatorClonedProfileMigratesWithMatchingCountsRollbackAndSecondLaunchIdempotence()
+    {
+        var source = Environment.GetEnvironmentVariable("MUESLI_CLONED_PROFILE_DIR")!;
+
+        using var rollbackDirectory = new TestDirectory();
+        CopyHistoryFiles(source, rollbackDirectory.Path);
+        var rollbackSnapshot = JsonHistorySnapshotReader.Read(rollbackDirectory.Path);
+        var rollback = new PersistenceCutover(
+            rollbackDirectory.Path,
+            options: new PersistenceCutoverOptions { FailAfterJsonSnapshot = true }).EnsureMigrated();
+        Assert.Equal(JsonMigrationOutcome.Failed, rollback.Outcome);
+        Assert.False(File.Exists(PersistencePaths.DatabasePathFor(rollbackDirectory.Path)));
+        Assert.Equal(rollbackSnapshot.RecordCount, JsonHistorySnapshotReader.Read(rollbackDirectory.Path).RecordCount);
+
+        using var migrateDirectory = new TestDirectory();
+        CopyHistoryFiles(source, migrateDirectory.Path);
+        var expected = JsonHistorySnapshotReader.Read(migrateDirectory.Path);
+        var cutover = new PersistenceCutover(migrateDirectory.Path);
+        var first = cutover.EnsureMigrated();
+        Assert.Equal(JsonMigrationOutcome.Migrated, first.Outcome);
+        using (var store = MuesliPersistenceStore.Open(first.DatabasePath))
+        {
+            Assert.Equal(expected.Dictations.Count, store.Dictations.Count());
+            Assert.Equal(expected.Meetings.Count, store.Meetings.Count());
+            Assert.Equal(first.Counts.Dictations, store.Dictations.Count());
+            Assert.Equal(first.Counts.Meetings, store.Meetings.Count());
+        }
+
+        var jsonBefore = FingerprintJson(migrateDirectory.Path);
+        var second = cutover.EnsureMigrated();
+        Assert.Equal(JsonMigrationOutcome.AlreadyCurrent, second.Outcome);
+        Assert.Equal(first.SourceFingerprint, second.SourceFingerprint);
+        Assert.Equal(jsonBefore, FingerprintJson(migrateDirectory.Path));
+    }
+
+    private static void CopyHistoryFiles(string sourceDirectory, string destinationDirectory)
+    {
+        foreach (var name in new[]
+                 {
+                     JsonHistorySnapshotReader.DictationsFileName,
+                     JsonHistorySnapshotReader.MeetingsFileName,
+                     JsonHistorySnapshotReader.FoldersFileName,
+                     JsonHistorySnapshotReader.TemplatesFileName,
+                     PersistenceCutover.DictionaryFileName
+                 })
+        {
+            var source = Path.Combine(sourceDirectory, name);
+            if (File.Exists(source))
+            {
+                File.Copy(source, Path.Combine(destinationDirectory, name), overwrite: true);
+            }
+        }
     }
 
     private static void WriteClonedProfile(string dataDirectory)

@@ -2,10 +2,10 @@
 
 This project launches the built production 'Muesli.exe' out of process and
 drives the dashboard through Windows UI Automation. It is an explicit opt-in
-gate because the application currently resolves '%APPDATA%' through the
-Windows known-folder API. The harness parks the existing 'muesli' directory,
-installs a deterministic seed profile, and restores it after the test process
-exits.
+gate for an interactive desktop. Each run creates a deterministic seed profile
+under the OS temporary directory and passes it to the production shell through
+'MUESLI_PROFILE_ROOT', so the developer's '%APPDATA%\\muesli' history is never
+parked, modified, or used by the test process.
 
 Run only on a disposable or otherwise approved interactive desktop:
 
@@ -18,9 +18,25 @@ and secondary processes that it started, and it can pass
 'MUESLI_SQLITE_HISTORY_CUTOVER=1' to those child processes through
 'MuesliUiSession.LaunchProduction(enableSqliteHistoryCutover: true)'.
 
-Shell navigation currently relies on the production controls' stable
-'AutomationProperties.Name' values, so no locked production files are changed
-by L09. L23 still needs an integration hook: the meeting-detail view should
-expose stable accessible names (and, where practical, explicit
-'AutomationProperties.AutomationId' values) for edit, save, cancel,
-retranscribe, accept, and reject before meeting-detail UI automation is added.
+Shell navigation relies on the production controls' stable
+'AutomationProperties.Name' values, and the meeting-detail controls now expose
+stable accessible names (with explicit AutomationIds where practical) for edit,
+save, cancel, retranscribe, accept, and reject. `MeetingDetailProductionTests`
+covers the edit/save-cancel, retranscription candidate reject/accept,
+navigation, and restart flows. The full Windows UI suite currently passes 6/6
+with 0 skipped and 0 failed; live OS detection, paste, microphone,
+accessibility, and physical qualification remain outside this harness.
+
+The WinUI qualification flow uses `MuesliWinUiSession.LaunchPopulated()` for a
+truthful local library fixture (six dictations, three meetings, three folders,
+four dictionary entries, three suggestions, and three meeting templates). It
+captures the eleven reference states plus meeting templates, search, and
+meeting-detail surfaces with stable `winui-populated-*`/`winui-secondary-*`
+slugs. Requested viewport sizes are effective DIPs (1280×820, 1440×900, and
+1600×900); the session converts them to physical pixels using
+`GetDpiForWindow`. The capability manifest records the observed scale and
+explicitly reports High Contrast as unexercised. Generate a combined reference
+contact sheet with
+`scripts/qualify-winui-visual-contact-sheet.ps1`; output is written to
+`artifacts/ui-parity-final/` while captures remain under the existing
+`artifacts/ui-automation/` policy.

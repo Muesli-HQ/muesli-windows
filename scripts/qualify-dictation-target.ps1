@@ -23,6 +23,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrWhiteSpace($ReviewedBy)) { throw "ReviewedBy cannot be empty." }
+$suiteLatencyTargetMs = 3000L
+if ($MaxReleaseToPasteMs -gt $suiteLatencyTargetMs) {
+    throw "MaxReleaseToPasteMs cannot exceed the four-app qualification target of $suiteLatencyTargetMs ms."
+}
 if ($ReviewedBy -match "(?i)^(placeholder|todo|tbd|unreviewed|automation|ci|n/?a|unknown|fake|example|dummy)$") {
     throw "ReviewedBy must be a real human reviewer identity, not a placeholder."
 }
@@ -128,6 +132,15 @@ $report = [ordered]@{
     reviewedBy = $ReviewedBy
     reviewedAt = $ReviewedAt.ToString("O")
     textVerified = [bool]$TextVerified
+    prerequisites = [ordered]@{
+        freshTraceFound = $true
+        reviewWithinTwoHours = $traceTimestamp -ne [DateTimeOffset]::MinValue -and $ReviewedAt -ge $traceTimestamp -and ($ReviewedAt - $traceTimestamp) -le [TimeSpan]::FromHours(2)
+        nativeParakeet = ([string]$trace.engine).StartsWith("native-sherpa-onnx/", [StringComparison]::OrdinalIgnoreCase) -and [string]$trace.model -eq $RequiredModelId
+        foregroundActiveApp = [string]$trace.deliveryMode -eq "active-app" -and [string]$trace.targetForeground -eq "True"
+        historyPersisted = [string]$trace.historyPersisted -eq "True"
+        completeTextHumanVerified = [bool]$TextVerified -and $characterCount -gt 0
+        latencyTargetMs = $suiteLatencyTargetMs
+    }
     passed = $failures.Count -eq 0
     failures = @($failures)
     trace = $trace

@@ -70,6 +70,8 @@ $validated = [System.Collections.Generic.List[object]]::new()
 $ids = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $covered = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $requiredCategories = @("short-command", "paragraph", "dictionary", "numbers-punctuation", "accent", "silence", "background-noise")
+$allowedCategories = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($requiredCategory in $requiredCategories) { [void]$allowedCategories.Add($requiredCategory) }
 
 foreach ($case in $cases) {
     $id = [string](Get-Value $case "id" "")
@@ -87,7 +89,12 @@ foreach ($case in $cases) {
         if ($outcome -notin @("transcript", "no-speech")) { throw "expectedOutcome must be transcript or no-speech" }
         $categories = @((Get-Value $case "categories" @()) | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() })
         if ($categories.Count -eq 0) { throw "at least one category is required" }
-        foreach ($category in $categories) { [void]$covered.Add($category) }
+        foreach ($category in $categories) {
+            if (-not $allowedCategories.Contains($category)) {
+                throw "unknown corpus category '$category'; allowed categories are $($requiredCategories -join ', ')"
+            }
+            [void]$covered.Add($category)
+        }
 
         if (Test-Flag (Get-Value $case "placeholder" $false)) {
             throw "placeholder case is not human-reviewed evidence; record WAV, listen, write the reference, fill reviewedBy/reviewedAt, and remove placeholder"
@@ -150,6 +157,11 @@ foreach ($case in $cases) {
             }
         }
 
+        $maxRtf = [double](Get-Value $case "maxRealtimeFactor" (Get-Value $manifest "defaultMaxRealtimeFactor" -1))
+        if ($maxRtf -le 0 -or $maxRtf -gt 1) {
+            throw "every corpus case requires an explicit positive RTF gate no greater than 1.0 (target ≤0.20)"
+        }
+
         $validated.Add([pscustomobject]@{
             id = $id
             audioPath = $audioPath
@@ -163,7 +175,7 @@ foreach ($case in $cases) {
             referenceSha256 = $referenceSha
             maxWordErrorRate = $maxWer
             maxCharacterErrorRate = $maxCer
-            maxRealtimeFactor = [double](Get-Value $case "maxRealtimeFactor" (Get-Value $manifest "defaultMaxRealtimeFactor" 0))
+            maxRealtimeFactor = $maxRtf
             maxWarmWallMs = [int](Get-Value $case "maxWarmWallMs" (Get-Value $manifest "defaultMaxWarmWallMs" 0))
         })
     }
@@ -192,6 +204,12 @@ if ($ValidateOnly) {
 
 if ([string]::IsNullOrWhiteSpace($ModelId)) { throw "-ModelId is required; corpus runs may not use an implicit model." }
 if ($Provider -notin @("cpu", "cuda")) { throw "-Provider cpu or -Provider cuda is required for a qualification run." }
+$catalogPath = Join-Path $root "qualification\cpu-catalog\advertised-cpu-models.json"
+$catalog = Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json
+$advertisedModelIds = @($catalog.models | ForEach-Object { [string]$_.id })
+if ($advertisedModelIds -notcontains $ModelId) {
+    throw "-ModelId '$ModelId' is not an advertised offline model in $catalogPath"
+}
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $root "artifacts\benchmarks\dictation-corpus\$ModelId-$Provider"
 }
@@ -215,6 +233,7 @@ try {
             ExpectedProvider = $Provider
             RequireDeterministic = $true
             RequireModelReuse = $true
+            RequireReference = $case.expectedOutcome -eq "transcript"
         }
         if (-not [string]::IsNullOrWhiteSpace($ExecutablePath)) { $arguments.ExecutablePath = $ExecutablePath }
         if ($case.expectedOutcome -eq "transcript") {
@@ -243,6 +262,15 @@ try {
             } elseif ($case.expectedOutcome -eq "transcript" -and [int]$nativeResult.TranscriptCharacterCount -le 0) {
                 $passed = $false
                 $errorMessage = "Expected transcript text, but the model emitted none."
+            } elseif ([int]$nativeResult.RunCount -lt $Runs) {
+                $passed = $false
+                $errorMessage = "Only $($nativeResult.RunCount) run(s) were recorded; qualification requires $Runs."
+            } elseif ($case.expectedOutcome -eq "transcript" -and
+                      (-not [bool]$nativeResult.DeterministicOutput -or
+                       -not [bool]$nativeResult.DeterministicSegments -or
+                       -not [bool]$nativeResult.ModelInstanceReused)) {
+                $passed = $false
+                $errorMessage = "Transcript qualification requires deterministic text/segments and model reuse."
             }
         }
         $results.Add([pscustomobject]@{
@@ -257,6 +285,10 @@ try {
             characterErrorRate = if ($null -eq $nativeResult) { $null } else { $nativeResult.CharacterErrorRate }
             realtimeFactor = if ($null -eq $nativeResult) { $null } else { $nativeResult.RealtimeFactor }
             warmWallMs = if ($null -eq $nativeResult) { $null } else { $nativeResult.WarmWallMs }
+            runCount = if ($null -eq $nativeResult) { $null } else { $nativeResult.RunCount }
+            deterministicOutput = if ($null -eq $nativeResult) { $null } else { $nativeResult.DeterministicOutput }
+            deterministicSegments = if ($null -eq $nativeResult) { $null } else { $nativeResult.DeterministicSegments }
+            modelInstanceReused = if ($null -eq $nativeResult) { $null } else { $nativeResult.ModelInstanceReused }
             reportPath = $reportPath
         })
     }
@@ -273,6 +305,18 @@ $summary = [ordered]@{
     manifestPath = $resolvedManifest
     modelId = $ModelId
     provider = $Provider
+    qualificationContract = [ordered]@{
+        requiredProvider = $Provider
+        maxWordErrorRate = [double](Get-Value $manifest "defaultMaxWordErrorRate" -1)
+        maxCharacterErrorRate = [double](Get-Value $manifest "defaultMaxCharacterErrorRate" -1)
+        maxRealtimeFactor = [double](Get-Value $manifest "defaultMaxRealtimeFactor" -1)
+        requiredRuns = $Runs
+        requiresHumanReference = $true
+        requiresDeterministicOutput = $true
+        requiresModelReuse = $true
+        requiredCorpusCategories = $requiredCategories
+    }
+    coveredCategories = @($covered | Sort-Object)
     caseCount = $results.Count
     passed = $failed.Count -eq 0
     cases = $results

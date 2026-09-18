@@ -115,33 +115,28 @@ public sealed class SoundFeedbackTests
     [Fact]
     public void AppearanceSettingsExposeTheOgPlaySoundEffectsToggle()
     {
-        var root = FindRepositoryRoot();
-        var xaml = File.ReadAllText(Path.Combine(root, "windows-native", "Muesli.Windows", "Features", "Settings", "SettingsView.xaml"));
-        var code = File.ReadAllText(Path.Combine(root, "windows-native", "Muesli.Windows", "MainWindow.xaml.cs"));
-        var settings = File.ReadAllText(Path.Combine(root, "windows-native", "Muesli.Windows", "Features", "Runtime", "FeatureRuntime.Settings.cs"));
-        var dictations = File.ReadAllText(Path.Combine(root, "windows-native", "Muesli.Windows", "Features", "Runtime", "FeatureRuntime.Dictations.cs"));
-        var computerUse = File.ReadAllText(Path.Combine(root, "windows-native", "Muesli.Windows", "Features", "Runtime", "FeatureRuntime.ComputerUse.cs"));
+        // Active WinUI settings surface: the "Recording sounds" toggle binds to the shared
+        // SoundEnabled setting, and dictation applies it to the sound feedback service.
+        var xaml = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "Pages", "SettingsPage.xaml"));
+        var viewModel = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "ViewModels", "SettingsPageViewModel.cs"));
+        var settings = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.Core", "Services", "SettingsStore.cs"));
+        var dictation = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "Services", "WinUiDictationContext.cs"));
 
-        Assert.Contains("Content=\"Play sound effects\"", xaml);
-        Assert.Contains("IsChecked=\"{Binding SoundEnabled}\"", xaml);
-        Assert.Contains("public bool SoundEnabled", settings);
-        Assert.Contains("SoundFeedback.Enabled", code + Environment.NewLine + settings);
-        Assert.Contains("DictationSessionKind.SetupTest", dictations);
-        Assert.Contains("DictationSessionKind.Auxiliary", computerUse);
+        Assert.Contains("Recording sounds", xaml, StringComparison.Ordinal);
+        Assert.Contains("SoundToggle", xaml, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.SoundEnabled", xaml, StringComparison.Ordinal);
+        Assert.Contains("SoundEnabled", viewModel, StringComparison.Ordinal);
+        Assert.Contains("public bool SoundEnabled", settings, StringComparison.Ordinal);
+        Assert.Contains("_sounds.Enabled = settings.SoundEnabled", dictation, StringComparison.Ordinal);
+        // Auxiliary (Computer Use / setup) sessions are sound-kind aware on the active shell.
+        Assert.Contains("DictationSessionKind.Auxiliary", dictation, StringComparison.Ordinal);
     }
 
-    private static string FindRepositoryRoot()
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            if (Directory.Exists(Path.Combine(directory.FullName, "windows-native", "Muesli.Windows")))
-            {
-                return directory.FullName;
-            }
-        }
-
-        throw new DirectoryNotFoundException("Repository root was not found.");
-    }
+    private static string FindRepositoryRoot() => TestRepositoryLayout.Root;
 
     private sealed class RecordingSoundPlayer(List<SoundCue> played) : ISystemSoundPlayer
     {

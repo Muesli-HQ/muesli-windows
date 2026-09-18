@@ -8,19 +8,7 @@ public sealed class ReleasePackageReproducibilityTests
 {
     private static string RepositoryRoot => FindRepositoryRoot();
 
-    private static string FindRepositoryRoot()
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "THIRD-PARTY-NOTICES.md")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "windows-native", "Muesli.Windows")))
-            {
-                return directory.FullName;
-            }
-        }
-
-        throw new DirectoryNotFoundException("Could not locate the Muesli repository root.");
-    }
+    private static string FindRepositoryRoot() => TestRepositoryLayout.Root;
 
     private static string Read(string relativePath) =>
         File.ReadAllText(Path.Combine(RepositoryRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
@@ -35,8 +23,11 @@ public sealed class ReleasePackageReproducibilityTests
         Assert.DoesNotContain("sign-windows-release.ps1", rehearsal, StringComparison.Ordinal);
         Assert.Contains("SIGN-01", rehearsal, StringComparison.Ordinal);
         Assert.Contains("L07", rehearsal, StringComparison.Ordinal);
-        Assert.Contains("write-package-content-inventory.ps1", Read("scripts/package-windows-v1.ps1"), StringComparison.Ordinal);
-        Assert.Contains("generate-native-runtime-inventory.ps1", Read("scripts/package-windows-v1.ps1"), StringComparison.Ordinal);
+        // The rehearsal pipeline owns the reproducible content-inventory comparison, and the MSIX
+        // smoke test produces the native-runtime inventory.
+        Assert.Contains("package-content-inventory.json", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("generate-native-runtime-inventory.ps1", Read("scripts/test-winui-msix.ps1"), StringComparison.Ordinal);
+        Assert.Contains("test-winui-msix.ps1", Read("scripts/test-windows-package.ps1"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -49,8 +40,9 @@ public sealed class ReleasePackageReproducibilityTests
         var sdk = globalJson.RootElement.GetProperty("sdk");
         Assert.Equal("10.0.400", sdk.GetProperty("version").GetString());
         Assert.Equal("disable", sdk.GetProperty("rollForward").GetString());
-        Assert.Contains("Assert-MuesliCleanReleaseInputs", package, StringComparison.Ordinal);
-        Assert.Contains("AllowDirty", package, StringComparison.Ordinal);
+        // The one-command rehearsal owns the clean-input guard; the package script accepts -AllowDirty.
+        Assert.Contains("Assert-MuesliCleanReleaseInputs", Read("scripts/rehearse-windows-release.ps1"), StringComparison.Ordinal);
+        Assert.Contains("AllowDirty", common, StringComparison.Ordinal);
         Assert.Contains("Deterministic=true", common, StringComparison.Ordinal);
         Assert.Contains("ContinuousIntegrationBuild=true", common, StringComparison.Ordinal);
         Assert.Contains("global.json", common, StringComparison.Ordinal);
@@ -59,9 +51,9 @@ public sealed class ReleasePackageReproducibilityTests
         Assert.Contains("Refusing to build a release package from a dirty work tree", common, StringComparison.Ordinal);
         Assert.Contains("dirty-release-override.json", common, StringComparison.Ordinal);
         Assert.Contains("Assert-MuesliCleanReleaseInputs", assertInputs, StringComparison.Ordinal);
-        Assert.Contains("Get-MuesliReleaseProperties", package, StringComparison.Ordinal);
+        Assert.Contains("Get-MuesliReleaseProperties", Read("scripts/read-release-properties.ps1"), StringComparison.Ordinal);
         Assert.DoesNotContain("sign-windows-release.ps1", package, StringComparison.Ordinal);
-        Assert.Contains("cudaProviderIncluded = $false", package, StringComparison.Ordinal);
+        Assert.Contains("cudaProviderIncluded = $false", Read("scripts/rehearse-windows-release.ps1"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -72,13 +64,11 @@ public sealed class ReleasePackageReproducibilityTests
         Assert.Contains("global-json-file: global.json", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("dotnet-version: 10.0.x", workflow, StringComparison.Ordinal);
         Assert.Contains("rehearse-windows-release.ps1", workflow, StringComparison.Ordinal);
-        Assert.Contains("choco install innosetup", workflow, StringComparison.Ordinal);
-        Assert.Contains("Authenticode signing is L05", workflow, StringComparison.Ordinal);
+        Assert.Contains("Authenticode/MSIX signing is L05", workflow, StringComparison.Ordinal);
         Assert.Contains("Do not call scripts/sign-windows-release.ps1", workflow, StringComparison.Ordinal);
-        Assert.Contains("artifacts/muesli-windows-*-win-x64.zip", workflow, StringComparison.Ordinal);
-        Assert.Contains("artifacts/MuesliSetup-*-win-x64.exe", workflow, StringComparison.Ordinal);
+        Assert.Contains("artifacts/msix/**/*.msix", workflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/test-results/*.trx", workflow, StringComparison.Ordinal);
-        Assert.Contains("artifacts/package-smoke-report.json", workflow, StringComparison.Ordinal);
+        Assert.Contains("artifacts/msix-smoke-report.json", workflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/muesli-win32-manifest.xml", workflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/release-hashes.json", workflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/native-runtime-inventory.json", workflow, StringComparison.Ordinal);

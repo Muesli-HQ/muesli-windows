@@ -4,22 +4,7 @@ namespace Muesli.Windows.Tests;
 
 public sealed class CpuCatalogInventoryTests
 {
-    private static string RepositoryRoot
-    {
-        get
-        {
-            for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-            {
-                if (File.Exists(Path.Combine(directory.FullName, "THIRD-PARTY-NOTICES.md")) &&
-                    Directory.Exists(Path.Combine(directory.FullName, "windows-native", "Muesli.Windows")))
-                {
-                    return directory.FullName;
-                }
-            }
-
-            throw new DirectoryNotFoundException("Could not locate the Muesli repository root.");
-        }
-    }
+    private static string RepositoryRoot => TestRepositoryLayout.Root;
 
     private static string CatalogPath =>
         Path.Combine(RepositoryRoot, "qualification", "cpu-catalog", "advertised-cpu-models.json");
@@ -41,9 +26,23 @@ public sealed class CpuCatalogInventoryTests
         Assert.True(root.GetProperty("publicPackageCpuOnly").GetBoolean());
         Assert.False(root.GetProperty("cudaProviderIncluded").GetBoolean());
 
+        var contract = root.GetProperty("qualificationContract");
+        Assert.Equal(TranscriptionQualificationContract.InventoryStatus, contract.GetProperty("status").GetString());
+        Assert.Equal(TranscriptionQualificationContract.RequiredProvider, contract.GetProperty("requiredProvider").GetString());
+        Assert.Equal(TranscriptionQualificationContract.MaxWordErrorRate, contract.GetProperty("maxWordErrorRate").GetDouble());
+        Assert.Equal(TranscriptionQualificationContract.MaxCharacterErrorRate, contract.GetProperty("maxCharacterErrorRate").GetDouble());
+        Assert.Equal(TranscriptionQualificationContract.MaxRealtimeFactor, contract.GetProperty("maxRealtimeFactor").GetDouble());
+        Assert.Equal(3, contract.GetProperty("requiredRuns").GetInt32());
+        Assert.True(contract.GetProperty("requiresHumanReference").GetBoolean());
+        Assert.True(contract.GetProperty("requiresDeterministicOutput").GetBoolean());
+        Assert.True(contract.GetProperty("requiresModelReuse").GetBoolean());
+        Assert.Equal(
+            TranscriptionQualificationContract.RequiredCorpusCategories,
+            contract.GetProperty("requiredCorpusCategories").EnumerateArray().Select(item => item.GetString() ?? "").ToArray());
+
         var advertised = root.GetProperty("models").EnumerateArray().ToArray();
         var runtime = TranscriptionModelCatalog.Models;
-        Assert.Equal(7, runtime.Count);
+        Assert.Equal(12, runtime.Count);
         Assert.Equal(runtime.Count, advertised.Length);
 
         for (var index = 0; index < runtime.Count; index++)
@@ -59,6 +58,9 @@ public sealed class CpuCatalogInventoryTests
             Assert.Equal(model.ArchiveUrl, row.GetProperty("archiveUrl").GetString());
             Assert.Equal(model.ArchiveSha256, row.GetProperty("archiveSha256").GetString());
             Assert.Equal(model.SizeLabel, row.GetProperty("sizeLabel").GetString());
+            Assert.Equal(model.QualificationStatus, row.GetProperty("qualificationStatus").GetString());
+            Assert.Equal(model.QualificationPrerequisites, row.GetProperty("qualificationPrerequisites").GetString());
+            Assert.False(model.IsQualificationComplete);
 
             var roles = row.GetProperty("allowedRoles").EnumerateArray()
                 .Select(item => item.GetString())
@@ -97,6 +99,10 @@ public sealed class CpuCatalogInventoryTests
         Assert.Contains("$env:MUESLI_PARAKEET_PROVIDER = \"cpu\"", script, StringComparison.Ordinal);
         Assert.Contains("WarmBackend -ne \"cpu\"", script, StringComparison.Ordinal);
         Assert.Contains("Provider identity verified for every successful model: cpu.", script, StringComparison.Ordinal);
+        Assert.Contains("DeterministicOutput", script, StringComparison.Ordinal);
+        Assert.Contains("ModelInstanceReused", script, StringComparison.Ordinal);
+        Assert.Contains("RunCount", script, StringComparison.Ordinal);
+        Assert.Contains("MaxRealtimeFactor", script, StringComparison.Ordinal);
 
         using var document = LoadCatalog();
         foreach (var model in TranscriptionModelCatalog.Models)
@@ -157,7 +163,8 @@ public sealed class CpuCatalogInventoryTests
     [Fact]
     public void PublicPackageAndCsprojStayCpuOnlyAtManagedSherpa1134()
     {
-        var project = XDocument.Load(Path.Combine(RepositoryRoot, "windows-native", "Muesli.Windows", "Muesli.Windows.csproj"));
+        // The shipping CPU-only sherpa dependency lives in the active Core project.
+        var project = XDocument.Load(Path.Combine(RepositoryRoot, "windows-native", "Muesli.Windows.Core", "Muesli.Windows.Core.csproj"));
         var packageIds = project.Descendants("PackageReference")
             .Select(element => element.Attribute("Include")?.Value ?? "")
             .ToArray();

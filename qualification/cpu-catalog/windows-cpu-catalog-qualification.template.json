@@ -6,7 +6,7 @@
   "capabilityId": "MOD-02",
   "requiredProvider": "cpu",
   "catalogPath": "qualification/cpu-catalog/advertised-cpu-models.json",
-  "notes": "Placeholder slots for a later seven-family CPU real-speech run. This template is not human-reviewed evidence. Validate and smoke must fail until real WAVs exist, every placeholder flag is removed, and a human has listened. Do not copy model output into references or label generated audio as reviewed.",
+  "notes": "Placeholder slots for a later twelve-family CPU real-speech run. This template is not human-reviewed evidence. Validate and smoke must fail until real WAVs exist, every placeholder flag is removed, and a human has listened. Do not copy model output into references or label generated audio as reviewed.",
   "sharedEnglishAudio": "audio/english-speech.wav",
   "cases": [
     {
@@ -24,9 +24,65 @@
       "referenceProvenance": ""
     },
     {
+      "id": "parakeet-unified-en-int8-english-speech",
+      "modelId": "parakeet-unified-en-int8",
+      "role": "both",
+      "audio": "audio/english-speech.wav",
+      "reference": "references/english-speech.txt",
+      "languages": ["en"],
+      "expectedOutcome": "transcript",
+      "requiredProvider": "cpu",
+      "placeholder": true,
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "referenceProvenance": ""
+    },
+    {
+      "id": "parakeet-v2-en-int8-english-speech",
+      "modelId": "parakeet-v2-en-int8",
+      "role": "both",
+      "audio": "audio/english-speech.wav",
+      "reference": "references/english-speech.txt",
+      "languages": ["en"],
+      "expectedOutcome": "transcript",
+      "requiredProvider": "cpu",
+      "placeholder": true,
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "referenceProvenance": ""
+    },
+    {
+      "id": "whisper-tiny-multilingual-english-speech",
+      "modelId": "whisper-tiny-multilingual",
+      "role": "both",
+      "audio": "audio/english-speech.wav",
+      "reference": "references/english-speech.txt",
+      "languages": ["en"],
+      "expectedOutcome": "transcript",
+      "requiredProvider": "cpu",
+      "placeholder": true,
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "referenceProvenance": ""
+    },
+    {
       "id": "whisper-tiny-en-english-speech",
       "modelId": "whisper-tiny-en",
       "role": "dictation",
+      "audio": "audio/english-speech.wav",
+      "reference": "references/english-speech.txt",
+      "languages": ["en"],
+      "expectedOutcome": "transcript",
+      "requiredProvider": "cpu",
+      "placeholder": true,
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "referenceProvenance": ""
+    },
+    {
+      "id": "whisper-small-multilingual-english-speech",
+      "modelId": "whisper-small-multilingual",
+      "role": "both",
       "audio": "audio/english-speech.wav",
       "reference": "references/english-speech.txt",
       "languages": ["en"],
@@ -54,6 +110,20 @@
     {
       "id": "whisper-medium-en-english-speech",
       "modelId": "whisper-medium-en",
+      "role": "final-meeting-import",
+      "audio": "audio/english-speech.wav",
+      "reference": "references/english-speech.txt",
+      "languages": ["en"],
+      "expectedOutcome": "transcript",
+      "requiredProvider": "cpu",
+      "placeholder": true,
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "referenceProvenance": ""
+    },
+    {
+      "id": "whisper-large-turbo-multilingual-english-speech",
+      "modelId": "whisper-large-turbo-multilingual",
       "role": "final-meeting-import",
       "audio": "audio/english-speech.wav",
       "reference": "references/english-speech.txt",
@@ -110,6 +180,9 @@
   ],
   "missingLanguageFixtures": [
     "parakeet-v3 advertised 25 European languages: no non-English reviewed WAV is checked in",
+    "whisper-tiny-multilingual advertised multilingual support: no non-English reviewed WAV is checked in",
+    "whisper-small-multilingual advertised multilingual support: no non-English reviewed WAV is checked in",
+    "whisper-large-turbo-multilingual advertised multilingual support: no non-English reviewed WAV is checked in",
     "sensevoice-small-int8 advertised Chinese, Japanese, Korean, Cantonese: no reviewed WAVs are checked in",
     "qwen3-asr-0.6b-int8 advertised 30 languages plus Chinese dialects: no reviewed WAVs are checked in",
     "cohere-transcribe-int8-en supports 14 languages but Windows selects English: no non-English reviewed WAV is checked in"

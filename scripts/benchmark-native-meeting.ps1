@@ -32,12 +32,10 @@ if ([string]::IsNullOrWhiteSpace($MicAudioPath) -and [string]::IsNullOrWhiteSpac
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
-    $packagedExecutable = Join-Path $PSScriptRoot "Muesli.exe"
-    $debugExecutable = Join-Path $root "windows-native\Muesli.Windows\bin\Debug\net10.0-windows\Muesli.exe"
-    $ExecutablePath = if (Test-Path $packagedExecutable) { $packagedExecutable } else { $debugExecutable }
+    $ExecutablePath = Join-Path $root "windows-native\Muesli.Windows.CommandHost\bin\Debug\net10.0-windows\Muesli.Windows.CommandHost.exe"
 }
 if (-not (Test-Path -LiteralPath $ExecutablePath)) {
-    throw "Muesli executable not found: $ExecutablePath"
+    throw "Muesli command host not found: $ExecutablePath"
 }
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
@@ -131,8 +129,16 @@ if ($RequireDeterministic -and
      -not $result.DiarizationSegmentsChronological)) {
     $failures.Add("meeting transcript, segments, diarization, or merge was not deterministic and chronological")
 }
-if ($RequireModelReuse -and (-not $result.AsrModelReused -or -not $result.DiarizationModelReused)) {
-    $failures.Add("ASR or diarization model instance was not reused")
+if ($RequireModelReuse) {
+    $requiresAsrReuse = -not [string]::IsNullOrWhiteSpace($MicAudioPath) -or
+        -not [string]::IsNullOrWhiteSpace($SystemAudioPath)
+    $requiresDiarizationReuse = -not [string]::IsNullOrWhiteSpace($SystemAudioPath)
+    if ($requiresAsrReuse -and -not $result.AsrModelReused) {
+        $failures.Add("ASR model instance was not reused for a requested ASR stream")
+    }
+    if ($requiresDiarizationReuse -and -not $result.DiarizationModelReused) {
+        $failures.Add("diarization model instance was not reused for a requested system-audio stream")
+    }
 }
 
 Write-Host "Native meeting qualification complete: $resolvedOutput"

@@ -84,14 +84,12 @@ public sealed class PersistenceCutoverCharacterizationTests
         Assert.DoesNotContain("selectedMeetingId", JsonPropertyNames(directory.File("windows-meetings.json")));
         Assert.DoesNotContain("selectedDictationId", JsonPropertyNames(directory.File("windows-dictations.json")));
         Assert.DoesNotContain("selectedFolderId", JsonPropertyNames(directory.File("windows-meeting-folders.json")));
-        Assert.DoesNotContain("parentId", JsonPropertyNames(directory.File("windows-meeting-folders.json")));
-
         var navigation = new NavigationService();
         Assert.Null(navigation.State.SelectedMeetingId);
     }
 
     [Fact]
-    public void JsonFoldersAreOneLevelIdAndNameAndIgnoreParentIdPayload()
+    public void JsonFoldersRoundTripParentId()
     {
         using var directory = new TestDirectory();
         var path = directory.File("windows-meeting-folders.json");
@@ -105,7 +103,7 @@ public sealed class PersistenceCutoverCharacterizationTests
         var folder = Assert.Single(loaded);
         Assert.Equal("id-child", folder.Id);
         Assert.Equal("child-token", folder.Name);
-        Assert.Null(folder.GetType().GetProperty("ParentId"));
+        Assert.Equal("id-root", folder.ParentId);
     }
 
     [Fact]
@@ -237,7 +235,7 @@ public sealed class PersistenceCutoverCharacterizationTests
     }
 
     [Fact]
-    public void ProductionInMemorySearchSkipsManualNotesWhileSqliteSearchFindsThem()
+    public void ProductionInMemorySearchFindsManualNotesAndSqliteSearchStillFindsThem()
     {
         using var directory = new TestDirectory();
         var json = new AppDataStore(directory.Path);
@@ -254,12 +252,13 @@ public sealed class PersistenceCutoverCharacterizationTests
             }
         ]);
         var meeting = Assert.Single(json.LoadMeetings());
-        Assert.False(ProductionInMemorySearchMatch.MeetingMatches(
+        Assert.True(ProductionInMemorySearchMatch.MeetingMatches(
             meeting.Title,
             meeting.Summary,
             meeting.Transcript,
             metadata: "",
-            query: "needle-manual"));
+            query: "needle-manual",
+            notes: meeting.ManualNotes));
         Assert.True(ProductionInMemorySearchMatch.MeetingMatches(
             meeting.Title,
             meeting.Summary,

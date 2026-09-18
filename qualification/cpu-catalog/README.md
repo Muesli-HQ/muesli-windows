@@ -1,6 +1,6 @@
 # L10 CPU catalog fixture kit
 
-This folder is the Windows seven-family **CPU** catalog contract. It is **not**
+This folder is the Windows twelve-family **CPU** catalog contract. It is **not**
 a passing L10 qualification. Ledger row MOD-02 stays **Implemented with
 verification debt** until `scripts/smoke-transcription-models.ps1` plus
 provider-specific CPU gates pass on real speech for every advertised model.

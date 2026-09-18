@@ -16,7 +16,7 @@ public sealed class MeetingCoordinatorCharacterizationTests
         Assert.NotNull(type.GetMethod(nameof(MeetingRecordingCoordinator.StartAsync)));
         Assert.NotNull(type.GetMethod(nameof(MeetingRecordingCoordinator.StopAsync)));
         Assert.NotNull(type.GetMethod(nameof(MeetingRecordingCoordinator.FinalizeRecoverableAsync)));
-        Assert.NotNull(type.GetMethod(nameof(MeetingRecordingCoordinator.SuspendAsync)));
+        Assert.True(type.GetMethods().Count(method => method.Name == nameof(MeetingRecordingCoordinator.SuspendAsync)) >= 2);
         Assert.NotNull(type.GetMethod(nameof(MeetingRecordingCoordinator.ResumeAsync)));
         Assert.NotNull(type.GetMethod(nameof(MeetingRecordingCoordinator.PreserveForShutdownAsync)));
         Assert.NotNull(type.GetMethod(nameof(MeetingRecordingCoordinator.CancelAsync)));

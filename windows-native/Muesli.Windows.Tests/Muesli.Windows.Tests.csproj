@@ -5,7 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
@@ -14,7 +13,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <ProjectReference Include="..\Muesli.Windows\Muesli.Windows.csproj" />
+    <ProjectReference Include="..\Muesli.Windows.Core\Muesli.Windows.Core.csproj" />
+    <ProjectReference Include="..\Muesli.Windows.Platform\Muesli.Windows.Platform.csproj" />
     <ProjectReference Include="..\Muesli.Automation.TestHost\Muesli.Automation.TestHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <Target Name="CopyAutomationTestHost" AfterTargets="Build">
@@ -24,4 +24,20 @@
     <MakeDir Directories="$(OutDir)AutomationTestHost" />
     <Copy SourceFiles="@(_AutomationTestHostFile)" DestinationFolder="$(OutDir)AutomationTestHost" />
   </Target>
+
+  <!--
+    The shared Swift bridge tests exercise the real native library, so this project
+    requires the bridge to be staged beside the test assembly. Fails loudly when the
+    bridge cannot be produced.
+  -->
+  <Target Name="StageSwiftCoreBridgeForTests" AfterTargets="Build" Condition="'$(MuesliSkipSwiftBridge)' != '1'">
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-swift-core-bridge.ps1&quot; -OutDir &quot;$(OutDir).&quot; -Require"
+          IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+  <ItemGroup>
+    <!-- Exercise the nonvisual WinUI composition against real shared persistence adapters. -->
+    <Compile Include="..\Muesli.Windows.WinUI\Services\WinUiLibraryContext.cs" Link="WinUi\WinUiLibraryContext.cs" />
+    <Compile Include="..\Muesli.Windows.WinUI\Services\WinUiSettingsContext.cs" Link="WinUi\WinUiSettingsContext.cs" />
+    <Compile Include="..\Muesli.Windows.WinUI\Services\WinUiModelsContext.cs" Link="WinUi\WinUiModelsContext.cs" />
+  </ItemGroup>
 </Project>

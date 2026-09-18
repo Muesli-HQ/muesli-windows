@@ -17,7 +17,7 @@ public sealed class ModelAndSingleInstanceTests
     public void TranscriptionCatalogHasUniqueSafeModelDefinitions()
     {
         var models = TranscriptionModelCatalog.Models;
-        Assert.Equal(7, models.Count);
+        Assert.Equal(12, models.Count);
         Assert.Equal(models.Count, models.Select(model => model.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.All(models, model =>
         {

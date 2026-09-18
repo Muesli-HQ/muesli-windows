@@ -178,6 +178,34 @@ public sealed class JsonToSqliteMigrationTests
     }
 
     [Fact]
+    public void NestedFoldersPreserveParentsAndMalformedParentsAreSanitized()
+    {
+        using var directory = new TestDirectory();
+        var json = new AppDataStore(directory.Path);
+        json.SaveMeetingFolders(
+        [
+            new PersistedMeetingFolder("child", "Child", "root"),
+            new PersistedMeetingFolder("root", "Root"),
+            new PersistedMeetingFolder("missing", "Missing", "gone"),
+            new PersistedMeetingFolder("cycle-a", "Cycle A", "cycle-b"),
+            new PersistedMeetingFolder("cycle-b", "Cycle B", "cycle-a")
+        ]);
+
+        var result = new JsonToSqliteMigrationService(directory.Path).Migrate();
+
+        Assert.Equal(JsonMigrationOutcome.Migrated, result.Outcome);
+        Assert.NotEmpty(result.Warnings);
+        using var store = MuesliPersistenceStore.Open(PersistencePaths.DatabasePathFor(directory.Path));
+        Assert.Equal("root", store.Folders.Find("child")!.ParentId);
+        Assert.Null(store.Folders.Find("missing")!.ParentId);
+        Assert.Null(store.Folders.Find("cycle-a")!.ParentId);
+        Assert.Null(store.Folders.Find("cycle-b")!.ParentId);
+
+        var imported = store.Folders.List().Select(folder => folder.Id).ToList();
+        Assert.True(imported.IndexOf("root") < imported.IndexOf("child"));
+    }
+
+    [Fact]
     public void LegacyMeetingsKeepTheirAudioOwnership()
     {
         using var directory = new TestDirectory();

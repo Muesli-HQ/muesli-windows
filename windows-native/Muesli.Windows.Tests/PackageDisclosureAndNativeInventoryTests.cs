@@ -8,19 +8,7 @@ public sealed class PackageDisclosureAndNativeInventoryTests
 {
     private static string RepositoryRoot => FindRepositoryRoot();
 
-    private static string FindRepositoryRoot()
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "THIRD-PARTY-NOTICES.md")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "windows-native", "Muesli.Windows")))
-            {
-                return directory.FullName;
-            }
-        }
-
-        throw new DirectoryNotFoundException("Could not locate the Muesli repository root.");
-    }
+    private static string FindRepositoryRoot() => TestRepositoryLayout.Root;
 
     private static NativeCatalog LoadCatalog()
     {
@@ -37,6 +25,8 @@ public sealed class PackageDisclosureAndNativeInventoryTests
         var notices = Read("THIRD-PARTY-NOTICES.md");
         var readme = Read("README.md");
         var packageScript = Read("scripts/package-windows-v1.ps1");
+        // The CPU-only disclosure flag lives in the shared release configuration.
+        var releaseCommon = Read("scripts/release-common.ps1");
         var releaseNotes = Read("docs/WINDOWS_V1_RELEASE.md");
         var catalog = LoadCatalog();
 
@@ -47,7 +37,7 @@ public sealed class PackageDisclosureAndNativeInventoryTests
         Assert.Contains("CPU Sherpa provider only", notices, StringComparison.Ordinal);
         Assert.Contains("not shipped", notices, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("packaged CPU provider", readme, StringComparison.Ordinal);
-        Assert.Contains("cudaProviderIncluded = $false", packageScript, StringComparison.Ordinal);
+        Assert.Contains("cudaProviderIncluded = $false", releaseCommon, StringComparison.Ordinal);
         Assert.Contains("does not claim NVIDIA acceleration", readme, StringComparison.Ordinal);
         Assert.Contains("CPU Sherpa provider only", releaseNotes, StringComparison.Ordinal);
         Assert.False(catalog.PublicPackage.CudaProviderIncluded);
@@ -181,7 +171,7 @@ public sealed class PackageDisclosureAndNativeInventoryTests
     [Fact]
     public void QuestPDFCommunityLicenseIsSelectedWithoutAnEligibilityConclusion()
     {
-        var exporter = Read("windows-native/Muesli.Windows/Services/MeetingExporter.cs");
+        var exporter = Read("windows-native/Muesli.Windows.Platform/Services/MeetingDocumentWriter.cs");
         var notices = Read("THIRD-PARTY-NOTICES.md");
         var ledger = Read("docs/WINDOWS_LAUNCH_LEDGER.md");
         Assert.Contains("QuestPDF.Settings.License = LicenseType.Community", exporter, StringComparison.Ordinal);
@@ -214,7 +204,7 @@ public sealed class PackageDisclosureAndNativeInventoryTests
             Assert.Equal("CPU", diagnostics.Acceleration);
         }
 
-        var source = Read("windows-native/Muesli.Windows/Services/RuntimeDiagnosticsService.cs");
+        var source = Read("windows-native/Muesli.Windows.Core/Services/RuntimeDiagnosticsService.cs");
         Assert.Contains("PublicNativePackageContract.PublicPackageDisclosure", source, StringComparison.Ordinal);
         Assert.Contains("Package truth:", source, StringComparison.Ordinal);
         Assert.DoesNotContain(PublicNativePackageContract.FalseCudaIncludedClaim, source, StringComparison.Ordinal);

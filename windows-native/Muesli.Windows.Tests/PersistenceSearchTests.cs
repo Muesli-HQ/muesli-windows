@@ -205,6 +205,31 @@ public sealed class PersistenceSearchTests
         Assert.Equal(7, store.Search.CountMatches(query));
     }
 
+    [Fact]
+    public void JsonAdapterProvidesTheSameSearchContractWithoutAResultCap()
+    {
+        using var directory = new TestDirectory();
+        var json = new AppDataStore(directory.Path);
+        json.SaveDictations(Enumerable.Range(0, 520)
+            .Select(index => new PersistedDictation(
+                $"d{index:D3}",
+                Anchor.AddMinutes(index).UtcDateTime,
+                "shared term",
+                100,
+                "parakeet")));
+        var adapter = new JsonLibraryHistoryAdapter(json);
+        var query = new SearchQuery
+        {
+            Text = "shared",
+            Kinds = SearchRecordKinds.Dictation,
+            Limit = 50
+        };
+
+        Assert.Equal(520, adapter.CountMatches(query));
+        Assert.Equal(50, adapter.Search(query).Count);
+        Assert.Equal("d519", adapter.Search(query with { Sort = SearchSort.NewestFirst }).First().RecordId);
+    }
+
     private static MuesliPersistenceStore Seed()
     {
         var store = MuesliPersistenceStore.OpenInMemory();

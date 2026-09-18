@@ -5,7 +5,7 @@ public sealed class TranscriptionModelPlatformTests
     [Fact]
     public void CatalogPinsArchiveAndEveryRequiredFileAndRejectsUnknownRuntimeIds()
     {
-        Assert.Equal(7, TranscriptionModelCatalog.Models.Count);
+        Assert.Equal(12, TranscriptionModelCatalog.Models.Count);
         Assert.All(TranscriptionModelCatalog.Models, model =>
         {
             Assert.Matches("^[A-F0-9]{64}$", model.ArchiveSha256);
@@ -118,6 +118,48 @@ public sealed class TranscriptionModelPlatformTests
 
         Assert.True(factory.Sessions[0].Disposed);
         Assert.Equal("whisper-tiny-en", client.ModelId);
+    }
+
+    [Fact]
+    public async Task DefaultSessionPoolSharesOneRecognizerUntilEveryRoleReleasesIt()
+    {
+        var sessions = new List<FakeSession>();
+        var factory = new NativeTranscriptionModelSessionFactory(model =>
+        {
+            var session = new FakeSession(model.Id, null);
+            sessions.Add(session);
+            return session;
+        });
+        var model = TranscriptionModelCatalog.GetRequired("parakeet-v3");
+        using var dictation = new NativeTranscriptionClient(model, factory, _ => true);
+        using var meeting = new NativeTranscriptionClient(model, factory, _ => true);
+
+        await dictation.InitializeAsync();
+        await meeting.InitializeAsync();
+
+        Assert.Single(sessions);
+        Assert.Equal(1, factory.ActiveSessionCount);
+        await dictation.ReleaseModelAsync(model.Id);
+        Assert.False(sessions[0].Disposed);
+        Assert.Equal(1, factory.ActiveSessionCount);
+        await meeting.ReleaseModelAsync(model.Id);
+        Assert.True(sessions[0].Disposed);
+        Assert.Equal(0, factory.ActiveSessionCount);
+    }
+
+    [Theory]
+    [InlineData("cpu", 16, null, 6)]
+    [InlineData("cpu", 4, null, 4)]
+    [InlineData("cuda", 16, null, 4)]
+    [InlineData("cpu", 16, "2", 2)]
+    [InlineData("cpu", 16, "99", 32)]
+    public void ParakeetThreadPolicyAvoidsCpuOversubscription(
+        string provider,
+        int processorCount,
+        string? configured,
+        int expected)
+    {
+        Assert.Equal(expected, NativeParakeetClient.RecommendedThreadCount(provider, processorCount, configured));
     }
 
     [Fact]

@@ -170,19 +170,109 @@ public sealed class DictationCorpusManifestTests
         Assert.False(File.Exists(output));
     }
 
-    private static string RepositoryRoot
+    [Fact]
+    public void TargetSuiteRequiresFourFreshNativeParakeetForegroundTracesWithinThreeSeconds()
     {
-        get
+        using var directory = new TempCorpus();
+        var reportPaths = new List<string>();
+        foreach (var (kind, process) in new[]
+                 {
+                     ("Notepad", "notepad"),
+                     ("Chrome", "chrome"),
+                     ("Office", "winword"),
+                     ("Other", "code")
+                 })
         {
-            for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+            var reportPath = Path.Combine(directory.Path, $"{kind}.json");
+            File.WriteAllText(reportPath, JsonSerializer.Serialize(new
             {
-                if (File.Exists(Path.Combine(directory.FullName, "windows-native", "Muesli.Windows", "MainWindow.xaml")))
-                    return directory.FullName;
-            }
-
-            throw new DirectoryNotFoundException("Could not locate the Muesli repository root from the test output directory.");
+                schemaVersion = 2,
+                targetKind = kind,
+                targetProcess = process,
+                traceId = Guid.NewGuid().ToString("N")[..12],
+                requiredModelId = "parakeet-v3",
+                releaseToPasteMs = 1250,
+                reviewedBy = "human-reviewer",
+                reviewedAt = DateTimeOffset.UtcNow,
+                textVerified = true,
+                passed = true,
+                failures = Array.Empty<string>(),
+                trace = new
+                {
+                    status = "success",
+                    engine = "native-sherpa-onnx/cpu",
+                    model = "parakeet-v3",
+                    deliveryMode = "active-app",
+                    targetForeground = "True",
+                    historyPersisted = "True",
+                    chars = "24"
+                }
+            }));
+            reportPaths.Add(reportPath);
         }
+
+        var output = Path.Combine(directory.Path, "suite.json");
+        var result = RunScript(
+            Path.Combine(RepositoryRoot, "scripts", "qualify-dictation-target-suite.ps1"),
+            "-ReportPaths", string.Join(",", reportPaths), "-OutputPath", output);
+
+        Assert.True(result.ExitCode == 0, result.Text);
+        using var suite = JsonDocument.Parse(File.ReadAllText(output));
+        Assert.Equal(2, suite.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(3000, suite.RootElement.GetProperty("prerequisites").GetProperty("latencyTargetMs").GetInt32());
+        Assert.Equal(1250, suite.RootElement.GetProperty("latency").GetProperty("p95ReleaseToPasteMs").GetInt64());
     }
+
+    [Fact]
+    public void TargetSuiteRejectsNonParakeetOrSlowEvidence()
+    {
+        using var directory = new TempCorpus();
+        var reportPaths = new List<string>();
+        foreach (var (kind, process, model, latency) in new[]
+                 {
+                     ("Notepad", "notepad", "parakeet-v3", 1250),
+                     ("Chrome", "chrome", "parakeet-v3", 1250),
+                     ("Office", "winword", "parakeet-v3", 1250),
+                     ("Other", "code", "whisper-small-en", 3500)
+                 })
+        {
+            var reportPath = Path.Combine(directory.Path, $"{kind}.json");
+            File.WriteAllText(reportPath, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 2,
+                targetKind = kind,
+                targetProcess = process,
+                traceId = Guid.NewGuid().ToString("N")[..12],
+                requiredModelId = model,
+                releaseToPasteMs = latency,
+                reviewedBy = "human-reviewer",
+                reviewedAt = DateTimeOffset.UtcNow,
+                textVerified = true,
+                passed = true,
+                failures = Array.Empty<string>(),
+                trace = new
+                {
+                    status = "success",
+                    engine = "native-sherpa-onnx/cpu",
+                    model,
+                    deliveryMode = "active-app",
+                    targetForeground = "True",
+                    historyPersisted = "True",
+                    chars = "24"
+                }
+            }));
+            reportPaths.Add(reportPath);
+        }
+
+        var result = RunScript(
+            Path.Combine(RepositoryRoot, "scripts", "qualify-dictation-target-suite.ps1"),
+            "-ReportPaths", string.Join(",", reportPaths));
+
+        Assert.True(result.ExitCode != 0, result.Text);
+        Assert.Contains("model identity", result.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string RepositoryRoot => TestRepositoryLayout.Root;
 
     private static string CorpusDirectory => Path.Combine(RepositoryRoot, "qualification", "dictation-corpus");
     private static string TemplatePath => Path.Combine(CorpusDirectory, "windows-dictation-human-qualification.template.json");

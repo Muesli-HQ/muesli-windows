@@ -313,7 +313,12 @@ public sealed class Phase6DetectionTests
         {
             var hex = MeetingPlatformBadges.For(platform).AccentHex;
             Assert.StartsWith("#", hex, StringComparison.Ordinal);
-            Assert.NotNull(System.Windows.Media.ColorConverter.ConvertFromString(hex));
+            Assert.True(hex.Length is 4 or 7 or 9);
+            Assert.True(uint.TryParse(
+                hex.AsSpan(1),
+                System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out _));
         });
     }
 

@@ -90,7 +90,9 @@ public sealed class MeetingCaptureSessionTests
                 var candidates = new[]
                 {
                     Path.Combine(directory.FullName, "Muesli.Windows", "Services", fileName),
-                    Path.Combine(directory.FullName, "windows-native", "Muesli.Windows", "Services", fileName)
+                    Path.Combine(directory.FullName, "windows-native", "Muesli.Windows", "Services", fileName),
+                    Path.Combine(directory.FullName, "Muesli.Windows.Platform", "Services", fileName),
+                    Path.Combine(directory.FullName, "windows-native", "Muesli.Windows.Platform", "Services", fileName)
                 };
                 var match = candidates.FirstOrDefault(File.Exists);
                 if (match is not null)

@@ -3,15 +3,18 @@ param(
     [string]$AudioPath,
     [string]$OutputDirectory,
     [string]$CatalogPath,
-    [int]$Runs = 1,
+    [ValidateRange(2, 20)]
+    [int]$Runs = 3,
+    [ValidateRange(0.01, 1)]
+    [double]$MaxRealtimeFactor = 0.20,
     [switch]$Prepare
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$executable = Join-Path $repoRoot "windows-native\Muesli.Windows\bin\$Configuration\net10.0-windows\Muesli.exe"
+$executable = Join-Path $repoRoot "windows-native\Muesli.Windows.CommandHost\bin\$Configuration\net10.0-windows\Muesli.Windows.CommandHost.exe"
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-    throw "Muesli executable not found: $executable"
+    throw "Muesli command host not found: $executable"
 }
 
 if ([string]::IsNullOrWhiteSpace($AudioPath)) {
@@ -109,6 +112,26 @@ try {
             $failures.Add("$modelId report contained successful inference for a different model: $($wrongModel[0].ModelName)")
         } elseif ($wrongProvider.Count -gt 0) {
             $failures.Add("$modelId report used provider '$($wrongProvider[0].WarmBackend)' instead of required provider 'cpu'")
+        } else {
+            $result = $successful[0]
+            if ([int]$result.RunCount -lt $Runs) {
+                $failures.Add("$modelId recorded $($result.RunCount) run(s); smoke requires $Runs")
+            }
+            if (-not [bool]$result.DeterministicOutput -or
+                -not [bool]$result.DeterministicSegments -or
+                [int]$result.DistinctTranscriptCount -ne 1 -or
+                [int]$result.DistinctSegmentLayoutCount -ne 1) {
+                $failures.Add("$modelId transcript or segment output was not deterministic across $($result.RunCount) runs")
+            }
+            if (-not [bool]$result.ModelInstanceReused) {
+                $failures.Add("$modelId did not reuse its model instance across warm runs")
+            }
+            if ([double]::IsNaN([double]$result.RealtimeFactor) -or
+                [double]::IsInfinity([double]$result.RealtimeFactor) -or
+                [double]$result.RealtimeFactor -lt 0 -or
+                [double]$result.RealtimeFactor -gt $MaxRealtimeFactor) {
+                $failures.Add("$modelId RTF $($result.RealtimeFactor) exceeds the CPU smoke target $MaxRealtimeFactor")
+            }
         }
     }
 } finally {
