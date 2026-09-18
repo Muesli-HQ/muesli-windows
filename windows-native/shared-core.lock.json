@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "repository": "Muesli-HQ/muesli",
+  "packagePath": "native/MuesliNative",
+  "revision": "5d42116b18ad6a6a2aa6eb36d73e9ea1eebb1610",
+  "requiredAbiCapabilities": 3,
+  "note": "Pin the committed shared-core revision here. An empty revision fails the pinned shared-core CI step and local release packaging; do not replace this with a moving branch. See docs/SHARED_CORE_PINNING.md for the exact pinning step."
+}
