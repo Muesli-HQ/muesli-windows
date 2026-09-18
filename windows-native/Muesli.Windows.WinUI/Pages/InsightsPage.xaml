@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muesli.Windows.WinUI.Pages.InsightsPage"
+    x:Name="RootPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Muesli.Windows.WinUI.Pages"
+    xmlns:vm="using:Muesli.Windows.WinUI.ViewModels">
+    <Page.Resources>
+        <Style x:Key="InsightCardStyle" TargetType="Border" BasedOn="{StaticResource MuesliCardStyle}">
+            <Setter Property="Padding" Value="24" />
+            <Setter Property="Margin" Value="0,0,0,16" />
+        </Style>
+        <Style x:Key="InsightMetricValueStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliStatValueStyle}">
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="FontSize" Value="18" />
+        </Style>
+        <Style x:Key="InsightMetricLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliSectionLabelStyle}">
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="CharacterSpacing" Value="140" />
+        </Style>
+    </Page.Resources>
+
+    <Grid Background="{ThemeResource MuesliBackgroundBrush}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Padding="{StaticResource MuesliPageContentPadding}" Spacing="2">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14" Margin="0,0,0,18">
+                    <Button Click="BackToTimeline_Click"
+                            Style="{StaticResource MuesliGhostButtonStyle}"
+                            AutomationProperties.Name="Back to Timeline"
+                            AutomationProperties.AutomationId="InsightsBackButton">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <FontIcon Glyph="&#xE72B;" FontSize="13" />
+                            <TextBlock Text="Back to Timeline" />
+                        </StackPanel>
+                    </Button>
+                    <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                        <TextBlock Text="INSIGHTS" Style="{StaticResource MuesliSectionLabelStyle}" Foreground="{ThemeResource MuesliAccentBrush}" />
+                        <TextBlock Text="Private and on-device" Style="{StaticResource MuesliBodyStyle}" />
+                    </StackPanel>
+                    <!--
+                        P7-06. macOS 07-insights-overview.png carries exactly two controls here:
+                        refresh and Share. Windows had five, three of which were unlabelled glyphs
+                        (preview / copy / save) that all produce the same transcript-free PNG that
+                        Share hands to Windows sharing. None of those commands is deleted - they
+                        move onto the Share split button's menu, where each gets a real label and a
+                        single tab stop, and the header reads refresh + Share like the reference.
+                    -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                        <Button Command="{x:Bind ViewModel.RefreshCommand}" Style="{StaticResource MuesliGhostButtonStyle}" AutomationProperties.Name="Refresh insights" AutomationProperties.AutomationId="InsightsRefreshButton" ToolTipService.ToolTip="Recalculate insights from the local library">
+                            <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                        </Button>
+                        <SplitButton Command="{x:Bind ViewModel.ShareCommand}"
+                                     CornerRadius="6"
+                                     FontSize="14"
+                                     AutomationProperties.Name="Share activity image"
+                                     AutomationProperties.AutomationId="InsightsShareButton"
+                                     ToolTipService.ToolTip="Share a transcript-free image of this activity summary">
+                            <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE72D;" FontSize="14" /><TextBlock Text="Share" /></StackPanel>
+                            <SplitButton.Flyout>
+                                <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                    <MenuFlyoutItem Text="Preview activity image"
+                                                    Command="{x:Bind ViewModel.PreviewShareCommand}"
+                                                    AutomationProperties.AutomationId="InsightsPreviewShareButton"
+                                                    AutomationProperties.Name="Preview activity image">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A4;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="Copy activity image"
+                                                    Command="{x:Bind ViewModel.CopyShareCommand}"
+                                                    AutomationProperties.AutomationId="InsightsCopyShareButton"
+                                                    AutomationProperties.Name="Copy activity image">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="Save activity image…"
+                                                    Command="{x:Bind ViewModel.SaveShareCommand}"
+                                                    AutomationProperties.AutomationId="InsightsSaveShareButton"
+                                                    AutomationProperties.Name="Save activity image">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74E;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </SplitButton.Flyout>
+                        </SplitButton>
+                    </StackPanel>
+                </Grid>
+
+                <Border Style="{StaticResource MuesliSegmentedContainerStyle}" Margin="0,0,0,18">
+                    <SelectorBar x:Name="RangeBar" SelectionChanged="RangeBar_SelectionChanged"
+                                 AutomationProperties.Name="Insights time range"
+                                 AutomationProperties.AutomationId="InsightsRangePicker">
+                        <SelectorBarItem Text="30 days" Tag="0" AutomationProperties.Name="Last 30 days" />
+                        <SelectorBarItem Text="90 days" Tag="1" AutomationProperties.Name="Last 90 days" />
+                        <SelectorBarItem Text="12 months" Tag="2" IsSelected="True" AutomationProperties.Name="Last 12 months" />
+                        <SelectorBarItem Text="All time" Tag="3" AutomationProperties.Name="All time" />
+                    </SelectorBar>
+                </Border>
+
+                <Border Style="{StaticResource MuesliCardStyle}" Padding="28" Visibility="{x:Bind BoolToVisibility(ViewModel.IsLoading), Mode=OneWay}" AutomationProperties.Name="Loading insights">
+                    <StackPanel Spacing="8"><ProgressRing IsActive="True" HorizontalAlignment="Left" AutomationProperties.Name="Loading" /><TextBlock Text="Preparing your private activity…" Style="{StaticResource MuesliBodyStyle}" /></StackPanel>
+                </Border>
+                <Border Style="{StaticResource MuesliCardStyle}" Padding="28" Visibility="{x:Bind BoolToVisibility(ViewModel.IsEmpty), Mode=OneWay}" AutomationProperties.Name="No insights yet" AutomationProperties.AutomationId="InsightsEmptyState">
+                    <StackPanel Spacing="8"><TextBlock Text="Your activity will appear here" FontSize="22" FontWeight="SemiBold" /><TextBlock Text="Record a dictation or finish a meeting to start building your private Insights history." Style="{StaticResource MuesliBodyStyle}" TextWrapping="Wrap" /></StackPanel>
+                </Border>
+                <Border Style="{StaticResource MuesliCardStyle}" Padding="28" Visibility="{x:Bind BoolToVisibility(ViewModel.HasLoadError), Mode=OneWay}" AutomationProperties.Name="Insights unavailable" AutomationProperties.AutomationId="InsightsErrorState">
+                    <StackPanel Spacing="10"><TextBlock Text="Insights are temporarily unavailable" FontSize="22" FontWeight="SemiBold" /><TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" Style="{StaticResource MuesliBodyStyle}" TextWrapping="Wrap" /><Button Command="{x:Bind ViewModel.RefreshCommand}" Style="{StaticResource MuesliSecondaryButtonStyle}" HorizontalAlignment="Left" AutomationProperties.Name="Try again" AutomationProperties.AutomationId="InsightsErrorRetryButton"><TextBlock Text="Try Again" /></Button></StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource InsightCardStyle}" Background="{ThemeResource MuesliRaisedBrush}" Padding="28,26,28,23" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Insights hero" AutomationProperties.AutomationId="InsightsHeroCard">
+                    <Grid>
+                        <!--
+                            P7-08. The tint sits inside the card's 28/26/28/23 padding, so in Light
+                            the card's own fill showed through as a hard vertical seam down the left
+                            of the gradient. The negative margin bleeds it back out to the card
+                            bounds; the radius is the shared card radius so the corners still match.
+                        -->
+                        <Border x:Name="HeroTint" Margin="-28,-26,-28,-23" CornerRadius="{StaticResource MuesliCardCornerRadius}" IsHitTestVisible="False">
+                            <Border.Background>
+                                <LinearGradientBrush x:Name="HeroGradient" StartPoint="0,0" EndPoint="1,1" />
+                            </Border.Background>
+                        </Border>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Your time with Muesli" FontSize="18" FontWeight="SemiBold" CharacterSpacing="-20" />
+                            <!--
+                                The hero counts dictation words *and* meeting words (see
+                                InsightsPageViewModel.Reload / InsightsTotals.TotalWords), which is
+                                why it is larger than the Dictations page figure. macOS shows the
+                                same divergence under the label "Total words dictated"; the number
+                                is unchanged, only the label is corrected so it describes what is
+                                actually counted.
+                            -->
+                            <TextBlock Text="{x:Bind ViewModel.LifetimeTotalWords, Mode=OneWay}" FontSize="58" FontWeight="Bold" CharacterSpacing="-40" AutomationProperties.Name="Total words captured" />
+                            <TextBlock Text="Total words captured" FontFamily="{StaticResource MuesliFontFamilyMedium}" FontSize="15" Foreground="{ThemeResource MuesliTextSecondaryBrush}" ToolTipService.ToolTip="Dictation words plus meeting transcript words, for your whole library." />
+                            <Grid ColumnDefinitions="*,*,*,*" Margin="0,16,0,0">
+                                <StackPanel Spacing="5">
+                                    <TextBlock Text="{x:Bind ViewModel.LifetimeMeetings, Mode=OneWay}" Style="{StaticResource InsightMetricValueStyle}" />
+                                    <TextBlock Text="MEETINGS" Style="{StaticResource InsightMetricLabelStyle}" />
+                                </StackPanel>
+                                <Border Grid.Column="1" BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="1,0,0,0" Padding="20,0,0,0">
+                                    <StackPanel Spacing="5"><TextBlock Text="{x:Bind ViewModel.LifetimeAveragePace, Mode=OneWay}" Style="{StaticResource InsightMetricValueStyle}" /><TextBlock Text="AVERAGE PACE" Style="{StaticResource InsightMetricLabelStyle}" /></StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="1,0,0,0" Padding="20,0,0,0">
+                                    <StackPanel Spacing="5"><TextBlock Text="{x:Bind ViewModel.CurrentStreak, Mode=OneWay}" Style="{StaticResource InsightMetricValueStyle}" /><TextBlock Text="CURRENT STREAK" Style="{StaticResource InsightMetricLabelStyle}" /></StackPanel>
+                                </Border>
+                                <Border Grid.Column="3" BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="1,0,0,0" Padding="20,0,0,0">
+                                    <StackPanel Spacing="5"><TextBlock Text="{x:Bind ViewModel.LongestStreak, Mode=OneWay}" Style="{StaticResource InsightMetricValueStyle}" /><TextBlock Text="LONGEST STREAK" Style="{StaticResource InsightMetricLabelStyle}" /></StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource InsightCardStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Daily activity" AutomationProperties.AutomationId="InsightsDailyActivityCard">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="DAILY ACTIVITY" Style="{StaticResource MuesliSectionLabelStyle}" />
+                                <TextBlock Text="Words and meetings by day" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Style="{StaticResource MuesliSegmentedContainerStyle}">
+                                <SelectorBar x:Name="ActivityModeBar" SelectionChanged="ActivityModeBar_SelectionChanged" AutomationProperties.Name="Daily activity measure" AutomationProperties.AutomationId="InsightsActivityModePicker">
+                                    <SelectorBarItem Text="Words" Tag="0" IsSelected="True" AutomationProperties.Name="Show words activity" />
+                                    <SelectorBarItem Text="Meetings" Tag="1" AutomationProperties.Name="Show meetings activity" />
+                                </SelectorBar>
+                            </Border>
+                        </Grid>
+                        <!--
+                            P7-01. The weekday column shared a row with the month strip and was
+                            Top-aligned against it, so "Mon" printed on top of the first month
+                            label ("MonSept") and every weekday label sat one row above its cells.
+                            The month strip now has an explicit 14 DIP height and the stack a 3 DIP
+                            gap, so a fixed 17 DIP top margin lands "Mon" on the Monday row. The
+                            18 DIP label pitch matches the grid's own row pitch (16 item + 2 spacing).
+
+                            P7-02. The month strip also moves *inside* the cell ScrollViewer. A
+                            12-month range is 53 columns (954 DIP) and the card offers ~880 DIP at
+                            1280, so the newest ~6 columns were clipped off the right edge with the
+                            scroller parked at 0. Every seeded meeting falls in those columns, which
+                            is why the Meetings measure looked like a completely empty grid while
+                            Words lit only the single oldest day. Cells and labels now scroll as one
+                            and the code-behind parks the scroller at its right edge after each load,
+                            so the most recent weeks are the ones on screen.
+                        -->
+                        <Grid ColumnDefinitions="34,*" Margin="0,12,0,0">
+                            <ItemsRepeater Grid.Column="0"
+                                           ItemsSource="{x:Bind ViewModel.WeekdayLabels, Mode=OneWay}"
+                                           VerticalAlignment="Top"
+                                           Margin="0,17,0,0"
+                                           AutomationProperties.AccessibilityView="Raw">
+                                <ItemsRepeater.Layout><StackLayout Orientation="Vertical" Spacing="0" /></ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:InsightsWeekdayItem">
+                                        <TextBlock Text="{x:Bind Label}" Height="18" Margin="0,0,6,0" FontSize="9" Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                            <ScrollViewer x:Name="HeatmapScroller"
+                                          Grid.Column="1"
+                                          HorizontalScrollBarVisibility="Auto"
+                                          HorizontalScrollMode="Enabled"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          VerticalScrollMode="Disabled">
+                                <StackPanel Spacing="3" HorizontalAlignment="Left">
+                                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.MonthLabels, Mode=OneWay}" AutomationProperties.AccessibilityView="Raw">
+                                        <ItemsRepeater.Layout><StackLayout Orientation="Horizontal" /></ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:InsightsMonthItem">
+                                                <TextBlock Text="{x:Bind Label}" Width="{x:Bind Width}" Height="14" FontSize="9" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                    <ItemsRepeater x:Name="Heatmap"
+                                                   ItemsSource="{x:Bind ViewModel.Days, Mode=OneWay}"
+                                                   HorizontalAlignment="Left"
+                                                   MinHeight="126"
+                                                   AutomationProperties.Name="Daily activity heatmap"
+                                                   AutomationProperties.AutomationId="InsightsHeatmap">
+                                        <ItemsRepeater.Layout>
+                                            <UniformGridLayout Orientation="Vertical"
+                                                               MinItemWidth="16"
+                                                               MinItemHeight="16"
+                                                               MaximumRowsOrColumns="7"
+                                                               MinRowSpacing="2"
+                                                               MinColumnSpacing="2"
+                                                               ItemsStretch="None" />
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:InsightsDayItem">
+                                                <Grid Width="14" Height="14" AutomationProperties.Name="{x:Bind AccessibleLabel}">
+                                                    <Border CornerRadius="3" Background="{ThemeResource MuesliSurfaceRaisedBrush}" Opacity="{x:Bind local:InsightsPage.PlaceholderOpacity(IsPlaceholder)}" />
+                                                    <Border CornerRadius="3" Background="{ThemeResource MuesliAccentBrush}" Opacity="{x:Bind Intensity}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="7" Margin="34,10,0,0">
+                            <TextBlock Text="QUIET" Style="{StaticResource MuesliSectionLabelStyle}" FontSize="9" CharacterSpacing="120" VerticalAlignment="Center" />
+                            <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliSurfaceRaisedBrush}" />
+                            <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliAccentBrush}" Opacity="0.24" />
+                            <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliAccentBrush}" Opacity="0.48" />
+                            <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliAccentBrush}" Opacity="0.70" />
+                            <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliAccentBrush}" Opacity="0.95" />
+                            <TextBlock Text="LOUD" Style="{StaticResource MuesliSectionLabelStyle}" FontSize="9" CharacterSpacing="120" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Grid ColumnDefinitions="2*,1*" ColumnSpacing="16" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}">
+                    <Border Style="{StaticResource InsightCardStyle}" AutomationProperties.Name="Dictation and meeting breakdown" AutomationProperties.AutomationId="InsightsBreakdownCard">
+                        <StackPanel Spacing="11">
+                            <TextBlock Text="DICTATIONS AND MEETINGS" Style="{StaticResource MuesliSectionLabelStyle}" />
+                            <TextBlock Text="Activity for the selected time period" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0"><TextBlock Text="{x:Bind ViewModel.TotalWords, Mode=OneWay}" FontSize="38" FontWeight="SemiBold" /><TextBlock Text="words" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Bottom" Margin="0,0,0,7" /></StackPanel>
+                            <Grid x:Name="UsageBar" Height="12" AutomationProperties.Name="Dictation and meeting word balance">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Rectangle Grid.Column="0" Fill="{ThemeResource MuesliAccentBrush}" RadiusX="3" RadiusY="3" />
+                                <Rectangle Grid.Column="1" Fill="{ThemeResource MuesliSuccessBrush}" RadiusX="3" RadiusY="3" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,*" Margin="0,7,0,0">
+                                <StackPanel Orientation="Horizontal" Spacing="8"><Ellipse Width="9" Height="9" Fill="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Center" /><TextBlock Text="Dictation" Foreground="{ThemeResource MuesliTextSecondaryBrush}" /><TextBlock Text="{x:Bind ViewModel.DictationBreakdown, Mode=OneWay}" FontWeight="SemiBold" /></StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"><Ellipse Width="9" Height="9" Fill="{ThemeResource MuesliSuccessBrush}" VerticalAlignment="Center" /><TextBlock Text="Meetings" Foreground="{ThemeResource MuesliTextSecondaryBrush}" /><TextBlock Text="{x:Bind ViewModel.MeetingBreakdown, Mode=OneWay}" FontWeight="SemiBold" /></StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource InsightCardStyle}" AutomationProperties.Name="Insights overview" AutomationProperties.AutomationId="InsightsOverviewCard">
+                        <StackPanel Spacing="10"><TextBlock Text="OVERVIEW" Style="{StaticResource MuesliSectionLabelStyle}" /><Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="11"><TextBlock Text="Dictation sessions" Foreground="{ThemeResource MuesliTextSecondaryBrush}" /><TextBlock Grid.Column="1" Text="{x:Bind ViewModel.DictationSessions, Mode=OneWay}" FontWeight="SemiBold" /><TextBlock Grid.Row="1" Text="Completed meetings" Foreground="{ThemeResource MuesliTextSecondaryBrush}" /><TextBlock Grid.Row="1" Grid.Column="1" Text="{x:Bind ViewModel.CompletedMeetings, Mode=OneWay}" FontWeight="SemiBold" /><TextBlock Grid.Row="2" Text="Average pace" Foreground="{ThemeResource MuesliTextSecondaryBrush}" /><TextBlock Grid.Row="2" Grid.Column="1" Text="{x:Bind ViewModel.SelectedAveragePace, Mode=OneWay}" FontWeight="SemiBold" /><TextBlock Grid.Row="3" Text="Active days" Foreground="{ThemeResource MuesliTextSecondaryBrush}" /><TextBlock Grid.Row="3" Grid.Column="1" Text="{x:Bind ViewModel.SelectedActiveDays, Mode=OneWay}" FontWeight="SemiBold" /></Grid></StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border Style="{StaticResource InsightCardStyle}" MaxWidth="650" HorizontalAlignment="Left" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Insights streaks" AutomationProperties.AutomationId="InsightsStreaksCard">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="28">
+                        <StackPanel Spacing="3"><TextBlock Text="{x:Bind ViewModel.StreakNumber, Mode=OneWay}" FontSize="70" FontWeight="Bold" CharacterSpacing="-40" /><TextBlock Text="CURRENT STREAK" Style="{StaticResource MuesliSectionLabelStyle}" Foreground="{ThemeResource MuesliAccentBrush}" /></StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="9" VerticalAlignment="Center">
+                            <TextBlock Text="STREAKS" Style="{StaticResource MuesliSectionLabelStyle}" />
+                            <TextBlock Text="Your consecutive dictation days" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            <TextBlock Text="{x:Bind ViewModel.StreakSummary, Mode=OneWay}" FontSize="17" FontFamily="{StaticResource MuesliFontFamilyMedium}" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="18">
+                                <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE7C1;" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" /><TextBlock Text="{x:Bind ViewModel.StreakBestLabel, Mode=OneWay}" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" /></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE787;" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" /><TextBlock Text="{x:Bind ViewModel.StreakActiveDaysLabel, Mode=OneWay}" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" /></StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <StackPanel Spacing="3" Margin="0,4,0,10" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}"><TextBlock Text="MOST-USED WORDS" Style="{StaticResource MuesliSectionLabelStyle}" /><TextBlock Text="Common words from your dictations and meetings" Foreground="{ThemeResource MuesliTextSecondaryBrush}" /></StackPanel>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="16" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}">
+                    <Border Style="{StaticResource InsightCardStyle}">
+                        <StackPanel Spacing="12">
+                            <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE9E9;" FontSize="13" Foreground="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Center" /><TextBlock Text="DICTATIONS" Style="{StaticResource MuesliSectionLabelStyle}" Foreground="{ThemeResource MuesliAccentBrush}" /></StackPanel>
+                            <TextBlock Text="No words to show for this time period." Foreground="{ThemeResource MuesliTextTertiaryBrush}" MinHeight="150" VerticalAlignment="Center" TextAlignment="Center" Visibility="{x:Bind InvertBoolToVisibility(ViewModel.HasDictationWords), Mode=OneWay}" />
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.DictationWords, Mode=OneWay}" MinHeight="150" Visibility="{x:Bind BoolToVisibility(ViewModel.HasDictationWords), Mode=OneWay}">
+                                <ItemsRepeater.Layout>
+                                    <LinedFlowLayout ItemsStretch="None" LineSpacing="6" MinItemSpacing="10" />
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:InsightsWordItem">
+                                        <TextBlock Margin="4,3" Text="{x:Bind Word}" FontSize="{x:Bind DisplaySize}" FontWeight="{x:Bind local:InsightsPage.WordWeight(IsTop)}" Foreground="{ThemeResource MuesliAccentBrush}" AutomationProperties.Name="{x:Bind AccessibleLabel}" />
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource InsightCardStyle}">
+                        <StackPanel Spacing="12">
+                            <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE716;" FontSize="13" Foreground="{ThemeResource MuesliSuccessBrush}" VerticalAlignment="Center" /><TextBlock Text="MEETINGS" Style="{StaticResource MuesliSectionLabelStyle}" Foreground="{ThemeResource MuesliSuccessBrush}" /></StackPanel>
+                            <TextBlock Text="No words to show for this time period." Foreground="{ThemeResource MuesliTextTertiaryBrush}" MinHeight="150" VerticalAlignment="Center" TextAlignment="Center" Visibility="{x:Bind InvertBoolToVisibility(ViewModel.HasMeetingWords), Mode=OneWay}" />
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.MeetingWords, Mode=OneWay}" MinHeight="150" Visibility="{x:Bind BoolToVisibility(ViewModel.HasMeetingWords), Mode=OneWay}">
+                                <ItemsRepeater.Layout>
+                                    <LinedFlowLayout ItemsStretch="None" LineSpacing="6" MinItemSpacing="10" />
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:InsightsWordItem">
+                                        <TextBlock Margin="4,3" Text="{x:Bind Word}" FontSize="{x:Bind DisplaySize}" FontWeight="{x:Bind local:InsightsPage.WordWeight(IsTop)}" Foreground="{ThemeResource MuesliSuccessBrush}" AutomationProperties.Name="{x:Bind AccessibleLabel}" />
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border x:Name="SharePreviewCard" Style="{StaticResource InsightCardStyle}" Visibility="{x:Bind ViewModel.HasPreview, Mode=OneWay}" AutomationProperties.Name="Transcript-free activity share preview">
+                    <StackPanel Spacing="10"><TextBlock Text="SHARE PREVIEW · 1200 × 630" Style="{StaticResource MuesliSectionLabelStyle}" /><Image Source="{x:Bind ToImageSource(ViewModel.PreviewUri), Mode=OneWay}" Stretch="Uniform" MaxHeight="315" AutomationProperties.Name="Muesli activity image preview" AutomationProperties.AutomationId="InsightsSharePreviewImage" /></StackPanel>
+                </Border>
+                <InfoBar x:Name="StatusBar" IsOpen="{x:Bind ViewModel.IsStatusOpen, Mode=TwoWay}" Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" AutomationProperties.AutomationId="InsightsStatus" AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muesli.Windows.WinUI.Pages.DictationsPage"
+    x:Name="RootPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:Muesli.Windows.WinUI.Pages"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:Muesli.Windows.WinUI.ViewModels"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <Style x:Key="DictationRowContainerStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+        </Style>
+        <!--
+            P2-08: row actions are quiet. Both buttons are transparent until the row is hovered,
+            selected or holding keyboard focus (wired in DictationRow_ContainerContentChanging), so
+            the red delete glyph is no longer painted on every row at rest — it is drawn only on the
+            one row the user is actually pointing at, where the destructive colour is the correct
+            signal rather than the loudest thing in the list.
+        -->
+        <Style x:Key="DictationRowActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Padding" Value="7,5" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+        </Style>
+    </Page.Resources>
+
+    <Grid Background="{ThemeResource MuesliBackgroundBrush}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="20">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Dictations" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <Button Style="{StaticResource MuesliPrimaryButtonStyle}"
+                                Command="{x:Bind ViewModel.ToggleDictationCommand}"
+                                AutomationProperties.Name="Start or stop dashboard dictation"
+                                AutomationProperties.AutomationId="DictationRecordButton">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE720;" FontSize="14" />
+                                <TextBlock Text="{x:Bind ViewModel.RecordButtonLabel, Mode=OneWay}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource MuesliGhostButtonStyle}"
+                                Visibility="{x:Bind local:DictationsPage.BoolToVisibility(ViewModel.IsRecording), Mode=OneWay}"
+                                Command="{x:Bind ViewModel.CancelDictationCommand}"
+                                AutomationProperties.Name="Cancel active dictation"
+                                AutomationProperties.AutomationId="DictationCancelButton"
+                                ToolTipService.ToolTip="Cancel dictation">
+                            <FontIcon Glyph="&#xE711;" FontSize="14" />
+                        </Button>
+                        <Button Style="{StaticResource MuesliGhostButtonStyle}"
+                                Command="{x:Bind ViewModel.RefreshCommand}"
+                                AutomationProperties.AutomationId="DictationsRefreshButton"
+                                AutomationProperties.Name="Refresh dictations"
+                                ToolTipService.ToolTip="Refresh dictations">
+                            <FontIcon Glyph="&#xE72C;" FontSize="15" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!--
+                    Visibility is bound as well as IsOpen: a closed InfoBar collapses its own
+                    template root but stays Visible itself, so the parent StackPanel keeps
+                    allocating a 20-DIP gap for each one. Two of them put 40 DIP of dead space
+                    above the list on a page that shows no status at all most of the time.
+                -->
+                <InfoBar IsOpen="{x:Bind ViewModel.HasActiveRuntimeStatus, Mode=OneWay}"
+                         Visibility="{x:Bind local:DictationsPage.BoolToVisibility(ViewModel.HasActiveRuntimeStatus), Mode=OneWay}"
+                         IsClosable="False"
+                         Severity="Informational"
+                         Title="Dictation"
+                         Message="{x:Bind ViewModel.DictationStatus, Mode=OneWay}"
+                         AutomationProperties.AutomationId="DictationRuntimeStatus" />
+
+                <!--
+                    Stat cards mirror the macOS trio: streak flame, AI word count, pace gauge.
+                    Each icon sits in a fixed-height host so the three glyphs stay optically
+                    aligned even though they come from different icon kinds. All three figures
+                    now come from the shared library snapshot (P2-01), so Timeline prints the
+                    same numbers.
+                -->
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
+                    <Border Grid.Column="0" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Current dictation streak">
+                        <StackPanel Spacing="7">
+                            <Grid Height="24">
+                                <PathIcon Width="20" Height="20"
+                                          Data="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"
+                                          Foreground="{ThemeResource MuesliWarningBrush}" />
+                            </Grid>
+                            <TextBlock Text="{x:Bind ViewModel.CurrentStreakLabel, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
+                            <TextBlock Text="day streak" Style="{StaticResource MuesliStatLabelStyle}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Words dictated">
+                        <StackPanel Spacing="7">
+                            <Grid Height="24">
+                                <TextBlock Text="AI"
+                                           FontFamily="{StaticResource MuesliFontFamilySemiBold}"
+                                           FontSize="15" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource MuesliAccentBrush}"
+                                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Text="{x:Bind ViewModel.DictationWordsLabel, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
+                            <TextBlock Text="words dictated" Style="{StaticResource MuesliStatLabelStyle}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Average dictation pace">
+                        <StackPanel Spacing="7">
+                            <Grid Height="24">
+                                <FontIcon Glyph="&#xEC4A;" FontSize="20" Foreground="{ThemeResource MuesliSuccessBrush}" />
+                            </Grid>
+                            <TextBlock Text="{x:Bind ViewModel.AveragePaceLabel, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
+                            <TextBlock Text="avg WPM" Style="{StaticResource MuesliStatLabelStyle}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!--
+                    P2-05: no page-level search field — the sidebar field is the shell's one
+                    search entry point.
+                    P2-09: the "All / This PC" segmented control is gone. It had no
+                    SelectionChanged handler at all, and Windows has exactly one capture source
+                    (BACKEND-05), so a source filter here could only ever have one real option.
+                    macOS shows "This Mac / From iPhone" because a second source genuinely exists
+                    there; inventing the Windows equivalent would be fake data.
+                -->
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                    <TextBlock Text="{x:Bind ViewModel.ResultCountLabel, Mode=OneWay}"
+                               VerticalAlignment="Center"
+                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                    <ComboBox Grid.Column="1" SelectedIndex="{x:Bind ViewModel.SortIndex, Mode=TwoWay}" MinWidth="145" AutomationProperties.Name="Sort dictations" AutomationProperties.AutomationId="DictationsSort">
+                        <ComboBoxItem Content="Newest first" />
+                        <ComboBoxItem Content="Oldest first" />
+                    </ComboBox>
+                </Grid>
+
+                <!--
+                    Action feedback (copy/delete/refresh) opens directly above the list it refers
+                    to. Anchoring it here keeps the confirmation inside the viewport; the previous
+                    placement below the list rendered it off-screen whenever history was long.
+                -->
+                <InfoBar x:Name="StatusBar"
+                         IsOpen="{x:Bind ViewModel.IsStatusOpen, Mode=TwoWay}"
+                         Visibility="{x:Bind local:DictationsPage.BoolToVisibility(ViewModel.IsStatusOpen), Mode=OneWay}"
+                         Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                         Severity="Informational"
+                         AutomationProperties.AutomationId="DictationsStatus" />
+
+                <Grid>
+                    <ListView x:Name="DictationList"
+                              ItemsSource="{x:Bind ViewModel.Groups, Mode=OneWay}"
+                              SelectionMode="None"
+                              IsItemClickEnabled="False"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              ContainerContentChanging="NamedListItem_ContainerContentChanging"
+                              AutomationProperties.AutomationId="DictationHistoryList">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Margin" Value="0,0,0,14" />
+                                <Setter Property="MinHeight" Value="0" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="IsTabStop" Value="False" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemContainerTransitions><TransitionCollection /></ListView.ItemContainerTransitions>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DictationGroup">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="{x:Bind Name}" Style="{StaticResource MuesliSectionLabelStyle}" Margin="4,2,0,0" />
+                                    <Border Style="{StaticResource MuesliCardStyle}" Padding="0">
+                                        <ListView ItemsSource="{x:Bind Items}"
+                                                  SelectionMode="Single"
+                                                  IsItemClickEnabled="False"
+                                                  ContainerContentChanging="DictationRow_ContainerContentChanging"
+                                                  ItemContainerStyle="{StaticResource DictationRowContainerStyle}"
+                                                  Background="Transparent"
+                                                  BorderThickness="0"
+                                                  Padding="0"
+                                                  HorizontalContentAlignment="Stretch"
+                                                  AutomationProperties.Name="{x:Bind Name}">
+                                            <ListView.ItemContainerTransitions><TransitionCollection /></ListView.ItemContainerTransitions>
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:DictationListItem">
+                                                    <!--
+                                                        Row hierarchy follows the macOS list:
+                                                        monospace timestamp, then the transcript.
+                                                        Duration stays as subdued metadata on the
+                                                        right; the per-row model line is gone
+                                                        (P2-08) because macOS never prints it and
+                                                        it repeated the same value on every row.
+                                                    -->
+                                                    <Border BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="0,0,0,1" Padding="18,14">
+                                                        <!--
+                                                            No MinHeight. A 46-DIP floor on top of
+                                                            the 14-DIP padding made a one-line
+                                                            dictation row 74 DIP while the same row
+                                                            on Timeline is 48, so the two history
+                                                            pages read at different densities. The
+                                                            row now sizes to its content like
+                                                            Timeline's, which is also the macOS
+                                                            density (02-dictations.png).
+                                                        -->
+                                                        <Grid ColumnDefinitions="86,*,Auto,Auto" ColumnSpacing="12">
+                                                            <TextBlock Text="{x:Bind TimeLabel}" Style="{StaticResource MuesliTimestampStyle}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                                            <TextBlock Grid.Column="1"
+                                                                       Text="{x:Bind Text}"
+                                                                       FontFamily="{StaticResource MuesliFontFamily}"
+                                                                       FontSize="15"
+                                                                       Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                                                                       TextWrapping="Wrap"
+                                                                       MaxLines="3"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Grid.Column="2" Text="{x:Bind DurationLabel}" Style="{StaticResource MuesliRowSecondaryStyle}" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,2,0,0" />
+                                                            <StackPanel x:Name="RowActions"
+                                                                        Grid.Column="3"
+                                                                        Orientation="Horizontal"
+                                                                        Spacing="2"
+                                                                        Margin="6,-4,-6,0"
+                                                                        Opacity="0"
+                                                                        IsHitTestVisible="False">
+                                                                <!--
+                                                                    Tag + Click, not
+                                                                    {Binding ElementName=RootPage}:
+                                                                    an ElementName binding inside a
+                                                                    nested DataTemplate resolves
+                                                                    against the template namescope,
+                                                                    which does not contain the page
+                                                                    root. The tagged item is the
+                                                                    record the action must operate
+                                                                    on, verified by the delete
+                                                                    confirmation naming it.
+                                                                -->
+                                                                <Button Style="{StaticResource DictationRowActionStyle}"
+                                                                        Tag="{x:Bind}"
+                                                                        Click="CopyDictation_Click"
+                                                                        ToolTipService.ToolTip="Copy dictation"
+                                                                        AutomationProperties.Name="Copy dictation"
+                                                                        AutomationProperties.AutomationId="DictationCopyButton">
+                                                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                                                </Button>
+                                                                <Button Style="{StaticResource DictationRowActionStyle}"
+                                                                        Tag="{x:Bind}"
+                                                                        Click="DeleteDictation_Click"
+                                                                        ToolTipService.ToolTip="Delete dictation"
+                                                                        AutomationProperties.Name="Delete dictation"
+                                                                        AutomationProperties.AutomationId="DictationDeleteButton">
+                                                                    <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{ThemeResource MuesliErrorBrush}" />
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+                                    </Border>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <Border x:Name="EmptyState" Style="{StaticResource MuesliCardStyle}" MinHeight="170">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                            <FontIcon Glyph="&#xE720;" FontSize="28" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateTitle" Text="No dictations yet" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateBody" Text="Your first completed dictation will be stored here." Style="{StaticResource MuesliBodyStyle}" TextAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

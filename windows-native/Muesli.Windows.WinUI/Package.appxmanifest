@@ -1,0 +1,70 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  IgnorableNamespaces="uap uap5 rescap systemai">
+
+  <!--
+    Development identity only. Version tracks Directory.Build.props/MuesliVersion. Production
+    packaging replaces the publisher with an approved production certificate subject; a public
+    release must never ship with the CN=AppPublisher placeholder.
+  -->
+  <Identity
+    Name="Muesli.Windows"
+    Publisher="CN=AppPublisher"
+    Version="0.3.0.0" />
+
+  <mp:PhoneIdentity PhoneProductId="D66930FD-2321-4068-A310-620497E62C76" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+
+  <Properties>
+    <DisplayName>Muesli</DisplayName>
+    <PublisherDisplayName>AppPublisher</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="Muesli"
+        Description="Private dictation and meeting transcription for Windows"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <uap5:Extension Category="windows.startupTask" Executable="Muesli.Windows.WinUI.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask TaskId="MuesliWinUiStartup" Enabled="false" DisplayName="Muesli" />
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <systemai:Capability Name="systemAIModels"/>
+    <!--
+      Dictation and meeting capture open a WASAPI capture device. Without this the packaged
+      identity is denied by the audio stack with E_ACCESSDENIED from
+      WasapiCapture.InitializeCaptureDevice, even when Windows' global microphone consent is on.
+    -->
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+</Package>

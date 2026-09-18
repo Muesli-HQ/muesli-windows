@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="Muesli.Windows.WinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:Muesli.Windows.WinUI"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="Muesli"
+    mc:Ignorable="d">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <!--
+        The shell extends underneath the native caption buttons.  AppTitleBar is an intentionally
+        quiet 32-DIP drag region: it contains no duplicate title or app icon, while the OS still
+        owns caption buttons, snapping, keyboard access, and accessibility semantics.
+    -->
+    <Grid x:Name="WindowRoot" Background="{ThemeResource MuesliBackgroundBrush}">
+        <Frame x:Name="RootFrame" />
+        <!--
+            The drag strip starts after the sidebar so brand, search, and nav remain clickable.
+            Caption buttons stay OS-owned at the top-right of the window. Left inset is updated
+            from MainPage when the rail collapses to the compact 72-DIP icon column.
+        -->
+        <Grid x:Name="AppTitleBar"
+              Height="32"
+              Margin="268,0,0,0"
+              VerticalAlignment="Top"
+              Background="Transparent"
+              IsHitTestVisible="True"
+              AutomationProperties.Name="Muesli window title bar" />
+    </Grid>
+</Window>

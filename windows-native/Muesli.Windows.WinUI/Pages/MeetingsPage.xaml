@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muesli.Windows.WinUI.Pages.MeetingsPage"
+    x:Name="RootPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:Muesli.Windows.WinUI.Pages"
+    xmlns:vm="using:Muesli.Windows.WinUI.ViewModels"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Grid x:Name="RootGrid" Background="{ThemeResource MuesliBackgroundBrush}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="16">
+                <!--
+                    Hierarchy matches the macOS meetings browser (03-meetings.png), which stacks
+                    exactly four blocks: page title, then the current folder name sharing one row
+                    with the action buttons, then the result caption, then the origin segments.
+                    P3-03: the folder name used to sit on a fifth row of its own under the title.
+                    Refresh stays a ghost control on the title row (Windows has no iCloud sync glyph).
+                -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Meetings" Style="{StaticResource MuesliPageTitleStyle}" MinWidth="0" />
+                    <Button Grid.Column="1"
+                            Style="{StaticResource MuesliGhostButtonStyle}"
+                            VerticalAlignment="Top"
+                            Command="{x:Bind ViewModel.RefreshCommand}"
+                            AutomationProperties.Name="Refresh meetings"
+                            AutomationProperties.AutomationId="MeetingsRefreshButton"
+                            ToolTipService.ToolTip="Refresh meetings">
+                        <FontIcon Glyph="&#xE72C;" FontSize="15" />
+                    </Button>
+                </Grid>
+
+                <Grid x:Name="HeaderActionsRow" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="14" RowSpacing="10">
+                    <TextBlock x:Name="CurrentFolderHeading"
+                               Text="{x:Bind ViewModel.CurrentFolderLabel, Mode=OneWay}"
+                               Style="{StaticResource MuesliPageSubtitleStyle}"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               MaxLines="1"
+                               MinWidth="0"
+                               ToolTipService.ToolTip="{x:Bind ViewModel.CurrentFolderLabel, Mode=OneWay}"
+                               AutomationProperties.Name="{x:Bind ViewModel.CurrentFolderLabel, Mode=OneWay}"
+                               AutomationProperties.AutomationId="MeetingsCurrentFolderLabel" />
+                <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <StackPanel x:Name="PrimaryActions" Orientation="Horizontal" Spacing="8">
+                        <Button Style="{StaticResource MuesliPrimaryButtonStyle}"
+                                Command="{x:Bind ViewModel.StartQuickNoteCommand}"
+                                AutomationProperties.Name="Start Quick Note recording"
+                                AutomationProperties.AutomationId="QuickNoteButton">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE710;" FontSize="14" />
+                                <TextBlock Text="Quick Note" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                Command="{x:Bind ViewModel.ImportAudioCommand}"
+                                AutomationProperties.Name="Import meeting audio or video"
+                                AutomationProperties.AutomationId="ImportAudioButton">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE898;" FontSize="14" />
+                                <TextBlock Text="Import Audio" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <StackPanel x:Name="SecondaryActions" Orientation="Horizontal" Spacing="8">
+                        <ComboBox SelectedIndex="{x:Bind ViewModel.SortIndex, Mode=TwoWay}"
+                                  MinWidth="148"
+                                  VerticalAlignment="Center"
+                                  AutomationProperties.Name="Sort meetings"
+                                  AutomationProperties.AutomationId="MeetingsSort">
+                            <ComboBoxItem Content="Newest first" />
+                            <ComboBoxItem Content="Oldest first" />
+                        </ComboBox>
+                        <ComboBox ItemsSource="{x:Bind ViewModel.TimeRangeOptions, Mode=OneWay}"
+                                  SelectedIndex="{x:Bind ViewModel.TimeRangeIndex, Mode=TwoWay}"
+                                  MinWidth="132"
+                                  VerticalAlignment="Center"
+                                  AutomationProperties.Name="Meeting time range"
+                                  AutomationProperties.AutomationId="MeetingsTimeRange" />
+                        <Button Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                Click="ManageTemplates_Click"
+                                AutomationProperties.Name="Manage meeting templates"
+                                AutomationProperties.AutomationId="ManageMeetingTemplatesButton">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE8FD;" FontSize="14" />
+                                <TextBlock Text="Manage Templates" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+                </Grid>
+
+                <TextBlock Text="{x:Bind ViewModel.ResultCountHint, Mode=OneWay}"
+                           Style="{StaticResource MuesliBodyStyle}"
+                           AutomationProperties.AutomationId="MeetingsResultCount" />
+
+                <InfoBar IsOpen="{x:Bind ViewModel.HasIdleNotice, Mode=OneWay}"
+                         IsClosable="False"
+                         Severity="Informational"
+                         Message="{x:Bind ViewModel.MeetingStatus, Mode=OneWay}"
+                         AutomationProperties.AutomationId="MeetingsIdleNotice" />
+
+                <Border x:Name="ActiveMeetingPanel" Style="{StaticResource MuesliCardStyle}" BorderBrush="{ThemeResource MuesliAccentBrush}" AutomationProperties.AutomationId="ActiveMeetingPanel">
+                    <Grid x:Name="ActiveMeetingGrid" RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="12" ColumnSpacing="12">
+                        <StackPanel Spacing="5" MinWidth="0">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ProgressRing Width="18" Height="18"
+                                              IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                                              Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ViewModel.IsBusy), Mode=OneWay}" />
+                                <TextBlock Text="{x:Bind ViewModel.MeetingStatus, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <TextBlock Text="{x:Bind ViewModel.LiveTranscript, Mode=OneWay}" TextWrapping="Wrap" MaxLines="5" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            <ProgressBar Value="{x:Bind ViewModel.ImportProgress, Mode=OneWay}" Maximum="100" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ViewModel.IsImporting), Mode=OneWay}" />
+                        </StackPanel>
+                        <StackPanel x:Name="ActiveMeetingActions"
+                                    Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="8"
+                                    VerticalAlignment="Top"
+                                    HorizontalAlignment="Right">
+                            <Button Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                    Command="{x:Bind ViewModel.PauseRecordingCommand}"
+                                    Content="Pause"
+                                    Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ViewModel.CanPause), Mode=OneWay}"
+                                    AutomationProperties.Name="Pause meeting recording"
+                                    AutomationProperties.AutomationId="PauseMeetingButton" />
+                            <Button Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                    Command="{x:Bind ViewModel.ResumeRecordingCommand}"
+                                    Content="Resume"
+                                    Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ViewModel.CanResume), Mode=OneWay}"
+                                    AutomationProperties.Name="Resume meeting recording"
+                                    AutomationProperties.AutomationId="ResumeMeetingButton" />
+                            <Button Style="{StaticResource MuesliGhostButtonStyle}" Command="{x:Bind ViewModel.ShowLiveTranscriptCommand}" Content="Live transcript" AutomationProperties.Name="Show live transcript window" AutomationProperties.AutomationId="ShowLiveTranscriptButton" />
+                            <Button Style="{StaticResource MuesliPrimaryButtonStyle}" Command="{x:Bind ViewModel.StopRecordingCommand}" AutomationProperties.Name="Stop and save meeting" AutomationProperties.AutomationId="StopMeetingButton" Content="Stop and Save" />
+                            <Button Style="{StaticResource MuesliDestructiveButtonStyle}" Command="{x:Bind ViewModel.DiscardRecordingCommand}" AutomationProperties.Name="Discard meeting recording" AutomationProperties.AutomationId="DiscardMeetingButton" Content="Discard" />
+                        </StackPanel>
+                        <StackPanel x:Name="ActiveMeetingDetails" Grid.Row="1" Grid.ColumnSpan="2" Spacing="4">
+                            <TextBlock Text="{x:Bind ViewModel.CaptureStatus, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource MuesliTextSecondaryBrush}" AutomationProperties.AutomationId="MeetingCaptureStatusLabel" />
+                            <TextBlock Text="{x:Bind ViewModel.DetectionStatus, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource MuesliTextTertiaryBrush}" AutomationProperties.AutomationId="MeetingDetectionStatusLabel" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border x:Name="RecoveryPanel" Style="{StaticResource MuesliCardStyle}" AutomationProperties.AutomationId="MeetingRecoveryPanel">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="RECOVERABLE RECORDINGS" Style="{StaticResource MuesliSectionLabelStyle}" />
+                        <TextBlock Text="Interrupted captures stay on this PC until you finalize or discard them." TextWrapping="Wrap" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                        <ListView ItemsSource="{x:Bind ViewModel.RecoverableSessions, Mode=OneWay}"
+                                  SelectionMode="None"
+                                  Background="Transparent"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                  ScrollViewer.VerticalScrollMode="Disabled"
+                                  AutomationProperties.AutomationId="RecoverableMeetingList">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*,Auto" Padding="4,6" ColumnSpacing="12">
+                                        <StackPanel MinWidth="0">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Detail}" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Style="{StaticResource MuesliSecondaryButtonStyle}" Content="Finalize" Command="{Binding ViewModel.FinalizeRecoveryCommand, ElementName=RootPage}" CommandParameter="{Binding}" AutomationProperties.Name="Finalize recovered meeting" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Border>
+
+                <!--
+                    Origin picker is All / This PC only. Windows never had an iPhone capture path,
+                    so a third segment would be decorative. Search stays on this row because the
+                    shell search is global history, not this folder's meeting list.
+                -->
+                <Grid x:Name="FilterRow" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                    <Border Style="{StaticResource MuesliSegmentedContainerStyle}">
+                        <SelectorBar x:Name="MeetingSourceFilter"
+                                     SelectionChanged="MeetingSourceFilter_SelectionChanged"
+                                     AutomationProperties.Name="Meeting source filter">
+                            <SelectorBarItem Text="All" Tag="0" IsSelected="True" AutomationProperties.Name="Show all meetings" AutomationProperties.AutomationId="MeetingFilterAll" />
+                            <SelectorBarItem Text="This PC" Tag="1" AutomationProperties.Name="Show meetings from this PC" AutomationProperties.AutomationId="MeetingFilterThisPc" />
+                        </SelectorBar>
+                    </Border>
+                    <Border x:Name="SearchWell"
+                            Grid.Column="1"
+                            Style="{StaticResource MuesliSegmentedContainerStyle}"
+                            Padding="8,0"
+                            HorizontalAlignment="Stretch"
+                            MinWidth="120">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                            <FontIcon Glyph="&#xE721;" FontSize="14" Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1"
+                                     Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="Search meetings"
+                                     Style="{StaticResource MuesliSearchTextBoxStyle}"
+                                     AutomationProperties.Name="Search meetings"
+                                     AutomationProperties.AutomationId="MeetingsSearchBox" />
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!--
+                    Folders stay in the shell rail; this expander is the editor and is collapsed by
+                    default (P3-02 — it shipped expanded, which pushed the meeting list entirely
+                    below the fold at 720x720). The rail's "+" opens it, so folder creation is still
+                    one click from the sidebar.
+                -->
+                <Expander x:Name="FolderEditorExpander"
+                          Header="Manage folders"
+                          IsExpanded="False"
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          AutomationProperties.Name="Manage meeting folders"
+                          AutomationProperties.AutomationId="MeetingFoldersExpander">
+                    <Border Style="{StaticResource MuesliCardStyle}" Padding="14" Margin="0,8,0,0" AutomationProperties.AutomationId="MeetingFoldersPanel">
+                        <Grid x:Name="FolderEditorGrid" ColumnSpacing="18" RowSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="FolderListColumn" Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="MEETING FOLDERS" Style="{StaticResource MuesliSectionLabelStyle}" />
+                                <ListView x:Name="MeetingFolderList"
+                                          ItemsSource="{x:Bind ViewModel.Folders, Mode=OneWay}"
+                                          SelectionMode="Single"
+                                          SelectedIndex="0"
+                                          SelectionChanged="MeetingFolder_SelectionChanged"
+                                          ContainerContentChanging="MeetingFolderList_ContainerContentChanging"
+                                          MaxHeight="320"
+                                          Background="Transparent"
+                                          AutomationProperties.Name="Meeting folders"
+                                          AutomationProperties.AutomationId="MeetingFolderList">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:MeetingFolderListItem">
+                                            <Grid ColumnDefinitions="*,Auto" Padding="8,6" ColumnSpacing="10">
+                                                <TextBlock Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{x:Bind CountLabel}"
+                                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                            <StackPanel x:Name="FolderEditorFields" Grid.Column="1" Spacing="8">
+                                <TextBlock Text="Organize local meetings" Style="{StaticResource MuesliRowTitleStyle}" FontSize="16" />
+                                <TextBlock Text="Choose a folder to filter the history list, or create a new one." Style="{StaticResource MuesliBodyStyle}" />
+                                <!--
+                                    P3-04: the count rule is stated rather than inferred. It is the
+                                    rule MeetingFolderListItem.BuildTree applies on this page and in
+                                    the shell rail, so the two surfaces cannot show different numbers.
+                                -->
+                                <TextBlock Text="A folder's count includes its subfolders. All Meetings counts every meeting, including meetings that are in no folder — so it can be larger than the folders added together."
+                                           Style="{StaticResource MuesliRowSecondaryStyle}"
+                                           TextWrapping="Wrap"
+                                           AutomationProperties.AutomationId="MeetingFolderCountRule" />
+                                <TextBox x:Name="MeetingFolderNameBox" Text="{x:Bind ViewModel.FolderName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Folder name" AutomationProperties.Name="Meeting folder name" AutomationProperties.AutomationId="MeetingFolderName" />
+                                <!--
+                                    The picker shows nesting the way the folder list does, as leading
+                                    spaces on the label. UIA trims those, so the announced name spells
+                                    the parent out instead: sibling folders of *different* parents are
+                                    allowed to share a name, and "Notes" twice tells a screen-reader
+                                    user nothing about which one they are about to move a folder into.
+                                -->
+                                <ComboBox Header="Parent folder"
+                                          ItemsSource="{x:Bind ViewModel.ParentFolders, Mode=OneWay}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedParentFolder, Mode=TwoWay}"
+                                          MinWidth="220"
+                                          HorizontalAlignment="Left"
+                                          AutomationProperties.Name="Parent folder"
+                                          AutomationProperties.AutomationId="MeetingParentFolderPicker">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:MeetingFolderListItem">
+                                            <TextBlock Text="{x:Bind ParentDisplayName}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxLines="1"
+                                                       AutomationProperties.Name="{x:Bind ParentPickerAccessibleName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Text="{x:Bind ViewModel.FolderEditorStatus, Mode=OneWay}"
+                                           Style="{StaticResource MuesliRowSecondaryStyle}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ViewModel.HasFolderEditorStatus), Mode=OneWay}"
+                                           AutomationProperties.AutomationId="MeetingFolderEditorStatus" />
+                                <StackPanel x:Name="FolderEditorActions" Orientation="Horizontal" Spacing="8">
+                                    <Button Style="{StaticResource MuesliSecondaryButtonStyle}" Command="{x:Bind ViewModel.NewFolderCommand}" Content="New" AutomationProperties.Name="New meeting folder" AutomationProperties.AutomationId="NewMeetingFolderButton" />
+                                    <Button Style="{StaticResource MuesliPrimaryButtonStyle}" Command="{x:Bind ViewModel.SaveFolderCommand}" Content="Save" AutomationProperties.Name="Save meeting folder" AutomationProperties.AutomationId="SaveMeetingFolderButton" />
+                                    <!--
+                                        Cancel restores the name and parent that are actually stored,
+                                        so an abandoned rename or move leaves the folder untouched and
+                                        the user can see that it did.
+                                    -->
+                                    <Button Style="{StaticResource MuesliSecondaryButtonStyle}" Command="{x:Bind ViewModel.CancelFolderEditCommand}" Content="Cancel" AutomationProperties.Name="Cancel folder edit" AutomationProperties.AutomationId="CancelMeetingFolderButton" />
+                                    <Button Style="{StaticResource MuesliDestructiveButtonStyle}" Command="{x:Bind ViewModel.DeleteFolderCommand}" Content="Delete" AutomationProperties.Name="Delete meeting folder" AutomationProperties.AutomationId="DeleteMeetingFolderButton" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Expander>
+
+                <Grid>
+                    <ListView x:Name="MeetingList"
+                              ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
+                              SelectionMode="None"
+                              IsItemClickEnabled="True"
+                              ItemClick="MeetingList_ItemClick"
+                              ContainerContentChanging="MeetingList_ContainerContentChanging"
+                              AutomationProperties.Name="Meeting history"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.VerticalScrollMode="Disabled"
+                              AutomationProperties.AutomationId="MeetingHistoryList">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Margin" Value="0,0,0,12" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemContainerTransitions><TransitionCollection /></ListView.ItemContainerTransitions>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MeetingListItem">
+                                <Border Style="{StaticResource MuesliCardStyle}" Padding="18,16">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
+                                        <StackPanel Spacing="7" MinWidth="0">
+                                            <TextBlock Text="{x:Bind Title}" Style="{StaticResource MuesliRowTitleStyle}" FontSize="16" TextWrapping="Wrap" MaxLines="2" />
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{x:Bind TimestampLabel}" Style="{StaticResource MuesliRowSecondaryStyle}" TextWrapping="Wrap" />
+                                                <TextBlock Text="•" Foreground="{ThemeResource MuesliTextTertiaryBrush}" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(HasDuration)}" />
+                                                <TextBlock Text="{x:Bind DurationLabel}" Style="{StaticResource MuesliRowSecondaryStyle}" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(HasDuration)}" />
+                                                <Border Style="{StaticResource MuesliSuccessBadgeStyle}" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowStatusBadge)}">
+                                                    <TextBlock Text="{x:Bind StatusLabel}" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
+                                                </Border>
+                                                <Border Style="{StaticResource MuesliAccentBadgeStyle}" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowSourceBadge)}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                        <FontIcon Glyph="{x:Bind SourceBadgeGlyph}" FontSize="10" Foreground="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{x:Bind SourceBadgeLabel}" Style="{StaticResource MuesliAccentBadgeTextStyle}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="{x:Bind Summary}" Style="{StaticResource MuesliRowSecondaryStyle}" TextWrapping="Wrap" MaxLines="2" />
+                                        </StackPanel>
+                                        <FontIcon Grid.Column="1"
+                                                  Glyph="&#xE8B7;"
+                                                  Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                                  VerticalAlignment="Top"
+                                                  FontSize="15"
+                                                  Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowFolderBadge)}"
+                                                  ToolTipService.ToolTip="{x:Bind FolderName}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <Border x:Name="EmptyState" Style="{StaticResource MuesliCardStyle}" MinHeight="190">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" MaxWidth="380">
+                            <FontIcon Glyph="&#xE716;" FontSize="28" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock Text="{x:Bind ViewModel.EmptyStateTitle, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind ViewModel.EmptyStateInstruction, Mode=OneWay}" Style="{StaticResource MuesliBodyStyle}" TextAlignment="Center" />
+                            <Button Style="{StaticResource MuesliPrimaryButtonStyle}"
+                                    HorizontalAlignment="Center"
+                                    Command="{x:Bind ViewModel.StartQuickNoteCommand}"
+                                    AutomationProperties.Name="Start Quick Note recording from empty state">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE710;" FontSize="14" />
+                                    <TextBlock Text="Quick Note" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

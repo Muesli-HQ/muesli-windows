@@ -1,0 +1,455 @@
+using Muesli.Windows.Core.Contracts;
+using Muesli.Windows.Core.Services;
+using Muesli.Windows.Services;
+
+namespace Muesli.Windows.WinUI.Services;
+
+public sealed class WinUiDictationContext : IDisposable
+{
+    private readonly WinUiLibraryContext _library;
+    private readonly WinUiSettingsContext _settings;
+    private readonly IUiDispatcher _dispatcher;
+    private readonly AppLogService _log = new();
+    private readonly NativeTranscriptionClient _transcription;
+    private readonly DictationCoordinator _coordinator;
+    private readonly TranscriptionPipelineService _pipeline;
+    private readonly NativeTextCleanupService _cleanup;
+    private readonly ActiveAppPasteService _paste;
+    private readonly GlobalHotkeyService _hotkey = new();
+    private readonly SoundFeedbackService _sounds = new();
+    private readonly DictationHotkeyStateMachine _hotkeyState = new();
+    private CancellationTokenSource? _timerCancellation;
+    private CancellationTokenSource? _operationCancellation;
+    private IntPtr _pasteTarget;
+    private int _disposed;
+
+    // WPF dispatched every shortcut callback with DispatcherPriority.Send, so shortcut down, up,
+    // Escape, other-key and the delay timers could never interleave. Appending to one chain under
+    // a lock reproduces that: work starts in the order the hook delivered it and each item
+    // completes before the next begins, with no async void and no unobserved task.
+    private readonly object _hotkeyChainGate = new();
+    private Task _hotkeyChain = Task.CompletedTask;
+
+    public WinUiDictationContext(
+        WinUiLibraryContext library,
+        WinUiSettingsContext settings,
+        IUiDispatcher dispatcher)
+    {
+        _library = library;
+        _settings = settings;
+        _dispatcher = dispatcher;
+        var current = settings.Load();
+        _transcription = new NativeTranscriptionClient(current.DictationModelId);
+        _coordinator = new DictationCoordinator(_transcription);
+        _coordinator.LevelChanged += OnRecordingLevelChanged;
+        _cleanup = new NativeTextCleanupService(_log);
+        _pipeline = new TranscriptionPipelineService(_cleanup, _log);
+        _paste = new ActiveAppPasteService(
+            new WinRtClipboardAdapter(),
+            new NativeWindowActivationAdapter(),
+            new NativeKeyboardInputAdapter());
+        Status = "Ready";
+    }
+
+    public event EventHandler? Changed;
+
+    /// <summary>
+    /// Raised with the live microphone peak while a dictation is recording. Marshalled to the UI
+    /// thread so the indicator can drive its waveform bars from real capture data.
+    /// </summary>
+    public event EventHandler<float>? RecordingLevelChanged;
+
+    public bool IsRecording => _coordinator.IsRecording;
+    public bool IsBusy => _coordinator.IsBusy || _coordinator.IsTranscribing;
+    public bool IsTranscribing => _coordinator.IsTranscribing;
+    public bool IsHotkeyRegistered { get; private set; }
+    public string Status { get; private set; }
+
+    public void RegisterHotkey()
+    {
+        ThrowIfDisposed();
+        try
+        {
+            _hotkey.Register(
+                _settings.Load().Hotkey,
+                () => EnqueueHotkeyWork(() => ExecuteActionAsync(
+                    _hotkeyState.KeyDown(_settings.Load().EnableDoubleTapDictation))),
+                () => EnqueueHotkeyWork(() => ExecuteActionAsync(
+                    _hotkeyState.KeyUp(_settings.Load().EnableDoubleTapDictation))),
+                // WPF's cancellation predicate. Escape must reach a dictation that is merely armed
+                // or preparing, one that is transcribing, and one whose operation token is still
+                // live — not only an actively recording one.
+                () => DictationCancellationPolicy.CanCancel(
+                    _hotkeyState.IsLive,
+                    _coordinator.IsRecording,
+                    _coordinator.IsTranscribing,
+                    _coordinator.IsBusy,
+                    _operationCancellation is not null),
+                () => EnqueueHotkeyWork(CancelAsync),
+                () => EnqueueHotkeyWork(() => ExecuteActionAsync(_hotkeyState.OtherKeyWhileArmed())));
+            IsHotkeyRegistered = true;
+            Status = $"Ready · {_settings.Load().Hotkey}";
+        }
+        catch (Exception exception)
+        {
+            IsHotkeyRegistered = false;
+            Status = $"Shortcut unavailable: {exception.Message}";
+            _log.Error("WinUI dictation hotkey registration failed.", exception);
+        }
+        RaiseChanged();
+    }
+
+    public IReadOnlyList<string> ListMicrophones() => _coordinator.ListMicrophones();
+
+    public Task StartFromDashboardAsync() => StartAsync(shouldPasteToActiveApp: false);
+
+    public Task StopFromDashboardAsync() => StopAsync();
+
+    /// <summary>Stops the active dictation and transcribes it (the indicator's "stop" action).</summary>
+    public Task StopRecordingAsync() => StopAsync();
+
+    public async Task StartAuxiliaryAsync(string? microphoneName = null)
+    {
+        ThrowIfDisposed();
+        if (IsRecording || IsBusy) return;
+        Status = "Listening";
+        RaiseChanged();
+        await _coordinator.StartAsync(microphoneName ?? _coordinator.PickPreferredMicrophone(), DictationSessionKind.Auxiliary);
+        Status = _coordinator.IsRecording ? "Listening" : "Ready";
+        RaiseChanged();
+    }
+
+    public async Task<string> StopWithoutPersistingAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (!_coordinator.IsRecording) return "";
+        Status = "Transcribing locally…";
+        RaiseChanged();
+        var result = await _coordinator.StopForOnboardingTestAsync(cancellationToken);
+        var text = result.Text?.Trim() ?? "";
+        Status = string.IsNullOrWhiteSpace(text) ? "No speech detected" : "Local test captured";
+        RaiseChanged();
+        return text;
+    }
+
+    public async Task CancelAsync()
+    {
+        StopTimers();
+        _operationCancellation?.Cancel();
+        await _coordinator.CancelAsync();
+        _hotkeyState.Reset();
+        _pasteTarget = IntPtr.Zero;
+        Status = "Dictation cancelled";
+        RaiseChanged();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        StopTimers();
+        _operationCancellation?.Cancel();
+        _hotkey.Dispose();
+        _coordinator.LevelChanged -= OnRecordingLevelChanged;
+        _coordinator.Dispose();
+        _cleanup.Dispose();
+        _operationCancellation?.Dispose();
+    }
+
+    /// <summary>
+    /// Appends hotkey work to the single serialized chain. Order of arrival is preserved and each
+    /// item runs to completion before the next starts, so a key-up can never overtake the delay
+    /// timer that is still deciding whether to start recording.
+    /// </summary>
+    private void EnqueueHotkeyWork(Func<Task> work)
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+        lock (_hotkeyChainGate)
+        {
+            var previous = _hotkeyChain;
+            _hotkeyChain = RunChainedAsync(previous, work);
+        }
+    }
+
+    private async Task RunChainedAsync(Task previous, Func<Task> work)
+    {
+        try
+        {
+            await previous.ConfigureAwait(false);
+        }
+        catch
+        {
+            // The previous link already reported itself; never break the chain.
+        }
+
+        if (Volatile.Read(ref _disposed) != 0) return;
+
+        try
+        {
+            await work().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            Status = $"Dictation failed: {exception.Message}";
+            _log.Error("WinUI dictation hotkey action failed.", exception);
+            ResetHotkeyDictationState();
+            RaiseChanged();
+        }
+    }
+
+    /// <summary>
+    /// WPF's <c>ResetHotkeyDictationState</c>: stop every delay timer and return the state machine
+    /// to idle so the next shortcut press is accepted without restarting Muesli.
+    /// </summary>
+    private void ResetHotkeyDictationState()
+    {
+        StopTimers();
+        _hotkeyState.Reset();
+    }
+
+    private async Task ExecuteActionAsync(DictationHotkeyAction action)
+    {
+        switch (action)
+        {
+            case DictationHotkeyAction.Arm:
+                // WPF parity: arming only starts the delay timers. The pill must stay idle until
+                // the prepare delay actually elapses, so a quick tap never flashes "preparing".
+                StopTimers();
+                Status = "Ready";
+                RaiseChanged();
+                StartTimers();
+                break;
+
+            case DictationHotkeyAction.ShowPreparing:
+                Status = "Preparing microphone…";
+                RaiseChanged();
+                break;
+
+            case DictationHotkeyAction.StartRecording:
+                StopTimers();
+                await StartAsync(shouldPasteToActiveApp: true);
+                if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
+                break;
+
+            case DictationHotkeyAction.EnterHandsFree:
+                // Hands-free is a distinct mode: it keeps recording after the shortcut is
+                // released, and the next shortcut action stops it.
+                StopTimers();
+                Status = "Hands-free dictation active";
+                RaiseChanged();
+                await StartAsync(shouldPasteToActiveApp: true);
+                if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
+                break;
+
+            case DictationHotkeyAction.StopRecording:
+                StopTimers();
+                await StopAsync();
+                break;
+
+            case DictationHotkeyAction.Cancel:
+                StopTimers();
+                await CancelAsync();
+                break;
+
+            case DictationHotkeyAction.StartDoubleTapTimer:
+                StopTimers();
+                StartDoubleTapTimer();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// WPF's recovery when the microphone never opened: drop every timer, reset the state machine,
+    /// clear the paste target and the operation token, and release the live indicator so the pill
+    /// leaves its recording state instead of hanging there until the app restarts.
+    /// </summary>
+    private void ReleaseAfterFailedStart()
+    {
+        ResetHotkeyDictationState();
+        _pasteTarget = IntPtr.Zero;
+        _operationCancellation?.Dispose();
+        _operationCancellation = null;
+        RaiseChanged();
+    }
+
+    private async Task StartAsync(bool shouldPasteToActiveApp)
+    {
+        if (IsRecording || IsBusy) return;
+        var current = _settings.Load();
+        if (!string.Equals(_coordinator.ModelId, current.DictationModelId, StringComparison.OrdinalIgnoreCase))
+        {
+            Status = "Switching transcription model…";
+            RaiseChanged();
+            await _coordinator.SwitchModelAsync(current.DictationModelId);
+        }
+
+        // Capture the paste target before any indicator work: the floating pill must never become
+        // the foreground window that the transcript is pasted into.
+        _pasteTarget = shouldPasteToActiveApp ? _paste.CaptureForegroundWindow() : IntPtr.Zero;
+        _sounds.Enabled = current.SoundEnabled;
+        Status = "Listening";
+        RaiseChanged();
+        try
+        {
+            await _coordinator.StartAsync(current.MicrophoneName ?? _coordinator.PickPreferredMicrophone());
+        }
+        catch (Exception exception)
+        {
+            // A denied microphone is not a broken shortcut; say which it is and how to fix it.
+            Status = MicrophoneAccessDiagnostics.DescribeFailure(exception);
+            if (MicrophoneAccessDiagnostics.IsAccessDenied(exception))
+            {
+                _log.Error(
+                    "Dictation microphone access was denied by Windows. Grant it at " +
+                    $"{MicrophoneAccessDiagnostics.PrivacySettingsUri}, and ensure the package " +
+                    "declares the microphone device capability.",
+                    exception);
+            }
+            else
+            {
+                _log.Error("Could not start dictation microphone.", exception);
+            }
+            _pasteTarget = IntPtr.Zero;
+            RaiseChanged();
+            return;
+        }
+
+        if (_coordinator.IsRecording) _sounds.PlayDictationStart();
+        Status = _coordinator.IsRecording ? "Listening" : "Ready";
+        RaiseChanged();
+    }
+
+    private async Task StopAsync()
+    {
+        if (!_coordinator.IsRecording) return;
+        _hotkeyState.Reset();
+        _operationCancellation?.Dispose();
+        _operationCancellation = new CancellationTokenSource();
+        Status = "Transcribing locally…";
+        RaiseChanged();
+        try
+        {
+            var stop = await _coordinator.StopAsync(
+                Guid.NewGuid().ToString("N")[..12],
+                _operationCancellation.Token);
+            var result = stop.Transcription;
+            if (string.IsNullOrWhiteSpace(result.Text) ||
+                result.Text.Contains("[BLANK_AUDIO]", StringComparison.OrdinalIgnoreCase))
+            {
+                Status = result.DurationMs < HotkeyTriggerTiming.ShortDiscardMilliseconds
+                    ? "Ready"
+                    : "No speech detected";
+                return;
+            }
+
+            var settings = _settings.Load();
+            var text = await _pipeline.PrepareDictationTextAsync(
+                result.Text,
+                settings.EnableLocalCleanup,
+                settings.RemoveFillerWords,
+                _library.LoadDictionary());
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                Status = "No text remained after cleanup";
+                return;
+            }
+
+            var dictations = _library.History.LoadDictations().ToList();
+            dictations.Insert(0, new PersistedDictation(
+                $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}",
+                DateTime.Now,
+                text,
+                result.DurationMs,
+                _coordinator.ModelId));
+            _library.History.SaveDictations(dictations);
+            _sounds.Enabled = settings.SoundEnabled;
+            _sounds.PlayDictationInsert();
+
+            if (_pasteTarget != IntPtr.Zero)
+            {
+                try
+                {
+                    await _paste.PasteTextAsync(text, _pasteTarget, _operationCancellation.Token);
+                    Status = "Dictation inserted";
+                }
+                catch (Exception pasteException)
+                {
+                    await _paste.CopyTextAsync(text, CancellationToken.None);
+                    Status = "Paste failed; transcript saved and copied";
+                    _log.Error("WinUI active-app paste failed after dictation persistence.", pasteException);
+                }
+            }
+            else
+            {
+                Status = "Dictation saved";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Dictation cancelled";
+        }
+        finally
+        {
+            _pasteTarget = IntPtr.Zero;
+            RaiseChanged();
+        }
+    }
+
+    private void StartTimers()
+    {
+        StopTimers();
+        _timerCancellation = new CancellationTokenSource();
+        var token = _timerCancellation.Token;
+        var settings = _settings.Load();
+        _ = RunTimerAsync(
+            HotkeyTriggerTiming.PrepareDelay(settings.HotkeyTriggerThresholdMs, settings.EnableDoubleTapDictation),
+            () => _hotkeyState.PrepareDelayElapsed(),
+            token);
+        _ = RunTimerAsync(
+            HotkeyTriggerTiming.StartDelay(settings.HotkeyTriggerThresholdMs, settings.EnableDoubleTapDictation),
+            () => _hotkeyState.StartDelayElapsed(),
+            token);
+    }
+
+    private void StartDoubleTapTimer()
+    {
+        StopTimers();
+        _timerCancellation = new CancellationTokenSource();
+        _ = RunTimerAsync(
+            HotkeyTriggerTiming.DoubleTapWindow,
+            () => _hotkeyState.DoubleTapWindowElapsed(),
+            _timerCancellation.Token);
+    }
+
+    private async Task RunTimerAsync(
+        TimeSpan delay,
+        Func<DictationHotkeyAction> next,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(delay, cancellationToken);
+            if (cancellationToken.IsCancellationRequested) return;
+            // Through the same chain as the shortcut callbacks: a tick and a key-up that arrive
+            // together must not both drive the state machine at once.
+            EnqueueHotkeyWork(() => ExecuteActionAsync(next()));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void StopTimers()
+    {
+        _timerCancellation?.Cancel();
+        _timerCancellation?.Dispose();
+        _timerCancellation = null;
+    }
+
+    private void RaiseChanged() => _dispatcher.TryEnqueue(() => Changed?.Invoke(this, EventArgs.Empty));
+
+    private void OnRecordingLevelChanged(object? sender, AudioLevelEventArgs e) =>
+        _dispatcher.TryEnqueue(() => RecordingLevelChanged?.Invoke(this, e.Peak));
+
+    private void ThrowIfDisposed() =>
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+}
