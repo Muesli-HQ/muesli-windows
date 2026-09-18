@@ -6,7 +6,7 @@ QUAL-01 stay Partial. Do not treat an incomplete bundle, a local CUDA Toolkit
 install, or this write-up as a packaged NVIDIA provider.
 
 Companion CPU inventory: `docs/L10_CPU_CATALOG_INVENTORY.md`.
-Public package contract: `windows-native/Muesli.Windows/NativeRuntime/public-cpu-native-catalog.json`.
+Public package contract: `windows-native/Muesli.Windows.Core/NativeRuntime/public-cpu-native-catalog.json`.
 Runtime acceptance: `NativeSherpaRuntime` plus `PublicNativePackageContract.ValidateCudaBundle`.
 
 ## Version match that L11 must keep
@@ -184,7 +184,7 @@ When a later slice implements packaging (not this one):
    `NativeSherpaRuntime.IsCudaCapable` without touching the public CPU catalog.
 3. Keep public notices, inventory, and `cudaProviderIncluded=false` on the CPU
    zip.
-4. Qualify NVIDIA hardware: native startup, seven-family (or honestly scoped)
+4. Qualify NVIDIA hardware: native startup, twelve-family (or honestly scoped)
    model smoke, dictation, meeting, diarization, stress, and release gates from
    the L11 launch-plan exit.
 5. Disclose CPU fallback only when a complete matching bundle is absent;

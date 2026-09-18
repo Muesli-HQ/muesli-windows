@@ -1,18 +1,18 @@
 # Muesli macOS-to-Windows parity matrix
 
-Inventory date: 2026-08-20.
+Inventory date: 2026-09-17.
 
 **Status authority:** [`WINDOWS_LAUNCH_LEDGER.md`](WINDOWS_LAUNCH_LEDGER.md). This file keeps capability IDs and macOS/Windows source mapping. If a status here disagrees with the ledger, the ledger wins.
 
-Windows target: `windows-native/Muesli.Windows` (`net10.0-windows`, WPF, x64).
+Windows target: `windows-native/Muesli.Windows.WinUI` (`net10.0-windows10.0.26100.0`, packaged WinUI 3, x64), with shared behavior in `Muesli.Windows.Core` / `Muesli.Windows.Platform`. WPF is a retired reference at `windows-native/Muesli.Windows.Wpf.Legacy`.
 
 macOS reference: `C:/Users/madha/Downloads/muesli-main/muesli-main`.
 
-The macOS implementation is the behavioral reference, not a library compatibility promise. CoreAudio process taps, ScreenCaptureKit, CoreML/ANE, EventKit, CloudKit, AppKit menu-bar APIs, macOS Accessibility/TCC, and Sparkle do not have drop-in WPF equivalents.
+The macOS implementation is the behavioral reference, not a library compatibility promise. CoreAudio process taps, ScreenCaptureKit, CoreML/ANE, EventKit, CloudKit, AppKit menu-bar APIs, macOS Accessibility/TCC, and Sparkle do not have drop-in Windows equivalents.
 
 Status meanings match the launch ledger: **Complete and verified**, **Implemented with verification debt**, **Partial**, **Missing**, **Excluded**, **Externally blocked**.
 
-Owner modules are launch-program Phase 0–13. They are not the historical P0–P8 labels. The reviewed integrated 2026-08-20 tree expands to **742** Release cases: **738 passed, 0 failed, 4 explicit prerequisite skips**. The focused L23/L27 run is **42 passed, 0 failed** and the elevated Windows UI suite is **6 passed, 0 skipped, 0 failed**. This inventory does not re-claim historical CUDA/package/UI evidence.
+Owner modules are launch-program Phase 0–13. They are not the historical P0–P8 labels. Pinned SDK 10.0.400 is not installed. On 2026-09-17 the default fallback-SDK WinUI Release build fails ReadyToRun (`NETSDK1094`); only the diagnostic `PublishReadyToRun=false` compile is 0/0. Current discovery is **706 tests**, down from the retained 845-test baseline. Excluding the unbounded shared-project scan, the current suite is **670 passed, 31 failed, 4 explicit skips of 705**; all four surviving skips name their prerequisite, but the streaming fixture test/skip is absent. Historical combined UI automation remains 20/20 and was not rerun. L52 owns this cutover regression. The committed `a5414b3` release rehearsal remains historical; production signing, clean-profile/clean-VM, physical, human, clean committed two-checkout, and current committed WinUI-shipping evidence remain open.
 
 ## Models and model lifecycle
 
@@ -48,7 +48,7 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 |---|---|---|---|---|---|
 | MTG-01 | Simultaneous mic/system capture | `MeetingSession.swift`, `MeetingMicrophoneRecorder.swift`, `CoreAudioSystemRecorder.swift` | `MeetingRecordingCoordinator.cs`, `AudioCaptureService.cs`, `SystemAudioCaptureService.cs` | Implemented with verification debt | Phase 3 |
 | MTG-02 | Suspend/resume, cancel, crash recovery | `MeetingResumePolicy.swift`, repair/termination policies | `MeetingSessionStateMachine.cs`, `MeetingSessionJournalStore.cs`; `Phase3MeetingLifecycleTests.cs` | Implemented with verification debt | Phase 3 |
-| MTG-03 | Edit title/transcript/notes; retranscribe | `MeetingDetailView.swift`, `MeetingNotesView.swift` | Meeting-detail transcript edit/cancel/save and candidate retranscription are wired. Focused live flow is 1/1 and the elevated UI suite is 6/6; retained-audio quality and broader meeting qualification remain evidence debt | Implemented with verification debt | Phase 7 / 5 |
+| MTG-03 | Edit title/transcript/notes; retranscribe | `MeetingDetailView.swift`, `MeetingNotesView.swift` | Meeting-detail transcript edit/cancel/save and candidate retranscription are wired. L42 adds per-meeting retained-audio admission before scratch plus deterministic concurrent candidate handling, and L46 prevents recovered stale retranscription from restoring an older transcript over a newer accepted transcript. Focused live flow is 1/1, L46 focused tests are 27/27 in Debug and Release, and the elevated UI suite is 6/6; retained-audio quality and broader meeting qualification remain evidence debt | Implemented with verification debt | Phase 7 / 5 |
 | LIVE-01 | Live transcription + floating UI | `MeetingStreamingPartialSession.swift`, `LiveTranscriptView.swift` | `MeetingLiveTranscriptionSession.cs`, `MeetingLiveTranscriptWindow.xaml`; `Phase4LiveTranscriptionTests.cs` | Implemented with verification debt | Phase 4 |
 | LIVE-02 | VAD natural-boundary rotation | `StreamingVadController.swift`, `PCMChunkRecorder.swift` | Native Silero; `MaxSpeechDuration=0` | Implemented with verification debt | Phase 4 |
 | LIVE-03 | Explicit final ownership modes | `MeetingSession.swift`, `Models.swift` | `LiveTranscriptOwnershipDescriptor.cs`; settings/journal persistence | Complete and verified | Phase 4 |
@@ -56,7 +56,7 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 | DIA-01 | Remote-speaker diarization + You | FluidAudio diarizer | `NativeDiarizationClient.cs`; `Phase5FinalizationTests.cs` | Implemented with verification debt | Phase 5 |
 | DIA-02 | Speaker aliases on all surfaces | Meeting detail/store | `SpeakerAliasService.cs`; export/finalization tests | Implemented with verification debt | Phase 5 / 8 |
 | API-01 | Process-targeted system capture | CoreAudio / ScreenCaptureKit | `WindowsProcessLoopbackCapture.cs` with disclosed endpoint fallback | Implemented with verification debt | Phase 3 |
-| PLAY-01 | Playback, seek, waveform, track select | `MeetingRecordingPlayerView.swift` | `MeetingRecordingPlaybackService.cs` play/pause/seek/tracks. No playback waveform | Partial | Phase 3 / 8 |
+| PLAY-01 | Playback, seek, waveform, track select | `MeetingRecordingPlayerView.swift` | `MeetingRecordingPlaybackService.cs` play/pause/seek/tracks plus asynchronous cached `WaveformPeaks` sampling and cleanup; `MeetingDetailView.xaml` renders the waveform | Implemented with verification debt | Phase 3 / 8 |
 
 ## Detection (calendar excluded)
 
@@ -76,11 +76,12 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 | SUM-02 | Ollama and LM Studio/custom HTTP | Summary client | Ollama implemented. LM Studio/custom HTTP missing | Partial | Phase 7 |
 | SUM-03 | ChatGPT subscription OAuth | `ChatGPTAuthManager.swift` | `SummaryProviderDisclosure.ChatGptSubscriptionBlocker` only | Excluded | — |
 | SUM-04 | Automatic titles | Summary/title tests | `MeetingTitleService` + `TitleIsManual` | Implemented with verification debt | Phase 7 |
-| SEC-01 | Secret storage and migration | Keychain tests | `SecretStore.cs`, `SecretsAndSettingsTests.cs` | Complete and verified | Phase 7 |
+| SEC-01 | Secret storage and migration | Keychain tests | Shared `SettingsStore.cs` secret migration, `windows-native/Muesli.Windows.Platform/Secrets/WindowsCredentialSecretStore.cs:7-64`, and `SecretsAndSettingsTests.cs`; old `Services/SecretStore.cs` mapping was removed by L49 extraction | Complete and verified | Phase 7 |
 | TPL-01 | Templates and re-summary | `MeetingTemplates.swift` | Built-in/custom templates in store/UI; Phase 7 tests | Implemented with verification debt | Phase 7 |
 | NOTE-01 | Manual notes vs generated summary | `MeetingNotesView.swift` | `PersistedMeeting.ManualNotes`, `MeetingNotesComposer.cs`; Phase 7 tests | Implemented with verification debt | Phase 7 |
-| ORG-01 | Nested folders | Meetings store/navigation | SQLite repository has tested `ParentId`/subtree support; production JSON-backed UI remains one-level | Partial | Phase 8 |
-| SEARCH-01 | Search dictations and meetings | `SearchResultsView.swift` | SQLite FTS indexes manual notes, but production UI still uses title/summary/transcript/metadata filtering | Partial | Phase 8 / 12 |
+| ORG-01 | Nested folders | Meetings store/navigation | Production UI and JSON/SQLite persistence carry `ParentId`, indentation, subtree filtering, nested creation, explicit move-to-root/move-to-parent, and delete/reparent semantics; JSON deletion is crash-journaled across folder and meeting files. Green Release coverage exists, while retained GUI and cloned-profile evidence remain open | Implemented with verification debt | Phase 8 |
+| DATA-01 | Profile-scoped protected cutover staging and coherent multi-file capture | Persistence/migration boundary | L47 covers profile-local protected staging, stale cleanup, coherent capture/retry, cross-process lock through authority, and no-follow validation. Focused L47 tests are 30/30 in Debug and Release with no P0–P3 findings; cloned-real-profile qualification has not run | Implemented with verification debt | Phase 8 |
+| SEARCH-01 | Search dictations and meetings | `SearchResultsView.swift` | JSON and SQLite implementations share an interface-backed ordered, paged search contract beyond 500 results, with manual-note-aware snippets, counts, tabs, and clear action. The 2026-09-12 focused 10k-history slice passes 14/14; retained GUI and large real-profile latency evidence remain open | Implemented with verification debt | Phase 8 / 12 |
 
 ## Import, export, automation
 
@@ -89,7 +90,7 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 | IMP-01 | Import media, diarize, cancel | `AudioFileImportController.swift` | `MediaImportFormats.cs` (no ogg); `Phase8MediaImportTests.cs`, `Phase8ImportCancellationTests.cs` | Implemented with verification debt | Phase 8 |
 | EXP-01 | Export PDF/Markdown | `MeetingExporter.swift` | `MeetingExporter.cs`; `Phase8ExportTests.cs`. QuestPDF 2026.5.0 Community selection recorded; eligibility is a Phase 13 owner check | Implemented with verification debt | Phase 8 |
 | HOOK-01 | Post-meeting executable hook | `MeetingHookRunner.swift` | `PostMeetingAutomationService.cs`; `Phase9AutomationTests.cs` | Complete and verified | Phase 9 |
-| AUTO-01 | Auto Markdown/PDF export | `MeetingMarkdownAutoExporter.swift` | L41 commit `2972192` makes concurrent Markdown publication atomic; 96-run stress publishes exactly one file with no temp files. PDF auto-export remains missing | Implemented with verification debt | Phase 9 |
+| AUTO-01 | Auto Markdown/PDF export | `MeetingMarkdownAutoExporter.swift` | L43 manifest integrity remains implemented and the 2026-09-14 L41 stress passes 8 rounds × 12 concurrent exports with exactly one Markdown and no temporary files. PDF auto-export remains missing | Implemented with verification debt | Phase 9 |
 | FOLLOW-01 | Follow-up workflow | `MeetingFollowUpPolicy.swift` | None | Missing | Phase 9 |
 
 ## Computer Use and sync
@@ -104,14 +105,14 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 
 | ID | Capability | macOS reference | Windows evidence | Status | Owner |
 |---|---|---|---|---|---|
-| ONB-01 | Resumable onboarding | `OnboardingFlow.swift`, `OnboardingProgress.swift` | `OnboardingWindow`, `OnboardingProgressStore.cs`; `Phase12ProductExperienceTests.cs` | Implemented with verification debt | Phase 12 |
+| ONB-01 | Resumable onboarding | `OnboardingFlow.swift`, `OnboardingProgress.swift` | WinUI `OnboardingWindow` plus shared `OnboardingProgressStore.cs`; retained UI evidence exists, but the deleted WPF `Phase12ProductExperienceTests.cs` coverage has not been migrated under L52 | Implemented with verification debt | Phase 12 |
 | TRAY-01 | Rich tray menu | `StatusBarController.swift` | `TrayIconService.cs`; upcoming calendar row honestly disabled | Implemented with verification debt | Phase 12 |
 | FLOAT-01 | Floating recording indicator | `FloatingIndicatorController.swift` | `ToastNotificationService.cs` | Implemented with verification debt | Phase 2 / 12 |
 | FLOAT-02 | Waveform-hover live preview | Floating live transcript | `MeetingLiveTranscriptWindow` + `ShowLiveWaveformOnHover` | Implemented with verification debt | Phase 4 |
-| SHELL-01 | Light/dark dashboard | SwiftUI dashboard | `App.xaml`, `MainWindow.xaml` | Implemented with verification debt | Phase 12 |
-| START-01 | Launch at login | Login item | `StartupRegistrationService.cs` | Implemented with verification debt | Phase 12 |
+| SHELL-01 | Light/dark dashboard | SwiftUI dashboard | WinUI `App.xaml`/`MainWindow.xaml` is selected. The 2026-09-16 production-profile screenshot is retained, but the 2026-09-17 relaunch exposed only a title-bar capture and later hid until reactivation despite a clean log; L49 owns recovery. L50 settings-null normalization, L51 exception-policy hardening, and physical accessibility/DPI qualification remain open | Partial | Phase 12 |
+| START-01 | Launch at login | Login item | `StartupRegistrationService.cs`; uncommitted exact executable/background-command validation has 9 passing tests | Implemented with verification debt | Phase 12 |
 | INSTANCE-01 | Single-instance | App lifecycle | `SingleInstanceCoordinator.cs`; `ModelAndSingleInstanceTests.cs` | Complete and verified | Phase 12 |
-| INSIGHT-01 | Insights analyzer / share | `InsightsView.swift`, `InsightsWordAnalyzer.swift` | Dashboard stat cards only | Partial | Phase 12 / D4 |
+| INSIGHT-01 | Insights analyzer / share | `InsightsView.swift:131-146`, `InsightsWordAnalyzer.swift` | Shared local analyzer plus WinUI PNG preview/copy/save/Windows sharing in `windows-native/Muesli.Windows.WinUI/ViewModels/InsightsPageViewModel.cs:71-136` and `windows-native/Muesli.Windows.Platform/Services/InsightsShareImageService.cs:18-76`. WPF sharing is absent; contribution stays D4-gated | Partial | Phase 12 / D4 |
 | SOUND-01 | Feedback sounds | Sound settings | `SoundFeedbackService.cs`, Appearance setting, `SoundFeedbackTests.cs` | Implemented with verification debt | Phase 12 |
 
 ## Diagnostics, privacy, packaging, tests
@@ -120,12 +121,12 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 |---|---|---|---|---|---|
 | DIAG-01 | Logs, runtime status, support bundle | `DiagnosticIncident*.swift` | `AppLogService.cs`, `RuntimeDiagnosticsService.cs`. No support-bundle UI | Partial | Phase 13 |
 | PRIV-01 | Local-first, explicit network, deletion | Privacy/auth/storage | Runtime + `WINDOWS_PRIVACY.md` + redaction/cleanup tests | Implemented with verification debt | Every / 13 |
-| UPD-01 | Signed auto-update | Sparkle | About → GitHub Releases only | Missing | Phase 13 |
+| UPD-01 | Signed auto-update | Sparkle | Release tooling verifies signed manifests, local package hashes and independent publisher pins (`scripts/verify-update-manifest.ps1:15-121`), but the selected WinUI app has no production update/download/install/rollback state machine. L06 remains open; production certificate is L05/D5 | Partial | Phase 13 |
 | SIGN-01 | Authenticode | codesign/notarize | `sign-windows-release.ps1`; artifacts unsigned | Externally blocked | Phase 13 / D5 |
-| PKG-01 | x64 zip + Inno installer | DMG/release scripts | Package/installer scripts exist; unsigned; public inventory is CPU-only; upgrade/VM open | Partial | Phase 13 |
-| TEST-01 | Automated coverage | Swift test suite | Integrated Release: 742 cases, 738 pass, 0 fail, 4 explicit prerequisite skips; elevated Windows UI: 6 pass, 0 skip, 0 fail. Physical OS detection/paste/mic and human/provider gates remain outside this suite | Partial | Continuous |
-| QUAL-01 | Hardware/package gates | macOS release scripts | Scripts exist; current-tree hardware evidence not re-run | Partial | Phase 13 |
-| API-04 | Sparkle/AppKit/codesign equivalents | Updater/status-bar | NotifyIcon yes; signed updater no | Partial | Phase 13 |
+| PKG-01 | x64 zip + Inno installer | DMG/release scripts | `a5414b3` exact-SDK rehearsal (`10.0.400`, `rollForward=disable`) and package smoke pass. The recorded two-build digest `ee86084002e96b9698f089994b9053232cd58a573fddb5eeb0e1f64600339edf` (ZIP 109,499,342 bytes, installer 73,677,646 bytes) did not reproduce on the 2026-08-22 isolated re-run (`637a3433…`, ZIP 109,499,479, installer 73,666,874); cross-run digest stability is launch module L48. Artifacts remain unsigned; clean-VM/upgrade evidence remains open | Partial | Phase 13 |
+| TEST-01 | Automated coverage | Swift test suite | 2026-09-17 current discovery is 706 tests; excluding the unbounded scan, 670 pass, 31 fail, and 4 explicitly skip of 705. Failures point to removed WPF paths/repository markers, 139 tests are absent versus the retained 845 baseline, and the streaming fixture test is gone. L52 owns restoration. Exact SDK 10.0.400 and current UI automation remain absent | Partial | Continuous |
+| QUAL-01 | Hardware/package gates | macOS release scripts | 2026-09-17 CPU Parakeet dictation RTF 0.149 and mic-only meeting RTF 0.181 pass; WER/CER, CUDA, system audio/diarization, default Release/full suite, current package, and physical gates remain open | Partial | Phase 13 |
+| API-04 | Sparkle/AppKit/codesign equivalents | Updater/status-bar | Native tray plus release-side manifest verification exists; app updater workflow is missing under L06 and production Authenticode remains externally blocked | Partial | Phase 13 |
 | STORE-01 | Microsoft Store | — | — | Excluded | — |
 | ARM-01 | ARM64 | — | win-x64 only | Excluded | — |
 | OOS-01 | Python/Electron/web | — | Prohibited | Excluded | — |
@@ -149,6 +150,6 @@ Owner modules are launch-program Phase 0–13. They are not the historical P0–
 
 1. Windows already has a native local-first product: WPF, WASAPI, sherpa-onnx ASR/diarization, live Nemotron (off by default), notes, detection, import/export, hooks, onboarding, and optional Computer Use.
 2. The 2026-08-01 matrix was stale on manual notes, Ollama, live transcription, detection auto-stop, resumable onboarding, import cancellation, export tests, tray richness, and test counts.
-3. Remaining **implementation** is a short list (cleanup download, LM Studio, nested folders, search notes, transcript retranscribe, PDF auto-export, support bundle, updater). Remaining **qualification** is the larger launch risk.
+3. Remaining **implementation** is a short list (cleanup download, LM Studio/custom HTTP, linked follow-ups, PDF auto-export, support bundle). Nested-folder persistence/move/delete, repository-backed search, async cached waveform loading, and fixture-crypto updater verification are implemented with verification debt; transcript edit/retranscribe is implemented (L23/L42/L46) with qualification debt only. Remaining **qualification** is the larger launch risk.
 4. Calendar/OAuth, Store, ChatGPT OAuth, CloudKit, audio sync, ARM64, and literal macOS ports are excluded, not “later P5 work.”
 5. Signing remains externally blocked. Unsigned zip/installer smoke is not a release.

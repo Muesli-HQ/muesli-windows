@@ -1,21 +1,34 @@
 # Muesli Windows 0.3.0 Release Checklist
 
-## Build Artifacts
+## Release policies (v1 / 0.3.0 beta)
+
+- **Updates are manual.** Muesli does not check for, download, or install updates automatically. Release notes and the project page are the update channel.
+- **No audio interference.** Muesli records without pausing or ducking unrelated media.
+- **PDF export is disabled** (`PdfExportApproved=false`) pending an explicit QuestPDF Community-license eligibility decision. Markdown export remains available; PDF must not be advertised.
+- **Support/privacy publication and production signing are not final.** Public support and privacy URLs are pending, the package carries the development publisher, and it is unsigned until a production signing identity is configured.
+
+## Build artifacts (WinUI MSIX)
+
+The shipping artifact is the unsigned/signed WinUI MSIX.
 
 ```powershell
-.\scripts\package-windows-v1.ps1
-.\scripts\build-installer.ps1
+.\scripts\package-winui-msix.ps1
+.\scripts\sign-windows-release.ps1 -MsixPath <path-to.msix>   # production: cert + timestamp required
 ```
 
 Expected outputs:
 
 ```text
-artifacts\muesli-windows-0.3.0-win-x64.zip
-artifacts\MuesliSetup-0.3.0-win-x64.exe
+artifacts\msix\Muesli.Windows.WinUI_<version>_x64.msix
 artifacts\native-runtime-inventory.json
+artifacts\package-content-inventory.json
 ```
 
-`scripts\generate-native-runtime-inventory.ps1` also writes that inventory from a publish directory. Package tests fail if notices claim CUDA is included or if a packaged native DLL is missing from the inventory/catalog.
+The MSIX is normalized after Build: the shared Swift bridge closure and WPF companion are added,
+foreign-RID (ARM64/x86/foreign) native libraries are pruned, and notices/licenses are included.
+`scripts\generate-native-runtime-inventory.ps1` writes the CPU-only native inventory. Package tests
+fail if notices claim CUDA is included, if a packaged native DLL is missing from the catalog, or if
+the package carries ARM64/foreign or CUDA content.
 
 ## What Works
 

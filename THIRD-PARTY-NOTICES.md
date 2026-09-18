@@ -113,6 +113,29 @@ and does not declare that the distributing entity is eligible.
 - Use: transitive managed dependencies of the application libraries.
 - Included text: `licenses/MIT.txt`.
 
+### Swift shared core (MuesliCoreABI) 6.4
+
+- Copyright: the Swift project authors; Apple Inc. and contributors (swift-crypto, Swift runtime);
+  the `liblzfse` authors; Jean-loup Gailly and Mark Adler (zlib); SQLite authors.
+- Sources: https://github.com/swiftlang/swift, https://github.com/apple/swift-crypto,
+  https://github.com/lzfse/lzfse, https://www.sqlite.org, built for Windows x64 from
+  `native/MuesliNative` (bridge ABI 1).
+- License: Apache License 2.0 with the Swift Runtime Library Exception for the Swift runtime and
+  swift-crypto; BSD 3-Clause for `liblzfse`; zlib for `z.dll`; the SQLite public-domain blessing
+  for `sqlite3.dll`.
+- Use: canonical transcript normalization, word count and related shared text processing, loaded
+  by the packaged application from its own directory.
+- Included texts: `licenses/Apache-2.0.txt`, `licenses/BSD-3-Clause.txt`, `licenses/Zlib.txt`,
+  `licenses/SQLite-blessing.txt`, `licenses/MIT.txt`.
+
+### Microsoft Visual C++ 2022 runtime
+
+- Copyright: Microsoft Corporation.
+- License: the Microsoft Visual C++ Redistributable terms; redistributed beside the application
+  because the shared Swift bridge and native dependencies link against the C++ runtime.
+- Use: `MSVCP140.dll`, `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`.
+- Included text: `licenses/Microsoft-VCpp-Runtime.txt`.
+
 ## Fonts
 
 ### Inter

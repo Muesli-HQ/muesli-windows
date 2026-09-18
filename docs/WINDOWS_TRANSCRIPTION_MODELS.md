@@ -16,12 +16,17 @@ Selecting a role changes only the setting. It never downloads, verifies, initial
 
 ## Supported offline catalog
 
-The runnable Windows catalog contains exactly seven sherpa-onnx offline choices:
+The runnable Windows catalog contains twelve sherpa-onnx offline choices aligned with the Windows-compatible portion of the current macOS catalog:
 
 - Parakeet v3 INT8
+- Parakeet Unified English INT8
+- Parakeet v2 English INT8
+- Whisper Tiny Multilingual
 - Whisper Tiny English
+- Whisper Small Multilingual
 - Whisper Small English
 - Whisper Medium English
+- Whisper Large Turbo Multilingual
 - SenseVoice Small INT8
 - Qwen3-ASR 0.6B INT8
 - Cohere Transcribe INT8 (English selected)
@@ -52,4 +57,4 @@ The headless benchmark accepts `--model <catalog-id>` and requires that model to
 Muesli.exe --benchmark-native --audio <real-audio.wav> --runs 1 --model <catalog-id> --output <report.json>
 ```
 
-This command never downloads a model. `scripts/smoke-transcription-models.ps1` invokes it for all seven choices and fails if any report lacks successful real-audio inference.
+This command never downloads a model. `scripts/smoke-transcription-models.ps1` invokes it for all twelve choices and fails if any report lacks successful real-audio inference.

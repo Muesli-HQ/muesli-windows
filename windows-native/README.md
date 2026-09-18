@@ -15,13 +15,13 @@ INT8 model with native Silero VAD.
 Selecting a role never downloads or activates a model. Models are prepared
 explicitly, and both the archive and every runtime-required file are checked
 against pinned SHA-256 hashes before recognition. Downloads, extraction, and
-verification run away from the WPF dispatcher. Dictation owns one warm
+verification run away from the WinUI dispatcher. Dictation owns one warm
 recognizer; recorded meetings and imports share another. Switching a role waits
 for active inference and disposes the previous recognizer deterministically.
 
 ## Stack
 
-- WPF / .NET 10 desktop app
+- Packaged WinUI 3 / .NET 10 x64 desktop app
 - Native `RegisterHotKey` global shortcut handling
 - NAudio WASAPI microphone capture plus process-tree meeting loopback where Windows supports it, with an explicit render-endpoint fallback
 - Durable meeting-session state/journal recovery and in-app retained-track playback
@@ -34,14 +34,17 @@ for active inference and disposes the previous recognizer deterministically.
 ## Build
 
 ```powershell
-dotnet build .\windows-native\Muesli.Windows\Muesli.Windows.csproj --no-restore
+dotnet build .\windows-native\Muesli.Windows.WinUI\Muesli.Windows.WinUI.csproj --no-restore -p:Platform=x64
 ```
 
 ## Run
 
 ```powershell
-.\windows-native\Muesli.Windows\bin\Debug\net10.0-windows\Muesli.exe
+.\scripts\run-windows.ps1
 ```
+
+This uses the supported packaged launch path and opens the production `%APPDATA%\muesli` profile.
+The retired WPF source is retained at `windows-native/Muesli.Windows.Wpf.Legacy/` for reference only.
 
 ## Deterministic benchmark
 

@@ -26,22 +26,30 @@ Muesli is built around local-only processing. Concretely:
 
 ## Install
 
-Download and extract `muesli-windows-<version>-win-x64.zip`, then run `Muesli.exe`.
+The shipping Windows shell is the packaged WinUI 3 app. Signed public installation is still a
+release gate; local development launches use the packaged WinApp path below.
 
 The Python runtime has been removed. No Python, venv, or external transcription worker runtime is required. Model preparation is an explicit action in Models; selecting a role never starts a download or silently changes engines.
 
 ## Build
 
 ```powershell
-dotnet build .\windows-native\Muesli.Windows\Muesli.Windows.csproj --no-restore
+dotnet build .\windows-native\Muesli.Windows.WinUI\Muesli.Windows.WinUI.csproj --no-restore -p:Platform=x64
 ```
+
+## Run
+
+```powershell
+.\scripts\run-windows.ps1
+```
+
+With no profile override, this launches against the real `%APPDATA%\muesli` library. Use
+`scripts/run-winui-preview.ps1` only when an isolated throwaway profile is intentional.
 
 ## Package
 
 ```powershell
 .\scripts\package-windows-v1.ps1
-.\scripts\test-windows-package.ps1
-.\scripts\build-installer.ps1
 ```
 
 Recorded-meeting and import regression checks are available through
@@ -55,7 +63,7 @@ fresh-launch log evidence.
 
 ## Architecture
 
-- **UI**: WPF .NET 10, XAML, Inter font.
+- **UI**: WinUI 3 on .NET 10, XAML, Inter font, packaged with MSIX.
 - **Audio**: NAudio WASAPI microphone capture, Windows process-tree loopback when available for a detected meeting, and an explicitly disclosed render-endpoint loopback fallback.
 - **ASR**: role-scoped `NativeTranscriptionClient` instances with sherpa-onnx offline ONNX models. Dictation has one recognizer owner; recorded meetings and imports share the separately selected final-model owner.
 - **Cleanup**: `NativeTextCleanupService` with LLamaSharp / llama.cpp GGUF models.
@@ -69,9 +77,11 @@ fresh-launch log evidence.
 
 ## Development Notes
 
-- Active app: `windows-native/Muesli.Windows/`
-- Build before launch: `dotnet build windows-native\Muesli.Windows\Muesli.Windows.csproj --no-restore`
-- Run debug build directly: `windows-native\Muesli.Windows\bin\Debug\net10.0-windows\Muesli.exe`
+- Active app: `windows-native/Muesli.Windows.WinUI/`
+- Retired WPF reference: `windows-native/Muesli.Windows.Wpf.Legacy/`
+- Build before launch: `dotnet build windows-native\Muesli.Windows.WinUI\Muesli.Windows.WinUI.csproj --no-restore -p:Platform=x64`
+- Launch through the packaged Windows App SDK path: `scripts/run-windows.ps1`
+- Do not launch the WinUI executable directly; packaged identity is part of the product contract.
 - Do not ship Python worker files, external transcription runtime setup files, or venv setup.
 
 ## Limitations
@@ -82,6 +92,13 @@ fresh-launch log evidence.
 - Preparing a missing model requires an explicit network-backed download. Transcription itself fails closed when the selected role is missing or unverified.
 - Live meeting transcription is off by default. The explicit Nemotron 3.5 option has passed packaged Windows real-inference and Silero-boundary qualification; preparing it is network-backed and never enables it automatically. Long physical-meeting, Bluetooth, route-change, CUDA-live, and human multilingual qualification remain open.
 - Installer is not code-signed until a signing certificate is configured.
+
+## Release status (0.3.0 beta)
+
+- Updates are manual: Muesli does not check for, download, or install updates automatically.
+- Muesli does not pause or duck unrelated media while recording ("no interference").
+- PDF export is disabled pending a QuestPDF Community-license eligibility decision; Markdown export remains available and PDF must not be advertised.
+- Public support/privacy URLs and the production publisher identity are not final; the package is unsigned and carries the development publisher until a signing identity is configured.
 
 ## Roadmap
 
