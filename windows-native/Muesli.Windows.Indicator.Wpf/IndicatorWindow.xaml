@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Muesli.Windows.Indicator.Wpf.IndicatorWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Muesli floating indicator"
+    WindowStyle="None"
+    AllowsTransparency="True"
+    Background="Transparent"
+    ShowInTaskbar="False"
+    Topmost="True"
+    ResizeMode="NoResize"
+    ShowActivated="False"
+    Focusable="False"
+    SnapsToDevicePixels="True"
+    UseLayoutRounding="True"
+    WindowStartupLocation="Manual"
+    Left="0"
+    Top="0"
+    Width="44"
+    Height="28"
+    MouseEnter="Pill_MouseEnter"
+    MouseLeave="Pill_MouseLeave"
+    MouseLeftButtonDown="Pill_MouseLeftButtonDown"
+    MouseLeftButtonUp="Pill_MouseLeftButtonUp"
+    MouseMove="Pill_MouseMove"
+    LostMouseCapture="Pill_LostMouseCapture"
+    MouseRightButtonUp="Pill_MouseRightButtonUp">
+    <Border
+        x:Name="Pill"
+        BorderThickness="1"
+        CornerRadius="14"
+        Padding="0">
+        <Grid x:Name="ContentHost" />
+    </Border>
+</Window>
