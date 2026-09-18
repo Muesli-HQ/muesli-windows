@@ -1,53 +1,54 @@
+# Installs the shipping WinUI MSIX for the current user.
+#
+# A production/public install requires a valid signed MSIX. Unsigned development sideloading is
+# allowed only with -AllowUnsignedDevelopment and Developer Mode enabled, and is never release
+# evidence. The retired portable-copy installer is archived and is not used.
+
 param(
-    [string]$InstallDir = "$env:LOCALAPPDATA\Muesli",
-    [switch]$StartAtLogin,
-    [switch]$NoDesktopShortcut
+    [string]$MsixPath = "",
+    [string]$ExpectedPublisher = "",
+    [switch]$AllowUnsignedDevelopment
 )
 
 $ErrorActionPreference = "Stop"
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "release-common.ps1")
 
-$source = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not (Test-Path (Join-Path $source "Muesli.exe"))) {
-    throw "Run this script from the extracted Muesli package folder."
+if ([string]::IsNullOrWhiteSpace($MsixPath)) {
+    $discovered = Get-MuesliLatestMsix -SearchRoot (Join-Path $root "artifacts\msix")
+    if ($null -eq $discovered) { throw "No WinUI MSIX was found under artifacts\msix. Build it first." }
+    $MsixPath = $discovered.FullName
+}
+$MsixPath = (Resolve-Path -LiteralPath $MsixPath).Path
+
+$identity = Get-MuesliMsixManifestIdentity -MsixPath $MsixPath
+$signature = Get-AuthenticodeSignature -LiteralPath $MsixPath
+$signed = $null -ne $signature -and [string]$signature.Status -eq "Valid"
+
+if ($signed) {
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedPublisher) -and
+        -not [string]::Equals([string]$identity.Publisher, $ExpectedPublisher.Trim(), [StringComparison]::OrdinalIgnoreCase)) {
+        throw "MSIX publisher '$($identity.Publisher)' does not match expected publisher '$ExpectedPublisher'."
+    }
+    Add-AppxPackage -Path $MsixPath
+    Write-Host "Installed signed Muesli MSIX ($($identity.Name) $($identity.Version), publisher $($identity.Publisher))."
+    return
 }
 
-$sourceResolved = (Resolve-Path $source).Path.TrimEnd('\')
-New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-$installResolved = (Resolve-Path $InstallDir).Path.TrimEnd('\')
-Get-ChildItem -LiteralPath $source -Force |
-    Where-Object {
-        $child = $_.FullName.TrimEnd('\')
-        -not ($child.Equals($installResolved, [StringComparison]::OrdinalIgnoreCase) -or
-              $installResolved.StartsWith($child + "\", [StringComparison]::OrdinalIgnoreCase))
-    } |
-    Copy-Item -Destination $InstallDir -Recurse -Force
-
-$exe = Join-Path $InstallDir "Muesli.exe"
-$shell = New-Object -ComObject WScript.Shell
-$programs = [Environment]::GetFolderPath("Programs")
-$startMenuDir = Join-Path $programs "Muesli"
-New-Item -ItemType Directory -Force -Path $startMenuDir | Out-Null
-$shortcut = $shell.CreateShortcut((Join-Path $startMenuDir "Muesli.lnk"))
-$shortcut.TargetPath = $exe
-$shortcut.WorkingDirectory = $InstallDir
-$shortcut.IconLocation = $exe
-$shortcut.Save()
-
-if (-not $NoDesktopShortcut) {
-    $desktop = [Environment]::GetFolderPath("DesktopDirectory")
-    $desktopShortcut = $shell.CreateShortcut((Join-Path $desktop "Muesli.lnk"))
-    $desktopShortcut.TargetPath = $exe
-    $desktopShortcut.WorkingDirectory = $InstallDir
-    $desktopShortcut.IconLocation = $exe
-    $desktopShortcut.Save()
+if (-not $AllowUnsignedDevelopment) {
+    $status = if ($null -eq $signature) { "Unavailable" } else { [string]$signature.Status }
+    throw "Refusing to install the uncertified MSIX (Authenticode status '$status'). Public install requires a validly signed MSIX. For local development, pass -AllowUnsignedDevelopment with Developer Mode enabled."
 }
 
-if ($StartAtLogin) {
-    $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-    New-Item -Path $runKey -Force | Out-Null
-    New-ItemProperty -Path $runKey -Name "Muesli" -Value "`"$exe`" --background" -PropertyType String -Force | Out-Null
+$devMode = $false
+try {
+    $devMode = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -ErrorAction Stop).AllowDevelopmentWithoutDevLicense -eq 1
+} catch {
+    $devMode = $false
+}
+if (-not $devMode) {
+    throw "Unsigned development sideloading requires Developer Mode. Enable it or install a signed MSIX."
 }
 
-Write-Host "Muesli installed to $InstallDir"
-Write-Host "Start Menu shortcut: $startMenuDir\Muesli.lnk"
-Write-Host "Run Muesli from the Start Menu, or launch $exe"
+Add-AppxPackage -Path $MsixPath
+Write-Warning "Installed an UNSIGNED development MSIX. This is not production or release evidence."

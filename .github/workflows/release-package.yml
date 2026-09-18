@@ -26,10 +26,6 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Install Inno Setup for unsigned installer
-        shell: pwsh
-        run: choco install innosetup --no-progress -y
-
       - name: Non-signing release rehearsal
         shell: pwsh
         run: pwsh -ExecutionPolicy Bypass -File .\scripts\rehearse-windows-release.ps1 -SkipTwoBuildCompare
@@ -41,10 +37,9 @@ jobs:
           name: windows-unsigned-release
           if-no-files-found: warn
           path: |
-            artifacts/muesli-windows-*-win-x64.zip
-            artifacts/MuesliSetup-*-win-x64.exe
+            artifacts/msix/**/*.msix
             artifacts/test-results/*.trx
-            artifacts/package-smoke-report.json
+            artifacts/msix-smoke-report.json
             artifacts/muesli-win32-manifest.xml
             artifacts/release-hashes.json
             artifacts/native-runtime-inventory.json

@@ -6,14 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Unsigned public package path (L04 / PKG-01).
+# Unsigned public MSIX package path (L04 / PKG-01).
 # Local and CI both run scripts/rehearse-windows-release.ps1 against the SDK
 # pinned in global.json and the release identity in Directory.Build.props.
-# Authenticode signing is L05 / SIGN-01 / D5 and must not run here.
+# Authenticode/MSIX signing is L05 / SIGN-01 / D5 and must not run here.
 # Do not call scripts/sign-windows-release.ps1 from this workflow.
-# The unsigned Inno installer is collected as a review artifact. A later
-# signed-release workflow (L05) will timestamp and Authenticode-sign; this
-# job stays CPU-only and unsigned.
+# The shipping artifact is the unsigned WinUI MSIX. A later signed-release
+# workflow (L05) will timestamp and sign it; this job stays CPU-only and unsigned.
 
 jobs:
   unsigned-release:
@@ -30,9 +29,46 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Install Inno Setup for the unsigned installer
+      # The shared Swift core is a real production dependency, so CI must build the
+      # bridge (and therefore the packaged app) before packaging. Provision Swift,
+      # the vcpkg native libraries and the shared repository checkout.
+      - name: Read pinned shared-core revision
+        id: shared_core_lock
         shell: pwsh
-        run: choco install innosetup --no-progress -y
+        run: |
+          $lock = Get-Content windows-native/shared-core.lock.json -Raw | ConvertFrom-Json
+          if ([string]::IsNullOrWhiteSpace($lock.revision)) {
+            throw "windows-native/shared-core.lock.json has no pinned revision. Commit the shared Swift changes, then set revision to the committed SHA; release CI must never resolve a moving branch."
+          }
+          if ($lock.repository -ne 'Muesli-HQ/muesli') {
+            throw "shared-core.lock.json points at unexpected repository '$($lock.repository)'."
+          }
+          "revision=$($lock.revision)" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+
+      - name: Check out shared Swift repository (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: Muesli-HQ/muesli
+          ref: ${{ steps.shared_core_lock.outputs.revision }}
+          path: shared-muesli
+          persist-credentials: false
+          token: ${{ secrets.MUESLI_SHARED_REPO_TOKEN != '' && secrets.MUESLI_SHARED_REPO_TOKEN || github.token }}
+
+      - name: Install Swift toolchain
+        shell: pwsh
+        run: |
+          winget install --id Swift.Toolchain -e --accept-source-agreements --accept-package-agreements
+          $toolchains = Join-Path $env:LOCALAPPDATA 'Programs\Swift\Toolchains'
+          $bin = Get-ChildItem -LiteralPath $toolchains -Directory -ErrorAction Stop | Select-Object -First 1
+          "$($bin.FullName)\usr\bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+
+      - name: Install vcpkg native dependencies
+        shell: pwsh
+        run: |
+          $vcpkg = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { 'C:\vcpkg' }
+          & "$vcpkg\vcpkg.exe" install sqlite3 zlib lzfse --triplet x64-windows
+          "VCPKG_ROOT=$vcpkg" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+          "MUESLI_SHARED_CORE_PACKAGE=${{ github.workspace }}\shared-muesli\native\MuesliNative" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Non-signing release rehearsal
         shell: pwsh
@@ -46,10 +82,9 @@ jobs:
           name: windows-unsigned-release
           if-no-files-found: warn
           path: |
-            artifacts/muesli-windows-*-win-x64.zip
-            artifacts/MuesliSetup-*-win-x64.exe
+            artifacts/msix/**/*.msix
             artifacts/test-results/*.trx
-            artifacts/package-smoke-report.json
+            artifacts/msix-smoke-report.json
             artifacts/muesli-win32-manifest.xml
             artifacts/release-hashes.json
             artifacts/native-runtime-inventory.json

@@ -3,6 +3,13 @@ param(
     [string]$PackageDirectory,
     [string]$OutputPath = "",
     [string]$CatalogPath = "",
+    # Top-level directory names to skip. The MSIX carries the WPF indicator companion under
+    # Indicator\; its self-contained runtime DLLs are not part of the main app's CPU catalog.
+    [string[]]$ExcludeDirectory = @(),
+    # Recognize the Microsoft platform runtime carried by the Windows App SDK/WebView2/DirectML.
+    # These are not Muesli native components; they are recorded as platform-runtime rather than
+    # treated as unmanifested. Every other unexpected native DLL still fails the inventory.
+    [switch]$AllowPlatformRuntime,
     [switch]$AllowDebugRidExtras
 )
 
@@ -10,7 +17,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 if ([string]::IsNullOrWhiteSpace($CatalogPath)) {
-    $CatalogPath = Join-Path $root "windows-native\Muesli.Windows\NativeRuntime\public-cpu-native-catalog.json"
+    $CatalogPath = Join-Path $root "windows-native\Muesli.Windows.Core\NativeRuntime\public-cpu-native-catalog.json"
 }
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $root "artifacts\native-runtime-inventory.json"
@@ -43,6 +50,22 @@ function Get-RelativeUnixPath {
     return $fullTarget.Replace('\', '/')
 }
 
+function ConvertFrom-AppxEntryName {
+    # makeappx percent-encodes characters such as '+' in package entry names (libstdc%2B%2B-6.dll).
+    param([string]$Name)
+    try { return [Uri]::UnescapeDataString($Name) } catch { return $Name }
+}
+
+$platformRuntimePatterns = @(
+    '^Microsoft\.WindowsAppRuntime\.',
+    '^Microsoft\.Windows\.AI\.',
+    '^Microsoft\.Windows\.ApplicationModel\.',
+    '^Microsoft\.Web\.',
+    '^WebView2Loader\.dll$',
+    '^DirectML\.dll$'
+)
+$platformRuntime = [System.Collections.Generic.List[object]]::new()
+
 $forbiddenNames = @($catalog.forbiddenPublicCudaFiles | ForEach-Object { $_.ToLowerInvariant() })
 $forbiddenDirs = @($catalog.forbiddenPublicCudaDirectoryNames | ForEach-Object { $_.ToLowerInvariant() })
 
@@ -57,15 +80,27 @@ foreach ($component in $catalog.components) {
 
 $patternComponents = @($catalog.components | Where-Object { $_.nativeFilePatterns })
 
+$excludeSet = @{}
+foreach ($name in @($ExcludeDirectory)) {
+    if (-not [string]::IsNullOrWhiteSpace($name)) { $excludeSet[$name.ToLowerInvariant()] = $true }
+}
 $nativeFiles = Get-ChildItem -LiteralPath $packageDirectory -Recurse -File -Force -ErrorAction SilentlyContinue |
-    Where-Object { $_.Extension -eq ".dll" -and -not (Test-ManagedAssembly $_.FullName) }
+    Where-Object {
+        if ($_.Extension -ne ".dll" -or (Test-ManagedAssembly $_.FullName)) { return $false }
+        if ($excludeSet.Count -gt 0) {
+            $relative = Get-RelativeUnixPath -BasePath $packageDirectory -TargetPath $_.FullName
+            $top = ($relative -split '/')[0].ToLowerInvariant()
+            if ($excludeSet.ContainsKey($top)) { return $false }
+        }
+        return $true
+    }
 
 $inventory = [System.Collections.Generic.List[object]]::new()
 $seenRequired = @{}
 
 foreach ($file in $nativeFiles) {
-    $relative = Get-RelativeUnixPath -BasePath $packageDirectory -TargetPath $file.FullName
-    $name = $file.Name
+    $relative = ConvertFrom-AppxEntryName (Get-RelativeUnixPath -BasePath $packageDirectory -TargetPath $file.FullName)
+    $name = ConvertFrom-AppxEntryName $file.Name
     $lower = $name.ToLowerInvariant()
     $inForbiddenDir = $false
     foreach ($segment in $relative.Split('/')) {
@@ -104,6 +139,17 @@ foreach ($file in $nativeFiles) {
     }
 
     if (-not $component) {
+        if ($AllowPlatformRuntime -and @($platformRuntimePatterns | Where-Object { [regex]::IsMatch($name, $_) }).Count -gt 0) {
+            $platformRuntime.Add([ordered]@{
+                fileName = $name
+                relativePath = $relative
+                bytes = $file.Length
+                kind = "platform-runtime"
+                componentId = $null
+                licenseFile = $null
+            })
+            continue
+        }
         $failures.Add("Packaged native file is missing from the inventory catalog/notices: $relative")
         $inventory.Add([ordered]@{
             fileName = $name
@@ -179,6 +225,7 @@ $report = [ordered]@{
     publicPackage = $catalog.publicPackage
     nativeFileCount = $inventory.Count
     files = $inventory
+    platformRuntimeFiles = $platformRuntime
     failures = @($failures)
     passed = $failures.Count -eq 0
 }

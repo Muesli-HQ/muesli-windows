@@ -6,6 +6,13 @@
     -->
     <MuesliVersion>0.3.0</MuesliVersion>
     <MuesliReleaseChannel>v1</MuesliReleaseChannel>
+    <!--
+      Clearly named development publisher used by local builds and the unsigned rehearsal. The
+      production publisher is supplied by the signing identity at package time; public release
+      packaging must fail while the manifest still carries the development placeholder.
+    -->
+    <MuesliDevPublisher>CN=AppPublisher</MuesliDevPublisher>
+    <MuesliProductionPublisher Condition="'$(MuesliProductionPublisher)' == ''"></MuesliProductionPublisher>
     <MuesliMinimumWindowsVersion>10.0.19045.0</MuesliMinimumWindowsVersion>
     <MuesliSupportedEnvironments>Windows 10 22H2 x64 (build 19045);Current serviced Windows 11 x64 releases</MuesliSupportedEnvironments>
     <MuesliReleaseMetadataFileName>RELEASE-METADATA.json</MuesliReleaseMetadataFileName>
@@ -15,5 +22,7 @@
     <FileVersion Condition="'$(FileVersion)' == ''">$(MuesliVersion).0</FileVersion>
     <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(MuesliVersion)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true' or '$(GITHUB_ACTIONS)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
 </Project>

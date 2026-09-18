@@ -1,5 +1,7 @@
 param(
+    # Accepts a .zip, .msix, .appx or .msixbundle package; all are ZIP containers.
     [Parameter(Mandatory = $true)]
+    [Alias('MsixPath', 'AppxPath', 'PackagePath')]
     [string]$ZipPath,
     [string]$OutputPath = "",
     [string]$ComparePath = ""

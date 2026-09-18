@@ -1,12 +1,40 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$ExePath,
+    [string]$ExePath = "",
+    [string]$MsixPath = "",
     [string]$OutputPath = ""
 )
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 . (Join-Path $PSScriptRoot "release-common.ps1")
+
+if ([string]::IsNullOrWhiteSpace($ExePath) -and [string]::IsNullOrWhiteSpace($MsixPath)) {
+    throw "Pass -ExePath (RT_MANIFEST from an executable) or -MsixPath (AppxManifest.xml from an MSIX)."
+}
+if (-not [string]::IsNullOrWhiteSpace($MsixPath)) {
+    if (-not (Test-Path -LiteralPath $MsixPath)) {
+        throw "MSIX not found: $MsixPath"
+    }
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($MsixPath)
+    try {
+        $entry = $archive.Entries | Where-Object { $_.FullName -eq "AppxManifest.xml" } | Select-Object -First 1
+        if ($null -eq $entry) {
+            throw "The MSIX has no AppxManifest.xml at its root: $MsixPath"
+        }
+        $reader = [IO.StreamReader]::new($entry.Open())
+        try { $manifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    } finally {
+        $archive.Dispose()
+    }
+    if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+        $OutputPath = Join-Path $root "artifacts\muesli-win32-manifest.xml"
+    }
+    Write-Utf8NoBomFile -Path $OutputPath -Content ($manifest.Trim() + "`n")
+    Write-Host "Wrote AppxManifest.xml from MSIX: $OutputPath"
+    return
+}
 
 if (-not (Test-Path -LiteralPath $ExePath)) {
     throw "Executable not found: $ExePath"
