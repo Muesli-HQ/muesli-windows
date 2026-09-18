@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "muesli-windows-public-cpu-native",
+  "publicPackage": {
+    "cpuProviderIncluded": true,
+    "cudaProviderIncluded": false,
+    "cudaQualificationModule": "L11",
+    "disclosure": "Public Wave 0 package includes the CPU Sherpa provider only. NVIDIA CUDA is not included. A version-matched CUDA provider is optional external staging and is not shipped until L11 qualifies it."
+  },
+  "forbiddenPublicCudaFiles": [
+    "onnxruntime_providers_cuda.dll",
+    "onnxruntime_providers_shared.dll",
+    "cublasLt64_12.dll",
+    "cublas64_12.dll",
+    "cufft64_11.dll",
+    "cudart64_12.dll",
+    "cudnn64_9.dll",
+    "cudnn_graph64_9.dll",
+    "cudnn_engines_runtime_compiled64_9.dll",
+    "cudnn_engines_precompiled64_9.dll",
+    "cudnn_heuristic64_9.dll",
+    "cudnn_ops64_9.dll",
+    "cudnn_adv64_9.dll",
+    "cudnn_cnn64_9.dll"
+  ],
+  "forbiddenPublicCudaDirectoryNames": [
+    "native-sherpa-cuda"
+  ],
+  "components": [
+    {
+      "id": "sherpa-onnx-native",
+      "source": "NuGet org.k2fsa.sherpa.onnx.runtime.win-x64",
+      "version": "1.13.4",
+      "license": "Apache-2.0",
+      "licenseFile": "licenses/Apache-2.0.txt",
+      "noticesHeading": "sherpa-onnx 1.13.4",
+      "allowedInPublicWinX64": true,
+      "requiredInPublicWinX64": true,
+      "nativeFiles": [ "sherpa-onnx-c-api.dll" ]
+    },
+    {
+      "id": "onnxruntime-cpu",
+      "source": "ONNX Runtime redistributed through org.k2fsa.sherpa.onnx.runtime.win-x64 1.13.4",
+      "version": "1.13.4",
+      "license": "MIT",
+      "licenseFile": "licenses/MIT.txt",
+      "noticesHeading": "ONNX Runtime",
+      "allowedInPublicWinX64": true,
+      "requiredInPublicWinX64": true,
+      "nativeFiles": [ "onnxruntime.dll" ]
+    },
+    {
+      "id": "llamasharp-cpu-backend",
+      "source": "NuGet LLamaSharp.Backend.Cpu",
+      "version": "0.27.0",
+      "license": "MIT",
+      "licenseFile": "licenses/MIT.txt",
+      "noticesHeading": "LLamaSharp 0.27.0 and llama.cpp native backend",
+      "allowedInPublicWinX64": true,
+      "requiredInPublicWinX64": true,
+      "nativeFiles": [
+        "llama.dll",
+        "ggml.dll",
+        "ggml-base.dll",
+        "ggml-cpu.dll",
+        "mtmd.dll"
+      ]
+    },
+    {
+      "id": "sqlite-e-sqlite3",
+      "source": "NuGet SQLitePCLRaw.lib.e_sqlite3 via Microsoft.Data.Sqlite 10.0.11",
+      "version": "2.1.12",
+      "license": "Apache-2.0 plus SQLite public-domain blessing",
+      "licenseFile": "licenses/Apache-2.0.txt",
+      "additionalLicenseFiles": [ "licenses/SQLite-blessing.txt", "licenses/MIT.txt" ],
+      "noticesHeading": "Microsoft.Data.Sqlite 10.0.11 and SQLitePCLRaw 2.1.12",
+      "allowedInPublicWinX64": true,
+      "requiredInPublicWinX64": true,
+      "nativeFiles": [ "e_sqlite3.dll" ]
+    },
+    {
+      "id": "swift-shared-core-runtime",
+      "source": "Shared Swift MuesliCoreABI bridge and Swift 6.4 runtime closure built from native/MuesliNative (swift-crypto, liblzfse, zlib, vcpkg SQLite)",
+      "version": "Swift 6.4 / bridge ABI 1",
+      "license": "Apache-2.0 with Swift Runtime Library Exception; BSD-3-Clause (liblzfse); Zlib; SQLite public domain",
+      "licenseFile": "licenses/Apache-2.0.txt",
+      "additionalLicenseFiles": [
+        "licenses/BSD-3-Clause.txt",
+        "licenses/Zlib.txt",
+        "licenses/SQLite-blessing.txt",
+        "licenses/MIT.txt"
+      ],
+      "noticesHeading": "Swift shared core (MuesliCoreABI) 6.4",
+      "allowedInPublicWinX64": true,
+      "requiredInPublicWinX64": true,
+      "nativeFiles": [
+        "MuesliCoreABI.dll",
+        "swiftCore.dll",
+        "swiftCRT.dll",
+        "swift_Concurrency.dll",
+        "swift_RegexParser.dll",
+        "swift_StringProcessing.dll",
+        "swiftDispatch.dll",
+        "swiftObservation.dll",
+        "swiftSynchronization.dll",
+        "swiftWinSDK.dll",
+        "Foundation.dll",
+        "FoundationEssentials.dll",
+        "FoundationInternationalization.dll",
+        "FoundationNetworking.dll",
+        "_FoundationICU.dll",
+        "BlocksRuntime.dll",
+        "dispatch.dll",
+        "sqlite3.dll",
+        "lzfse.dll",
+        "z.dll"
+      ]
+    },
+    {
+      "id": "msvc-cpp-runtime",
+      "source": "Microsoft Visual C++ 2022 x64 redistributable runtime deployed beside the application",
+      "version": "v143",
+      "license": "Microsoft Visual C++ Redistributable terms (see license file)",
+      "licenseFile": "licenses/Microsoft-VCpp-Runtime.txt",
+      "noticesHeading": "Microsoft Visual C++ 2022 runtime",
+      "allowedInPublicWinX64": true,
+      "requiredInPublicWinX64": true,
+      "nativeFiles": [ "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll" ]
+    },
+    {
+      "id": "questpdf-native-win-x64",
+      "source": "NuGet QuestPDF 2026.5.0 win-x64 native assets",
+      "version": "2026.5.0",
+      "license": "QuestPDF package license plus redistributed native licenses",
+      "licenseFile": "licenses/QuestPDF-2026.5.0.md",
+      "additionalLicenseFiles": [
+        "licenses/Zlib.txt",
+        "licenses/Apache-2.0.txt",
+        "licenses/BSD-3-Clause.txt",
+        "licenses/MinGW-w64-winpthread-MIT.txt",
+        "licenses/GCC-Runtime-Library-Exception-3.1.txt"
+      ],
+      "noticesHeading": "QuestPDF 2026.5.0",
+      "allowedInPublicWinX64": true,
+      "requiredInPublicWinX64": true,
+      "nativeFiles": [
+        "QuestPdfSkia.dll",
+        "qpdf.dll",
+        "zlib1.dll",
+        "libgcc_s_seh-1.dll",
+        "libstdc++-6.dll",
+        "libwinpthread-1.dll"
+      ]
+    },
+    {
+      "id": "questpdf-native-win-x86-not-public",
+      "source": "NuGet QuestPDF 2026.5.0 win-x86 native assets (debug/RID extra; forbidden in public win-x64 zip)",
+      "version": "2026.5.0",
+      "license": "QuestPDF package license plus redistributed native licenses",
+      "licenseFile": "licenses/QuestPDF-2026.5.0.md",
+      "noticesHeading": "QuestPDF 2026.5.0",
+      "allowedInPublicWinX64": false,
+      "requiredInPublicWinX64": false,
+      "nativeFiles": [ "libgcc_s_dw2-1.dll" ]
+    },
+    {
+      "id": "dotnet-windows-runtime",
+      "source": "Microsoft .NET 10 Windows App Host / WinUI package runtime",
+      "version": "net10.0-windows",
+      "license": "MIT",
+      "licenseFile": "licenses/MIT.txt",
+      "noticesHeading": "Microsoft .NET runtime and managed support libraries",
+      "allowedInPublicWinX64": true,
+      "requiredInPublicWinX64": false,
+      "nativeFilePatterns": [
+        "^coreclr\\.dll$",
+        "^clrgc\\.dll$",
+        "^clrgcexp\\.dll$",
+        "^clrjit\\.dll$",
+        "^clretwrc\\.dll$",
+        "^hostfxr\\.dll$",
+        "^hostpolicy\\.dll$",
+        "^mscordaccore.*\\.dll$",
+        "^mscordbi\\.dll$",
+        "^mscorrc\\.dll$",
+        "^vcruntime\\d+_cor3\\.dll$",
+        "^PresentationNative_cor3\\.dll$",
+        "^wpfgfx_cor3\\.dll$",
+        "^PenImc_cor3\\.dll$",
+        "^D3DCompiler_\\d+_cor3\\.dll$",
+        "^DirectWriteForwarder\\.dll$",
+        "^System\\.IO\\.Compression\\.Native\\.dll$",
+        "^Microsoft\\.DiaSymReader\\.Native\\..*\\.dll$",
+        "^msquic\\.dll$"
+      ]
+    }
+  ]
+}

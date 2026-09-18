@@ -1,0 +1,340 @@
+<features:FeatureViewBase x:Class="Muesli.Windows.Features.Meetings.MeetingDetailView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:features="clr-namespace:Muesli.Windows.Features">
+  <Grid x:Name="MeetingDetailRoot">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+
+          <StackPanel Grid.Row="0" MaxWidth="980" Margin="40,0,40,0">
+            <Button Style="{StaticResource GhostButton}"
+                    HorizontalAlignment="Left"
+                    Click="ForwardClick" features:FeatureAction.Name="BackToMeetings_Click">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="‹" Margin="0,0,6,0" />
+                <TextBlock Text="Back to Meetings" />
+              </StackPanel>
+            </Button>
+
+            <Grid Margin="0,18,0,18">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBox Text="{Binding SelectedMeetingTitle, UpdateSourceTrigger=LostFocus}"
+                         AutomationProperties.AutomationId="MeetingTitleEditor"
+                         AutomationProperties.Name="Meeting title"
+                         Style="{StaticResource MuesliTextBox}"
+                         FontSize="26" FontWeight="Bold" Padding="6,2"
+                         Background="Transparent" BorderThickness="0"
+                         ToolTip="Click to rename this meeting" />
+                <TextBlock Text="{Binding SelectedMeetingTitleOwnership}" Margin="6,2,0,6" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="{Binding SelectedMeetingMetadata}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <Border Margin="10,-2,0,0" Padding="8,4" CornerRadius="12" Background="{DynamicResource AccentBadgeBackgroundBrush}">
+                    <TextBlock Text="Auto Notes" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBlueBrush}" />
+                  </Border>
+                </StackPanel>
+              </StackPanel>
+
+              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Border Width="220" Height="32" Background="{DynamicResource BackgroundRaisedBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1" CornerRadius="8" Margin="0,0,12,0">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border x:Name="MeetingNotesTab"
+                            Margin="2"
+                            Background="{DynamicResource SurfaceSelectedBrush}"
+                            CornerRadius="6"
+                            Cursor="Hand"
+                            AutomationProperties.AutomationId="MeetingNotesTab"
+                            AutomationProperties.Name="Notes tab"
+                            MouseLeftButtonUp="ForwardMouseButton" features:FeatureAction.Name="ShowMeetingNotesTab_Click">
+                      <TextBlock x:Name="MeetingNotesTabLabel" Text="Notes" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    </Border>
+                    <Border x:Name="MeetingTranscriptTab"
+                            Grid.Column="1"
+                            Margin="2"
+                            Background="Transparent"
+                            CornerRadius="6"
+                            Cursor="Hand"
+                            AutomationProperties.AutomationId="MeetingTranscriptTab"
+                            AutomationProperties.Name="Transcript tab"
+                            MouseLeftButtonUp="ForwardMouseButton" features:FeatureAction.Name="ShowMeetingTranscriptTab_Click">
+                      <TextBlock x:Name="MeetingTranscriptTabLabel" Text="Transcript" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                  </Grid>
+                </Border>
+                <Button Style="{StaticResource GhostButton}" Click="ForwardClick" features:FeatureAction.Name="MoreMeetingActions_Click">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE712;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,4,0" />
+                    <TextBlock Text="More" />
+                  </StackPanel>
+                  <Button.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Export Notes" Click="ForwardClick" features:FeatureAction.Name="ExportMeetingNotes_Click" />
+                      <MenuItem Header="Export Transcript" Click="ForwardClick" features:FeatureAction.Name="ExportMeetingTranscript_Click" />
+                      <MenuItem Header="Export Full Meeting" Click="ForwardClick" features:FeatureAction.Name="ExportFullMeeting_Click" />
+                      <Separator />
+                      <MenuItem Header="Automation Diagnostics" Click="ForwardClick" features:FeatureAction.Name="ShowMeetingAutomationDiagnostics_Click" />
+                      <MenuItem Header="Play Recording" Click="ForwardClick" features:FeatureAction.Name="OpenSelectedMeetingAudio_Click" />
+                      <MenuItem Header="Move to Folder" Click="ForwardClick" features:FeatureAction.Name="MoveSelectedMeeting_Click" />
+                      <Separator />
+                      <MenuItem Header="Delete Meeting" Foreground="{DynamicResource ErrorRedBrush}" Click="ForwardClick" features:FeatureAction.Name="DeleteSelectedMeeting_Click" />
+                    </ContextMenu>
+                  </Button.ContextMenu>
+                </Button>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+
+          <Border Grid.Row="1" Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="-24,0,-24,0" />
+
+          <ScrollViewer Grid.Row="2"
+                        VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled"
+                        Padding="0,0,12,0">
+            <StackPanel MaxWidth="980" Margin="0,0,0,24">
+              <Border Visibility="{Binding HasMeetingPlayback, Converter={StaticResource BooleanToVisibilityConverter}}"
+                      Background="{DynamicResource BackgroundRaisedBrush}"
+                      BorderBrush="{DynamicResource BorderBrushSoft}"
+                      BorderThickness="1"
+                      CornerRadius="10"
+                      Padding="14"
+                      Margin="0,14,0,0">
+                <Grid>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="190" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="90" />
+                  </Grid.ColumnDefinitions>
+                  <ComboBox Grid.Column="0"
+                            Style="{StaticResource MuesliComboBox}"
+                            ItemsSource="{Binding MeetingPlaybackTracks}"
+                            SelectedItem="{Binding SelectedMeetingPlaybackTrack, Mode=TwoWay}"
+                            DisplayMemberPath="Label" />
+                  <Button Grid.Column="1"
+                          Margin="10,0,10,0"
+                          Style="{StaticResource SecondaryButton}"
+                          Click="ForwardClick" features:FeatureAction.Name="ToggleMeetingPlayback_Click"
+                          Content="{Binding MeetingPlaybackButtonText}" />
+                  <Slider Grid.Column="2"
+                          VerticalAlignment="Center"
+                          Minimum="0"
+                          Maximum="{Binding MeetingPlaybackDuration}"
+                          Value="{Binding MeetingPlaybackPosition, Mode=TwoWay}"
+                          ValueChanged="ForwardValueChanged" features:FeatureAction.Name="MeetingPlaybackSeek_ValueChanged" />
+                  <TextBlock Grid.Column="3"
+                             Text="{Binding MeetingPlaybackTimeLabel}"
+                             HorizontalAlignment="Right"
+                             VerticalAlignment="Center"
+                             FontSize="11"
+                             FontFamily="Consolas"
+                             Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <ItemsControl Grid.Row="1" Grid.ColumnSpan="4" Height="28" Margin="0,10,0,0"
+                                ItemsSource="{Binding MeetingPlaybackWaveform}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Width="4" Height="{Binding}" Margin="1,0" CornerRadius="1"
+                                VerticalAlignment="Bottom" Background="{DynamicResource AccentBlueBrush}" Opacity="0.7" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Grid>
+              </Border>
+              <StackPanel x:Name="MeetingWarningsPanel" Visibility="Collapsed" Margin="0,14,0,0">
+                <Border Background="{DynamicResource WarningBannerBackgroundBrush}" BorderBrush="{DynamicResource WarningBannerBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,10">
+                  <StackPanel>
+                    <TextBlock Text="Recording warnings" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource WarningBannerForegroundBrush}" Margin="0,0,0,6" />
+                    <ItemsControl x:Name="MeetingWarningsItems">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Foreground="{DynamicResource WarningBannerForegroundBrush}" Margin="0,2,6,0" />
+                            <TextBlock Text="{Binding}" FontSize="12" Foreground="{DynamicResource WarningBannerForegroundBrush}" TextWrapping="Wrap" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
+              <StackPanel x:Name="MeetingNotesPanel">
+                <DockPanel Margin="0,14,0,12">
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <ComboBox Width="210"
+                              Margin="0,0,10,0"
+                              Style="{StaticResource MuesliComboBox}"
+                              ItemsSource="{Binding SummaryTemplates}"
+                              SelectedItem="{Binding SelectedMeetingTemplate}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,10,0"
+                                Visibility="{Binding IsSummarizing, Converter={StaticResource BooleanToVisibilityConverter}}">
+                      <ProgressBar Width="90" Height="6" IsIndeterminate="True" VerticalAlignment="Center" Margin="0,0,8,0" />
+                      <TextBlock Text="Generating…" VerticalAlignment="Center" Margin="0,0,10,0" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                      <Button Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="CancelSummary_Click" Content="Cancel" />
+                    </StackPanel>
+                    <Button Margin="0,0,10,0" Style="{StaticResource SecondaryButton}"
+                            Visibility="{Binding CanRetrySummary, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="ForwardClick" features:FeatureAction.Name="RetrySummary_Click" Content="Retry" />
+                    <Button Margin="0,0,10,0" Style="{StaticResource PrimaryButton}"
+                            IsEnabled="{Binding IsNotSummarizing}"
+                            Click="ForwardClick" features:FeatureAction.Name="GenerateSelectedMeetingNotes_Click">
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,6,0" />
+                        <TextBlock Text="{Binding SelectedMeetingNotesActionLabel}" />
+                      </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="CopySelectedMeetingNotes_Click">
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8C8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,6,0" />
+                        <TextBlock Text="Copy Notes" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                  <TextBlock Text="NOTES" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <Border Background="{DynamicResource BackgroundRaisedBrush}"
+                        BorderBrush="{DynamicResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="24"
+                        Margin="0,0,0,24">
+                  <StackPanel x:Name="MeetingNotesContent" />
+                </Border>
+
+                <Border Background="{DynamicResource BackgroundRaisedBrush}"
+                        BorderBrush="{DynamicResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="24"
+                        Margin="0,0,0,24">
+                  <StackPanel>
+                    <TextBlock Text="My notes" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="Your own notes. Kept exactly as written when notes are regenerated."
+                               Margin="0,4,0,10" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
+                    <TextBox Text="{Binding SelectedMeetingManualNotes, UpdateSourceTrigger=LostFocus}"
+                             AutomationProperties.AutomationId="MeetingManualNotesEditor"
+                             AutomationProperties.Name="Manual meeting notes"
+                             Style="{StaticResource MuesliTextBox}"
+                             MinHeight="110"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             VerticalContentAlignment="Top" />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
+              <StackPanel x:Name="MeetingTranscriptPanel" Visibility="Collapsed">
+                <DockPanel Margin="0,14,0,12">
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Margin="0,0,8,0" Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="EditSelectedMeetingTranscript_Click"
+                            IsEnabled="{Binding IsNotEditingTranscript}" AutomationProperties.AutomationId="MeetingTranscriptEditButton" AutomationProperties.Name="Edit transcript" Content="Edit transcript" />
+                    <Button Margin="0,0,8,0" Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="RetranscribeSelectedMeeting_Click"
+                            IsEnabled="{Binding IsNotEditingTranscript}" AutomationProperties.AutomationId="MeetingTranscriptRetranscribeButton" AutomationProperties.Name="Re-transcribe meeting" Content="Re-transcribe" />
+                    <Button Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="CopySelectedMeetingTranscript_Click" AutomationProperties.AutomationId="MeetingTranscriptCopyButton">
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8C8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,0,6,0" />
+                        <TextBlock Text="Copy Transcript" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                  <TextBlock Text="TRANSCRIPT" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <StackPanel x:Name="SpeakerAliasPanel" Margin="0,0,0,12" />
+
+                <Border Visibility="{Binding IsEditingTranscript, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        Background="{DynamicResource BackgroundRaisedBrush}"
+                        BorderBrush="{DynamicResource AccentBlueBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16"
+                        Margin="0,0,0,12">
+                  <StackPanel>
+                    <TextBlock Text="Edit transcript" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="Save keeps your changes. Cancel restores the original transcript and leaves notes, title ownership, aliases, and follow-ups untouched."
+                               Margin="0,4,0,10" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
+                    <TextBox Text="{Binding TranscriptEditDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.AutomationId="MeetingTranscriptEditor"
+                             AutomationProperties.Name="Transcript editor"
+                             Style="{StaticResource MuesliTextBox}"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto"
+                             VerticalContentAlignment="Top"
+                             MinHeight="220" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                      <Button Margin="0,0,8,0" Style="{StaticResource PrimaryButton}" Click="ForwardClick" features:FeatureAction.Name="SaveSelectedMeetingTranscript_Click"
+                              AutomationProperties.AutomationId="MeetingTranscriptSaveButton" AutomationProperties.Name="Save transcript" Content="Save" />
+                      <Button Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="CancelSelectedMeetingTranscript_Click"
+                              AutomationProperties.AutomationId="MeetingTranscriptCancelButton" AutomationProperties.Name="Cancel transcript edit" Content="Cancel" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <Border Background="{DynamicResource BackgroundRaisedBrush}"
+                        BorderBrush="{DynamicResource BorderBrushSoft}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="24">
+                  <TextBox Text="{Binding SelectedMeetingTranscript, Mode=OneWay}"
+                           Visibility="{Binding IsNotEditingTranscript, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           AutomationProperties.AutomationId="MeetingTranscriptReadOnly"
+                           AutomationProperties.Name="Meeting transcript"
+                           TextWrapping="Wrap"
+                           AcceptsReturn="True"
+                           Background="Transparent"
+                           BorderThickness="0"
+                           IsReadOnly="True"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           Cursor="IBeam"
+                           FontFamily="Consolas"
+                           FontSize="13"
+                           MinHeight="420"
+                           SelectionBrush="{DynamicResource AccentBlueBrush}" />
+                </Border>
+
+                <Border Visibility="{Binding HasRetranscriptionCandidate, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        Background="{DynamicResource AccentBadgeBackgroundBrush}"
+                        BorderBrush="{DynamicResource AccentBlueBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16"
+                        Margin="0,12,0,0">
+                  <StackPanel>
+                    <TextBlock Text="Re-transcription candidate ready" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding RetranscriptionStatus}" Margin="0,4,0,8" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                    <TextBox Text="{Binding PendingRetranscriptionCandidate.Transcript}" IsReadOnly="True" TextWrapping="Wrap" MinHeight="90"
+                             AutomationProperties.AutomationId="MeetingRetranscriptionCandidate" AutomationProperties.Name="Re-transcription candidate" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                      <Button Margin="0,0,8,0" Style="{StaticResource PrimaryButton}" Click="ForwardClick" features:FeatureAction.Name="AcceptSelectedMeetingCandidate_Click"
+                              IsEnabled="{Binding CanAcceptRetranscriptionCandidate}" AutomationProperties.AutomationId="MeetingTranscriptAcceptCandidateButton" AutomationProperties.Name="Accept re-transcription candidate" Content="Accept candidate" />
+                      <Button Style="{StaticResource SecondaryButton}" Click="ForwardClick" features:FeatureAction.Name="RejectSelectedMeetingCandidate_Click"
+                              IsEnabled="{Binding CanRejectRetranscriptionCandidate}" AutomationProperties.AutomationId="MeetingTranscriptRejectCandidateButton" AutomationProperties.Name="Reject re-transcription candidate" Content="Reject candidate" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+</features:FeatureViewBase>

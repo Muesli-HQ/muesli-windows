@@ -1,0 +1,348 @@
+<features:FeatureViewBase x:Class="Muesli.Windows.Features.Dictations.DictationsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:features="clr-namespace:Muesli.Windows.Features">
+  <Grid x:Name="DictationsPage">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+        <UniformGrid Columns="4" Margin="0,0,0,12">
+          <Border Style="{StaticResource StatCard}">
+            <StackPanel HorizontalAlignment="Center">
+              <Viewbox Width="20" Height="20" HorizontalAlignment="Center" Margin="0,2,0,8">
+                <Path Fill="{DynamicResource WarningOrangeBrush}" Data="M10,1 C14,5 15,8 13,11 C15,10 16,8 16,6 C18,9 18,14 14,17 C11,20 6,19 4,15 C2,11 4,8 7,6 C7,9 9,10 10,12 C12,9 12,6 10,1 Z" />
+              </Viewbox>
+              <TextBlock Text="{Binding DayStreak}" Style="{StaticResource StatValue}" />
+              <TextBlock Text="day streak" Style="{StaticResource StatLabel}" />
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource StatCard}">
+            <StackPanel HorizontalAlignment="Center">
+              <Viewbox Width="20" Height="20" HorizontalAlignment="Center" Margin="0,2,0,8">
+                <Grid Width="20" Height="20">
+                  <Path Stroke="{DynamicResource AccentBlueBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M4,17 L8,3 L12,17 M5.4,12 L10.6,12" />
+                  <Path Stroke="{DynamicResource AccentBlueBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M15,4 L15,16 M13,4 L17,4 M13,16 L17,16" />
+                </Grid>
+              </Viewbox>
+              <TextBlock Text="{Binding WordsDictatedDisplay}" Style="{StaticResource StatValue}" />
+              <TextBlock Text="words dictated" Style="{StaticResource StatLabel}" />
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource StatCard}">
+            <StackPanel HorizontalAlignment="Center">
+              <Viewbox Width="20" Height="20" HorizontalAlignment="Center" Margin="0,2,0,8">
+                <Grid Width="20" Height="20">
+                  <Path Stroke="{DynamicResource SuccessGreenBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M3,13 A7,7 0 0 1 17,13" />
+                  <Path Stroke="{DynamicResource SuccessGreenBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M10,13 L14,8" />
+                  <Ellipse Width="2.8" Height="2.8" Fill="{DynamicResource SuccessGreenBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8.6,11.6,0,0" />
+                </Grid>
+              </Viewbox>
+              <TextBlock Text="{Binding AverageWpm}" Style="{StaticResource StatValue}" />
+              <TextBlock Text="avg WPM" Style="{StaticResource StatLabel}" />
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource StatCard}">
+            <StackPanel HorizontalAlignment="Center">
+              <Viewbox Width="20" Height="20" HorizontalAlignment="Center" Margin="0,2,0,8">
+                <Grid Width="20" Height="20">
+                  <Ellipse Width="5" Height="5" Fill="{DynamicResource AccentBlueBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="5,4,0,0" />
+                  <Ellipse Width="4" Height="4" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.75" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,5,0,0" />
+                  <Path Fill="{DynamicResource AccentBlueBrush}" Data="M3,17 C3.3,13.8 5.5,12 8,12 C10.5,12 12.7,13.8 13,17 Z" />
+                  <Path Fill="{DynamicResource AccentBlueBrush}" Opacity="0.75" Data="M11,17 C11.2,14.3 13,12.8 15,12.8 C16.8,12.8 18.5,14.3 18.8,17 Z" />
+                </Grid>
+              </Viewbox>
+              <TextBlock Text="{Binding MeetingCount}" Style="{StaticResource StatValue}" />
+              <TextBlock Text="meetings" Style="{StaticResource StatLabel}" />
+            </StackPanel>
+          </Border>
+        </UniformGrid>
+        <TextBlock Margin="4,0,4,8" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}"
+                   Text="{Binding InsightsSummary}" TextWrapping="Wrap" />
+        <Button Margin="4,0,4,16" HorizontalAlignment="Left" Style="{StaticResource GhostButton}" Content="Open local insights"
+                Click="ForwardClick" features:FeatureAction.Name="OpenInsights_Click"
+                AutomationProperties.Name="Open local insights" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Style="{StaticResource ContentCard}" Margin="0,0,0,14" Visibility="{Binding SetupNeedsResume, Converter={StaticResource BooleanToVisibilityConverter}}">
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Resume setup" Click="ForwardClick" features:FeatureAction.Name="ResumeSetup_Click" AutomationProperties.Name="Resume deferred Muesli setup" />
+            <StackPanel Margin="0,0,16,0"><TextBlock Text="Finish setting up Muesli" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/><TextBlock Text="{Binding SetupResumeLabel}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/></StackPanel>
+          </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+          <DockPanel Grid.Row="0" Margin="12,0,12,8" LastChildFill="True">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <TextBlock Text="{Binding PreviewPageStateMessage}" MaxWidth="360"
+                         Visibility="Visible"
+                         TextTrimming="CharacterEllipsis"
+                         FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />
+              <Button Margin="16,-6,0,0" Style="{StaticResource GhostButton}" Click="ForwardClick" features:FeatureAction.Name="OpenButtonContextMenu_Click">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="&#xE71C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" />
+                  <TextBlock Text="{Binding DictationFilterLabel}" Margin="6,0,0,0">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding DictationFilterLabel}" Value="">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                  <TextBlock Text="⌄" Margin="6,-1,0,0">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding DictationFilterLabel}" Value="">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                </StackPanel>
+                <Button.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="All time" Tag="all" Click="ForwardClick" features:FeatureAction.Name="SetDictationFilter_Click" />
+                    <MenuItem Header="Last 2 days" Tag="last2Days" Click="ForwardClick" features:FeatureAction.Name="SetDictationFilter_Click" />
+                    <MenuItem Header="Last week" Tag="lastWeek" Click="ForwardClick" features:FeatureAction.Name="SetDictationFilter_Click" />
+                    <MenuItem Header="Last 2 weeks" Tag="last2Weeks" Click="ForwardClick" features:FeatureAction.Name="SetDictationFilter_Click" />
+                    <MenuItem Header="Last month" Tag="lastMonth" Click="ForwardClick" features:FeatureAction.Name="SetDictationFilter_Click" />
+                    <MenuItem Header="Last 3 months" Tag="last3Months" Click="ForwardClick" features:FeatureAction.Name="SetDictationFilter_Click" />
+                  </ContextMenu>
+                </Button.ContextMenu>
+              </Button>
+            </StackPanel>
+            <TextBlock Text="{Binding DictationHeaderLabel}" FontSize="13" FontWeight="Bold"
+                       Foreground="{DynamicResource TextTertiaryBrush}" />
+          </DockPanel>
+
+          <Border Grid.Row="1"
+                  Background="{DynamicResource BackgroundRaisedBrush}"
+                  BorderBrush="{DynamicResource BorderBrushSoft}"
+                  BorderThickness="1"
+                  CornerRadius="10">
+            <Grid>
+              <ListBox ItemsSource="{Binding FilteredDictations}"
+                       Background="Transparent"
+                       BorderThickness="0"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       HorizontalContentAlignment="Stretch"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                       ItemContainerStyle="{StaticResource MuesliListBoxItem}"
+                       MouseDoubleClick="ForwardMouseButton" features:FeatureAction.Name="DictationsList_MouseDoubleClick"
+                       Visibility="{Binding HasDictations, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <ListBox.GroupStyle>
+                  <GroupStyle>
+                    <GroupStyle.HeaderTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Name}"
+                                   Margin="20,18,20,2"
+                                   FontSize="13"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource TextTertiaryBrush}" />
+                      </DataTemplate>
+                    </GroupStyle.HeaderTemplate>
+                  </GroupStyle>
+                </ListBox.GroupStyle>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="20,16"
+                          HorizontalAlignment="Stretch"
+                          Background="Transparent"
+                          PreviewMouseLeftButtonDown="ForwardMouseButton" features:FeatureAction.Name="DictationRow_Click">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Text="{Binding Time}" FontFamily="Consolas" FontSize="13" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextTertiaryBrush}" />
+                      <TextBox Grid.Column="1"
+                               Text="{Binding Text, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               AcceptsReturn="True"
+                               FontSize="14"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Background="Transparent"
+                               BorderThickness="0"
+                               IsReadOnly="False"
+                               Cursor="IBeam"
+                               Padding="0"
+                               HorizontalScrollBarVisibility="Disabled"
+                               VerticalScrollBarVisibility="Disabled"
+                               LostFocus="ForwardLostFocus" features:FeatureAction.Name="DictationText_LostFocus"
+                               SelectionBrush="{DynamicResource AccentBlueBrush}" />
+                      <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,-4,0,0">
+                        <StackPanel.Style>
+                          <Style TargetType="StackPanel">
+                            <Setter Property="Opacity" Value="0" />
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                <Setter Property="Opacity" Value="1" />
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </StackPanel.Style>
+                        <Button Style="{StaticResource GhostButton}" Content="&#xE8C8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" ToolTip="Copy" Click="ForwardClick" features:FeatureAction.Name="CopyDictation_Click" />
+                        <Button Margin="6,0,0,0" Style="{StaticResource GhostButton}" Content="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{DynamicResource ErrorRedTransparentBrush}" ToolTip="Delete" Click="ForwardClick" features:FeatureAction.Name="DeleteDictation_Click" />
+                      </StackPanel>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <StackPanel Style="{StaticResource EmptyStatePanel}" Visibility="{Binding HasDictations, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                <TextBlock Text="&#xE70F;" Style="{StaticResource EmptyStateIcon}" />
+                <TextBlock Text="{Binding DictationEmptyTitle}" Style="{StaticResource EmptyStateTitle}" />
+                <TextBlock Text="{Binding DictationEmptyStateBody}" Style="{StaticResource EmptyStateBody}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+        </Grid>
+
+      <Border Grid.RowSpan="3"
+              Background="{DynamicResource BackgroundBaseBrush}"
+              Visibility="{Binding IsInsightsOpen, Converter={StaticResource BooleanToVisibilityConverter}}"
+              Panel.ZIndex="8">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
+          <StackPanel MaxWidth="860" Margin="0,0,0,24">
+            <DockPanel Margin="0,0,0,18">
+              <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="Back to Dictations"
+                      Click="ForwardClick" features:FeatureAction.Name="CloseInsights_Click"
+                      AutomationProperties.Name="Back to dictations" />
+              <ComboBox DockPanel.Dock="Right" Width="180" Style="{StaticResource MuesliComboBox}"
+                        ItemsSource="{Binding InsightsRangeOptions}"
+                        SelectedItem="{Binding SelectedInsightsRange}"
+                        AutomationProperties.Name="Insights time range" />
+              <StackPanel Margin="16,0,16,0">
+                <TextBlock Text="INSIGHTS" Style="{StaticResource SectionLabel}" />
+                <TextBlock Text="Private and on-device. Sharing is not available." FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </StackPanel>
+            </DockPanel>
+            <Border Style="{StaticResource ContentCard}" Padding="24" Margin="0,0,0,18">
+              <StackPanel>
+                <TextBlock Text="Your time with Muesli" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Margin="0,4,0,4" FontSize="42" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"
+                           Text="{Binding CurrentInsights.Lifetime.TotalWords}" />
+                <TextBlock Text="Total words dictated" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />
+                <UniformGrid Columns="4" Margin="0,18,0,0">
+                  <StackPanel>
+                    <TextBlock Text="{Binding CurrentInsights.Lifetime.Meetings}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="meetings" Style="{StaticResource StatLabel}" />
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Text="{Binding CurrentInsights.Lifetime.AverageWpm, StringFormat={}{0:0} WPM}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="average pace" Style="{StaticResource StatLabel}" />
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Text="{Binding CurrentInsights.CurrentStreakDays}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="current streak" Style="{StaticResource StatLabel}" />
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Text="{Binding CurrentInsights.LongestStreakDays}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="longest streak" Style="{StaticResource StatLabel}" />
+                  </StackPanel>
+                </UniformGrid>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource ContentCard}" Padding="24" Margin="0,0,0,18">
+              <StackPanel>
+                <TextBlock Text="DICTATIONS AND MEETINGS" Style="{StaticResource SectionLabel}" />
+                <TextBlock Margin="0,4,0,12" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="Activity for the selected time period" />
+                <TextBlock FontSize="32" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"
+                           Text="{Binding CurrentInsights.Selected.TotalWords}" />
+                <TextBlock Margin="0,0,0,12" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" Text="words" />
+                <UniformGrid Columns="4">
+                  <StackPanel>
+                    <TextBlock Text="{Binding CurrentInsights.Selected.DictationSessions}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="dictation sessions" Style="{StaticResource StatLabel}" />
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Text="{Binding CurrentInsights.Selected.Meetings}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="completed meetings" Style="{StaticResource StatLabel}" />
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Text="{Binding CurrentInsights.Selected.AverageWpm, StringFormat={}{0:0} WPM}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="average pace" Style="{StaticResource StatLabel}" />
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Text="{Binding CurrentInsights.ActiveDaysInRange}" Style="{StaticResource StatValue}" />
+                    <TextBlock Text="active days" Style="{StaticResource StatLabel}" />
+                  </StackPanel>
+                </UniformGrid>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="DAILY ACTIVITY" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+            <ItemsControl ItemsSource="{Binding CurrentInsights.DailyActivity}" Margin="0,0,0,18">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Width="11" Height="11" Margin="1" CornerRadius="2"
+                          Background="{DynamicResource AccentBlueBrush}"
+                          Opacity="{Binding Intensity}"
+                          ToolTip="{Binding Date, StringFormat=d}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="DICTATION WORDS" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+            <ItemsControl ItemsSource="{Binding CurrentInsights.DictationWords}" Margin="0,0,0,18">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Margin="0,0,8,8" Padding="10,6" CornerRadius="8" Background="{DynamicResource BackgroundRaisedBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1">
+                    <TextBlock FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}">
+                      <Run Text="{Binding Word, Mode=OneWay}" />
+                      <Run Text=" · " />
+                      <Run Text="{Binding Count, Mode=OneWay}" />
+                    </TextBlock>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="MEETING WORDS" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
+            <ItemsControl ItemsSource="{Binding CurrentInsights.MeetingWords}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Margin="0,0,8,8" Padding="10,6" CornerRadius="8" Background="{DynamicResource BackgroundRaisedBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1">
+                    <TextBlock FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}">
+                      <Run Text="{Binding Word, Mode=OneWay}" />
+                      <Run Text=" · " />
+                      <Run Text="{Binding Count, Mode=OneWay}" />
+                    </TextBlock>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Margin="0,12,0,0" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap"
+                       Text="These counts come only from dictations and meetings stored on this PC. Nothing is uploaded or contributed." />
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+      </Grid>
+</features:FeatureViewBase>

@@ -1,0 +1,230 @@
+<features:FeatureViewBase x:Class="Muesli.Windows.Features.Search.SearchView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:features="clr-namespace:Muesli.Windows.Features"
+             xmlns:search="clr-namespace:Muesli.Windows.Features.Search">
+  <Grid x:Name="SearchPage">
+        <Grid.Resources>
+          <search:MeetingSearchSnippetConverter x:Key="MeetingSearchSnippetConverter" />
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0" Margin="0,0,0,22" LastChildFill="True">
+          <Button DockPanel.Dock="Right"
+                  Margin="12,28,0,0"
+                  VerticalAlignment="Top"
+                  Content="Clear"
+                  Click="ForwardClick"
+                  features:FeatureAction.Name="ClearSearch_Click"
+                  AutomationProperties.Name="Clear search">
+            <Button.Style>
+              <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                <Setter Property="Visibility" Value="Visible" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding SearchQuery}" Value="">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Button.Style>
+          </Button>
+          <StackPanel>
+          <TextBlock Text="{Binding SearchResultsTitle}" Style="{StaticResource PageTitle}" />
+          <TextBlock Text="{Binding SearchResultsSummary}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
+          <TextBlock Text="{Binding PreviewPageStateMessage}" Margin="0,6,0,0" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" />
+          <Border Margin="0,14,0,0"
+                  Padding="10,0"
+                  Height="36"
+                  Background="{DynamicResource BackgroundRaisedBrush}"
+                  BorderBrush="{DynamicResource BorderBrushSoft}"
+                  BorderThickness="1"
+                  CornerRadius="6">
+            <TextBox x:Name="MainSearchInput"
+                     Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     CaretBrush="{DynamicResource AccentBlueBrush}"
+                     VerticalContentAlignment="Center"
+                     FontSize="13"
+                     ToolTip="Search dictations and meetings"
+                     AutomationProperties.Name="Search dictations and meetings" />
+          </Border>
+        </StackPanel>
+        </DockPanel>
+
+         <Grid Grid.Row="1">
+           <Grid.RowDefinitions>
+             <RowDefinition Height="Auto" />
+             <RowDefinition Height="*" />
+           </Grid.RowDefinitions>
+           <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+             <Button Click="ForwardClick" features:FeatureAction.Name="SelectSearchDictationsTab_Click"
+                     AutomationProperties.Name="Search dictations tab">
+               <Button.Style>
+                 <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                   <Setter Property="FontWeight" Value="Normal" />
+                   <Style.Triggers>
+                     <DataTrigger Binding="{Binding SearchShowsDictations}" Value="True">
+                       <Setter Property="FontWeight" Value="SemiBold" />
+                       <Setter Property="Background" Value="{DynamicResource BackgroundHoverBrush}" />
+                     </DataTrigger>
+                   </Style.Triggers>
+                 </Style>
+               </Button.Style>
+               <StackPanel Orientation="Horizontal">
+                 <TextBlock Text="Dictations" VerticalAlignment="Center" />
+                 <Border Margin="8,0,0,0" Padding="6,2" CornerRadius="8"
+                         Background="{DynamicResource BackgroundRaisedBrush}">
+                   <TextBlock Text="{Binding SearchDictationCount}" FontSize="11" Foreground="{DynamicResource AccentBlueBrush}" />
+                 </Border>
+               </StackPanel>
+             </Button>
+             <Button Margin="6,0,0,0" Click="ForwardClick" features:FeatureAction.Name="SelectSearchMeetingsTab_Click"
+                     AutomationProperties.Name="Search meetings tab">
+               <Button.Style>
+                 <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                   <Setter Property="FontWeight" Value="Normal" />
+                   <Style.Triggers>
+                     <DataTrigger Binding="{Binding SearchShowsMeetings}" Value="True">
+                       <Setter Property="FontWeight" Value="SemiBold" />
+                       <Setter Property="Background" Value="{DynamicResource BackgroundHoverBrush}" />
+                     </DataTrigger>
+                   </Style.Triggers>
+                 </Style>
+               </Button.Style>
+               <StackPanel Orientation="Horizontal">
+                 <TextBlock Text="Meetings" VerticalAlignment="Center" />
+                 <Border Margin="8,0,0,0" Padding="6,2" CornerRadius="8"
+                         Background="{DynamicResource BackgroundRaisedBrush}">
+                   <TextBlock Text="{Binding SearchMeetingCount}" FontSize="11" Foreground="{DynamicResource AccentBlueBrush}" />
+                 </Border>
+               </StackPanel>
+             </Button>
+           </StackPanel>
+           <Grid Grid.Row="1">
+           <ScrollViewer VerticalScrollBarVisibility="Auto"
+                         HorizontalScrollBarVisibility="Disabled"
+                         Padding="0,0,12,0"
+                         Visibility="{Binding HasSearchResults, Converter={StaticResource BooleanToVisibilityConverter}}">
+             <StackPanel MaxWidth="980" Margin="0,0,0,24">
+            <StackPanel Visibility="{Binding SearchShowsDictations, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <DockPanel Margin="0,0,0,12">
+              <TextBlock Text="{Binding SearchDictationCount, StringFormat=DICTATIONS ({0})}" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+            </DockPanel>
+            <Border Background="{DynamicResource BackgroundRaisedBrush}"
+                    BorderBrush="{DynamicResource BorderBrushSoft}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Margin="0,0,0,24">
+              <ListBox ItemsSource="{Binding SearchDictationResults}"
+                       Background="Transparent"
+                       BorderThickness="0"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       HorizontalContentAlignment="Stretch"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                       ItemContainerStyle="{StaticResource MuesliListBoxItem}"
+                       MouseDoubleClick="ForwardMouseButton" features:FeatureAction.Name="DictationsList_MouseDoubleClick">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="20,14"
+                          HorizontalAlignment="Stretch"
+                          Background="Transparent"
+                          PreviewMouseLeftButtonDown="ForwardMouseButton" features:FeatureAction.Name="DictationRow_Click">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Text="{Binding Time}" FontFamily="Consolas" FontSize="13" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource TextTertiaryBrush}" />
+                      <search:SearchHighlightTextBlock Grid.Column="1"
+                               SourceText="{Binding Text}"
+                               Query="{Binding DataContext.SearchQuery, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                               FontSize="14"
+                               MaxHeight="60" />
+                      <Button Grid.Column="2"
+                              Margin="14,-4,0,0"
+                              Style="{StaticResource GhostButton}"
+                              Content="&#xE8C8;"
+                              FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                              ToolTip="Copy"
+                              Click="ForwardClick" features:FeatureAction.Name="CopyDictation_Click" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Border>
+            </StackPanel>
+
+            <StackPanel Visibility="{Binding SearchShowsMeetings, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <DockPanel Margin="0,0,0,12">
+              <TextBlock Text="{Binding SearchMeetingCount, StringFormat=MEETINGS ({0})}" Style="{StaticResource SectionLabel}" VerticalAlignment="Center" />
+            </DockPanel>
+            <ListBox ItemsSource="{Binding SearchMeetingResults}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     ItemContainerStyle="{StaticResource MuesliListBoxItem}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="{DynamicResource BackgroundRaisedBrush}"
+                          BorderBrush="{DynamicResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="10"
+                          Padding="16"
+                          Margin="0,0,0,10"
+                          Cursor="Hand"
+                          MouseLeftButtonUp="ForwardMouseButton" features:FeatureAction.Name="MeetingCard_Click">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel>
+                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Metadata}" Margin="0,6,0,0" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <search:SearchHighlightTextBlock
+                                   Margin="0,8,0,0"
+                                   FontSize="13"
+                                   MaxHeight="38">
+                          <search:SearchHighlightTextBlock.SourceText>
+                            <MultiBinding Converter="{StaticResource MeetingSearchSnippetConverter}">
+                              <Binding Path="Title" />
+                              <Binding Path="Transcript" />
+                              <Binding Path="ManualNotes" />
+                              <Binding Path="Summary" />
+                              <Binding Path="DataContext.SearchQuery" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                            </MultiBinding>
+                          </search:SearchHighlightTextBlock.SourceText>
+                          <search:SearchHighlightTextBlock.Query>
+                            <Binding Path="DataContext.SearchQuery" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                          </search:SearchHighlightTextBlock.Query>
+                        </search:SearchHighlightTextBlock>
+                      </StackPanel>
+                      <TextBlock Grid.Column="1"
+                                 Text="&#xE8B7;"
+                                 FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                 FontSize="14"
+                                 Foreground="{DynamicResource AccentBlueBrush}"
+                                 Margin="0,2,0,0" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+             </ListBox>
+            </StackPanel>
+           </StackPanel>
+         </ScrollViewer>
+         <StackPanel Style="{StaticResource EmptyStatePanel}" Visibility="{Binding HasSearchResults, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+           <TextBlock Text="&#xE721;" Style="{StaticResource EmptyStateIcon}" />
+           <TextBlock Text="{Binding SearchEmptyTitle}" Style="{StaticResource EmptyStateTitle}" />
+           <TextBlock Text="{Binding SearchEmptyBody}" Style="{StaticResource EmptyStateBody}" />
+          </StackPanel>
+        </Grid>
+        </Grid>
+      </Grid>
+</features:FeatureViewBase>

@@ -1,0 +1,467 @@
+<Window x:Class="Muesli.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:features="clr-namespace:Muesli.Windows.Features"
+        xmlns:dictations="clr-namespace:Muesli.Windows.Features.Dictations"
+        xmlns:search="clr-namespace:Muesli.Windows.Features.Search"
+        xmlns:meetings="clr-namespace:Muesli.Windows.Features.Meetings"
+        xmlns:dictionary="clr-namespace:Muesli.Windows.Features.Dictionary"
+        xmlns:models="clr-namespace:Muesli.Windows.Features.Models"
+        xmlns:shortcuts="clr-namespace:Muesli.Windows.Features.Shortcuts"
+        xmlns:settings="clr-namespace:Muesli.Windows.Features.Settings"
+        xmlns:about="clr-namespace:Muesli.Windows.Features.About"
+        Title="Muesli"
+        Icon="Assets/muesli.ico"
+        Width="1240"
+        Height="820"
+        MinWidth="760"
+        MinHeight="560"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        SizeChanged="Window_SizeChanged"
+        Activated="Window_Activated"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        WindowStartupLocation="CenterScreen">
+  <shell:WindowChrome.WindowChrome>
+    <shell:WindowChrome CaptionHeight="44"
+                        ResizeBorderThickness="8"
+                        GlassFrameThickness="0"
+                        CornerRadius="0"
+                        UseAeroCaptionButtons="False" />
+  </shell:WindowChrome.WindowChrome>
+
+  <Grid Background="{DynamicResource BackgroundDeepBrush}">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition x:Name="SidebarColumn" Width="260" MinWidth="72" MaxWidth="300" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
+
+    <Grid Grid.ColumnSpan="2" Height="36" VerticalAlignment="Top" Background="Transparent" Panel.ZIndex="10">
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Top"
+                  Margin="0,3,8,0"
+                  shell:WindowChrome.IsHitTestVisibleInChrome="True">
+        <Button Style="{StaticResource ChromeButton}" Content="-" Click="Minimize_Click" AutomationProperties.Name="Minimize Muesli window" />
+        <Button Style="{StaticResource ChromeButton}" Content="□" Click="MaximizeRestore_Click" AutomationProperties.Name="Maximize or restore Muesli window" />
+        <Button Style="{StaticResource ChromeButton}" Content="x" Click="Close_Click" AutomationProperties.Name="Close Muesli window" />
+      </StackPanel>
+    </Grid>
+
+    <Border Grid.Column="0"
+            Margin="0,44,0,0"
+            Background="{DynamicResource BackgroundDeepBrush}"
+            BorderBrush="{DynamicResource BorderBrushMedium}"
+            BorderThickness="0,1,1,1"
+            CornerRadius="0,14,14,0">
+      <Border.Resources>
+        <Style x:Key="CompactAwareSidebarButton" TargetType="Button" BasedOn="{StaticResource SidebarButton}">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="Padding" Value="0" />
+              <Setter Property="HorizontalContentAlignment" Value="Center" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+        <Style x:Key="CompactAwareSidebarChildButton" TargetType="Button" BasedOn="{StaticResource SidebarChildButton}">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="Padding" Value="0" />
+              <Setter Property="HorizontalContentAlignment" Value="Center" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+        <Style x:Key="CompactSidebarLabel" TargetType="TextBlock">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+        <Style x:Key="CompactHeaderText" TargetType="TextBlock">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+        <Style x:Key="CompactHeaderBrand" TargetType="StackPanel">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="HorizontalAlignment" Value="Center" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+        <Style x:Key="CompactHeaderSearchSurface" TargetType="Border">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+        <Style x:Key="CompactOnlySearchButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+          <Setter Property="Visibility" Value="Collapsed" />
+          <Setter Property="Width" Value="32" />
+          <Setter Property="Height" Value="32" />
+          <Setter Property="Padding" Value="0" />
+          <Setter Property="HorizontalAlignment" Value="Center" />
+          <Setter Property="Margin" Value="0,10,0,0" />
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="Visibility" Value="Visible" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+        <Style x:Key="NormalOnlyRailAction" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+        <Style x:Key="CompactOnlyCreateFolder" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+          <Setter Property="Visibility" Value="Collapsed" />
+          <Setter Property="Width" Value="28" />
+          <Setter Property="Height" Value="28" />
+          <Setter Property="Padding" Value="0" />
+          <Setter Property="HorizontalAlignment" Value="Center" />
+          <Setter Property="Margin" Value="0,2" />
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="Visibility" Value="Visible" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+        <Style x:Key="CompactThemeSwitch" TargetType="Border">
+          <Setter Property="HorizontalAlignment" Value="Left" />
+          <Setter Property="Margin" Value="24,12,0,0" />
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding DataContext.IsCompactLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+              <Setter Property="HorizontalAlignment" Value="Center" />
+              <Setter Property="Margin" Value="0,12,0,0" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Resources>
+      <Grid Margin="0,24,0,16">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="16,0,16,20">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Style="{StaticResource CompactHeaderBrand}">
+            <Image Width="28"
+                   Height="28"
+                   Source="Assets/muesli_app_icon.png"
+                   Stretch="Uniform"
+                   RenderOptions.BitmapScalingMode="HighQuality"
+                   SnapsToDevicePixels="True" />
+            <TextBlock Text="muesli" Margin="12,0,0,0" FontSize="22" FontWeight="SemiBold" Style="{StaticResource CompactHeaderText}"
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
+          </StackPanel>
+          <TextBlock Text="{Binding UserGreeting}" Margin="40,4,0,0" FontSize="12" Style="{StaticResource CompactHeaderText}"
+                     Foreground="{DynamicResource TextTertiaryBrush}" />
+          <Border Margin="-8,18,-8,0" Style="{StaticResource CompactHeaderSearchSurface}"
+                  Height="32"
+                  Background="{DynamicResource BackgroundRaisedBrush}"
+                  BorderBrush="{DynamicResource BorderBrushSoft}"
+                  BorderThickness="1"
+                  CornerRadius="6"
+                  Padding="10,0">
+            <DockPanel>
+              <TextBlock Text="&#xE721;"
+                         FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                         Foreground="{DynamicResource TextTertiaryBrush}"
+                         VerticalAlignment="Center"
+                         Margin="0,0,8,0" />
+              <Grid>
+                <TextBlock Text="Search..."
+                           Foreground="{DynamicResource TextTertiaryBrush}"
+                           VerticalAlignment="Center"
+                           FontSize="13"
+                           IsHitTestVisible="False">
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding SearchQuery}" Value="">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
+                <TextBox Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="{DynamicResource TextPrimaryBrush}"
+                         CaretBrush="{DynamicResource AccentBlueBrush}"
+                         Margin="0,0,22,0"
+                         VerticalContentAlignment="Center"
+                         FontSize="13"
+                         ToolTip="Search dictations and meetings" AutomationProperties.Name="Search dictations and meetings" />
+                <Button HorizontalAlignment="Right"
+                        Width="18"
+                        Height="18"
+                        Padding="0"
+                        Content="x"
+                        Foreground="{DynamicResource TextTertiaryBrush}"
+                        Click="ClearSearch_Click" AutomationProperties.Name="Clear search">
+                  <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                      <Setter Property="Visibility" Value="Visible" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding SearchQuery}" Value="">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Button.Style>
+                </Button>
+              </Grid>
+            </DockPanel>
+          </Border>
+          <Button Style="{StaticResource CompactOnlySearchButton}"
+                  Content="&#xE721;"
+                  FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                  ToolTip="Search dictations and meetings"
+                  Click="OpenSearchFromCompactRail_Click"
+                  AutomationProperties.Name="Open search and focus the search field" />
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="0" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <StackPanel>
+          <Button x:Name="DictationsNav" Style="{StaticResource CompactAwareSidebarButton}" Background="{DynamicResource SurfaceSelectedBrush}" Click="ShowDictations_Click" ToolTip="Dictations" AutomationProperties.Name="Navigate to Dictations">
+            <DockPanel LastChildFill="True">
+              <TextBlock Text="&#xE720;" Style="{StaticResource NavIcon}" />
+              <TextBlock Text="Dictations" Style="{StaticResource CompactSidebarLabel}" />
+            </DockPanel>
+          </Button>
+          <Border x:Name="MeetingsRowChrome" Margin="8,2" CornerRadius="6" Background="Transparent">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <Button x:Name="MeetingsNav" Style="{StaticResource CompactAwareSidebarButton}" Margin="0" Click="ShowMeetings_Click" ToolTip="Meetings" AutomationProperties.Name="Navigate to Meetings">
+                <DockPanel LastChildFill="True">
+                  <TextBlock Text="&#xE716;" Style="{StaticResource NavIcon}" />
+                  <TextBlock Text="Meetings" Style="{StaticResource CompactSidebarLabel}" />
+                </DockPanel>
+              </Button>
+              <Button x:Name="MeetingsChevronButton"
+                      Grid.Column="1"
+                      Width="28"
+                      Height="28"
+                      VerticalAlignment="Center"
+                      Background="Transparent"
+                      Style="{StaticResource NormalOnlyRailAction}"
+                      Padding="0"
+                      Content="{Binding MeetingsChevron}"
+                      Foreground="{DynamicResource TextTertiaryBrush}"
+                      ToolTip="Show or hide meeting folders"
+                      Click="ToggleMeetings_Click"
+                      AutomationProperties.Name="Expand or collapse meeting folders" />
+              <Button Grid.Column="2"
+                      Width="28"
+                      Height="28"
+                      VerticalAlignment="Center"
+                      Margin="0,0,4,0"
+                      Background="Transparent"
+                      Style="{StaticResource NormalOnlyRailAction}"
+                      Padding="0"
+                      Content="&#xE8F4;"
+                      FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                      Foreground="{DynamicResource TextTertiaryBrush}"
+                      ToolTip="New Meeting Folder"
+                      Click="AddMeetingFolder_Click" AutomationProperties.Name="Create meeting folder" />
+            </Grid>
+          </Border>
+          <Button Style="{StaticResource CompactOnlyCreateFolder}"
+                  Content="&#xE8F4;"
+                  FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                  Foreground="{DynamicResource TextTertiaryBrush}"
+                  ToolTip="New Meeting Folder"
+                  Click="AddMeetingFolder_Click"
+                  AutomationProperties.Name="Create meeting folder" />
+          </StackPanel>
+          <ScrollViewer Grid.Row="1"
+                        VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled"
+                        CanContentScroll="False">
+          <StackPanel x:Name="MeetingsChildren" Visibility="Visible">
+            <Button x:Name="AllMeetingsNav" Style="{StaticResource CompactAwareSidebarChildButton}" Click="ShowMeetings_Click" ToolTip="All Meetings" AutomationProperties.Name="Navigate to All Meetings">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="22" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="28" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="&#xE8A5;" Style="{StaticResource NavIcon}" Foreground="{DynamicResource TextTertiaryBrush}" />
+                <TextBlock Grid.Column="1" Text="All Meetings" Style="{StaticResource CompactSidebarLabel}" />
+                <TextBlock Grid.Column="2" Text="{Binding MeetingCount}" HorizontalAlignment="Right" Foreground="{DynamicResource TextTertiaryBrush}" Style="{StaticResource CompactSidebarLabel}" />
+              </Grid>
+            </Button>
+            <ItemsControl ItemsSource="{Binding MeetingFolders}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid>
+                    <Button Style="{StaticResource CompactAwareSidebarChildButton}" Margin="{Binding Indent}" Click="SelectMeetingFolder_Click" ToolTip="{Binding Name}" AutomationProperties.Name="{Binding Name, StringFormat=Navigate to meeting folder {0}}">
+                      <Button.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                          <MenuItem Header="Add subfolder" Click="AddMeetingFolder_Click" />
+                          <MenuItem Header="Rename" Click="RenameMeetingFolder_Click" />
+                          <MenuItem Header="Move to" SubmenuOpened="MoveMeetingFolderMenu_SubmenuOpened" />
+                          <MenuItem Header="Move Up" Click="MoveMeetingFolderUp_Click" />
+                          <MenuItem Header="Move Down" Click="MoveMeetingFolderDown_Click" />
+                          <Separator />
+                          <MenuItem Header="Delete" Click="DeleteMeetingFolder_Click" />
+                        </ContextMenu>
+                      </Button.ContextMenu>
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="22" />
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="28" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="&#xE8B7;" Style="{StaticResource NavIcon}" Foreground="{DynamicResource TextTertiaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis">
+                          <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource CompactSidebarLabel}">
+                              <Setter Property="Visibility" Value="Visible" />
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                                  <Setter Property="Visibility" Value="Hidden" />
+                                </DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Grid.Column="2" Text="{Binding CountDisplay}" HorizontalAlignment="Right" Foreground="{DynamicResource TextTertiaryBrush}" Style="{StaticResource CompactSidebarLabel}" />
+                      </Grid>
+                    </Button>
+                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="46,3,38,3"
+                             Padding="6,2"
+                             Background="{DynamicResource BackgroundHoverBrush}"
+                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             BorderBrush="{DynamicResource BorderBrushSoft}"
+                             FontSize="13"
+                             KeyDown="FolderNameBox_KeyDown"
+                             LostFocus="FolderNameBox_LostFocus">
+                      <TextBox.Style>
+                        <Style TargetType="TextBox">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                              <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBox.Style>
+                    </TextBox>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="2">
+          <Button x:Name="DictionaryNav" Style="{StaticResource CompactAwareSidebarButton}" Click="ShowDictionary_Click" ToolTip="Dictionary" AutomationProperties.Name="Navigate to Dictionary">
+            <DockPanel>
+              <TextBlock Text="&#xE82D;" Style="{StaticResource NavIcon}" />
+              <TextBlock Text="Dictionary" Style="{StaticResource CompactSidebarLabel}" />
+            </DockPanel>
+          </Button>
+          <Button x:Name="ModelsNav" Style="{StaticResource CompactAwareSidebarButton}" Click="ShowModels_Click" ToolTip="Models" AutomationProperties.Name="Navigate to Models">
+            <DockPanel>
+              <TextBlock Text="&#xE896;" Style="{StaticResource NavIcon}" />
+              <TextBlock Text="Models" Style="{StaticResource CompactSidebarLabel}" />
+            </DockPanel>
+          </Button>
+          <Button x:Name="ShortcutsNav" Style="{StaticResource CompactAwareSidebarButton}" Click="ShowShortcuts_Click" ToolTip="Shortcuts" AutomationProperties.Name="Navigate to Shortcuts">
+            <DockPanel>
+              <TextBlock Text="&#xE765;" Style="{StaticResource NavIcon}" />
+              <TextBlock Text="Shortcuts" Style="{StaticResource CompactSidebarLabel}" />
+            </DockPanel>
+          </Button>
+          </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="2">
+          <Button x:Name="SettingsNav" Style="{StaticResource CompactAwareSidebarButton}" Click="ShowSettings_Click" ToolTip="Settings" AutomationProperties.Name="Navigate to Settings">
+            <DockPanel>
+              <TextBlock Text="&#xE713;" Style="{StaticResource NavIcon}" />
+              <TextBlock Text="Settings" Style="{StaticResource CompactSidebarLabel}" />
+            </DockPanel>
+          </Button>
+          <Button x:Name="AboutNav" Style="{StaticResource CompactAwareSidebarButton}" Click="ShowAbout_Click" ToolTip="About" AutomationProperties.Name="Navigate to About">
+            <DockPanel>
+              <TextBlock Text="&#xE946;" Style="{StaticResource NavIcon}" />
+              <TextBlock Text="About" Style="{StaticResource CompactSidebarLabel}" />
+            </DockPanel>
+          </Button>
+          <Border Style="{StaticResource CompactThemeSwitch}"
+                  Width="60"
+                  Height="26"
+                  Background="{DynamicResource BackgroundRaisedBrush}"
+                  CornerRadius="6"
+                  Padding="2">
+            <StackPanel Orientation="Horizontal">
+              <Button x:Name="LightThemeButton"
+                      Style="{StaticResource ThemeSegmentButton}"
+                      Content="☀"
+                      Click="SetLightTheme_Click" AutomationProperties.Name="Use light theme" />
+              <Button x:Name="DarkThemeButton"
+                      Style="{StaticResource ThemeSegmentButton}"
+                      Content="☾"
+                      Click="SetDarkTheme_Click" AutomationProperties.Name="Use dark theme" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border Grid.Column="1"
+            Margin="0,44,0,0"
+            Background="{DynamicResource BackgroundBaseBrush}" />
+
+    <Grid Grid.Column="1" Margin="24,76,24,28" x:Name="ContentHost">
+      <dictations:DictationsView x:Name="DictationsView" />
+      <search:SearchView x:Name="SearchView" Visibility="Collapsed" />
+      <meetings:MeetingsView x:Name="MeetingsView" Visibility="Collapsed" />
+      <meetings:MeetingDetailView x:Name="MeetingDetailViewControl" Visibility="Collapsed" />
+      <dictionary:DictionaryView x:Name="DictionaryView" Visibility="Collapsed" />
+      <models:ModelsView x:Name="ModelsView" Visibility="Collapsed" />
+      <shortcuts:ShortcutsView x:Name="ShortcutsView" Visibility="Collapsed" />
+      <settings:SettingsView x:Name="SettingsView" Visibility="Collapsed" />
+      <about:AboutView x:Name="AboutView" Visibility="Collapsed" />
+    </Grid>
+<Border x:Name="VisualVerificationBanner"
+            Visibility="Collapsed"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Top"
+            Margin="72,44,24,0"
+            Padding="10,6"
+            Background="#D1A000"
+            CornerRadius="0,0,6,6"
+            Panel.ZIndex="30"
+            IsHitTestVisible="False">
+      <TextBlock x:Name="VisualVerificationBannerText" Foreground="#191919"
+                 FontWeight="SemiBold"
+                 FontSize="11"
+                 TextWrapping="Wrap"
+                 AutomationProperties.Name="Visual verification isolation banner" />
+    </Border>
+  </Grid>
+</Window>
