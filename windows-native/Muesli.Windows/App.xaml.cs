@@ -20,6 +20,20 @@ public partial class App : System.Windows.Application
             _singleInstance.Dispose();
             return;
         }
+        using (var conflictingProcess = Services.SingleInstanceCoordinator.FindConflictingLegacyProcess())
+        {
+            if (conflictingProcess is not null)
+            {
+                System.Windows.MessageBox.Show(
+                    "Another Muesli build is already running. Close its tray icon or process before starting this build so two recorders cannot capture the same meeting.",
+                    "Muesli is already running",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                _singleInstance.Dispose();
+                _singleInstance = null;
+                return;
+            }
+        }
         var app = new App();
         app.InitializeComponent();
         app.Run();
@@ -55,12 +69,30 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
-        _logService.Info($"Muesli starting. Background={StartedInBackground}. Version={Environment.Version}.");
+        var assembly = Assembly.GetExecutingAssembly();
+        var buildVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString()
+            ?? "unknown";
+        _logService.Info($"Muesli starting. Background={StartedInBackground}. Build={buildVersion}. Runtime={Environment.Version}.");
         var pythonPath = Services.WorkerRuntimeLocator.FindPythonExecutable();
         _logService.Info($"Worker python resolved via '{Services.WorkerRuntimeLocator.LastResolutionSource}': {pythonPath}");
 
-        if (Services.StartupRegistrationService.IsEnabled() &&
-            !Services.StartupRegistrationService.IsRegisteredForBackgroundLaunch())
+        var startupSettings = new Services.SettingsStore().Load();
+        if (!startupSettings.StartAtLogin && Services.StartupRegistrationService.IsEnabled())
+        {
+            try
+            {
+                Services.StartupRegistrationService.SetEnabled(false);
+                _logService.Info("Removed a stale startup registration because Start at login is disabled.");
+            }
+            catch (Exception exception)
+            {
+                _logService.Error("Could not remove stale startup registration.", exception);
+            }
+        }
+        else if (startupSettings.StartAtLogin &&
+                 (!Services.StartupRegistrationService.IsEnabled() ||
+                  !Services.StartupRegistrationService.IsRegisteredForBackgroundLaunch()))
         {
             try
             {
@@ -118,7 +150,7 @@ public partial class App : System.Windows.Application
         MainWindow = window;
         _singleInstance?.StartListening(() => Dispatcher.BeginInvoke(window.ShowDashboardFromBackground));
 
-        if (!window.OpenDashboardOnLaunch)
+        if (StartedInBackground)
         {
             window.ParkForBackgroundLaunch();
             window.StartRuntime(showOnboarding: false);

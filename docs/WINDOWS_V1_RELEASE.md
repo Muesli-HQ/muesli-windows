@@ -2,7 +2,7 @@
 
 ## Build Artifact
 
-Create the downloadable zip:
+Create the downloadable zip and Velopack installer artifacts:
 
 ```powershell
 .\scripts\package-windows-v1.ps1
@@ -12,18 +12,9 @@ Output:
 
 ```text
 artifacts\muesli-windows-v1-win-x64.zip
-```
-
-Create the optional installer EXE when Inno Setup is installed:
-
-```powershell
-.\scripts\build-installer.ps1
-```
-
-Output:
-
-```text
-artifacts\MuesliSetup-0.2.0-win-x64.exe
+artifacts\velopack\Muesli-win-Setup.exe
+artifacts\velopack\*.nupkg
+artifacts\velopack\releases.win.json
 ```
 
 ## What Works
@@ -40,30 +31,35 @@ artifacts\MuesliSetup-0.2.0-win-x64.exe
 - Persistent dictation history with delete controls.
 - Persistent dictionary replacements applied after dictation and meeting transcription.
 - Meeting media import/transcription with persistent meeting list.
-- Live meeting recording with microphone capture and best-effort system loopback capture.
+- Live meeting recording with microphone capture and meeting-process audio, plus a visible qualified all-system fallback.
+- Timeline-preserving microphone recovery after device changes.
+- Chronological `You` / remote transcript reconciliation even when optional diarization is unavailable.
+- Persisted timed transcript segments, processing journals, truthful partial/failed records, and successful-audio cleanup.
 - Automatic meeting detection prompt for active Google Meet, Zoom, Teams, and Webex windows.
 - Meeting summaries stored with each meeting transcript.
 - Summary providers: local fallback, OpenAI API key, or OpenRouter API key.
 - Meeting copy, delete, and open-audio controls.
 - Real words-dictated and average-WPM stats based on captured dictation duration.
 - System tray icon with reopen/quit menu.
-- Installer support through zip install script and optional Inno Setup EXE.
+- Installer and differential update support through Velopack.
 - Sidebar light/dark theme toggle with persisted theme setting.
 
 ## Current v1 Runtime Requirements
 
 - Windows x64.
-- Python 3.11 or 3.12 available as `py`, `python`, `python3`, or `MUESLI_PYTHON` pointing to `python.exe`.
-- Worker runtime installed from the packaged folder:
+- Packaged installs include CPython 3.12 and base Whisper dependencies; end users do not need system Python.
+- Source contributors can prepare the canonical worker runtime with:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup-worker-runtime.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-worker-runtime.ps1
 ```
 
 Optional transcript cleanup dependencies:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup-worker-runtime.ps1 -WithPostProcessing
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-worker-runtime.ps1 -WithPostProcessing
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-worker-runtime.ps1 -WithParakeet
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-worker-runtime.ps1 -WithDiarization
 ```
 
 Qwen model downloads are opt-in. Set `MUESLI_ALLOW_MODEL_DOWNLOAD=1` for the first post-processor model download, or place the configured model in `%USERPROFILE%\.cache\muesli`. The default post-processor model is `Qwen/Qwen2.5-3B-Instruct`; override it with `MUESLI_POST_PROCESSOR_MODEL`.
@@ -77,15 +73,14 @@ $env:OPENROUTER_API_KEY="..."
 
 ## Known v1 Limits
 
-- Python is not bundled into the app yet; the setup script creates a local `.venv` beside `Muesli.exe`.
 - The app is not code-signed yet, so Windows SmartScreen may warn on first launch.
-- Inno Setup compiler is only needed to build the EXE installer; the zip package remains the primary artifact.
 - ChatGPT account sign-in summary backend is not implemented yet; OpenAI/OpenRouter API-key backends are implemented.
 - Qwen post-processing uses a fallback cleanup when the optional model/dependencies are not installed.
 - Automatic meeting detection is heuristic in v1: it uses active app titles, supported browser URLs where accessible, and meeting app process names.
-- Meeting speaker separation is basic: mic transcript is labeled `You`; loopback transcript is labeled `System audio`.
-- System loopback capture can be blocked by some Windows audio/device setups; mic recording still works.
+- Meeting transcripts stay chronological with `You` / `System audio` fallback labels; individual remote-speaker labels require optional pyannote dependencies and model access.
+- Meeting-process capture can fall back to all-system audio on unsupported/silent paths, which may include unrelated computer sounds.
 - Parakeet is selectable as an optional backend when its runtime dependencies are installed.
+- Conservative filtering for rare Whisper repetition loops is not implemented yet.
 
 ## Clean Install QA
 

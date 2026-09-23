@@ -6,14 +6,26 @@ namespace Muesli.Windows.Services;
 
 public sealed class AudioCaptureService : IDisposable
 {
+    private const int RecoveryAttempts = 5;
+
     private readonly MMDeviceEnumerator _deviceEnumerator = new();
+    private readonly object _sync = new();
+    private readonly List<TimedWaveSource> _completedSourceLegs = [];
+    private readonly List<string> _captureWarnings = [];
     private WasapiCapture? _capture;
-    private WaveFileWriter? _writer;
-    private string? _capturePath;
+    private SegmentedWaveCaptureWriter? _writer;
+    private CancellationTokenSource? _recoveryCancellation;
+    private Task? _recoveryTask;
     private long _sampleCount;
     private double _sumSquares;
     private float _peak;
     private DateTimeOffset _startedAt;
+    private string _normalizedFileName = "last-dictation.wav";
+    private string _captureName = "dictation";
+    private string? _preferredDeviceName;
+    private bool _stopRequested;
+    private bool _recoveryInProgress;
+    private int _activeLegStartOffsetMs;
 
     public IReadOnlyList<string> ListCaptureDevices()
     {
@@ -37,69 +49,126 @@ public sealed class AudioCaptureService : IDisposable
                "System default microphone";
     }
 
-    public Task StartAsync(string? preferredDeviceName)
+    public Task StartAsync(string? preferredDeviceName, string? captureName = null)
     {
         StopAndCleanup();
 
-        var device = PickDevice(preferredDeviceName);
-        _capture = new WasapiCapture(device)
-        {
-            ShareMode = AudioClientShareMode.Shared
-        };
-
-        _capturePath = Path.Combine(CaptureDirectory(), $"native-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.wav");
-        _writer = new WaveFileWriter(_capturePath, _capture.WaveFormat);
+        _preferredDeviceName = preferredDeviceName;
+        _captureName = string.IsNullOrWhiteSpace(captureName)
+            ? $"native-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}"
+            : captureName;
+        _normalizedFileName = string.IsNullOrWhiteSpace(captureName)
+            ? "last-dictation.wav"
+            : $"{captureName}-normalized.wav";
         _sampleCount = 0;
         _sumSquares = 0;
         _peak = 0;
         _startedAt = DateTimeOffset.UtcNow;
 
-        _capture.DataAvailable += OnDataAvailable;
-        _capture.RecordingStopped += (_, _) =>
+        lock (_sync)
         {
-            _writer?.Dispose();
-            _writer = null;
-        };
-        _capture.StartRecording();
+            _completedSourceLegs.Clear();
+            _captureWarnings.Clear();
+            _stopRequested = false;
+            _recoveryInProgress = false;
+            _recoveryCancellation = new CancellationTokenSource();
+            _recoveryTask = null;
+        }
+
+        StartCaptureLeg(preferredDeviceName, _captureName, useCommunicationsDefault: false);
         return Task.CompletedTask;
     }
 
-    public async Task<CapturedAudio> StopAsync()
+    public async Task<CapturedAudio> StopAsync(bool includeBytes = true)
     {
-        if (_capture is null || _capturePath is null)
+        Task? recoveryTask;
+        lock (_sync)
         {
-            throw new InvalidOperationException("Audio capture is not running.");
+            if (_capture is null && _writer is null && _completedSourceLegs.Count == 0)
+            {
+                throw new InvalidOperationException("Audio capture is not running.");
+            }
+
+            _stopRequested = true;
+            _recoveryCancellation?.Cancel();
+            recoveryTask = _recoveryTask;
         }
 
-        var capture = _capture;
-        _capture = null;
-        capture.StopRecording();
-        capture.Dispose();
+        FinalizeActiveLeg();
+        if (recoveryTask is not null)
+        {
+            try
+            {
+                await recoveryTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+        FinalizeActiveLeg();
 
-        _writer?.Dispose();
-        _writer = null;
+        IReadOnlyList<TimedWaveSource> sourceLegs;
+        IReadOnlyList<string> sourcePaths;
+        string? warning;
+        lock (_sync)
+        {
+            sourceLegs = _completedSourceLegs
+                .Select(leg => new TimedWaveSource(
+                    leg.Paths.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                    leg.StartOffsetMs))
+                .Where(leg => leg.Paths.Count > 0)
+                .OrderBy(leg => leg.StartOffsetMs)
+                .ToList();
+            sourcePaths = sourceLegs
+                .SelectMany(leg => leg.Paths)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            warning = _captureWarnings.Count == 0
+                ? null
+                : string.Join(" ", _captureWarnings.Distinct(StringComparer.OrdinalIgnoreCase));
+        }
 
-        await WaitForFileFlushAsync(_capturePath);
-        var normalizedPath = Path.Combine(CaptureDirectory(), "last-dictation.wav");
-        NormalizeToWhisperWav(_capturePath, normalizedPath);
-        var bytes = await File.ReadAllBytesAsync(normalizedPath);
+        if (sourcePaths.Count == 0)
+        {
+            throw new InvalidOperationException("Audio capture produced no WAV segments.");
+        }
 
+        await WaitForFileFlushAsync(sourcePaths[0]);
+        var normalizedPath = Path.Combine(CaptureDirectory(), _normalizedFileName);
+        WaveFileUtilities.NormalizeToWhisperWav(sourceLegs, normalizedPath);
+        var lengthBytes = new FileInfo(normalizedPath).Length;
+        var bytes = includeBytes ? await File.ReadAllBytesAsync(normalizedPath) : [];
         var rms = _sampleCount == 0 ? 0 : Math.Sqrt(_sumSquares / _sampleCount);
         var heldMs = (int)(DateTimeOffset.UtcNow - _startedAt).TotalMilliseconds;
-        var result = new CapturedAudio(_capturePath, normalizedPath, bytes, heldMs, rms, _peak);
-        _capturePath = null;
-        return result;
+        return new CapturedAudio(
+            string.Join("; ", sourcePaths),
+            normalizedPath,
+            bytes,
+            lengthBytes,
+            heldMs,
+            rms,
+            _peak,
+            warning);
     }
 
     public Task CancelAsync()
     {
-        var path = _capturePath;
         StopAndCleanup();
-        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        List<string> paths;
+        lock (_sync)
+        {
+            paths = _completedSourceLegs.SelectMany(leg => leg.Paths).ToList();
+            _completedSourceLegs.Clear();
+        }
+
+        foreach (var path in paths)
         {
             try
             {
-                File.Delete(path);
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
             }
             catch
             {
@@ -107,14 +176,234 @@ public sealed class AudioCaptureService : IDisposable
             }
         }
 
-        _capturePath = null;
         return Task.CompletedTask;
     }
 
     public void Dispose()
     {
         StopAndCleanup();
+        _recoveryCancellation?.Dispose();
         _deviceEnumerator.Dispose();
+    }
+
+    private void StartCaptureLeg(
+        string? preferredDeviceName,
+        string captureName,
+        bool useCommunicationsDefault)
+    {
+        MMDevice? device = null;
+        WasapiCapture? capture = null;
+        SegmentedWaveCaptureWriter? writer = null;
+        try
+        {
+            device = useCommunicationsDefault
+                ? _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications)
+                : PickDevice(preferredDeviceName);
+            capture = new WasapiCapture(device)
+            {
+                ShareMode = AudioClientShareMode.Shared
+            };
+            writer = new SegmentedWaveCaptureWriter(CaptureDirectory(), captureName, capture.WaveFormat);
+            capture.DataAvailable += OnDataAvailable;
+            capture.RecordingStopped += OnRecordingStopped;
+
+            lock (_sync)
+            {
+                if (_stopRequested)
+                {
+                    throw new OperationCanceledException("Microphone recovery was cancelled.");
+                }
+                _capture = capture;
+                _writer = writer;
+                _activeLegStartOffsetMs = (int)Math.Min(
+                    int.MaxValue,
+                    Math.Max(0, (DateTimeOffset.UtcNow - _startedAt).TotalMilliseconds));
+            }
+
+            capture.StartRecording();
+        }
+        catch
+        {
+            lock (_sync)
+            {
+                if (ReferenceEquals(_capture, capture)) _capture = null;
+                if (ReferenceEquals(_writer, writer)) _writer = null;
+            }
+            if (capture is not null)
+            {
+                capture.DataAvailable -= OnDataAvailable;
+                capture.RecordingStopped -= OnRecordingStopped;
+                capture.Dispose();
+            }
+            CompleteWriter(writer);
+            throw;
+        }
+    }
+
+    private void OnDataAvailable(object? sender, WaveInEventArgs e)
+    {
+        WaveFormat? format;
+        lock (_sync)
+        {
+            if (!ReferenceEquals(sender, _capture))
+            {
+                return;
+            }
+            _writer?.Write(e.Buffer, 0, e.BytesRecorded);
+            format = _capture?.WaveFormat;
+        }
+        AccumulateLevels(e.Buffer, e.BytesRecorded, format);
+    }
+
+    private void OnRecordingStopped(object? sender, StoppedEventArgs e)
+    {
+        if (sender is not WasapiCapture stoppedCapture)
+        {
+            return;
+        }
+
+        SegmentedWaveCaptureWriter? writer;
+        int legStartOffsetMs;
+        var shouldRecover = false;
+        lock (_sync)
+        {
+            if (!ReferenceEquals(stoppedCapture, _capture))
+            {
+                return;
+            }
+
+            writer = _writer;
+            legStartOffsetMs = _activeLegStartOffsetMs;
+            _capture = null;
+            _writer = null;
+            shouldRecover = !_stopRequested;
+            if (shouldRecover)
+            {
+                var detail = e.Exception?.Message;
+                _captureWarnings.Add(string.IsNullOrWhiteSpace(detail)
+                    ? "Microphone device changed during the meeting."
+                    : $"Microphone device changed during the meeting ({detail}).");
+                if (!_recoveryInProgress)
+                {
+                    _recoveryInProgress = true;
+                    var token = _recoveryCancellation?.Token ?? CancellationToken.None;
+                    _recoveryTask = Task.Run(() => RecoverMicrophoneAsync(token), token);
+                }
+            }
+        }
+
+        CompleteWriter(writer, legStartOffsetMs);
+        stoppedCapture.DataAvailable -= OnDataAvailable;
+        stoppedCapture.RecordingStopped -= OnRecordingStopped;
+        _ = Task.Run(stoppedCapture.Dispose);
+    }
+
+    private async Task RecoverMicrophoneAsync(CancellationToken cancellationToken)
+    {
+        Exception? lastFailure = null;
+        try
+        {
+            for (var attempt = 1; attempt <= RecoveryAttempts; attempt++)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt), cancellationToken);
+                lock (_sync)
+                {
+                    if (_stopRequested)
+                    {
+                        return;
+                    }
+                }
+
+                try
+                {
+                    var useDefault = attempt >= 3;
+                    StartCaptureLeg(
+                        _preferredDeviceName,
+                        $"{_captureName}-recovery{attempt:D2}",
+                        useCommunicationsDefault: useDefault);
+                    lock (_sync)
+                    {
+                        if (_capture is not null)
+                        {
+                            _captureWarnings.Add(useDefault
+                                ? "Microphone capture resumed on the current communications device."
+                                : "Microphone capture resumed automatically.");
+                            return;
+                        }
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    lastFailure = exception;
+                }
+            }
+
+            lock (_sync)
+            {
+                if (!_stopRequested)
+                {
+                    _captureWarnings.Add(lastFailure is null
+                        ? "Microphone capture failed after a device change and could not resume."
+                        : $"Microphone capture failed after a device change and could not resume: {lastFailure.Message}");
+                }
+            }
+        }
+        finally
+        {
+            lock (_sync)
+            {
+                _recoveryInProgress = false;
+            }
+        }
+    }
+
+    private void FinalizeActiveLeg()
+    {
+        WasapiCapture? capture;
+        SegmentedWaveCaptureWriter? writer;
+        int legStartOffsetMs;
+        lock (_sync)
+        {
+            capture = _capture;
+            writer = _writer;
+            legStartOffsetMs = _activeLegStartOffsetMs;
+            _capture = null;
+            _writer = null;
+        }
+
+        if (capture is not null)
+        {
+            capture.DataAvailable -= OnDataAvailable;
+            capture.RecordingStopped -= OnRecordingStopped;
+            try { capture.StopRecording(); } catch { }
+            capture.Dispose();
+        }
+        CompleteWriter(writer, legStartOffsetMs);
+    }
+
+    private void CompleteWriter(SegmentedWaveCaptureWriter? writer, int legStartOffsetMs = 0)
+    {
+        if (writer is null)
+        {
+            return;
+        }
+        var paths = writer.Complete();
+        lock (_sync)
+        {
+            var newPaths = paths
+                .Where(path => !_completedSourceLegs
+                    .SelectMany(leg => leg.Paths)
+                    .Contains(path, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            if (newPaths.Count > 0)
+            {
+                _completedSourceLegs.Add(new TimedWaveSource(newPaths, legStartOffsetMs));
+            }
+        }
     }
 
     private MMDevice PickDevice(string? preferredDeviceName)
@@ -128,56 +417,32 @@ public sealed class AudioCaptureService : IDisposable
         {
             var exact = devices.FirstOrDefault(device =>
                 device.FriendlyName.Equals(preferredDeviceName, StringComparison.OrdinalIgnoreCase));
-            if (exact is not null)
-            {
-                return exact;
-            }
+            if (exact is not null) return exact;
 
             var fuzzy = devices.FirstOrDefault(device =>
                 device.FriendlyName.Contains(preferredDeviceName, StringComparison.OrdinalIgnoreCase) ||
                 preferredDeviceName.Contains(device.FriendlyName, StringComparison.OrdinalIgnoreCase));
-            if (fuzzy is not null)
-            {
-                return fuzzy;
-            }
+            if (fuzzy is not null) return fuzzy;
         }
 
         var preferred = devices.FirstOrDefault(device => IsPreferredPhysicalMicrophone(device.FriendlyName));
-        if (preferred is not null)
-        {
-            return preferred;
-        }
+        if (preferred is not null) return preferred;
 
         var physical = devices.FirstOrDefault(device =>
             device.FriendlyName.Contains("microphone", StringComparison.OrdinalIgnoreCase) &&
             !IsLikelyVirtualDevice(device.FriendlyName));
-        if (physical is not null)
-        {
-            return physical;
-        }
-
-        return _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
-    }
-
-    private void OnDataAvailable(object? sender, WaveInEventArgs e)
-    {
-        _writer?.Write(e.Buffer, 0, e.BytesRecorded);
-        AccumulateLevels(e.Buffer, e.BytesRecorded, _capture?.WaveFormat);
+        return physical ?? _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
     }
 
     private void AccumulateLevels(byte[] buffer, int bytesRecorded, WaveFormat? format)
     {
-        if (format is null)
-        {
-            return;
-        }
+        if (format is null) return;
 
         if (format.Encoding == WaveFormatEncoding.IeeeFloat && format.BitsPerSample == 32)
         {
             for (var offset = 0; offset + 4 <= bytesRecorded; offset += 4)
             {
-                var sample = BitConverter.ToSingle(buffer, offset);
-                AddSample(sample);
+                AddSample(BitConverter.ToSingle(buffer, offset));
             }
             return;
         }
@@ -186,8 +451,7 @@ public sealed class AudioCaptureService : IDisposable
         {
             for (var offset = 0; offset + 2 <= bytesRecorded; offset += 2)
             {
-                var sample = BitConverter.ToInt16(buffer, offset) / 32768f;
-                AddSample(sample);
+                AddSample(BitConverter.ToInt16(buffer, offset) / 32768f);
             }
         }
     }
@@ -207,76 +471,12 @@ public sealed class AudioCaptureService : IDisposable
             try
             {
                 using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-                if (stream.Length > 44)
-                {
-                    return;
-                }
+                if (stream.Length > 44) return;
             }
             catch (IOException)
             {
-                // Recorder is still closing the WAV writer.
             }
-
             await Task.Delay(40);
-        }
-    }
-
-    private static void NormalizeToWhisperWav(string sourcePath, string destinationPath)
-    {
-        using var reader = new AudioFileReader(sourcePath);
-        ISampleProvider monoProvider = reader.WaveFormat.Channels switch
-        {
-            1 => reader,
-            2 => reader.ToMono(),
-            _ => new DownmixToMonoSampleProvider(reader),
-        };
-        var outFormat = new WaveFormat(16000, 16, 1);
-        var waveProvider = monoProvider.ToWaveProvider16();
-        using var resampler = new MediaFoundationResampler(waveProvider, outFormat)
-        {
-            ResamplerQuality = 60
-        };
-        WaveFileWriter.CreateWaveFile(destinationPath, resampler);
-    }
-
-    private sealed class DownmixToMonoSampleProvider : ISampleProvider
-    {
-        private readonly ISampleProvider _source;
-        private readonly int _channels;
-        private float[] _buffer = [];
-
-        public DownmixToMonoSampleProvider(ISampleProvider source)
-        {
-            _source = source;
-            _channels = source.WaveFormat.Channels;
-            WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(source.WaveFormat.SampleRate, 1);
-        }
-
-        public WaveFormat WaveFormat { get; }
-
-        public int Read(float[] buffer, int offset, int count)
-        {
-            var sourceSamples = count * _channels;
-            if (_buffer.Length < sourceSamples)
-            {
-                _buffer = new float[sourceSamples];
-            }
-
-            var read = _source.Read(_buffer, 0, sourceSamples);
-            var frames = read / _channels;
-            for (var i = 0; i < frames; i++)
-            {
-                float sum = 0;
-                var baseIdx = i * _channels;
-                for (var ch = 0; ch < _channels; ch++)
-                {
-                    sum += _buffer[baseIdx + ch];
-                }
-
-                buffer[offset + i] = sum / _channels;
-            }
-
-            return frames;
         }
     }
 
@@ -290,28 +490,32 @@ public sealed class AudioCaptureService : IDisposable
         return directory;
     }
 
-    private static bool IsPreferredPhysicalMicrophone(string deviceName)
-    {
-        return deviceName.Contains("microphone array", StringComparison.OrdinalIgnoreCase) ||
-               deviceName.Contains("realtek", StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool IsPreferredPhysicalMicrophone(string deviceName) =>
+        deviceName.Contains("microphone array", StringComparison.OrdinalIgnoreCase) ||
+        deviceName.Contains("realtek", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsLikelyVirtualDevice(string deviceName)
-    {
-        return deviceName.Contains("steam", StringComparison.OrdinalIgnoreCase) ||
-               deviceName.Contains("streaming", StringComparison.OrdinalIgnoreCase) ||
-               deviceName.Contains("virtual", StringComparison.OrdinalIgnoreCase) ||
-               deviceName.Contains("cable", StringComparison.OrdinalIgnoreCase) ||
-               deviceName.Contains("monitor", StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool IsLikelyVirtualDevice(string deviceName) =>
+        deviceName.Contains("steam", StringComparison.OrdinalIgnoreCase) ||
+        deviceName.Contains("streaming", StringComparison.OrdinalIgnoreCase) ||
+        deviceName.Contains("virtual", StringComparison.OrdinalIgnoreCase) ||
+        deviceName.Contains("cable", StringComparison.OrdinalIgnoreCase) ||
+        deviceName.Contains("monitor", StringComparison.OrdinalIgnoreCase);
 
     private void StopAndCleanup()
     {
-        _capture?.StopRecording();
-        _capture?.Dispose();
-        _capture = null;
-        _writer?.Dispose();
-        _writer = null;
+        Task? recoveryTask;
+        lock (_sync)
+        {
+            _stopRequested = true;
+            _recoveryCancellation?.Cancel();
+            recoveryTask = _recoveryTask;
+        }
+        FinalizeActiveLeg();
+        if (recoveryTask is not null)
+        {
+            try { recoveryTask.GetAwaiter().GetResult(); } catch (OperationCanceledException) { }
+        }
+        FinalizeActiveLeg();
     }
 }
 
@@ -319,6 +523,16 @@ public sealed record CapturedAudio(
     string FilePath,
     string LastCapturePath,
     byte[] Bytes,
+    long LengthBytes,
     int HeldMs,
     double Rms,
-    float Peak);
+    float Peak,
+    string? Warning = null)
+{
+    public IReadOnlyList<string> OwnedPaths => FilePath
+        .Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+        .Append(LastCapturePath)
+        .Where(path => !string.IsNullOrWhiteSpace(path))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+}

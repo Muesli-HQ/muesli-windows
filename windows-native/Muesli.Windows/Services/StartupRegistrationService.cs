@@ -1,3 +1,4 @@
+using System.IO;
 using Microsoft.Win32;
 
 namespace Muesli.Windows.Services;
@@ -21,8 +22,14 @@ public static class StartupRegistrationService
     public static bool IsRegisteredForBackgroundLaunch()
     {
         var value = GetRegisteredCommand();
-        return !string.IsNullOrWhiteSpace(value) &&
-               value.Contains("--background", StringComparison.OrdinalIgnoreCase);
+        var executablePath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(executablePath))
+        {
+            return false;
+        }
+
+        var expected = $"\"{Path.GetFullPath(executablePath)}\" --background";
+        return string.Equals(value.Trim(), expected, StringComparison.OrdinalIgnoreCase);
     }
 
     public static void SetEnabled(bool enabled)

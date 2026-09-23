@@ -5,6 +5,7 @@
 - OG reference repo: `C:\Users\madha\Downloads\muesli-main\muesli-main`
 - Active app lives in `windows-native/Muesli.Windows/`
 - Legacy Electron/web files exist on disk but are excluded from git
+- Current implementation status and verified limitations: `docs/PROJECT_STATUS.md`
 
 ## User Preferences
 
@@ -21,6 +22,8 @@
 ### Testing Workflow
 - Kill running `Muesli.exe` before building when needed
 - Build with `dotnet build --no-restore`
+- Run `dotnet test windows-native/Muesli.Windows.Tests/Muesli.Windows.Tests.csproj --no-restore`
+- Use `scripts/run-development.ps1` for the canonical development instance
 - Run executable directly from `bin/Debug/net8.0-windows/`
 
 ## Architecture Notes
@@ -28,7 +31,7 @@
 - `MainWindow.xaml.cs` — Code-behind (theme switching, data binding, event handlers)
 - `App.xaml` — Shared resources, brushes, styles
 - `Services/` — Meeting detection, prompt service, tray icon, etc.
-- Data stored in `%APPDATA%/muesli/` (SQLite + JSON settings)
+- Data stored in versioned, atomic JSON files under `%APPDATA%/muesli/`; SQLite is not implemented
 
 ## Known Risks
 - `MainWindow.xaml.cs` was severely corrupted (~3444→979 lines) and reconstructed from fragments

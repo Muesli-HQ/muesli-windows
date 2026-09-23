@@ -9,9 +9,12 @@ namespace Muesli.Windows.Services;
 public sealed class MeetingDetectionService : IDisposable
 {
     private const int AbsenceScansToRearm = 5; // 5 scans * 3s interval = ~15s before we consider the meeting gone
+    private const int StableScansToPrompt = 3;
 
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly AppLogService _logService = new();
+    private readonly MeetingPresenceSignals _presenceSignals = new();
+    private readonly MeetingDetectionStabilityGate _stabilityGate = new();
     private string _publishedKey = "";
     private int _absenceScans;
     private int _scanCount;
@@ -36,10 +39,15 @@ public sealed class MeetingDetectionService : IDisposable
     public void Stop()
     {
         _timer.Stop();
+        _stabilityGate.Reset();
         _logService.Info("Meeting detection stopped.");
     }
 
-    public void Dispose() => _timer.Stop();
+    public void Dispose()
+    {
+        _timer.Stop();
+        _presenceSignals.Dispose();
+    }
 
     public MeetingDetectionScan CheckNow(bool publish = true) => DetectMeeting(publish);
 
@@ -99,6 +107,7 @@ public sealed class MeetingDetectionService : IDisposable
 
         if (detected is null)
         {
+            _stabilityGate.Reset();
             if (_absenceScans < AbsenceScansToRearm)
             {
                 _absenceScans++;
@@ -157,7 +166,7 @@ public sealed class MeetingDetectionService : IDisposable
         // Key intentionally excludes the title — window titles flap (participant counts, tab badges)
         // and would otherwise refire the prompt every few seconds during a single meeting.
         var key = $"{platform}|{processName}|{browserUrl}".ToLowerInvariant();
-        meeting = new DetectedMeeting(platform, meetingTitle, title, processName, browserUrl, key);
+        meeting = new DetectedMeeting(platform, meetingTitle, title, processName, browserUrl, key, checked((int)processId));
         return true;
     }
 
@@ -179,49 +188,112 @@ public sealed class MeetingDetectionService : IDisposable
             return;
         }
 
+        if (RequiresLiveZoomEvidence(meeting))
+        {
+            var microphoneInUse = _presenceSignals.IsMicrophoneInUseByAnotherProcess();
+            var cameraInUse = _presenceSignals.IsCameraInUse();
+            var meetingHostPresent = MeetingPresenceSignals.HasZoomMeetingHost();
+            if (!BareZoomWindowHasLiveEvidence(microphoneInUse, cameraInUse, meetingHostPresent))
+            {
+                _stabilityGate.Reset();
+                _logService.Info("Suppressed bare Zoom Meeting window because no live microphone, camera, or CptHost evidence was present.");
+                return;
+            }
+        }
+
+        if (!_stabilityGate.Observe(meeting.Key, StableScansToPrompt))
+        {
+            return;
+        }
+
         _publishedKey = meeting.Key;
+        _stabilityGate.Reset();
         MeetingDetected?.Invoke(this, meeting);
     }
 
-    private static string? DetectPlatform(string title, string processName, string? browserUrl)
+    internal static bool RequiresLiveZoomEvidence(DetectedMeeting meeting) =>
+        meeting.Platform.Equals("Zoom", StringComparison.OrdinalIgnoreCase)
+        && meeting.ProcessName.Equals("Zoom", StringComparison.OrdinalIgnoreCase)
+        && string.Join(" ", meeting.WindowTitle.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            .Equals("Zoom Meeting", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool BareZoomWindowHasLiveEvidence(
+        bool microphoneInUse,
+        bool cameraInUse,
+        bool meetingHostPresent) =>
+        microphoneInUse || cameraInUse || meetingHostPresent;
+
+    internal static string? DetectPlatform(string title, string processName, string? browserUrl)
     {
         var haystack = $"{title} {processName} {browserUrl}".ToLowerInvariant();
-        if (haystack.Contains("meet.google.com") ||
+        if ((haystack.Contains("meet.google.com") ||
             haystack.Contains("google meet") ||
             haystack.Contains(" - meet ") ||
-            haystack.StartsWith("meet -", StringComparison.OrdinalIgnoreCase) ||
-            processName.Contains("msedge_proxy", StringComparison.OrdinalIgnoreCase))
+            haystack.StartsWith("meet -", StringComparison.OrdinalIgnoreCase))
+            && !IsPlatformHomeWindow(title, "Google Meet"))
         {
             return "Google Meet";
         }
 
-        if (haystack.Contains("zoom meeting") ||
-            haystack.Contains("zoom workplace") ||
-            haystack.Contains("zoom.us/j/") ||
+        if ((haystack.Contains("zoom meeting") ||
             haystack.Contains("zoom.us/wc/") ||
-            processName.Equals("Zoom", StringComparison.OrdinalIgnoreCase) ||
-            processName.Equals("CptHost", StringComparison.OrdinalIgnoreCase) ||
-            processName.Equals("Zoom Workplace", StringComparison.OrdinalIgnoreCase))
+            (processName.Equals("CptHost", StringComparison.OrdinalIgnoreCase)
+             && title.Contains("meeting", StringComparison.OrdinalIgnoreCase)))
+            && !IsPlatformHomeWindow(title, "Zoom"))
         {
             return "Zoom";
         }
 
-        if (haystack.Contains("microsoft teams") ||
-            haystack.Contains("teams meeting") ||
+        if ((haystack.Contains("teams meeting") ||
+            haystack.Contains("meeting | microsoft teams") ||
+            haystack.Contains("call | microsoft teams") ||
+            (processName.Contains("teams", StringComparison.OrdinalIgnoreCase)
+             && title.Contains(" | Microsoft Teams", StringComparison.OrdinalIgnoreCase)) ||
             haystack.Contains("teams.microsoft.com") ||
-            haystack.Contains("teams.live.com") ||
-            processName.Contains("ms-teams", StringComparison.OrdinalIgnoreCase) ||
-            processName.Contains("Teams", StringComparison.OrdinalIgnoreCase))
+            haystack.Contains("teams.live.com"))
+            && !IsPlatformHomeWindow(title, "Microsoft Teams"))
         {
             return "Microsoft Teams";
         }
 
-        if (haystack.Contains("webex") || processName.Contains("Webex", StringComparison.OrdinalIgnoreCase))
+        if ((haystack.Contains("webex meeting") || haystack.Contains("meetings.webex.com"))
+            && !IsPlatformHomeWindow(title, "Webex"))
         {
             return "Webex";
         }
 
         return null;
+    }
+
+    public bool HasLivePresenceForPlatform(string? platform)
+    {
+        if (string.IsNullOrWhiteSpace(platform))
+        {
+            return false;
+        }
+
+        if (platform.Equals("Zoom", StringComparison.OrdinalIgnoreCase)
+            && MeetingPresenceSignals.HasZoomMeetingHost())
+        {
+            return true;
+        }
+
+        return _presenceSignals.IsMicrophoneInUseByAnotherProcess()
+            || _presenceSignals.IsCameraInUse();
+    }
+
+    private static bool IsPlatformHomeWindow(string title, string platform)
+    {
+        var normalized = string.Join(" ", title.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (platform.Equals("Zoom", StringComparison.OrdinalIgnoreCase))
+        {
+            return normalized.Equals("Zoom", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("Zoom Workplace", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("Zoom Workplace - ", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return normalized.Equals(platform, StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals($"{platform} | Microsoft 365", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string CleanMeetingTitle(string title, string platform, string? browserUrl)
@@ -388,7 +460,8 @@ public sealed record DetectedMeeting(
     string WindowTitle,
     string ProcessName,
     string? BrowserUrl,
-    string Key);
+    string Key,
+    int ProcessId);
 
 public sealed record MeetingDetectionScan(
     bool Found,

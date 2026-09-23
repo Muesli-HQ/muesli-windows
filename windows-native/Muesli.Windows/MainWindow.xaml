@@ -742,11 +742,7 @@
                       <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
                       <CheckBox Style="{StaticResource MuesliCheckBox}" Content="Notify when meeting detected" IsChecked="{Binding AutoMeetingDetectionEnabled}" />
                       <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
-                      <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="Recording retention" Style="{StaticResource SettingsRowLabel}" />
-                        <ComboBox Grid.Column="1" Style="{StaticResource MuesliComboBox}" ItemsSource="{Binding RecordingSavePolicies}" SelectedItem="{Binding RecordingSavePolicy}" />
-                      </Grid>
+                      <TextBlock Text="Temporary meeting audio is deleted after a complete transcript is safely saved. Recovery audio is kept only for failed or partial transcripts." Style="{StaticResource SettingsRowLabel}" TextWrapping="Wrap" />
                       <Border Height="1" Background="{DynamicResource BorderBrushSoft}" Margin="0,12" />
                       <CheckBox Style="{StaticResource MuesliCheckBox}" Content="Automatically export completed meetings as Markdown" IsChecked="{Binding AutoExportMeetings}" />
                       <TextBox Margin="0,10,0,0" Style="{StaticResource MuesliTextBox}" Text="{Binding AutoExportDirectory, UpdateSourceTrigger=LostFocus}" ToolTip="Leave blank to use Documents\Muesli Meetings" />
@@ -1382,6 +1378,9 @@
                   <TextBlock Text="{Binding SelectedMeetingMetadata}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
                   <Border Margin="10,-2,0,0" Padding="8,4" CornerRadius="12" Background="{DynamicResource AccentBadgeBackgroundBrush}">
                     <TextBlock Text="Auto Notes" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBlueBrush}" />
+                  </Border>
+                  <Border Margin="8,-2,0,0" Padding="8,4" CornerRadius="12" Background="{DynamicResource SurfacePrimaryBrush}">
+                    <TextBlock Text="{Binding SelectedMeetingSpeakerIdentificationLabel}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
                   </Border>
                 </StackPanel>
               </StackPanel>

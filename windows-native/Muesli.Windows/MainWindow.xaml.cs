@@ -30,6 +30,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly ActiveAppPasteService _activeAppPasteService = new();
     private readonly TranscriptionWorkerClient _meetingTranscriptionClient = new();
     private readonly MeetingRecordingCoordinator _meetingRecordingCoordinator;
+    private readonly MeetingSessionJournalStore _meetingSessionJournal = new();
     private readonly MeetingDetectionService _meetingDetectionService = new();
     private readonly MeetingPromptService _meetingPromptService = new();
     private readonly TrayIconService _trayIconService = new();
@@ -110,6 +111,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isMeetingRecording;
     private int _meetingMissingScanCount;
     private string? _currentMeetingTitle;
+    private string? _currentMeetingKey;
+    private int? _currentMeetingProcessId;
+    private string? _currentMeetingRecordId;
+    private DateTime _meetingEndPromptSnoozedUntil;
+    private bool _meetingEndPromptVisible;
+    private DateTime _meetingPromptCooldownUntil;
+    private string? _meetingPromptCooldownPlatform;
     private string _runtimeDiagnostics = "Not checked yet.";
     private string _modelCacheDirectory = "";
     private string _modelCacheSize = "0 B";
@@ -268,7 +276,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string ShortcutCaptureLabel => _isCapturingHotkey
         ? "Press a function key or a modifier shortcut such as Ctrl+Shift+Space. Press Esc to cancel."
         : "Choose a shortcut or record one that is free on this Windows laptop.";
-    public string AppVersion => $"v{Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.2.0"}";
+    public string AppVersion
+    {
+        get
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            return $"v{(string.IsNullOrWhiteSpace(informational) ? assembly.GetName().Version?.ToString(3) ?? "0.3.0" : informational)}";
+        }
+    }
     public string SelectedMeetingTitle
     {
         get => _selectedMeeting?.Title ?? "";
@@ -282,6 +298,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
     public string SelectedMeetingMetadata => _selectedMeeting?.Metadata ?? "";
+    public string SelectedMeetingSpeakerIdentificationLabel =>
+        _selectedMeeting?.SpeakerIdentificationLabel ?? "Speaker status unavailable";
     public string SelectedMeetingNotes => string.IsNullOrWhiteSpace(_selectedMeeting?.Summary)
         ? ""
         : ApplySpeakerAliasesToNotes(_selectedMeeting.Summary, _activeSpeakerAliases);
@@ -858,6 +876,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         _meetingRecordingCoordinator = new(_logService);
         InitializeComponent();
+        _meetingRecordingCoordinator.CaptureWarning += OnMeetingCaptureWarning;
+#if DEBUG
+        Title = $"Muesli Development — {AppVersion}";
+#endif
         FilteredDictations = CollectionViewSource.GetDefaultView(Dictations);
         FilteredDictations.Filter = item => PassesDateFilter(item, _dictationDateFilter) && PassesSearch(item);
         if (FilteredDictations is ListCollectionView dictationView)
@@ -885,6 +907,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _startupRecoveryWarning = string.Join(" ", recoveryWarnings);
             _logService.Info($"Persistence recovery: {_startupRecoveryWarning}");
         }
+        RecoverInterruptedMeetingSession();
         foreach (var microphone in _dictationCoordinator.ListMicrophones())
         {
             if (!MicrophoneDevices.Contains(microphone))
@@ -1804,6 +1827,7 @@ private void OpenMeetingDetail(MeetingItem item)
     OnPropertyChanged(nameof(PlaybackButtonLabel));
     OnPropertyChanged(nameof(SelectedMeetingTitle));
     OnPropertyChanged(nameof(SelectedMeetingMetadata));
+    OnPropertyChanged(nameof(SelectedMeetingSpeakerIdentificationLabel));
     OnPropertyChanged(nameof(SelectedMeetingNotes));
     OnPropertyChanged(nameof(SelectedMeetingTemplate));
     OnPropertyChanged(nameof(SelectedMeetingNotesActionLabel));
@@ -1871,21 +1895,58 @@ private void OpenMeetingAudio(MeetingItem item)
         UseShellExecute = true
     });
 }
-private static void DeleteFileIfExists(string? path)
+private static List<string> DeleteTemporaryMeetingAudio(
+    IEnumerable<string>? temporaryPaths,
+    string? pathsToPreserve) =>
+    MeetingAudioCleanup.DeleteTemporaryFiles(temporaryPaths, pathsToPreserve);
+
+private void RecoverInterruptedMeetingSession()
 {
-    if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+    var session = _meetingSessionJournal.Load();
+    if (session is null)
     {
         return;
     }
-    try
+
+    var meetingId = $"meet_{session.SessionId}";
+    var existingMeeting = Meetings.FirstOrDefault(item => item.Id.Equals(meetingId, StringComparison.Ordinal));
+    if (existingMeeting is not null)
     {
-        System.IO.File.Delete(path);
+        DeleteTemporaryMeetingAudio(_meetingSessionJournal.DiscoverAudio(session), existingMeeting.SourcePath);
+        _meetingSessionJournal.Clear();
+        return;
     }
-    catch
-    {
-        // Recording retention is optional; failed cleanup should not block saving the meeting transcript.
-    }
+
+    var audioPaths = _meetingSessionJournal.DiscoverAudio(session);
+    var durationMs = (int)Math.Min(
+        int.MaxValue,
+        Math.Max(0, (DateTime.Now - session.StartedAt).TotalMilliseconds));
+    var warning = audioPaths.Count > 0
+        ? "Muesli was interrupted while recording. The recoverable audio was preserved; this meeting still needs transcription."
+        : "Muesli was interrupted while recording before recoverable audio could be finalized.";
+    var recovered = new MeetingItem(
+        meetingId,
+        session.Title,
+        session.StartedAt,
+        "",
+        "",
+        string.Join("; ", audioPaths),
+        _selectedMeetingModelProfile,
+        durationMs,
+        null,
+        0,
+        SelectedSummaryTemplate,
+        HealthWarnings: [warning],
+        Status: "failed");
+    Meetings.Insert(0, recovered);
+    SaveMeetings();
+    _meetingSessionJournal.Clear();
+    _startupRecoveryWarning = string.IsNullOrWhiteSpace(_startupRecoveryWarning)
+        ? warning
+        : $"{_startupRecoveryWarning} {warning}";
+    _logService.Info(warning);
 }
+
 private void DeleteMeeting(MeetingItem item)
 {
     Meetings.Remove(item);
@@ -2528,7 +2589,16 @@ private async void ImportMeeting_Click(object sender, RoutedEventArgs e)
             wordCount,
             SelectedSummaryTemplate,
             RawTranscript: rawTranscript,
-            Origin: "import");
+            Origin: "import",
+            TranscriptSegments: (result.Segments ?? [])
+                .Select(segment => new MeetingTranscriptSegment(
+                    "import",
+                    "Imported audio",
+                    segment.StartMs,
+                    segment.EndMs,
+                    segment.Text))
+                .ToList(),
+            DiarizationStatus: "not-applicable");
         Meetings.Insert(0, meeting);
         SaveMeetings();
         AutoExportMeeting(meeting);
@@ -2548,7 +2618,10 @@ private async void ToggleMeetingRecording_Click(object sender, RoutedEventArgs e
 {
     await ToggleMeetingRecordingAsync(null);
 }
-private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
+private async Task ToggleMeetingRecordingAsync(
+    string? detectedTitle,
+    int? targetProcessId = null,
+    string? detectedMeetingKey = null)
 {
     if (_meetingRecordingCoordinator.IsBusy)
     {
@@ -2558,14 +2631,69 @@ private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
     {
         try
         {
-            DictationStatus = "Recording meeting";
-            _toastNotificationService.Show("Recording meeting", "Capturing microphone and system audio", ToastState.Recording, 0);
-            await _meetingRecordingCoordinator.StartAsync(SelectedMeetingMicrophone);
-            _currentMeetingTitle = detectedTitle;
-            _isMeetingRecording = true;
-            if (!string.IsNullOrWhiteSpace(detectedTitle))
+            if (targetProcessId is null)
             {
-                StartMeetingAutoStopMonitor();
+                var detected = _meetingDetectionService.CheckNow(publish: false).DetectedMeeting;
+                if (detected is not null)
+                {
+                    detectedTitle ??= detected.Title;
+                    targetProcessId = detected.ProcessId;
+                    detectedMeetingKey = detected.Key;
+                }
+            }
+            DictationStatus = "Recording meeting";
+            _toastNotificationService.Show("Recording meeting", "Starting microphone and meeting audio capture", ToastState.Recording, 0);
+            var sessionId = Guid.NewGuid().ToString("N");
+            var startedAt = DateTime.Now;
+            var provisionalTitle = string.IsNullOrWhiteSpace(detectedTitle)
+                ? $"Meeting {startedAt:yyyy-MM-dd HH-mm}"
+                : detectedTitle;
+            _meetingSessionJournal.Save(new ActiveMeetingSession(
+                sessionId,
+                provisionalTitle,
+                startedAt,
+                targetProcessId,
+                detectedMeetingKey,
+                "starting"));
+            MeetingRecordingStartResult startResult;
+            try
+            {
+                startResult = await _meetingRecordingCoordinator.StartAsync(SelectedMeetingMicrophone, targetProcessId, sessionId);
+            }
+            catch
+            {
+                _meetingSessionJournal.Clear();
+                throw;
+            }
+            _meetingSessionJournal.Save(new ActiveMeetingSession(
+                sessionId,
+                provisionalTitle,
+                startedAt,
+                targetProcessId,
+                detectedMeetingKey,
+                startResult.RemoteAudioMode));
+            _currentMeetingTitle = detectedTitle;
+            _currentMeetingKey = detectedMeetingKey;
+            _currentMeetingProcessId = targetProcessId;
+            _currentMeetingRecordId = $"meet_{sessionId}";
+            _isMeetingRecording = true;
+            StartMeetingAutoStopMonitor();
+            if (startResult.UsedAllSystemFallback)
+            {
+                _logService.Info(startResult.Warning ?? "Using all-system audio fallback.");
+                _toastNotificationService.Show(
+                    "Recording with fallback",
+                    "Muesli could not isolate the meeting app, so other computer sounds may be included.",
+                    ToastState.Error,
+                    6000);
+            }
+            else if (startResult.RemoteAudioMode == "meeting-process")
+            {
+                _toastNotificationService.Show("Recording meeting", "Capturing microphone and meeting-app audio only", ToastState.Recording, 0);
+            }
+            else
+            {
+                _toastNotificationService.Show("Recording meeting", "Capturing microphone only", ToastState.Recording, 0);
             }
             OnPropertyChanged(nameof(MeetingRecordingButtonText));
             ShowPage(MeetingsPage, MeetingsNav);
@@ -2577,8 +2705,11 @@ private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
         }
         return;
     }
+    MeetingItem? processingMeeting = null;
+    RecordedMeetingResult? recordedResult = null;
     try
     {
+        BeginPostMeetingPromptCooldown(_currentMeetingKey);
         StopMeetingAutoStopMonitor();
         DictationStatus = "Transcribing meeting";
         _toastNotificationService.Show("Transcribing meeting", "Processing local meeting audio", ToastState.Transcribing, 0);
@@ -2589,27 +2720,70 @@ private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
             : _currentMeetingTitle;
         var result = await _meetingRecordingCoordinator.StopAsync(
             title,
-            new TranscriptionOptions(SelectedMeetingAsrEngine, SelectedMeetingModelProfile, WorkerLanguageHint(SelectedDictationLanguage)));
+            new TranscriptionOptions(SelectedMeetingAsrEngine, SelectedMeetingModelProfile, WorkerLanguageHint(SelectedDictationLanguage)),
+            capture =>
+            {
+                processingMeeting = new MeetingItem(
+                    _currentMeetingRecordId ?? $"meet_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+                    capture.Title,
+                    capture.StartedAt,
+                    "",
+                    "",
+                    CombineAudioPaths(capture.MicAudioPath, capture.SystemAudioPath),
+                    SelectedMeetingModelProfile,
+                    capture.DurationMs,
+                    _selectedMeetingFolderId,
+                    0,
+                    SelectedSummaryTemplate,
+                    HealthWarnings: capture.HealthWarnings,
+                    Status: "processing");
+                Meetings.Insert(0, processingMeeting);
+                SaveMeetings();
+                RefreshMeetingViews();
+                RefreshSearchResults();
+            });
+        recordedResult = result;
         _currentMeetingTitle = null;
-        var retainRecording = ShouldRetainMeetingRecording(result.Title);
+        _currentMeetingKey = null;
+        _currentMeetingProcessId = null;
+        _currentMeetingRecordId = null;
+        if (processingMeeting is not null)
+        {
+            var checkpoint = processingMeeting with
+            {
+                Transcript = result.Transcript,
+                RawTranscript = result.Transcript,
+                WordCount = CountWords(result.Transcript),
+                HealthWarnings = result.HealthWarnings ?? [],
+                TranscriptSegments = result.TranscriptSegments ?? [],
+                DiarizationStatus = result.DiarizationStatus
+            };
+            ReplaceProcessingMeeting(processingMeeting, checkpoint);
+            processingMeeting = checkpoint;
+            SaveMeetings();
+        }
         var rawTranscript = result.Transcript;
         var transcript = RemoveFillerWords ? FillerWordFilter.Apply(rawTranscript) : rawTranscript;
         transcript = DictionaryCorrectionService.Apply(transcript, DictionaryEntries.Select(entry => entry.Record));
         transcript = await PostProcessIfEnabledAsync(transcript, "meeting", _meetingTranscriptionClient.PostProcessAsync);
+        if (processingMeeting is not null)
+        {
+            var checkpoint = processingMeeting with
+            {
+                Transcript = transcript,
+                WordCount = CountWords(transcript)
+            };
+            ReplaceProcessingMeeting(processingMeeting, checkpoint);
+            processingMeeting = checkpoint;
+            SaveMeetings();
+        }
         if (string.IsNullOrWhiteSpace(transcript))
         {
-            var retainedAudioPath = retainRecording
-                ? result.SystemAudioPath is null ? result.MicAudioPath : $"{result.MicAudioPath}; {result.SystemAudioPath}"
-                : "";
-            if (!retainRecording)
-            {
-                DeleteFileIfExists(result.MicAudioPath);
-                DeleteFileIfExists(result.SystemAudioPath);
-            }
+            var retainedAudioPath = CombineAudioPaths(result.MicAudioPath, result.SystemAudioPath);
             var warnings = (result.HealthWarnings ?? []).ToList();
             warnings.Add("No speech was detected. This session is retained as failed so its outcome is not silently lost.");
             var failedMeeting = new MeetingItem(
-                $"meet_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+                processingMeeting?.Id ?? $"meet_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
                 result.Title,
                 result.StartedAt,
                 "",
@@ -2622,28 +2796,33 @@ private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
                 SelectedSummaryTemplate,
                 HealthWarnings: warnings,
                 RawTranscript: rawTranscript,
-                Status: "failed");
-            Meetings.Insert(0, failedMeeting);
+                Status: "failed",
+                TranscriptSegments: result.TranscriptSegments ?? [],
+                DiarizationStatus: result.DiarizationStatus);
+            ReplaceProcessingMeeting(processingMeeting, failedMeeting);
             SaveMeetings();
+            DeleteTemporaryMeetingAudio(result.TemporaryAudioPaths, retainedAudioPath);
+            _meetingSessionJournal.Clear();
             AutoExportMeeting(failedMeeting);
             RefreshMeetingViews();
             RefreshSearchResults();
             DictationStatus = "No speech detected in meeting";
-            _toastNotificationService.Show("Meeting retained: no speech detected", retainRecording ? "The recording is still available for recovery" : "The failed session was saved without audio", ToastState.Error, 5200);
+            _toastNotificationService.Show("Meeting retained: no speech detected", "A compact recovery copy of the audio is still available", ToastState.Error, 5200);
             return;
         }
         var summary = await CreateMeetingSummaryAsync(transcript, result.Title);
-        var sourceAudioPath = retainRecording
-            ? result.SystemAudioPath is null ? result.MicAudioPath : $"{result.MicAudioPath}; {result.SystemAudioPath}"
-            : "";
-        if (!retainRecording)
-        {
-            DeleteFileIfExists(result.MicAudioPath);
-            DeleteFileIfExists(result.SystemAudioPath);
-        }
         var wordCount = CountWords(transcript);
+        var completionStatus = (result.HealthWarnings ?? []).Any(warning =>
+            warning.Contains("partial transcript", StringComparison.OrdinalIgnoreCase)
+            || warning.Contains("transcription failed", StringComparison.OrdinalIgnoreCase)
+            || warning.Contains("capture failed", StringComparison.OrdinalIgnoreCase))
+            ? "partial"
+            : "completed";
+        var sourceAudioPath = completionStatus == "partial"
+            ? CombineAudioPaths(result.MicAudioPath, result.SystemAudioPath)
+            : "";
         var meeting = new MeetingItem(
-            $"meet_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+            processingMeeting?.Id ?? $"meet_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
             result.Title,
             result.StartedAt,
             transcript,
@@ -2656,9 +2835,25 @@ private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
             SelectedSummaryTemplate,
             HealthWarnings: result.HealthWarnings ?? new List<string>(),
             RawTranscript: rawTranscript,
-            Status: "completed");
-        Meetings.Insert(0, meeting);
+            Status: completionStatus,
+            TranscriptSegments: result.TranscriptSegments ?? [],
+            DiarizationStatus: result.DiarizationStatus);
+        ReplaceProcessingMeeting(processingMeeting, meeting);
         SaveMeetings();
+        var cleanupFailures = DeleteTemporaryMeetingAudio(result.TemporaryAudioPaths, sourceAudioPath);
+        if (cleanupFailures.Count > 0)
+        {
+            var cleanupWarning = $"Muesli could not remove {cleanupFailures.Count} temporary audio file(s).";
+            var meetingWithCleanupWarning = meeting with
+            {
+                HealthWarnings = (meeting.HealthWarnings ?? []).Append(cleanupWarning).ToList()
+            };
+            ReplaceProcessingMeeting(meeting, meetingWithCleanupWarning);
+            meeting = meetingWithCleanupWarning;
+            SaveMeetings();
+            _logService.Info($"{cleanupWarning} {string.Join("; ", cleanupFailures)}");
+        }
+        _meetingSessionJournal.Clear();
         AutoExportMeeting(meeting);
         RefreshMeetingViews();
         RefreshSearchResults();
@@ -2670,12 +2865,58 @@ private async Task ToggleMeetingRecordingAsync(string? detectedTitle)
     {
         StopMeetingAutoStopMonitor();
         _currentMeetingTitle = null;
+        _currentMeetingKey = null;
+        _currentMeetingProcessId = null;
+        _currentMeetingRecordId = null;
         _isMeetingRecording = false;
         OnPropertyChanged(nameof(MeetingRecordingButtonText));
+        if (processingMeeting is not null)
+        {
+            var warnings = (processingMeeting.HealthWarnings ?? []).ToList();
+            warnings.Add($"Meeting processing failed: {exception.Message}");
+            var failedMeeting = processingMeeting with
+            {
+                Status = "failed",
+                HealthWarnings = warnings
+            };
+            ReplaceProcessingMeeting(processingMeeting, failedMeeting);
+            SaveMeetings();
+            if (recordedResult is not null)
+            {
+                DeleteTemporaryMeetingAudio(recordedResult.TemporaryAudioPaths, failedMeeting.SourcePath);
+            }
+            else if (_meetingSessionJournal.Load() is { } activeSession)
+            {
+                DeleteTemporaryMeetingAudio(_meetingSessionJournal.DiscoverAudio(activeSession), failedMeeting.SourcePath);
+            }
+            _meetingSessionJournal.Clear();
+            RefreshMeetingViews();
+            RefreshSearchResults();
+        }
+        _logService.Error("Meeting recording or processing failed.", exception);
         DictationStatus = $"Meeting recording failed: {exception.Message}";
         _toastNotificationService.Show("Meeting recording failed", exception.Message, ToastState.Error, 4200);
     }
 }
+
+private void ReplaceProcessingMeeting(MeetingItem? processingMeeting, MeetingItem replacement)
+{
+    if (processingMeeting is not null)
+    {
+        var index = Meetings.IndexOf(processingMeeting);
+        if (index >= 0)
+        {
+            Meetings[index] = replacement;
+            return;
+        }
+    }
+
+    Meetings.Insert(0, replacement);
+}
+
+private static string CombineAudioPaths(string micPath, string? systemPath) =>
+    string.Join("; ", new[] { micPath, systemPath }.Where(path => !string.IsNullOrWhiteSpace(path)));
+
 private async void JoinAndRecordUpcoming_Click(object sender, RoutedEventArgs e)
 {
     if (sender is FrameworkElement { DataContext: UpcomingMeetingItem item })
@@ -2697,12 +2938,19 @@ private async void RecordOnlyUpcoming_Click(object sender, RoutedEventArgs e)
 private void StartMeetingAutoStopMonitor()
 {
     _meetingMissingScanCount = 0;
+    _meetingEndPromptSnoozedUntil = DateTime.MinValue;
+    _meetingEndPromptVisible = false;
     _meetingAutoStopTimer.Stop();
     _meetingAutoStopTimer.Start();
 }
 private void StopMeetingAutoStopMonitor()
 {
     _meetingMissingScanCount = 0;
+    if (_meetingEndPromptVisible)
+    {
+        _meetingPromptService.Close();
+    }
+    _meetingEndPromptVisible = false;
     _meetingAutoStopTimer.Stop();
 }
 private async void MeetingAutoStopTimer_Tick(object? sender, EventArgs e)
@@ -2717,19 +2965,74 @@ private async void MeetingAutoStopTimer_Tick(object? sender, EventArgs e)
         ResetMeetingRecordingUi("Meeting recording ended");
         return;
     }
+    if (MeetingRecordingSafetyPolicy.IsDiskCriticallyLow())
+    {
+        _logService.Info("Meeting recording stopped because the capture drive has less than 1 GB free.");
+        _toastNotificationService.Show("Recording stopped", "Less than 1 GB of disk space remains. Muesli is saving the meeting now.", ToastState.Error, 7000);
+        await ToggleMeetingRecordingAsync(null);
+        return;
+    }
+
+    if (string.IsNullOrWhiteSpace(_currentMeetingKey))
+    {
+        return;
+    }
+
     var scan = _meetingDetectionService.CheckNow(publish: false);
-    if (scan.Found)
+    var sameMeeting = MeetingRecordingSafetyPolicy.IsSameMeeting(
+        _currentMeetingKey,
+        _currentMeetingProcessId,
+        scan.DetectedMeeting);
+    if (sameMeeting)
+    {
+        _meetingMissingScanCount = 0;
+        return;
+    }
+    var currentPlatform = MeetingRecordingSafetyPolicy.PlatformFromKey(_currentMeetingKey);
+    if (_meetingDetectionService.HasLivePresenceForPlatform(currentPlatform))
     {
         _meetingMissingScanCount = 0;
         return;
     }
     _meetingMissingScanCount++;
-    if (_meetingMissingScanCount < 2 || _meetingRecordingCoordinator.IsBusy)
+    if (_meetingMissingScanCount < MeetingRecordingSafetyPolicy.MissingScansBeforeConfirmation
+        || _meetingRecordingCoordinator.IsBusy
+        || _meetingEndPromptVisible
+        || DateTime.Now < _meetingEndPromptSnoozedUntil)
     {
         return;
     }
-    _logService.Info("Meeting window disappeared; stopping meeting recording automatically.");
-    await ToggleMeetingRecordingAsync(null);
+    _meetingEndPromptVisible = true;
+    _logService.Info("Meeting window disappeared; showing the end-of-meeting recording card.");
+    _meetingPromptService.ShowMeetingEnded(
+        _currentMeetingTitle ?? "Meeting",
+        () => Dispatcher.InvokeAsync(async () =>
+        {
+            _meetingEndPromptVisible = false;
+            await ToggleMeetingRecordingAsync(null);
+        }),
+        () => Dispatcher.Invoke(() =>
+        {
+            _meetingEndPromptVisible = false;
+            _meetingMissingScanCount = 0;
+            _meetingEndPromptSnoozedUntil = DateTime.Now.AddMinutes(
+                MeetingRecordingSafetyPolicy.ContinueRecordingSnoozeMinutes);
+            _logService.Info("User confirmed the meeting recording should continue.");
+        }));
+}
+
+private void BeginPostMeetingPromptCooldown(string? meetingKey)
+{
+    var platform = MeetingRecordingSafetyPolicy.PlatformFromKey(meetingKey);
+    if (string.IsNullOrWhiteSpace(platform))
+    {
+        return;
+    }
+
+    _meetingPromptCooldownPlatform = platform;
+    _meetingPromptCooldownUntil = DateTime.Now.AddMinutes(
+        MeetingRecordingSafetyPolicy.PostMeetingPromptCooldownMinutes);
+    _ignoredMeetingPrompts[meetingKey!] = _meetingPromptCooldownUntil;
 }
 private void AliasSaveDebounceTimer_Tick(object? sender, EventArgs e)
 {
@@ -2740,6 +3043,9 @@ private void ResetMeetingRecordingUi(string status)
 {
     StopMeetingAutoStopMonitor();
     _currentMeetingTitle = null;
+    _currentMeetingKey = null;
+    _currentMeetingProcessId = null;
+    _currentMeetingRecordId = null;
     _isMeetingRecording = false;
     OnPropertyChanged(nameof(MeetingRecordingButtonText));
     DictationStatus = status;
@@ -2805,17 +3111,6 @@ private void ImportDictionary_Click(object sender, RoutedEventArgs e)
         _toastNotificationService.Show("Dictionary import failed", exception.Message, ToastState.Error, 4200);
     }
 }
-private bool ShouldRetainMeetingRecording(string title)
-{
-    if (RecordingSavePolicy == "always") return true;
-    if (RecordingSavePolicy == "never") return false;
-    return System.Windows.MessageBox.Show(
-        $"Keep the local audio recording for \"{title}\"?",
-        "Keep meeting recording",
-        MessageBoxButton.YesNo,
-        MessageBoxImage.Question) == MessageBoxResult.Yes;
-}
-
 private void AutoExportMeeting(MeetingItem meeting)
 {
     if (!AutoExportMeetings) return;
@@ -4454,6 +4749,17 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
         _logService.Info($"Meeting detected ({meeting.Platform}) but coordinator is busy.");
         return;
     }
+    if (_meetingPromptCooldownUntil > DateTime.Now
+        && string.Equals(_meetingPromptCooldownPlatform, meeting.Platform, StringComparison.OrdinalIgnoreCase))
+    {
+        var remaining = (_meetingPromptCooldownUntil - DateTime.Now).TotalSeconds;
+        _logService.Info($"Meeting detected ({meeting.Platform}) but post-meeting prompts are paused for {remaining:F0}s more.");
+        return;
+    }
+    if (_meetingPromptCooldownUntil <= DateTime.Now)
+    {
+        _meetingPromptCooldownPlatform = null;
+    }
     if (_meetingPromptService.IsVisible)
     {
         _logService.Info($"Meeting detected ({meeting.Platform}) but prompt is already visible — resetting.");
@@ -4469,12 +4775,25 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
 
     _meetingPromptService.Show(
         meeting,
-        () => Dispatcher.InvokeAsync(() => ToggleMeetingRecordingAsync(meeting.Title)),
+        () => Dispatcher.InvokeAsync(() => ToggleMeetingRecordingAsync(meeting.Title, meeting.ProcessId, meeting.Key)),
         () =>
         {
             _ignoredMeetingPrompts[meeting.Key] = DateTime.Now.AddMinutes(30);
             DictationStatus = "Meeting prompt ignored";
         });
+}
+
+private void OnMeetingCaptureWarning(object? sender, string warning)
+{
+    Dispatcher.BeginInvoke(() =>
+    {
+        DictationStatus = "Recording meeting with safety fallback";
+        _toastNotificationService.Show(
+            "Recording with safety fallback",
+            "Zoom's isolated audio was silent, so Muesli switched to all system audio.",
+            ToastState.Recording,
+            6500);
+    });
 }
     private void OnMeetingDetectionScanCompleted(object? sender, MeetingDetectionScan scan)
     {
@@ -4552,7 +4871,9 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
                 meeting.RawTranscript,
                 meeting.ManualNotes,
                 meeting.Status,
-                meeting.Origin));
+                meeting.Origin,
+                meeting.TranscriptSegments,
+                ResolveDiarizationStatus(meeting)));
         }
 
         foreach (var entry in _dataStore.LoadDictionary())
@@ -4604,6 +4925,8 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
             TemplateName = item.TemplateName,
             SpeakerAliases = item.SpeakerAliases ?? new Dictionary<string, string>(),
             HealthWarnings = MeetingRecordingCoordinator.CleanupHealthWarnings(item.HealthWarnings, item.Transcript),
+            TranscriptSegments = item.TranscriptSegments ?? [],
+            DiarizationStatus = item.DiarizationStatus,
             Status = item.Status,
             Origin = item.Origin
         }));
@@ -4614,6 +4937,38 @@ private void OnMeetingDetected(object? sender, DetectedMeeting meeting)
         if (string.IsNullOrWhiteSpace(text))
             return 0;
         return text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+    }
+
+    private static string ResolveDiarizationStatus(PersistedMeeting meeting)
+    {
+        if (!string.IsNullOrWhiteSpace(meeting.DiarizationStatus)
+            && !meeting.DiarizationStatus.Equals("unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            return meeting.DiarizationStatus;
+        }
+
+        if (meeting.Origin.Equals("import", StringComparison.OrdinalIgnoreCase))
+        {
+            return "not-applicable";
+        }
+
+        if (System.Text.RegularExpressions.Regex.IsMatch(
+            meeting.Transcript,
+            @"\[\d{2}:\d{2}:\d{2}\]\s+Speaker \d+:",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+        {
+            return "identified";
+        }
+
+        if (meeting.Transcript.Contains("[System audio]", StringComparison.OrdinalIgnoreCase)
+            || meeting.HealthWarnings.Any(warning =>
+                warning.Contains("diarization", StringComparison.OrdinalIgnoreCase)
+                || warning.Contains("speaker identification", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "fallback";
+        }
+
+        return "unknown";
     }
 
     private static string WorkerLanguageHint(string selectedLanguage) =>
@@ -4783,10 +5138,20 @@ public sealed record MeetingItem(
     string RawTranscript = "",
     string ManualNotes = "",
     string Status = "completed",
-    string Origin = "recording")
+    string Origin = "recording",
+    List<MeetingTranscriptSegment>? TranscriptSegments = null,
+    string DiarizationStatus = "unknown")
 {
     public string Metadata => $"{CreatedAt:yyyy-MM-dd HH:mm} • {DurationLabel}" +
                               (Status.Equals("completed", StringComparison.OrdinalIgnoreCase) ? "" : $" • {Status}");
+
+    public string SpeakerIdentificationLabel => DiarizationStatus switch
+    {
+        "identified" => "Speakers identified",
+        "fallback" => "Chronological speaker fallback",
+        "not-applicable" => "Single audio track",
+        _ => "Speaker status unavailable"
+    };
 
     public string DurationLabel
     {

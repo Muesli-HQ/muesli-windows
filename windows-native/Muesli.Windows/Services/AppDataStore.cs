@@ -105,6 +105,8 @@ public sealed record PersistedMeeting
     public string TemplateName { get; init; } = "";
     public Dictionary<string, string> SpeakerAliases { get; init; } = new();
     public List<string> HealthWarnings { get; init; } = new();
+    public List<MeetingTranscriptSegment> TranscriptSegments { get; init; } = new();
+    public string DiarizationStatus { get; init; } = "unknown";
     public string Status { get; init; } = "completed";
     public string Origin { get; init; } = "recording";
 }

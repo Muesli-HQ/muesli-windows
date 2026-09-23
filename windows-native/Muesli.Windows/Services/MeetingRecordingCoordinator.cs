@@ -5,12 +5,14 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     private const string SystemAudioMissingWarning = "System audio was not captured; remote speakers may be missing.";
     private const string SystemTranscriptEmptyWarning = "System transcript was empty even though system audio was captured.";
     private const string MicTranscriptEmptyWarning = "Mic transcript was empty even though mic audio was captured.";
-    private const string DiarizationFailedWarning = "Speaker diarization failed; transcript used fallback speaker labels.";
-    private const string DiarizationNoSegmentsWarning = "Speaker diarization returned no speaker segments; transcript used [System audio] fallback.";
+    private const string DiarizationFailedWarning = "Speaker identification was unavailable. The transcript remains chronological with [You] and [System audio] labels.";
+    private const string DiarizationNoSegmentsWarning = "Speaker identification found no distinct remote speakers. The transcript remains chronological with [System audio] labels.";
     private const string HfTokenMissingWarning = "HF_TOKEN is not set; pyannote speaker diarization may fail unless the model is already cached.";
-    private const string DiarizationDependenciesMissingWarning = "Speaker diarization dependencies are missing.";
+    private const string DiarizationDependenciesMissingWarning = "Speaker identification is not installed. The transcript remains chronological with [You] and [System audio] labels. See Settings > Models > Speaker Diarization for setup status.";
     private const string DiarizationModelAccessWarning = "Speaker diarization model access failed. Check HF_TOKEN and accepted Hugging Face model access.";
     private const string TranscriptMissingWarning = "Meeting saved with no transcript; audio capture or transcription may have failed.";
+    private const string PartialTranscriptWarning = "Meeting saved with a partial transcript because one or more audio tracks failed.";
+    private const string AllSystemFallbackWarning = "All system audio was captured because meeting-process capture was unavailable; unrelated computer sounds may be included.";
 
     private readonly AudioCaptureService _micCapture = new();
     private readonly SystemAudioCaptureService _systemCapture = new();
@@ -18,38 +20,56 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     private readonly AppLogService? _logService;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTime _startedAt;
+    private string? _systemCaptureWarning;
 
     public bool IsRecording { get; private set; }
     public bool IsBusy { get; private set; }
+    public event EventHandler<string>? CaptureWarning;
 
     public MeetingRecordingCoordinator(AppLogService? logService = null)
     {
         _logService = logService;
+        _systemCapture.FallbackActivated += (_, warning) =>
+        {
+            _logService?.Info(warning);
+            CaptureWarning?.Invoke(this, warning);
+        };
     }
 
-    public async Task StartAsync(string? microphoneName)
+    public async Task<MeetingRecordingStartResult> StartAsync(
+        string? microphoneName,
+        int? targetProcessId,
+        string sessionId)
     {
         await _gate.WaitAsync();
         try
         {
             if (IsRecording || IsBusy)
             {
-                return;
+                throw new InvalidOperationException("Meeting recording is already active.");
             }
 
             IsBusy = true;
             _startedAt = DateTime.Now;
-            await _micCapture.StartAsync(microphoneName);
+            await _micCapture.StartAsync(microphoneName, $"meeting-{sessionId}-microphone");
+            SystemAudioCaptureStartResult? systemStart = null;
+            _systemCaptureWarning = null;
             try
             {
-                await _systemCapture.StartAsync();
+                systemStart = await _systemCapture.StartAsync(targetProcessId, $"meeting-{sessionId}-remote");
+                _systemCaptureWarning = systemStart.Warning;
             }
-            catch
+            catch (Exception exception)
             {
                 // Some machines block loopback capture. Mic recording still remains useful.
+                _systemCaptureWarning = $"Remote-speaker audio could not start: {exception.Message}";
             }
 
             IsRecording = true;
+            return new MeetingRecordingStartResult(
+                systemStart?.Mode ?? "microphone-only",
+                systemStart?.UsedFallback ?? false,
+                _systemCaptureWarning);
         }
         finally
         {
@@ -58,7 +78,10 @@ public sealed class MeetingRecordingCoordinator : IDisposable
         }
     }
 
-    public async Task<RecordedMeetingResult> StopAsync(string title, TranscriptionOptions options)
+    public async Task<RecordedMeetingResult> StopAsync(
+        string title,
+        TranscriptionOptions options,
+        Action<RecordedMeetingCapture>? captureReady = null)
     {
         await _gate.WaitAsync();
         try
@@ -72,14 +95,37 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             IsRecording = false;
             CapturedAudio? micAudio = null;
             CapturedAudio? systemAudio = null;
+            List<string> healthWarnings = new();
+            if (!string.IsNullOrWhiteSpace(_systemCaptureWarning))
+            {
+                healthWarnings.Add(_systemCaptureWarning);
+            }
 
-            micAudio = await _micCapture.StopAsync();
-            _logService?.Info($"Mic audio: {micAudio.LastCapturePath} ({micAudio.Bytes.Length} bytes)");
+            try
+            {
+                micAudio = await _micCapture.StopAsync(includeBytes: false);
+                _logService?.Info($"Mic audio: {micAudio.LastCapturePath} ({micAudio.LengthBytes} bytes)");
+                if (!string.IsNullOrWhiteSpace(micAudio.Warning))
+                {
+                    healthWarnings.Add(micAudio.Warning);
+                    _logService?.Info(micAudio.Warning);
+                }
+            }
+            catch (Exception exception)
+            {
+                _logService?.Error("Microphone audio finalization failed.", exception);
+                healthWarnings.Add($"Microphone capture failed: {exception.Message}");
+            }
 
             try
             {
                 systemAudio = await _systemCapture.StopAsync();
-                _logService?.Info($"System audio: {systemAudio.LastCapturePath} ({systemAudio.Bytes.Length} bytes)");
+                _logService?.Info($"System audio: {systemAudio.LastCapturePath} ({systemAudio.LengthBytes} bytes)");
+                if (!string.IsNullOrWhiteSpace(systemAudio.Warning)
+                    && !healthWarnings.Contains(systemAudio.Warning, StringComparer.OrdinalIgnoreCase))
+                {
+                    healthWarnings.Add(systemAudio.Warning);
+                }
             }
             catch (Exception exception)
             {
@@ -87,38 +133,87 @@ public sealed class MeetingRecordingCoordinator : IDisposable
                 systemAudio = null;
             }
 
-            List<string> healthWarnings = new();
+            if (micAudio is null && systemAudio is null)
+            {
+                throw new InvalidOperationException("Neither meeting audio track could be finalized.");
+            }
 
             if (systemAudio is null)
             {
                 healthWarnings.Add(SystemAudioMissingWarning);
             }
-            else if (systemAudio.Bytes.Length <= 44)
+            else if (systemAudio.LengthBytes <= 44)
             {
                 healthWarnings.Add("System audio was nearly silent; remote speakers may be missing.");
             }
 
-            if (micAudio.Bytes.Length <= 44)
+            if (micAudio is null)
+            {
+                healthWarnings.Add("Microphone audio was not captured; your voice may be missing.");
+            }
+            else if (micAudio.LengthBytes <= 44)
             {
                 healthWarnings.Add("Microphone audio was nearly silent; your voice may not have been recorded.");
             }
 
-            var micTranscript = micAudio.Bytes.Length > 44
-                ? await _workerClient.TranscribeFileAsync($"{title} mic", micAudio.LastCapturePath, options)
-                : new TranscriptionResult("");
+            var durationMs = (int)Math.Min(int.MaxValue, (DateTime.Now - _startedAt).TotalMilliseconds);
+            captureReady?.Invoke(new RecordedMeetingCapture(
+                title,
+                _startedAt,
+                durationMs,
+                micAudio?.LastCapturePath ?? "",
+                systemAudio?.LastCapturePath,
+                healthWarnings.ToList()));
+
+            var trackFailures = 0;
+            var micTranscript = new TranscriptionResult("");
+            if (micAudio is not null && micAudio.LengthBytes > 44)
+            {
+                try
+                {
+                    micTranscript = await _workerClient.TranscribeFileAsync($"{title} mic", micAudio.LastCapturePath, options);
+                    if (HasChunkFailure(micTranscript))
+                    {
+                        trackFailures++;
+                        healthWarnings.Add("Microphone transcription failed: a later audio chunk could not be processed; earlier chunks were preserved.");
+                    }
+                }
+                catch (Exception exception)
+                {
+                    trackFailures++;
+                    _logService?.Error("Microphone track transcription failed.", exception);
+                    healthWarnings.Add($"Microphone transcription failed: {exception.Message}");
+                }
+            }
             _logService?.Info($"Mic transcript segments: {micTranscript.Segments?.Count ?? 0}");
 
-            if (micAudio.Bytes.Length > 44 && (micTranscript.Segments?.Count ?? 0) == 0)
+            if (micAudio is not null && micAudio.LengthBytes > 44 && (micTranscript.Segments?.Count ?? 0) == 0 && trackFailures == 0)
             {
                 healthWarnings.Add(MicTranscriptEmptyWarning);
             }
 
-            var systemTranscript = systemAudio is not null && systemAudio.Bytes.Length > 44
-                ? await _workerClient.TranscribeFileAsync($"{title} system", systemAudio.LastCapturePath, options)
-                : new TranscriptionResult("");
+            var systemTranscript = new TranscriptionResult("");
+            if (systemAudio is not null && systemAudio.LengthBytes > 44)
+            {
+                try
+                {
+                    systemTranscript = await _workerClient.TranscribeFileAsync($"{title} system", systemAudio.LastCapturePath, options);
+                    if (HasChunkFailure(systemTranscript))
+                    {
+                        trackFailures++;
+                        healthWarnings.Add("System transcription failed: a later audio chunk could not be processed; earlier chunks were preserved.");
+                    }
+                }
+                catch (Exception exception)
+                {
+                    trackFailures++;
+                    _logService?.Error("System track transcription failed.", exception);
+                    healthWarnings.Add($"System transcription failed: {exception.Message}");
+                }
+            }
             _logService?.Info($"System transcript segments: {systemTranscript.Segments?.Count ?? 0}");
 
-            if (systemAudio is not null && systemAudio.Bytes.Length > 44 && (systemTranscript.Segments?.Count ?? 0) == 0)
+            if (systemAudio is not null && systemAudio.LengthBytes > 44 && (systemTranscript.Segments?.Count ?? 0) == 0 && trackFailures == 0)
             {
                 if ((micTranscript.Segments?.Count ?? 0) > 0)
                 {
@@ -132,8 +227,10 @@ public sealed class MeetingRecordingCoordinator : IDisposable
 
             // Attempt speaker diarization on system audio when available
             List<DiarizedSegment> diarizationSegments = new();
-            if (systemAudio is not null && systemAudio.Bytes.Length > 44)
+            var diarizationStatus = "not-applicable";
+            if (systemAudio is not null && systemAudio.LengthBytes > 44)
             {
+                diarizationStatus = "fallback";
                 _logService?.Info($"Starting diarization on system audio: {systemAudio.LastCapturePath}");
                 try
                 {
@@ -151,15 +248,19 @@ public sealed class MeetingRecordingCoordinator : IDisposable
                     }
                     if (diarizationSegments.Count == 0)
                     {
-                        _logService?.Info("Diarization returned 0 segments; using legacy [System audio] fallback.");
+                        _logService?.Info("Diarization returned 0 segments; using chronological [System audio] fallback.");
                         healthWarnings.Add(DiarizationNoSegmentsWarning);
+                    }
+                    else
+                    {
+                        diarizationStatus = "identified";
                     }
                 }
                 catch (Exception exception)
                 {
                     _logService?.Error($"Diarization failed on {systemAudio.LastCapturePath}", exception);
                     diarizationSegments = new List<DiarizedSegment>();
-                    healthWarnings.Add(DiarizationFailedWarning);
+                    healthWarnings.Add(DescribeDiarizationFailure(exception));
                 }
             }
             else
@@ -167,31 +268,24 @@ public sealed class MeetingRecordingCoordinator : IDisposable
                 _logService?.Info("Diarization skipped: no system audio available.");
             }
 
-            string merged;
-            if (diarizationSegments.Count > 0)
-            {
-                _logService?.Info("Using diarized transcript merge.");
-                merged = TranscriptFormatter.Merge(
-                    micTranscript.Segments ?? new List<TranscriptSegment>(),
-                    systemTranscript.Segments ?? new List<TranscriptSegment>(),
-                    diarizationSegments,
-                    _startedAt);
-            }
-            else
-            {
-                _logService?.Info("Using legacy transcript merge.");
-                merged = TranscriptFormatter.Merge(
-                    micTranscript.Segments ?? new List<TranscriptSegment>(),
-                    systemTranscript.Segments ?? new List<TranscriptSegment>(),
-                    diarizationSegments,
-                    _startedAt);
-            }
+            _logService?.Info(diarizationSegments.Count > 0
+                ? "Using diarized chronological transcript merge."
+                : "Using chronological fallback transcript merge.");
+            var formatted = TranscriptFormatter.MergeWithSegments(
+                micTranscript.Segments ?? new List<TranscriptSegment>(),
+                systemTranscript.Segments ?? new List<TranscriptSegment>(),
+                diarizationSegments,
+                _startedAt);
+            var merged = formatted.Transcript;
 
             var summary = MeetingSummaryService.CreateSummary(merged);
-            var durationMs = (int)(DateTime.Now - _startedAt).TotalMilliseconds;
             if (string.IsNullOrWhiteSpace(merged))
             {
                 healthWarnings.Add(TranscriptMissingWarning);
+            }
+            else if (trackFailures > 0)
+            {
+                healthWarnings.Add(PartialTranscriptWarning);
             }
 
             var distinctWarnings = CleanupHealthWarnings(
@@ -205,9 +299,15 @@ public sealed class MeetingRecordingCoordinator : IDisposable
                 durationMs,
                 merged,
                 summary,
-                micAudio.LastCapturePath,
+                micAudio?.LastCapturePath ?? "",
                 systemAudio?.LastCapturePath,
-                distinctWarnings);
+                distinctWarnings,
+                (micAudio?.OwnedPaths ?? [])
+                    .Concat(systemAudio?.OwnedPaths ?? [])
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                formatted.Segments,
+                diarizationStatus);
         }
         finally
         {
@@ -277,6 +377,14 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             return "System audio was nearly silent; remote speakers may be missing.";
         if (text.Equals("Microphone audio was nearly silent; your voice may not have been recorded.", StringComparison.OrdinalIgnoreCase))
             return "Microphone audio was nearly silent; your voice may not have been recorded.";
+        if (text.StartsWith("Microphone audio was not captured", StringComparison.OrdinalIgnoreCase))
+            return "Microphone audio was not captured; your voice may be missing.";
+        if (text.StartsWith("Microphone device changed during the meeting", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith("Microphone capture resumed", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith("Microphone capture failed after a device change", StringComparison.OrdinalIgnoreCase))
+            return text;
+        if (text.StartsWith("Meeting-process audio remained silent", StringComparison.OrdinalIgnoreCase))
+            return "Meeting-process audio was silent; Muesli switched to all-system audio capture.";
 
         if (text.Equals(DiarizationNoSegmentsWarning, StringComparison.OrdinalIgnoreCase)
             || text.Contains("returned no speaker segments", StringComparison.OrdinalIgnoreCase))
@@ -289,7 +397,21 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             || text.Contains("no transcript", StringComparison.OrdinalIgnoreCase))
             return TranscriptMissingWarning;
 
-        if (text.Contains("dependencies missing", StringComparison.OrdinalIgnoreCase))
+        if (text.Equals(PartialTranscriptWarning, StringComparison.OrdinalIgnoreCase))
+            return PartialTranscriptWarning;
+        if (text.Contains("all system audio is being captured as a fallback", StringComparison.OrdinalIgnoreCase)
+            || text.Equals(AllSystemFallbackWarning, StringComparison.OrdinalIgnoreCase))
+            return AllSystemFallbackWarning;
+        if (text.StartsWith("Microphone transcription failed:", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith("System transcription failed:", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith("Microphone capture failed:", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith("Meeting processing failed:", StringComparison.OrdinalIgnoreCase))
+            return text;
+
+        if (text.Equals(DiarizationDependenciesMissingWarning, StringComparison.OrdinalIgnoreCase)
+            || text.Contains("dependencies missing", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("dependencies are missing", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("No module named", StringComparison.OrdinalIgnoreCase))
             return DiarizationDependenciesMissingWarning;
 
         var mentionsHfToken = text.Contains("HF_TOKEN", StringComparison.OrdinalIgnoreCase);
@@ -345,6 +467,31 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             && count > 0;
     }
 
+    private static bool HasChunkFailure(TranscriptionResult result) =>
+        result.Diagnostic?.Contains(" failed:", StringComparison.OrdinalIgnoreCase) == true;
+
+    internal static string DescribeDiarizationFailure(Exception exception)
+    {
+        var message = exception.Message;
+        if (message.Contains("No module named", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("soundfile", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("pyannote", StringComparison.OrdinalIgnoreCase))
+        {
+            return DiarizationDependenciesMissingWarning;
+        }
+
+        if (message.Contains("HF_TOKEN", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("access denied", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("gated", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("401", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("403", StringComparison.OrdinalIgnoreCase))
+        {
+            return DiarizationModelAccessWarning;
+        }
+
+        return DiarizationFailedWarning;
+    }
+
     private static bool TranscriptHasDiarizedSpeakerLabels(string? transcript)
     {
         if (string.IsNullOrWhiteSpace(transcript))
@@ -366,4 +513,20 @@ public sealed record RecordedMeetingResult(
     string Summary,
     string MicAudioPath,
     string? SystemAudioPath,
-    List<string>? HealthWarnings = null);
+    List<string>? HealthWarnings = null,
+    List<string>? TemporaryAudioPaths = null,
+    List<MeetingTranscriptSegment>? TranscriptSegments = null,
+    string DiarizationStatus = "unknown");
+
+public sealed record MeetingRecordingStartResult(
+    string RemoteAudioMode,
+    bool UsedAllSystemFallback,
+    string? Warning);
+
+public sealed record RecordedMeetingCapture(
+    string Title,
+    DateTime StartedAt,
+    int DurationMs,
+    string MicAudioPath,
+    string? SystemAudioPath,
+    List<string> HealthWarnings);

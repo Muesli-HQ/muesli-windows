@@ -9,17 +9,18 @@ public static class TranscriptFormatter
         List<TranscriptSegment> systemSegments,
         List<DiarizedSegment> diarizationSegments,
         DateTime meetingStart)
-    {
-        if (diarizationSegments is null || diarizationSegments.Count == 0)
-        {
-            // Fallback to legacy merge when diarization is unavailable
-            return LegacyMerge(micSegments, systemSegments);
-        }
+        => MergeWithSegments(micSegments, systemSegments, diarizationSegments, meetingStart).Transcript;
 
-        // 1. Map raw diarization speaker IDs → "Speaker 1", "Speaker 2" in first-appearance order
+    public static TranscriptFormatResult MergeWithSegments(
+        List<TranscriptSegment> micSegments,
+        List<TranscriptSegment> systemSegments,
+        List<DiarizedSegment> diarizationSegments,
+        DateTime meetingStart)
+    {
+        // Map raw diarization speaker IDs → "Speaker 1", "Speaker 2" in first-appearance order.
         var speakerLabelMap = new Dictionary<string, string>(StringComparer.Ordinal);
         int nextSpeakerNumber = 1;
-        foreach (var seg in diarizationSegments.OrderBy(s => s.StartMs))
+        foreach (var seg in (diarizationSegments ?? []).OrderBy(s => s.StartMs))
         {
             if (!speakerLabelMap.ContainsKey(seg.SpeakerId))
             {
@@ -27,57 +28,47 @@ public static class TranscriptFormatter
             }
         }
 
-        // 2. Assign speaker labels to system transcript segments by time overlap
+        // System audio remains useful without diarization. Keep it in the real timeline and
+        // use one truthful fallback label rather than moving the whole track to the end.
         var taggedSystem = systemSegments
-            .Select(seg => new TaggedSegment(
-                seg,
-                FindSpeakerByOverlap(seg, diarizationSegments, speakerLabelMap) ?? "Others"))
+            .Select(seg => new MeetingTranscriptSegment(
+                "system",
+                diarizationSegments is { Count: > 0 }
+                    ? FindSpeakerByOverlap(seg, diarizationSegments, speakerLabelMap) ?? "System audio"
+                    : "System audio",
+                seg.StartMs,
+                seg.EndMs,
+                seg.Text))
             .ToList();
 
-        // 3. Tag mic segments as "You"
         var taggedMic = micSegments
-            .Select(seg => new TaggedSegment(seg, "You"))
+            .Select(seg => new MeetingTranscriptSegment(
+                "microphone",
+                "You",
+                seg.StartMs,
+                seg.EndMs,
+                seg.Text))
             .ToList();
 
-        // 4. Sort chronologically
         var all = taggedMic.Concat(taggedSystem)
-            .OrderBy(t => t.Segment.StartMs)
+            .Where(segment => !string.IsNullOrWhiteSpace(segment.Text))
+            .OrderBy(segment => segment.StartMs)
+            .ThenBy(segment => segment.Track, StringComparer.Ordinal)
             .ToList();
 
         if (all.Count == 0)
         {
-            return "";
+            return new TranscriptFormatResult("", []);
         }
 
-        // 5. Consolidate consecutive same-speaker segments (within 2s gap)
         var consolidated = Consolidate(all, ConsolidationGapThresholdMs);
 
-        // 6. Format: [HH:mm:ss] Speaker: text
-        return string.Join("\n", consolidated.Select(t =>
+        var transcript = string.Join(Environment.NewLine, consolidated.Select(segment =>
         {
-            var timestamp = meetingStart.AddMilliseconds(t.Segment.StartMs);
-            var text = t.Segment.Text.Trim();
-            return $"[{timestamp:HH:mm:ss}] {t.Speaker}: {text}";
+            var timestamp = meetingStart.AddMilliseconds(segment.StartMs);
+            return $"[{timestamp:HH:mm:ss}] {segment.Speaker}: {segment.Text.Trim()}";
         }));
-    }
-
-    private static string LegacyMerge(List<TranscriptSegment> micSegments, List<TranscriptSegment> systemSegments)
-    {
-        var parts = new List<string>();
-
-        var micText = string.Join(" ", micSegments.Select(s => s.Text.Trim()));
-        if (!string.IsNullOrWhiteSpace(micText))
-        {
-            parts.Add($"[You] {micText.Trim()}");
-        }
-
-        var systemText = string.Join(" ", systemSegments.Select(s => s.Text.Trim()));
-        if (!string.IsNullOrWhiteSpace(systemText))
-        {
-            parts.Add($"[System audio] {systemText.Trim()}");
-        }
-
-        return string.Join(Environment.NewLine + Environment.NewLine, parts);
+        return new TranscriptFormatResult(transcript, all);
     }
 
     private static string? FindSpeakerByOverlap(
@@ -119,48 +110,57 @@ public static class TranscriptFormatter
         return Math.Max(0, overlapEnd - overlapStart);
     }
 
-    private static List<TaggedSegment> Consolidate(List<TaggedSegment> segments, int gapThresholdMs)
+    private static List<MeetingTranscriptSegment> Consolidate(
+        List<MeetingTranscriptSegment> segments,
+        int gapThresholdMs)
     {
-        var result = new List<TaggedSegment>();
+        var result = new List<MeetingTranscriptSegment>();
         if (segments.Count == 0)
         {
             return result;
         }
 
         var currentSpeaker = segments[0].Speaker;
-        var currentStartMs = segments[0].Segment.StartMs;
-        var currentEndMs = segments[0].Segment.EndMs;
-        var currentText = segments[0].Segment.Text;
+        var currentTrack = segments[0].Track;
+        var currentStartMs = segments[0].StartMs;
+        var currentEndMs = segments[0].EndMs;
+        var currentText = segments[0].Text;
 
         for (int i = 1; i < segments.Count; i++)
         {
             var seg = segments[i];
-            var gap = Math.Max(0, seg.Segment.StartMs - currentEndMs);
+            var gap = Math.Max(0, seg.StartMs - currentEndMs);
 
-            if (seg.Speaker == currentSpeaker && gap <= gapThresholdMs)
+            if (seg.Speaker == currentSpeaker
+                && seg.Track == currentTrack
+                && gap <= gapThresholdMs)
             {
-                // Same speaker, temporally close — accumulate text
-                currentText = AppendText(currentText, seg.Segment.Text, gap);
-                currentEndMs = seg.Segment.EndMs;
+                currentText = AppendText(currentText, seg.Text, gap);
+                currentEndMs = Math.Max(currentEndMs, seg.EndMs);
             }
             else
             {
-                // Different speaker or too far apart — flush current
-                result.Add(new TaggedSegment(
-                    new TranscriptSegment("", currentSpeaker, currentStartMs, currentEndMs, currentText),
-                    currentSpeaker));
+                result.Add(new MeetingTranscriptSegment(
+                    currentTrack,
+                    currentSpeaker,
+                    currentStartMs,
+                    currentEndMs,
+                    currentText));
 
                 currentSpeaker = seg.Speaker;
-                currentStartMs = seg.Segment.StartMs;
-                currentEndMs = seg.Segment.EndMs;
-                currentText = seg.Segment.Text;
+                currentTrack = seg.Track;
+                currentStartMs = seg.StartMs;
+                currentEndMs = seg.EndMs;
+                currentText = seg.Text;
             }
         }
 
-        // Flush final accumulated segment
-        result.Add(new TaggedSegment(
-            new TranscriptSegment("", currentSpeaker, currentStartMs, currentEndMs, currentText),
-            currentSpeaker));
+        result.Add(new MeetingTranscriptSegment(
+            currentTrack,
+            currentSpeaker,
+            currentStartMs,
+            currentEndMs,
+            currentText));
 
         return result;
     }
@@ -192,6 +192,15 @@ public static class TranscriptFormatter
         // Small gap — just space-separate
         return current + " " + next;
     }
-
-    private sealed record TaggedSegment(TranscriptSegment Segment, string Speaker);
 }
+
+public sealed record MeetingTranscriptSegment(
+    string Track,
+    string Speaker,
+    int StartMs,
+    int EndMs,
+    string Text);
+
+public sealed record TranscriptFormatResult(
+    string Transcript,
+    List<MeetingTranscriptSegment> Segments);

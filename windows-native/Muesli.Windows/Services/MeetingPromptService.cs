@@ -51,6 +51,20 @@ public sealed class MeetingPromptService
         AnimateIn(_window);
     }
 
+    public void ShowMeetingEnded(string meetingTitle, Action stopAndTranscribe, Action keepRecording)
+    {
+        Reset();
+        _window = CreateWindow();
+        _window.Height = 84;
+        _window.Content = CreateMeetingEndedContent(
+            meetingTitle,
+            () => Dismiss(stopAndTranscribe),
+            () => Dismiss(keepRecording));
+        PositionWindow(_window);
+        _window.Show();
+        AnimateIn(_window);
+    }
+
     public void Close()
     {
         _window?.Close();
@@ -254,6 +268,71 @@ public sealed class MeetingPromptService
         progress.BeginAnimation(FrameworkElement.WidthProperty, shrink);
 
         return root;
+    }
+
+    private FrameworkElement CreateMeetingEndedContent(
+        string meetingTitle,
+        Action stopAndTranscribe,
+        Action keepRecording)
+    {
+        var card = new Border
+        {
+            CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(MediaColor.FromArgb(26, 255, 255, 255)),
+            Background = new SolidColorBrush(MediaColor.FromArgb(247, 26, 26, 31)),
+            Effect = new DropShadowEffect
+            {
+                BlurRadius = 18,
+                ShadowDepth = 3,
+                Opacity = 0.35,
+                Color = MediaColor.FromRgb(0, 0, 0)
+            }
+        };
+        var layout = new Grid { Margin = new Thickness(14, 0, 10, 0) };
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        card.Child = layout;
+
+        var copy = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        copy.Children.Add(new TextBlock
+        {
+            Text = "Has the meeting ended?",
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(MediaColor.FromArgb(235, 255, 255, 255))
+        });
+        copy.Children.Add(new TextBlock
+        {
+            Text = meetingTitle,
+            Margin = new Thickness(0, 3, 0, 0),
+            FontSize = 11,
+            Foreground = new SolidColorBrush(MediaColor.FromArgb(140, 255, 255, 255)),
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        layout.Children.Add(copy);
+
+        var actions = new StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(actions, 1);
+        var keep = CreateActionButton("Keep", keepRecording);
+        keep.Width = 58;
+        keep.Height = 30;
+        keep.Margin = new Thickness(0, 0, 8, 0);
+        var stop = CreateActionButton("Stop & transcribe", stopAndTranscribe);
+        stop.Width = 118;
+        stop.Height = 30;
+        actions.Children.Add(keep);
+        actions.Children.Add(stop);
+        layout.Children.Add(actions);
+        return card;
     }
 
     private static FrameworkElement CreatePlatformIcon(string platform)

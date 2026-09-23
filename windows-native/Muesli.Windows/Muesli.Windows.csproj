@@ -12,6 +12,8 @@
     <AssemblyName>Muesli</AssemblyName>
     <RootNamespace>Muesli.Windows</RootNamespace>
     <Version>0.3.0</Version>
+    <InformationalVersion Condition="'$(Configuration)' == 'Debug'">0.3.0-dev</InformationalVersion>
+    <InformationalVersion Condition="'$(Configuration)' != 'Debug'">0.3.0</InformationalVersion>
     <StartupObject>Muesli.Windows.App</StartupObject>
     <Product>Muesli</Product>
     <Description>Local-first dictation and meeting transcription for Windows.</Description>

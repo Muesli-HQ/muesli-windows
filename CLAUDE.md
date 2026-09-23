@@ -14,8 +14,8 @@ The shell here is bash-on-Windows (use forward slashes, `/dev/null`, etc.), but 
 # Build (Debug)
 dotnet build .\windows-native\Muesli.Windows\Muesli.Windows.csproj
 
-# Run from source (contributor path — uses system Python via .venv)
-dotnet run --project .\windows-native\Muesli.Windows\Muesli.Windows.csproj
+# Run the canonical development copy (refuses duplicate Muesli processes)
+powershell -ExecutionPolicy Bypass -File .\scripts\run-development.ps1
 
 # Install/refresh the Python worker .venv (contributor path; requires Python 3.11 or 3.12)
 .\scripts\setup-worker-runtime.ps1
@@ -44,7 +44,13 @@ Built binaries live at `windows-native/Muesli.Windows/bin/Debug/net8.0-windows/M
 
 ### Tests
 
-There is **no unit-test framework** in the repo. The only automated verification is `scripts\test-windows-package.ps1` (post-package smoke test: required files present, scripts parse, and a brief launch). Verify UI behavior manually after changes — build success is not sufficient.
+The Windows xUnit project covers persistence invariants, transcript formatting, meeting detection/safety policies, audio rotation/timeline normalization, and cleanup behavior:
+
+```powershell
+dotnet test .\windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj --no-restore
+```
+
+The current baseline is 38 passing tests. `scripts\test-windows-package.ps1` remains the post-package smoke test. Verify UI, real meeting apps, and physical audio-device behavior manually after changes — build/test success is not sufficient.
 
 ## Architecture
 
@@ -79,13 +85,13 @@ Muesli.exe (WPF, .NET 8)  ──┐
 - `App.xaml.cs` — startup, global exception logging, decides whether to show the main window or park in background mode (`--background` / `--startup` args, or a recent boot when start-at-login is enabled).
 - `MainWindow.xaml` (~110 KB) and `MainWindow.xaml.cs` (~159 KB) — most of the UI and code-behind. Heavy file; expect long edits and search-driven navigation.
 - `Services/` — single-responsibility units, instantiated and wired up from `MainWindow`:
-  - **Audio**: `AudioCaptureService` (WASAPI mic via NAudio), `SystemAudioCaptureService` (WASAPI loopback — may fail silently on some setups; mic still works).
+  - **Audio**: `AudioCaptureService` (WASAPI mic, segmented files, route recovery with preserved timeline gaps), `SystemAudioCaptureService` (meeting-process capture with a qualified and visible all-system fallback).
   - **Input**: `GlobalHotkeyService` (low-level `WH_KEYBOARD_LL` hook — supports modifier+key gestures like `Ctrl+Shift+F8`, not just `RegisterHotKey`).
-  - **Coordinators**: `DictationCoordinator` (hold-to-talk state machine), `MeetingRecordingCoordinator` (mic + loopback + transcribe + diarize warnings).
+  - **Coordinators**: `DictationCoordinator` (hold/double-tap state machine), `MeetingRecordingCoordinator` (capture finalization, chunked transcription, chronological reconciliation, diarization status, and cleanup metadata).
   - **Meetings**: `MeetingDetectionService` (heuristic: foreground window titles + browser URLs + process names for Meet/Zoom/Teams/Webex), `MeetingPromptService`, `MeetingSummaryService` (local fallback / OpenAI / OpenRouter), `MeetingExporter` (QuestPDF + markdown).
   - **Output**: `ActiveAppPasteService` (paste back into previously-focused app), `DictionaryCorrectionService` (phrase replacements), `TranscriptFormatter`.
   - **Shell**: `TrayIconService`, `ToastNotificationService`, `StartupRegistrationService` (HKCU Run key with `--background`).
-  - **Persistence**: `SettingsStore`, `AppDataStore` (see below), `AppLogService`.
+  - **Persistence**: `SettingsStore`, `AppDataStore`, `AtomicJsonFile`, `MeetingSessionJournalStore`, `AppLogService`.
   - **Diagnostics**: `RuntimeDiagnosticsService` (worker-found / mic-test / model-download UI in Models page).
 
 ### Persistence
@@ -96,13 +102,15 @@ All under `%APPDATA%\muesli\`:
 |------|----------|
 | `windows-settings.json` | Single `MuesliSettings` record — hotkey, model profile, paste behavior, theme, summary provider, API keys, indicator position, etc. |
 | `data\windows-dictations.json` | Dictation history |
-| `data\windows-meetings.json` | Meeting history (transcript, summary, source audio path, warnings) |
+| `data\windows-meetings.json` | Meeting history (edited/raw transcript, timed segments, notes, status, summary, source recovery audio, warnings) |
 | `data\windows-meeting-folders.json` | Folder organization |
 | `data\windows-meeting-templates.json` | Custom summary templates |
 | `data\windows-dictionary.json` | Phrase → replacement pairs |
 | `logs\*.log` | App logs (About → Open Logs reveals) |
 
-**SQLite is on the roadmap (`docs/ROADMAP.md` Milestone 2) but is not implemented** — current code uses JSON files only. Don't assume a database exists.
+The JSON files use versioned envelopes, atomic replacement, backups, and corrupt-file quarantine. **SQLite is not implemented** — do not assume a database exists.
+
+The current dated implementation summary and known risks live in `docs/PROJECT_STATUS.md`; update it when a substantial capability or verification baseline changes.
 
 Whisper/Parakeet/Qwen model weights cache to `%USERPROFILE%\.cache\muesli` (override with `MUESLI_MODEL_CACHE`).
 

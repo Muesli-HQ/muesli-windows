@@ -8,6 +8,8 @@ namespace Muesli.Windows.Services;
 
 public sealed class TranscriptionWorkerClient : IDisposable
 {
+    internal static readonly TimeSpan LongFileThreshold = TimeSpan.FromMinutes(8);
+    internal static readonly TimeSpan ChunkDuration = TimeSpan.FromMinutes(5);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -34,6 +36,36 @@ public sealed class TranscriptionWorkerClient : IDisposable
 
     public async Task<TranscriptionResult> TranscribeFileAsync(string title, string filePath, TranscriptionOptions options)
     {
+        if (ShouldChunkWaveFile(filePath))
+        {
+            return await TranscribeWaveFileInChunksAsync(title, filePath, options);
+        }
+
+        return await TranscribeFileDirectAsync(title, filePath, options);
+    }
+
+    internal static bool ShouldChunkWaveFile(string filePath)
+    {
+        if (!Path.GetExtension(filePath).Equals(".wav", StringComparison.OrdinalIgnoreCase) || !File.Exists(filePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            return WaveFileUtilities.GetDuration(filePath) > LongFileThreshold;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task<TranscriptionResult> TranscribeFileDirectAsync(
+        string title,
+        string filePath,
+        TranscriptionOptions options)
+    {
         return await RequestTranscriptionAsync(new WorkerPayload(
             title,
             filePath,
@@ -44,6 +76,90 @@ public sealed class TranscriptionWorkerClient : IDisposable
             options.LanguageHint,
             ""));
     }
+
+    private async Task<TranscriptionResult> TranscribeWaveFileInChunksAsync(
+        string title,
+        string filePath,
+        TranscriptionOptions options)
+    {
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(), $"muesli-transcription-{Guid.NewGuid():N}");
+        var combinedText = new List<string>();
+        var combinedSegments = new List<TranscriptSegment>();
+        var diagnostics = new List<string>
+        {
+            $"Long recording split into {ChunkDuration.TotalMinutes:0}-minute chunks."
+        };
+        var durationMs = 0;
+
+        try
+        {
+            var chunks = WaveFileUtilities.CreateChunks(filePath, temporaryDirectory, ChunkDuration);
+            for (var index = 0; index < chunks.Count; index++)
+            {
+                var chunk = chunks[index];
+                try
+                {
+                    var result = await TranscribeFileDirectAsync(
+                        $"{title} part {index + 1} of {chunks.Count}",
+                        chunk.Path,
+                        options);
+                    if (!string.IsNullOrWhiteSpace(result.Text))
+                    {
+                        combinedText.Add(result.Text.Trim());
+                    }
+
+                    foreach (var segment in result.Segments ?? [])
+                    {
+                        combinedSegments.Add(segment with
+                        {
+                            Id = $"chunk_{index + 1}_{segment.Id}",
+                            StartMs = SafeAdd(segment.StartMs, chunk.OffsetMs),
+                            EndMs = SafeAdd(segment.EndMs, chunk.OffsetMs)
+                        });
+                    }
+
+                    durationMs = Math.Max(durationMs, SafeAdd(result.DurationMs, chunk.OffsetMs));
+                    if (!string.IsNullOrWhiteSpace(result.Diagnostic))
+                    {
+                        diagnostics.Add($"Chunk {index + 1}: {result.Diagnostic}");
+                    }
+                }
+                catch (Exception exception)
+                {
+                    diagnostics.Add($"Chunk {index + 1} failed: {exception.Message}");
+                    if (combinedSegments.Count == 0 && combinedText.Count == 0)
+                    {
+                        throw;
+                    }
+
+                    break;
+                }
+            }
+
+            return new TranscriptionResult(
+                string.Join(" ", combinedText),
+                string.Join(Environment.NewLine, diagnostics),
+                durationMs,
+                combinedSegments);
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(temporaryDirectory))
+                {
+                    Directory.Delete(temporaryDirectory, recursive: true);
+                }
+            }
+            catch
+            {
+                // Temporary chunk cleanup is best-effort.
+            }
+        }
+    }
+
+    private static int SafeAdd(int value, int offset) =>
+        (int)Math.Min(int.MaxValue, Math.Max(0L, (long)value + offset));
 
     public async Task<PostProcessingResult> PostProcessAsync(string text, string context, string systemPrompt = "")
     {
@@ -66,7 +182,17 @@ public sealed class TranscriptionWorkerClient : IDisposable
         await _worker.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request, JsonOptions));
         await _worker.StandardInput.FlushAsync();
 
-        var envelope = await completion.Task.WaitAsync(TimeSpan.FromMinutes(5));
+        WorkerEnvelope envelope;
+        try
+        {
+            envelope = await completion.Task.WaitAsync(TimeSpan.FromMinutes(10));
+        }
+        catch (TimeoutException)
+        {
+            _pending.TryRemove(id, out _);
+            StopWorker();
+            throw new TimeoutException("Post-processing timed out after 10 minutes. The worker was restarted.");
+        }
         if (!envelope.Ok || envelope.Result is null)
         {
             throw new InvalidOperationException(envelope.Error ?? "Post-processing failed.");
@@ -135,7 +261,17 @@ public sealed class TranscriptionWorkerClient : IDisposable
         await _worker.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request, JsonOptions));
         await _worker.StandardInput.FlushAsync();
 
-        var envelope = await completion.Task.WaitAsync(TimeSpan.FromMinutes(10));
+        WorkerEnvelope envelope;
+        try
+        {
+            envelope = await completion.Task.WaitAsync(TimeSpan.FromMinutes(10));
+        }
+        catch (TimeoutException)
+        {
+            _pending.TryRemove(id, out _);
+            StopWorker();
+            throw new TimeoutException("Speaker diarization timed out after 10 minutes. The worker was restarted and the transcript will be saved without speaker labels.");
+        }
         if (!envelope.Ok || envelope.Result is null)
         {
             throw new InvalidOperationException(envelope.Error ?? "Diarization failed.");
@@ -173,7 +309,17 @@ public sealed class TranscriptionWorkerClient : IDisposable
         await _worker.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request, JsonOptions));
         await _worker.StandardInput.FlushAsync();
 
-        var envelope = await completion.Task.WaitAsync(TimeSpan.FromMinutes(5));
+        WorkerEnvelope envelope;
+        try
+        {
+            envelope = await completion.Task.WaitAsync(TimeSpan.FromMinutes(10));
+        }
+        catch (TimeoutException)
+        {
+            _pending.TryRemove(id, out _);
+            StopWorker();
+            throw new TimeoutException("Transcription timed out after 10 minutes. The worker was restarted so another recording can be processed.");
+        }
         if (!envelope.Ok || envelope.Result is null)
         {
             throw new InvalidOperationException(envelope.Error ?? "Transcription failed.");
@@ -194,6 +340,11 @@ public sealed class TranscriptionWorkerClient : IDisposable
     }
 
     public void Dispose()
+    {
+        StopWorker();
+    }
+
+    private void StopWorker()
     {
         try
         {

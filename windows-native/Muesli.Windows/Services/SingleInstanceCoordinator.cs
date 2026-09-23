@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Security.Cryptography;
@@ -28,6 +29,31 @@ public sealed class SingleInstanceCoordinator : IDisposable
         var suffix = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..20];
         var mutex = new Mutex(true, $"Local\\Muesli.Windows.UI.{suffix}", out var createdNew);
         return new SingleInstanceCoordinator(mutex, $"Muesli.Windows.Activation.{suffix}", createdNew);
+    }
+
+    public static Process? FindConflictingLegacyProcess()
+    {
+        var currentId = Environment.ProcessId;
+        using var currentProcess = Process.GetCurrentProcess();
+        var currentSession = currentProcess.SessionId;
+        foreach (var process in Process.GetProcessesByName("Muesli"))
+        {
+            try
+            {
+                if (process.Id != currentId && !process.HasExited && process.SessionId == currentSession)
+                {
+                    return process;
+                }
+            }
+            catch
+            {
+                // A process may exit while the list is inspected.
+            }
+
+            process.Dispose();
+        }
+
+        return null;
     }
 
     public void StartListening(Action onActivate)

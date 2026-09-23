@@ -7,26 +7,29 @@ This is the Windows-native app path. The Electron app remains in the repository 
 - WPF / .NET 8 desktop app
 - Native `RegisterHotKey` global shortcut handling
 - Native WASAPI microphone capture via NAudio
-- Native WASAPI loopback capture for meeting system audio where Windows allows it
+- Meeting-process audio capture with qualified all-system WASAPI fallback
 - Local ASR worker boundary for Whisper CPU, Whisper CUDA, and optional NVIDIA Parakeet
-- Persistent dictations, meetings, dictionary entries, and settings under `%APPDATA%\muesli`
+- Atomic/versioned persistent dictations, meetings, dictionary entries, and settings under `%APPDATA%\muesli`
+- Chronological two-track meeting transcripts with compact persisted timing metadata
 
 ## Build
 
 ```powershell
-dotnet build .\windows-native\Muesli.Windows\Muesli.Windows.csproj
+Get-Process Muesli -ErrorAction SilentlyContinue | Stop-Process -Force
+dotnet build .\windows-native\Muesli.Windows\Muesli.Windows.csproj --no-restore
+dotnet test .\windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj --no-restore
 ```
 
 ## Run
 
 ```powershell
-dotnet run --project .\windows-native\Muesli.Windows\Muesli.Windows.csproj
+powershell -ExecutionPolicy Bypass -File .\scripts\run-development.ps1
 ```
 
-## Immediate Porting Work
+The launcher prevents duplicate development instances. Quit Muesli from the tray before launching a new build.
 
-1. Bundle or bootstrap Python/faster-whisper dependencies.
-2. Replace extractive meeting summaries with the macOS-style template/LLM summary pipeline.
-3. Add real Parakeet backend.
-4. Add installer packaging once dictation works end-to-end.
-5. Replace the Python sidecar with a packaged native inference backend if startup/deployment demands it.
+## Current Status
+
+The app now includes the core dictation and meeting workflow, bundled Python packaging, provider-backed summaries, exports, recovery-oriented meeting persistence, process-targeted meeting audio, automatic temporary-audio cleanup, and a Windows test project.
+
+See [`../docs/PROJECT_STATUS.md`](../docs/PROJECT_STATUS.md) for the verified state, remaining risks, and current development workflow.

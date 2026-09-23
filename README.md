@@ -28,7 +28,7 @@ Muesli is built around local-only processing. Concretely:
 
 - **Dictation** — Hold `F8`, speak, release. Auto-paste or clipboard.
 - **Local Transcription** — Whisper runs on-device. No internet needed.
-- **Meeting Recording** — Auto-detects active meeting windows, captures mic + system audio.
+- **Meeting Recording** — Auto-detects active meeting windows, captures mic plus meeting-process audio, and visibly falls back to all-system loopback when required.
 - **Meeting Summaries** — Auto-generated notes via local rules, OpenAI, or OpenRouter.
 - **Custom Dictionary** — Phrase → replacement pairs for consistent terminology.
 - **Organized History** — Dictations and meetings with folders, search, filtering.
@@ -36,6 +36,7 @@ Muesli is built around local-only processing. Concretely:
 - **Floating Indicator** — Compact pill showing recording/transcribing state.
 - **GPU Acceleration** — Optional NVIDIA Parakeet fast path.
 - **Privacy First** — All processing local. Cloud APIs only if you add your own keys. Crash reporting is opt-in.
+- **Recoverable Meetings** — Journals active sessions, preserves partial failures, saves timed transcript segments, and removes temporary audio after successful transcription.
 
 ## Installation
 
@@ -85,13 +86,14 @@ Optional environment variables:
 ## Known Limitations
 
 - Not code-signed yet; Windows SmartScreen may warn on first launch.
-- System loopback capture can be blocked by some audio setups; mic recording still works.
-- Meeting speaker separation is basic (mic = `You`, loopback = `System audio`) unless diarization is enabled.
+- Meeting-process capture depends on supported Windows audio APIs and can fall back to all-system audio; the fallback may include unrelated computer sounds.
+- Meeting transcripts remain chronological without diarization, using `You` and `System audio`; individual remote-speaker labels require the optional pyannote setup.
 - Meeting detection is heuristic (app titles + browser URLs + process names).
+- Repetition suppression for rare Whisper hallucination loops is not implemented yet.
 
 ## Roadmap
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+See the current [`project status`](docs/PROJECT_STATUS.md) and [`roadmap`](docs/ROADMAP.md).
 
 ## For Contributors
 
@@ -107,7 +109,15 @@ Want to build from source, hack on the WPF UI, or work on the Python worker dire
 
 ```powershell
 .\scripts\setup-worker-runtime.ps1
-dotnet run --project .\windows-native\Muesli.Windows\Muesli.Windows.csproj
+powershell -ExecutionPolicy Bypass -File .\scripts\run-development.ps1
+```
+
+The development launcher refuses to create a second Muesli instance. Quit the existing app from its tray menu before rebuilding.
+
+Run the automated suite with:
+
+```powershell
+dotnet test .\windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj --no-restore
 ```
 
 Optional add-ons (install extra worker deps into the same `.venv`):
