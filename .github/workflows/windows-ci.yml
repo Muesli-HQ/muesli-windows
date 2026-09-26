@@ -55,12 +55,11 @@ jobs:
           token: ${{ secrets.MUESLI_SHARED_REPO_TOKEN != '' && secrets.MUESLI_SHARED_REPO_TOKEN || github.token }}
 
       - name: Install Swift toolchain
-        shell: pwsh
-        run: |
-          winget install --id Swift.Toolchain -e --accept-source-agreements --accept-package-agreements
-          $toolchains = Join-Path $env:LOCALAPPDATA 'Programs\Swift\Toolchains'
-          $bin = Get-ChildItem -LiteralPath $toolchains -Directory -ErrorAction Stop | Select-Object -First 1
-          "$($bin.FullName)\usr\bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+        uses: compnerd/gha-setup-swift@main
+        with:
+          source: 'swift.org'
+          swift-version: 'swift-6.4.0-release'
+          swift-build: '6.4.0-RELEASE'
 
       - name: Install vcpkg native dependencies
         shell: pwsh
