@@ -15,6 +15,8 @@ public interface ILibraryHistoryAdapter
 
     IReadOnlyList<PersistedDictation> LoadDictations();
 
+    void AppendDictation(PersistedDictation dictation);
+
     void SaveDictations(IEnumerable<PersistedDictation> dictations, bool afterExplicitDeletion = false);
 
     IReadOnlyList<PersistedMeeting> LoadMeetings();

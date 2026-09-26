@@ -83,6 +83,14 @@ public sealed class JsonLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibrary
 
     public IReadOnlyList<PersistedDictation> LoadDictations() => Store.LoadDictations();
 
+    public void AppendDictation(PersistedDictation dictation)
+    {
+        ArgumentNullException.ThrowIfNull(dictation);
+        var dictations = Store.LoadDictations().ToList();
+        dictations.Insert(0, dictation);
+        Store.SaveDictations(dictations);
+    }
+
     public void SaveDictations(IEnumerable<PersistedDictation> dictations, bool afterExplicitDeletion = false)
     {
         if (afterExplicitDeletion)

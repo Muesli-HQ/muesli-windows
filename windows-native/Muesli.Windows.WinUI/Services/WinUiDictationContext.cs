@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Muesli.Windows.Core.Contracts;
 using Muesli.Windows.Core.Services;
 using Muesli.Windows.Services;
@@ -85,7 +86,13 @@ public sealed class WinUiDictationContext : IDisposable
                     _coordinator.IsTranscribing,
                     _coordinator.IsBusy,
                     _operationCancellation is not null),
-                () => EnqueueHotkeyWork(CancelAsync),
+                () =>
+                {
+                    // StopAsync can spend seconds in inference. Signal its token before the
+                    // serialized shortcut chain reaches the rest of cancellation cleanup.
+                    RequestCancellation();
+                    EnqueueHotkeyWork(CancelAsync);
+                },
                 () => EnqueueHotkeyWork(() => ExecuteActionAsync(_hotkeyState.OtherKeyWhileArmed())));
             IsHotkeyRegistered = true;
             Status = $"Ready · {_settings.Load().Hotkey}";
@@ -135,12 +142,24 @@ public sealed class WinUiDictationContext : IDisposable
     public async Task CancelAsync()
     {
         StopTimers();
-        _operationCancellation?.Cancel();
+        RequestCancellation();
         await _coordinator.CancelAsync();
         _hotkeyState.Reset();
         _pasteTarget = IntPtr.Zero;
         Status = "Dictation cancelled";
         RaiseChanged();
+    }
+
+    private void RequestCancellation()
+    {
+        try
+        {
+            _operationCancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // A completed operation can replace its token while the hook callback arrives.
+        }
     }
 
     public void Dispose()
@@ -321,6 +340,12 @@ public sealed class WinUiDictationContext : IDisposable
     private async Task StopAsync()
     {
         if (!_coordinator.IsRecording) return;
+        var totalStarted = Stopwatch.StartNew();
+        var pipelineMs = 0L;
+        var persistenceMs = 0L;
+        var deliveryMs = 0L;
+        var persisted = false;
+        DictationLatencyMetrics? latency = null;
         _hotkeyState.Reset();
         _operationCancellation?.Dispose();
         _operationCancellation = new CancellationTokenSource();
@@ -331,6 +356,7 @@ public sealed class WinUiDictationContext : IDisposable
             var stop = await _coordinator.StopAsync(
                 Guid.NewGuid().ToString("N")[..12],
                 _operationCancellation.Token);
+            latency = stop.Latency;
             var result = stop.Transcription;
             if (string.IsNullOrWhiteSpace(result.Text) ||
                 result.Text.Contains("[BLANK_AUDIO]", StringComparison.OrdinalIgnoreCase))
@@ -342,25 +368,29 @@ public sealed class WinUiDictationContext : IDisposable
             }
 
             var settings = _settings.Load();
+            var stageStarted = Stopwatch.StartNew();
             var text = await _pipeline.PrepareDictationTextAsync(
                 result.Text,
                 settings.EnableLocalCleanup,
                 settings.RemoveFillerWords,
                 _library.LoadDictionary());
+            pipelineMs = stageStarted.ElapsedMilliseconds;
+            _operationCancellation.Token.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(text))
             {
                 Status = "No text remained after cleanup";
                 return;
             }
 
-            var dictations = _library.History.LoadDictations().ToList();
-            dictations.Insert(0, new PersistedDictation(
+            stageStarted.Restart();
+            _library.History.AppendDictation(new PersistedDictation(
                 $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}",
                 DateTime.Now,
                 text,
                 result.DurationMs,
                 _coordinator.ModelId));
-            _library.History.SaveDictations(dictations);
+            persisted = true;
+            persistenceMs = stageStarted.ElapsedMilliseconds;
             _sounds.Enabled = settings.SoundEnabled;
             _sounds.PlayDictationInsert();
 
@@ -368,12 +398,20 @@ public sealed class WinUiDictationContext : IDisposable
             {
                 try
                 {
+                    _operationCancellation.Token.ThrowIfCancellationRequested();
+                    stageStarted.Restart();
                     await _paste.PasteTextAsync(text, _pasteTarget, _operationCancellation.Token);
+                    deliveryMs = stageStarted.ElapsedMilliseconds;
                     Status = "Dictation inserted";
+                }
+                catch (OperationCanceledException) when (_operationCancellation.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception pasteException)
                 {
                     await _paste.CopyTextAsync(text, CancellationToken.None);
+                    deliveryMs = stageStarted.ElapsedMilliseconds;
                     Status = "Paste failed; transcript saved and copied";
                     _log.Error("WinUI active-app paste failed after dictation persistence.", pasteException);
                 }
@@ -385,10 +423,18 @@ public sealed class WinUiDictationContext : IDisposable
         }
         catch (OperationCanceledException)
         {
-            Status = "Dictation cancelled";
+            Status = persisted ? "Dictation saved; insertion cancelled" : "Dictation cancelled";
         }
         finally
         {
+            _log.Info(
+                $"Dictation delivery latency. trace={latency?.TraceId ?? "unavailable"}; " +
+                $"captureStopMs={latency?.CaptureTotalMs ?? 0}; " +
+                $"capturePreparationMs={latency?.CapturePreparationMs ?? 0}; " +
+                $"asrWallMs={latency?.TranscriptionWallMs ?? 0}; " +
+                $"textPipelineMs={pipelineMs}; persistenceMs={persistenceMs}; " +
+                $"deliveryMs={deliveryMs}; totalMs={totalStarted.ElapsedMilliseconds}; " +
+                $"outcome={Status}");
             _pasteTarget = IntPtr.Zero;
             RaiseChanged();
         }

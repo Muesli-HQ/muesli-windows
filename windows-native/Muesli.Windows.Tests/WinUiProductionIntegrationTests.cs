@@ -55,6 +55,29 @@ public sealed class WinUiProductionIntegrationTests
     }
 
     [Fact]
+    public void AppendingDictationPreservesExistingSqliteHistoryAcrossRestart()
+    {
+        using var directory = new TestDirectory();
+        var profile = MuesliProfilePaths.Isolated(directory.Path);
+        var first = new PersistedDictation("first", DateTime.UtcNow.AddMinutes(-1), "first text", 1000, "parakeet-v3");
+        var second = new PersistedDictation("second", DateTime.UtcNow, "second text", 2000, "parakeet-v3");
+        new AppDataStore(profile.DataDirectory).SaveDictations([first]);
+        Assert.True(new PersistenceCutover(profile.DataDirectory).EnsureMigrated().Succeeded);
+
+        using (var library = new WinUiLibraryContext(profile))
+        {
+            Assert.IsType<SqliteLibraryHistoryAdapter>(library.History);
+            library.History.AppendDictation(second);
+        }
+
+        using var reopened = new WinUiLibraryContext(profile);
+        var dictations = reopened.History.LoadDictations();
+        Assert.Equal(2, dictations.Count);
+        Assert.Contains(dictations, item => item.Id == first.Id && item.Text == first.Text);
+        Assert.Contains(dictations, item => item.Id == second.Id && item.Text == second.Text);
+    }
+
+    [Fact]
     public void RenamingNestedFolderKeepsItsParentAndMeetingAssignment()
     {
         using var directory = new TestDirectory();

@@ -539,6 +539,13 @@ public sealed class PersistenceCutoverCharacterizationTests
 
         public IReadOnlyList<PersistedDictation> LoadDictations() => store.LoadDictations();
 
+        public void AppendDictation(PersistedDictation dictation)
+        {
+            var dictations = store.LoadDictations().ToList();
+            dictations.Insert(0, dictation);
+            store.SaveDictations(dictations);
+        }
+
         public void SaveDictations(IEnumerable<PersistedDictation> dictations, bool afterExplicitDeletion = false)
         {
             if (afterExplicitDeletion)

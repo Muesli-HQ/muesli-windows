@@ -48,6 +48,15 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
             .Select(LibraryHistoryMapper.ToPersisted)
             .ToList();
 
+    public void AppendDictation(PersistedDictation dictation)
+    {
+        ArgumentNullException.ThrowIfNull(dictation);
+        using var transaction = _store.BeginTransaction();
+        _store.Dictations.Upsert(LibraryHistoryMapper.ToRecord(dictation));
+        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "dictations");
+        transaction.Commit();
+    }
+
     public void SaveDictations(IEnumerable<PersistedDictation> dictations, bool afterExplicitDeletion = false)
     {
         var incoming = dictations.ToList();
