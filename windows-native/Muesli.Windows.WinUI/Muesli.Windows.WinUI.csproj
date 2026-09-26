@@ -21,20 +21,19 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\SplashScreen.scale-200.png" />
-    <Content Include="Assets\LockScreenLogo.scale-200.png" />
-    <Content Include="Assets\Square150x150Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
-    <Content Include="Assets\Square44x44Logo.targetsize-48_altform-lightunplated.png" />
-    <Content Include="Assets\StoreLogo.png" />
+    <!-- Complete manifest-driven asset families prevent Windows from shrinking the Start/taskbar
+         icon onto a system-colored backplate when a target size or theme variant is missing. -->
+    <Content Include="Assets\*.png" />
     <Content Include="Assets\AppIcon.ico" />
     <!-- The floating indicator's Muesli mark, carried over from the retired WPF reference's
          Assets\menu_m_template@2x.png so the pill shows the real glyph, not a typographic "m". -->
-    <Content Include="Assets\MuesliGlyph.png" />
     <!-- Inter is the product typeface for the shipping Windows app. -->
     <Content Include="Assets\fonts\*.ttf" />
-    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <!--
+      Vendor family marks used by the Models page. Reused from the macOS repository's assets
+      (nvidia/openai/qwen/cohere) so the marks are repository-owned rather than fetched.
+    -->
+    <Content Include="Assets\vendor\*.png" />
   </ItemGroup>
 
   <ItemGroup>
