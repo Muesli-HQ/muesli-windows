@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "repository": "Muesli-HQ/muesli",
   "packagePath": "native/MuesliNative",
-  "revision": "41cdbf6ae80f163d603a986fa2aab4d9ba32a2dc",
+  "revision": "",
   "requiredAbiCapabilities": 3,
-  "note": "Pin the committed shared-core revision here. An empty revision fails the pinned shared-core CI step and local release packaging; do not replace this with a moving branch. See docs/SHARED_CORE_PINNING.md for the exact pinning step."
+  "note": "The proposed macOS bridge PR was withdrawn. Release CI intentionally fails until an approved, upstream shared-core ABI revision is pinned here. Do not replace this with a moving branch. See docs/SHARED_CORE_PINNING.md."
 }
