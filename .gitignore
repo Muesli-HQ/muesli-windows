@@ -21,6 +21,7 @@ bin/
 obj/
 artifacts/
 publish/
+/shared-muesli/
 windows-native/Muesli.Windows/NativeRuntime/SherpaOnnxCuda/*.dll
 
 # .NET / test / coverage outputs
