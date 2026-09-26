@@ -27,13 +27,12 @@ Map every item to the launch-ledger module. Do not start excluded work.
 | Module | Work |
 |---|---|
 | Phase 1 | Guided Qwen cleanup download after an approved GGUF (MOD-05). |
-| Phase 2 | Optional shared filler ordering on meeting/import (TXT-03). Media ducking stays a product decision (AUD-03). |
+| Phase 2 | Media ducking stays a product decision (AUD-03). |
 | Phase 5 / 7 | Transcript editing and safe retranscribe (MTG-03 remainder). |
-| Phase 7 | LM Studio/custom HTTP summary adapter (SUM-02 remainder). |
 | Phase 8 | Nested folders; search indexing of manual notes; optional playback waveform. |
-| Phase 9 | PDF auto-export if still wanted; follow-up workflows only after a destination contract. |
+| Phase 9 | Automatic PDF export is implemented but release-gated on the QuestPDF eligibility decision (EXP-01); follow-up workflows only after a destination contract. |
 | Phase 12 | Local insights analyzer if approved without contribution telemetry. |
-| Phase 13 | Support-bundle UI; updater and Authenticode after signing decision D5; version-matched CUDA-provider packaging and NVIDIA hardware qualification. |
+| Phase 13 | App-side updater workflow is implemented and fail-closed; production signing and signed install/upgrade evidence wait on decision D5. Version-matched CUDA-provider packaging and NVIDIA hardware qualification. |
 
 ## Remaining qualification (not missing features)
 

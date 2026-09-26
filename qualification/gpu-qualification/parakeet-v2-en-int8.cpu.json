@@ -1,0 +1,90 @@
+{
+  "SchemaVersion": 1,
+  "CreatedAtUtc": "2026-09-20T15:34:37.0011432+00:00",
+  "AudioPath": "C:\\Users\\USER\\.cache\\muesli\\native-asr\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8\\test_wavs\\0.wav",
+  "AudioSha256": "5fceacff0315d49cb59fcc505bcecf1ed5f2f35c2897b1e65a59f30e5d922150",
+  "ReferencePath": null,
+  "Engine": "native-sherpa-onnx/parakeettransducer",
+  "Model": "parakeet-v2-en-int8",
+  "Runs": 2,
+  "Provider": {
+    "Requested": "cpu",
+    "LoadedRuntime": "cpu",
+    "CudaPackInstalled": true,
+    "CudaPackVerified": true,
+    "NvidiaRuntimeComplete": true,
+    "DirectMlAvailable": false,
+    "Telemetry": {
+      "LastActiveProvider": "cpu",
+      "LastFallbackReason": null,
+      "LastModelLoadMs": 1908,
+      "LastWarmInferenceMs": null,
+      "LastWarmAudioMs": null,
+      "LastGpuEvidence": null,
+      "RecentAttempts": [
+        {
+          "Role": "OfflineTranscription",
+          "Provider": "cpu",
+          "ModelId": "parakeet-v2-en-int8",
+          "Succeeded": true,
+          "ElapsedMs": 1908,
+          "Detail": "Active provider: cpu."
+        }
+      ]
+    }
+  },
+  "SherpaOnnxRuntime": {
+    "IsAvailable": true,
+    "IsCudaCapable": false,
+    "SelectedRuntime": "cpu",
+    "RuntimeDirectory": null,
+    "GpuDependencyCacheDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9",
+    "Diagnostic": "CPU only was requested, so the CUDA bundle was not considered.\r\nCPU Sherpa runtime loaded from C:\\Users\\USER\\projects\\muesli\\windows-native\\Muesli.Windows.CommandHost\\bin\\Debug\\net10.0-windows\\runtimes\\win-x64\\native."
+  },
+  "Report": {
+    "Summary": "Parakeet v2 English INT8 \u00B7  \u00B7 730 ms warm wall \u00B7 RTF 0.098 \u00B7 deterministic yes",
+    "LaunchRecommendation": "Audio: 0.wav\r\nBackend: native-sherpa-onnx/parakeettransducer\r\nModel: parakeet-v2-en-int8\r\nProvider: cpu; device: ; compute: ; model reused: True",
+    "Results": [
+      {
+        "EngineId": "native-sherpa-onnx/parakeettransducer",
+        "ModelName": "parakeet-v2-en-int8",
+        "AudioDurationMs": 7435,
+        "FirstRunWallMs": 2643,
+        "FirstRunModelInitMs": 1908,
+        "WarmInferenceMs": 728,
+        "WarmWallMs": 730,
+        "RealtimeFactor": 0.09818426361802286,
+        "TranscriptCharacterCount": 121,
+        "SegmentCount": 2,
+        "HasUsefulTimestamps": true,
+        "TimestampRange": "400-7120 ms",
+        "FirstRunBackend": "cpu",
+        "WarmBackend": "cpu",
+        "ThreadCount": 8,
+        "AudioPreprocessing": "in-memory 16 kHz mono conversion (1 ms)",
+        "AudioPreprocessingMs": 0,
+        "Success": true,
+        "ErrorMessage": "",
+        "RunCount": 2,
+        "TranscriptSha256": "2694e4b1f9cc793d2ac72357e9f74f8e33d109268e00371cb8ce6fa8d8f66502",
+        "DistinctTranscriptCount": 1,
+        "DeterministicOutput": true,
+        "SegmentLayoutSha256": "95926b2ff3e35901c119a4cf84c0cfabf2724e312bcda1ba75700d78b1e75fec",
+        "DistinctSegmentLayoutCount": 1,
+        "DeterministicSegments": true,
+        "SegmentsChronological": true,
+        "SegmentTextMatchesTranscript": true,
+        "MaximumSegmentDurationMs": 4560,
+        "Device": "",
+        "ComputeType": "",
+        "ModelInstanceReused": true,
+        "ReportedTranscriptionWallMs": 0,
+        "WordErrorRate": null,
+        "CharacterErrorRate": null,
+        "InitializationWallMs": 1917,
+        "ModelVerificationMs": 0,
+        "ModelVerificationSource": ""
+      }
+    ]
+  }
+}

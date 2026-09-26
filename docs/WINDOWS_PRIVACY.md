@@ -16,10 +16,11 @@ The About page includes an explicit capture-inspection action for legacy or inte
 
 - Offline ASR and speaker-diarization models download only after an explicit user action from pinned HTTPS release URLs into `%USERPROFILE%\.cache\muesli`. Archives and every ASR file required at runtime are SHA-256 verified before native initialization. Choosing a dictation or final-meeting role does not access the network.
 - Live transcription is off by default. Preparing Nemotron 3.5 and Silero is an explicit network download into `%APPDATA%\muesli\streaming-models`; preparing does not select or enable live transcription. Archive, ASR-file, and VAD SHA-256 hashes are pinned and verified. Once prepared, live preview, VAD, final ownership, and measured-gap recovery run locally and do not send audio or transcript text over the network.
-- Optional Qwen/GGUF cleanup is disabled by default and uses a model the user places in the local cache.
+- Optional Qwen/GGUF cleanup is disabled by default. Models offers explicit download and verification; existing manually placed GGUF files remain usable.
 - The **local** summary provider keeps meeting summarization on the device.
+- **Ollama**, **LM Studio**, and the **Custom HTTP** provider send the transcript only to the endpoint you configure. On a loopback (localhost) endpoint nothing leaves the machine; pointing any of them at a non-loopback host is disclosed in the UI as leaving the machine. LM Studio needs no credential.
 - Selecting **OpenAI** or **OpenRouter** sends the full meeting transcript and the selected summary instructions to that provider. Their service terms and privacy policies then apply. Provider failures are disclosed in the UI and Muesli preserves the transcript while producing a local fallback summary.
-- API keys can come from `OPENAI_API_KEY` or `OPENROUTER_API_KEY`. Keys entered in the UI are masked and stored in Windows Credential Manager for the current Windows user; they are not written to `windows-settings.json`.
+- API keys can come from `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `MUESLI_CUSTOM_LLM_API_KEY`. Keys entered in the UI are masked and stored in Windows Credential Manager for the current Windows user (the custom HTTP key under `custom-llm-api-key`); they are not written to `windows-settings.json`.
 
 ## Meeting detection
 

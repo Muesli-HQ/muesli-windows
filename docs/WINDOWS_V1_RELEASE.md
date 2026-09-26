@@ -2,7 +2,7 @@
 
 ## Release policies (v1 / 0.3.0 beta)
 
-- **Updates are manual.** Muesli does not check for, download, or install updates automatically. Release notes and the project page are the update channel.
+- **Updates are manual.** Muesli can check a signed update manifest and download/verify a package, but automatic installation is disabled until a production signing identity exists. Release notes and the project page remain the update channel.
 - **No audio interference.** Muesli records without pausing or ducking unrelated media.
 - **PDF export is disabled** (`PdfExportApproved=false`) pending an explicit QuestPDF Community-license eligibility decision. Markdown export remains available; PDF must not be advertised.
 - **Support/privacy publication and production signing are not final.** Public support and privacy URLs are pending, the package carries the development publisher, and it is unsigned until a production signing identity is configured.
@@ -53,12 +53,18 @@ the package carries ARM64/foreign or CUDA content.
 
 ## Known Limits
 
-- The public Wave 0 package includes the CPU Sherpa provider only. It does not
-  claim NVIDIA acceleration. CUDA remains optional external staging until L11
-  qualifies a version-matched provider. Timestamped segments support recorded
+- The public package includes the **CPU Sherpa provider only**. It does not
+  claim NVIDIA acceleration. NVIDIA CUDA is an optional, SHA-256-verified
+  acceleration pack downloaded from the pinned sherpa-onnx 1.13.4 release into
+  `%LOCALAPPDATA%\muesli`; it requires a user-supplied CUDA 12 / cuDNN 9 runtime and
+  is only reported active after a real warm-up inference proves which execution
+  provider executed the graph. DirectML is not offered: the pinned Windows
+  sherpa-onnx build was compiled without `SHERPA_ONNX_ENABLE_DIRECTML` and logs
+  `DirectML is for Windows only. Fallback to cpu!`, so Muesli never labels CPU
+  inference as DirectML. Timestamped segments support recorded
   meetings and speaker-diarization alignment.
 - Qwen cleanup has a native v1 runtime path.
-- Qwen cleanup is disabled by default and needs a compatible GGUF model in the native-cleanup cache.
+- Qwen cleanup is disabled by default and needs an explicitly installed and selected GGUF model. Existing manually placed compatible files remain usable.
 - System loopback capture can be blocked by some Windows audio/device setups; mic recording still works.
 - First use of a model requires network access unless the model is already cached.
 - Installer is not code-signed until a signing certificate is configured.

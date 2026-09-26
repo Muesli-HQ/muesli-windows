@@ -1,0 +1,90 @@
+{
+  "SchemaVersion": 1,
+  "CreatedAtUtc": "2026-09-20T15:34:40.3492679+00:00",
+  "AudioPath": "C:\\Users\\USER\\.cache\\muesli\\native-asr\\sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17\\test_wavs\\en.wav",
+  "AudioSha256": "eb1eb008904465b74c304aad8342e8c7d3c6e61ffe9f66adcaca9cf0f76a93f4",
+  "ReferencePath": null,
+  "Engine": "native-sherpa-onnx/sensevoice",
+  "Model": "sensevoice-small-int8",
+  "Runs": 2,
+  "Provider": {
+    "Requested": "cpu",
+    "LoadedRuntime": "cpu",
+    "CudaPackInstalled": true,
+    "CudaPackVerified": true,
+    "NvidiaRuntimeComplete": true,
+    "DirectMlAvailable": false,
+    "Telemetry": {
+      "LastActiveProvider": "cpu",
+      "LastFallbackReason": null,
+      "LastModelLoadMs": 1056,
+      "LastWarmInferenceMs": null,
+      "LastWarmAudioMs": null,
+      "LastGpuEvidence": null,
+      "RecentAttempts": [
+        {
+          "Role": "OfflineTranscription",
+          "Provider": "cpu",
+          "ModelId": "sensevoice-small-int8",
+          "Succeeded": true,
+          "ElapsedMs": 1056,
+          "Detail": "Active provider: cpu."
+        }
+      ]
+    }
+  },
+  "SherpaOnnxRuntime": {
+    "IsAvailable": true,
+    "IsCudaCapable": false,
+    "SelectedRuntime": "cpu",
+    "RuntimeDirectory": null,
+    "GpuDependencyCacheDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9",
+    "Diagnostic": "CPU only was requested, so the CUDA bundle was not considered.\r\nCPU Sherpa runtime loaded from C:\\Users\\USER\\projects\\muesli\\windows-native\\Muesli.Windows.CommandHost\\bin\\Debug\\net10.0-windows\\runtimes\\win-x64\\native."
+  },
+  "Report": {
+    "Summary": "SenseVoice Small INT8 \u00B7  \u00B7 150 ms warm wall \u00B7 RTF 0.021 \u00B7 deterministic yes",
+    "LaunchRecommendation": "Audio: en.wav\r\nBackend: native-sherpa-onnx/sensevoice\r\nModel: sensevoice-small-int8\r\nProvider: cpu; device: ; compute: ; model reused: True",
+    "Results": [
+      {
+        "EngineId": "native-sherpa-onnx/sensevoice",
+        "ModelName": "sensevoice-small-int8",
+        "AudioDurationMs": 7152,
+        "FirstRunWallMs": 1254,
+        "FirstRunModelInitMs": 1056,
+        "WarmInferenceMs": 147,
+        "WarmWallMs": 150,
+        "RealtimeFactor": 0.02097315436241611,
+        "TranscriptCharacterCount": 81,
+        "SegmentCount": 1,
+        "HasUsefulTimestamps": true,
+        "TimestampRange": "900-7100 ms",
+        "FirstRunBackend": "cpu",
+        "WarmBackend": "cpu",
+        "ThreadCount": 8,
+        "AudioPreprocessing": "in-memory 16 kHz mono conversion (1 ms)",
+        "AudioPreprocessingMs": 0,
+        "Success": true,
+        "ErrorMessage": "",
+        "RunCount": 2,
+        "TranscriptSha256": "362fcb5525e4588662701f5c914f1a416362a29e2a53acd2cdb0bac4b6a724b8",
+        "DistinctTranscriptCount": 1,
+        "DeterministicOutput": true,
+        "SegmentLayoutSha256": "293f25dd3a03d3a1975582d096c4267c2e28f828f2a7d0e405f8c2eee5e9ab1e",
+        "DistinctSegmentLayoutCount": 1,
+        "DeterministicSegments": true,
+        "SegmentsChronological": true,
+        "SegmentTextMatchesTranscript": true,
+        "MaximumSegmentDurationMs": 6200,
+        "Device": "",
+        "ComputeType": "",
+        "ModelInstanceReused": true,
+        "ReportedTranscriptionWallMs": 0,
+        "WordErrorRate": null,
+        "CharacterErrorRate": null,
+        "InitializationWallMs": 1063,
+        "ModelVerificationMs": 0,
+        "ModelVerificationSource": ""
+      }
+    ]
+  }
+}

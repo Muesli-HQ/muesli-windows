@@ -86,8 +86,8 @@ fresh-launch log evidence.
 
 ## Limitations
 
-- Supported ASR families use the packaged CPU provider. The Wave 0 package does not claim NVIDIA acceleration; a version-matched CUDA provider remains a Wave 5 packaging and hardware-qualification task.
-- Qwen cleanup is disabled by default until a GGUF model is placed in the native-cleanup cache.
+- Supported ASR families use the **packaged CPU provider** by default. The public package **does not claim NVIDIA acceleration** and includes no NVIDIA or DirectML binaries. NVIDIA CUDA is available as an optional, SHA-256-verified acceleration pack downloaded from the pinned sherpa-onnx 1.13.4 release into `%LOCALAPPDATA%\muesli`; it needs a user-supplied CUDA 12 / cuDNN 9 runtime and is only reported active after a real warm-up inference proves it. DirectML is not offered because the pinned sherpa-onnx Windows build has no DirectML execution provider and silently falls back to CPU.
+- Local cleanup models are managed from Models → Cleanup with explicit download, SHA-256 verification, retry, cancel, and delete. Qwen cleanup stays disabled in Settings until a model is installed and selected; placing a GGUF manually in the cache still works for existing installs.
 - Process-targeted loopback requires Windows build 20348 or newer and a live detected-process ID. When Windows blocks it, Muesli visibly falls back to render-endpoint loopback, which can include unrelated system sounds; mic recording can continue in a disclosed degraded state.
 - Preparing a missing model requires an explicit network-backed download. Transcription itself fails closed when the selected role is missing or unverified.
 - Live meeting transcription is off by default. The explicit Nemotron 3.5 option has passed packaged Windows real-inference and Silero-boundary qualification; preparing it is network-backed and never enables it automatically. Long physical-meeting, Bluetooth, route-change, CUDA-live, and human multilingual qualification remain open.

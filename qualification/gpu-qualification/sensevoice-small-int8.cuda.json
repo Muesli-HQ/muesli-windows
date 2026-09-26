@@ -1,0 +1,90 @@
+{
+  "SchemaVersion": 1,
+  "CreatedAtUtc": "2026-09-20T15:35:05.2825759+00:00",
+  "AudioPath": "C:\\Users\\USER\\.cache\\muesli\\native-asr\\sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17\\test_wavs\\en.wav",
+  "AudioSha256": "eb1eb008904465b74c304aad8342e8c7d3c6e61ffe9f66adcaca9cf0f76a93f4",
+  "ReferencePath": null,
+  "Engine": "native-sherpa-onnx/sensevoice",
+  "Model": "sensevoice-small-int8",
+  "Runs": 2,
+  "Provider": {
+    "Requested": "cuda",
+    "LoadedRuntime": "cuda",
+    "CudaPackInstalled": true,
+    "CudaPackVerified": true,
+    "NvidiaRuntimeComplete": true,
+    "DirectMlAvailable": false,
+    "Telemetry": {
+      "LastActiveProvider": "cuda",
+      "LastFallbackReason": null,
+      "LastModelLoadMs": 1976,
+      "LastWarmInferenceMs": null,
+      "LastWarmAudioMs": null,
+      "LastGpuEvidence": null,
+      "RecentAttempts": [
+        {
+          "Role": "OfflineTranscription",
+          "Provider": "cuda",
+          "ModelId": "sensevoice-small-int8",
+          "Succeeded": true,
+          "ElapsedMs": 1976,
+          "Detail": "Active provider: cuda."
+        }
+      ]
+    }
+  },
+  "SherpaOnnxRuntime": {
+    "IsAvailable": true,
+    "IsCudaCapable": true,
+    "SelectedRuntime": "cuda",
+    "RuntimeDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda\\sherpa-onnx-1.13.4-cuda12-cudnn9-win-x64",
+    "GpuDependencyCacheDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9",
+    "Diagnostic": "CUDA-capable Sherpa runtime 1.13.4 loaded from C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda\\sherpa-onnx-1.13.4-cuda12-cudnn9-win-x64.\r\nNVIDIA dependency directories: C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9; C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda\\sherpa-onnx-1.13.4-cuda12-cudnn9-win-x64.\r\nCUDA 12.x and cuDNN 9.x dependency checks passed.\r\nGPU inference is only claimed after a real model warm-up inference confirms the execution provider."
+  },
+  "Report": {
+    "Summary": "SenseVoice Small INT8 \u00B7  \u00B7 144 ms warm wall \u00B7 RTF 0.020 \u00B7 deterministic yes",
+    "LaunchRecommendation": "Audio: en.wav\r\nBackend: native-sherpa-onnx/sensevoice\r\nModel: sensevoice-small-int8\r\nProvider: cuda; device: ; compute: ; model reused: True",
+    "Results": [
+      {
+        "EngineId": "native-sherpa-onnx/sensevoice",
+        "ModelName": "sensevoice-small-int8",
+        "AudioDurationMs": 7152,
+        "FirstRunWallMs": 2431,
+        "FirstRunModelInitMs": 1976,
+        "WarmInferenceMs": 141,
+        "WarmWallMs": 144,
+        "RealtimeFactor": 0.020134228187919462,
+        "TranscriptCharacterCount": 81,
+        "SegmentCount": 1,
+        "HasUsefulTimestamps": true,
+        "TimestampRange": "900-7152 ms",
+        "FirstRunBackend": "cuda",
+        "WarmBackend": "cuda",
+        "ThreadCount": 4,
+        "AudioPreprocessing": "in-memory 16 kHz mono conversion (1 ms)",
+        "AudioPreprocessingMs": 0,
+        "Success": true,
+        "ErrorMessage": "",
+        "RunCount": 2,
+        "TranscriptSha256": "362fcb5525e4588662701f5c914f1a416362a29e2a53acd2cdb0bac4b6a724b8",
+        "DistinctTranscriptCount": 1,
+        "DeterministicOutput": true,
+        "SegmentLayoutSha256": "e08c5274062ded593ad32f33a0623a8834a61aa97f44afbb4af6fe072b2426f6",
+        "DistinctSegmentLayoutCount": 1,
+        "DeterministicSegments": true,
+        "SegmentsChronological": true,
+        "SegmentTextMatchesTranscript": true,
+        "MaximumSegmentDurationMs": 6252,
+        "Device": "",
+        "ComputeType": "",
+        "ModelInstanceReused": true,
+        "ReportedTranscriptionWallMs": 0,
+        "WordErrorRate": null,
+        "CharacterErrorRate": null,
+        "InitializationWallMs": 2037,
+        "ModelVerificationMs": 0,
+        "ModelVerificationSource": ""
+      }
+    ]
+  }
+}

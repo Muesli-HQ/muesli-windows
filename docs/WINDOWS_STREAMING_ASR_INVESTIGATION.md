@@ -31,4 +31,33 @@ Re-run from an empty `%APPDATA%\muesli\streaming-models` cache to confirm the ar
 - a full `MeetingLiveTranscriptionSession` run committed that text only at the VAD boundary, showed a provisional tail beforehand, reported the correct model ID and ownership, and recorded no `streaming-engine-failure`;
 - measured CPU real-time factor **0.42** (about 2.4× faster than real time) on this machine's CPU provider. Packets dropped during that run came from the harness feeding roughly twenty times faster than real time to exercise the bounded queue, not from capture.
 
-Open qualification: long physical meetings, Bluetooth/default-route transitions, simultaneous process-target capture, CPU thermal/memory soak, CUDA live inference (the live recognizer pins `provider = "cpu"`), and human multilingual accuracy review. One fixture on one machine is not a hardware matrix, so a broad “fully verified on all Windows hardware” claim remains unsupported.
+Open qualification: long physical meetings, Bluetooth/default-route transitions, simultaneous process-target capture, CPU thermal/memory soak, and human multilingual accuracy review. One fixture on one machine is not a hardware matrix, so a broad “fully verified on all Windows hardware” claim remains unsupported.
+
+
+## CUDA live inference, 2026-09-20
+
+The live recognizer no longer pins `provider = "cpu"`. It resolves its provider through
+`ExecutionProviderService` and honours an explicit NVIDIA CUDA selection. The measured
+result on the qualification machine (RTX 4070 Laptop, driver 610.88) is that **CPU is
+faster**, so Automatic keeps live transcription on CPU:
+
+| Provider | Audio | Committed segments | Gaps | Dropped packets | Processing | RTF |
+|---|---:|---:|---:|---:|---:|---:|
+| CPU | 3845 ms | 1 | 0 | 0 | 2919 ms | 0.759 |
+| CUDA | 3845 ms | 1 | 0 | 0 | 3475 ms | 0.904 |
+
+The CUDA run also produced a different committed transcript for the same audio, and CUDA
+adds roughly one second of recognizer initialization. An explicit CUDA selection is still
+honoured and is reported truthfully; it is simply not the automatic choice.
+
+Silero VAD remains pinned to CPU in every configuration, including when the recognizer
+runs on CUDA. It evaluates one 512-sample window per packet on a single thread; moving
+that to the GPU would add transfer and context cost on the latency-critical path for no
+measurable benefit. This is a deliberate, measured decision, not an unimplemented path.
+
+Reproduce with:
+
+```powershell
+Muesli.Windows.CommandHost.exe --benchmark-live --audio <wav> --provider cpu  --output live-cpu.json
+Muesli.Windows.CommandHost.exe --benchmark-live --audio <wav> --provider cuda --output live-cuda.json
+```

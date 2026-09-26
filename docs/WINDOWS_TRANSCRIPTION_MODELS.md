@@ -31,7 +31,29 @@ The runnable Windows catalog contains twelve sherpa-onnx offline choices aligned
 - Qwen3-ASR 0.6B INT8
 - Cohere Transcribe INT8 (English selected)
 
-macOS CoreML, WhisperKit, FluidAudio, and LiteRT identifiers are not Windows runtime choices. The public Wave 0 package ships the CPU sherpa-onnx provider only. CUDA-to-CPU provider fallback remains within the same sherpa-onnx engine and selected model when an externally staged matching CUDA bundle is present; there is no cross-engine fallback. NVIDIA packaging is L11 and is not a public-package claim.
+macOS CoreML, WhisperKit, FluidAudio, and LiteRT identifiers are not Windows runtime choices. The public package ships the CPU sherpa-onnx provider only. An optional, SHA-256-verified NVIDIA CUDA acceleration pack can be downloaded from Models; it needs a user-supplied CUDA 12 / cuDNN 9 runtime and is only reported active after a real warm-up inference proves which provider executed the graph. CUDA-to-CPU provider fallback remains within the same sherpa-onnx engine and the same selected model; there is no cross-engine and no cross-model fallback. See `docs/L11_CUDA_PROVENANCE_GAP.md` and `docs/WINDOWS_GPU_QUALIFICATION.md`.
+
+## Execution provider selection
+
+`ExecutionProviderService` is the single policy point for dictation, recorded meeting
+finalization, imported media, live Nemotron transcription, gap recovery, and diarization.
+
+| Setting | Behavior |
+|---|---|
+| Automatic (default) | Attempts CUDA only for architectures where the shipping benchmark measured a meaningful warm-inference win (Whisper, Parakeet transducer), then falls back to CPU for the same model. Ties and regressions (Parakeet v3, SenseVoice, Cohere Transcribe, Qwen3-ASR, live Nemotron) stay on CPU. |
+| CPU only | Always uses the packaged CPU runtime. |
+| NVIDIA CUDA | Attempts CUDA for every role, including architectures Automatic keeps on CPU; CPU remains the last resort so the model still runs. |
+
+DirectML is not offered: the pinned sherpa-onnx 1.13.4 Windows build has no DirectML
+execution provider and a `directml` request silently runs on CPU. See the L11 document.
+
+Switching between the CPU and CUDA native runtimes requires an app restart because both
+cannot be loaded safely in one process. Models shows an explicit restart-required state
+with a "Restart Muesli" action and never applies a provider change silently.
+
+Provider and syntax details for diagnostics live in
+`Muesli.Windows.CommandHost --acceleration-status`; measurements live in
+`qualification/gpu-qualification/`.
 
 ## Lifecycle and integrity
 
@@ -43,7 +65,18 @@ Every archive URL and archive SHA-256 is pinned in `TranscriptionModelCatalog`. 
 
 Deletion first waits for dictation/final role inference and releases matching recognizers, then serializes against preparation and deletes only that model directory. A locked or unauthorized directory produces Deletion failed and remains retryable.
 
-The separate live catalog currently contains only multilingual Nemotron 3.5 Streaming 560 ms INT8 plus the pinned Silero VAD artifact. Both executed successfully through the packaged Windows sherpa-onnx DLLs. macOS CoreML Parakeet Realtime EOU is not presented as a Windows choice.
+The separate live catalog currently contains only multilingual Nemotron 3.5 Streaming 560 ms INT8 plus the pinned Silero VAD artifact. Both executed successfully through the packaged Windows sherpa-onnx DLLs. macOS CoreML Parakeet Realtime EOU is not presented as a Windows choice; the artifact blocker is recorded in `docs/WINDOWS_MACOS_MODEL_PARITY.md`.
+
+## Local cleanup models
+
+The Cleanup category of the Models page manages three pinned GGUF models with guided
+download, SHA-256 verification, prepare/cancel/retry/verify/delete, installed size, status,
+and selection without automatic activation. S1-mini keeps its fixed control-line prompt;
+the other two use Muesli's configurable cleanup instructions. A `*.gguf` that a user
+placed in `%USERPROFILE%\.cache\muesli\native-cleanup` by hand keeps working until a
+catalog model is explicitly selected. Windows cleanup runs on the LLamaSharp CPU backend;
+the GPU-offload path is not offered because the measured cleanup workloads are small and
+the CUDA llama.cpp backend is not part of the pinned package.
 
 ## Settings migration
 

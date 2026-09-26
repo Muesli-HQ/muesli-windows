@@ -193,28 +193,34 @@ download.
   k2-fsa release.
 - Included text: `licenses/CC-BY-4.0.txt`.
 
-## Optional NVIDIA acceleration dependencies (not in the public package)
+## Optional NVIDIA acceleration pack (not in the public package)
 
-Public Wave 0 package includes the CPU Sherpa provider only. NVIDIA CUDA is not
-included. A version-matched CUDA provider is optional external staging and is not
-shipped until L11 qualifies it.
+Public package includes the CPU Sherpa provider only. NVIDIA CUDA and DirectML are
+not included. The optional NVIDIA CUDA acceleration pack is a separate,
+SHA-256-verified download from the pinned sherpa-onnx 1.13.4 release and is never
+**shipped** inside this package.
 
 The public package does **not** include the version-matched sherpa-onnx CUDA
-provider, the NVIDIA CUDA Toolkit, cuDNN, or `onnxruntime_providers_cuda.dll`.
+provider, the NVIDIA CUDA Toolkit, cuDNN, `onnxruntime_providers_cuda.dll`, or
+`onnxruntime_providers_shared.dll`. Those files are also **not shipped** in the ZIP
+or installer; Muesli downloads the Apache-2.0 sherpa-onnx CUDA binaries into
+`%LOCALAPPDATA%\muesli\native-sherpa-cuda\<pack version>` only after the user asks
+for NVIDIA acceleration from Models, and only after the download matches the pinned
+archive SHA-256 and every installed file matches its pinned SHA-256.
 
-CUDA remains optional external staging. `scripts/install-parakeet-cuda-runtime.ps1`
-and any matching sherpa-onnx CUDA bundle are **not shipped** in the ZIP or installer
-until module L11 acquires, packages, and qualifies a version-matched provider.
-Until then:
+NVIDIA CUDA Toolkit and cuDNN remain user-supplied. Muesli never downloads, stages,
+or redistributes them. Rules that stay in force:
 
 - do not describe the public or primary package as CUDA-capable or NVIDIA-accelerated;
 - an incomplete or unmanifested CUDA directory must be rejected at runtime;
-- NVIDIA DLLs must not appear in the public package inventory.
+- NVIDIA DLLs must not appear in the public package inventory;
+- a GPU provider may only be reported as active after a real warm-up inference on
+  this machine proves which provider executed the graph.
 
-If a later release stages a complete matching bundle, that work is L11. The optional
-staging script copies selected CUDA 12 DLLs from a user-installed CUDA Toolkit and
-can download the pinned official cuDNN 9.10.2.21 archive from NVIDIA over HTTPS after
-the user runs the script. That path is opt-in and is not a public-package feature.
+`scripts/install-parakeet-cuda-runtime.ps1` remains the opt-in helper that copies
+selected CUDA 12 DLLs from a user-installed CUDA Toolkit and can download the pinned
+official cuDNN 9.10.2.21 archive from NVIDIA over HTTPS. That path is not a
+public-package feature.
 
 CUDA Toolkit and cuDNN are governed by NVIDIA's applicable license terms, not by an
 open-source license in this repository. Users and distributors must review and accept the
