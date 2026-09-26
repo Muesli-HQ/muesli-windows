@@ -100,7 +100,7 @@ titles and transcript text are neither captured nor persisted by this gate.
 
 ## Manual route and lifecycle matrix
 
-In the visible WPF app, exercise the selected microphone, System default,
+In the packaged WinUI app, exercise the selected microphone, System default,
 default-device change while recording, explicit device disconnect, Bluetooth
 hands-free profile loss/reappearance, silence, background noise, Escape cancel
 during capture, Escape cancel during transcription, hands-free click-to-stop,
@@ -117,6 +117,20 @@ no transcript text, window title, `ERROR`, `Unhandled UI exception`, or
 an unrecovered route failure is not a passing qualification.
 
 ## Current evidence state
+
+A 2026-09-26 long-form timing probe repeated the pinned Parakeet v3 test WAV to
+61.52 seconds of synthetic speech and decoded it through `Muesli.Windows.CommandHost
+--benchmark-native` on this machine's CPU provider. Warm inference took **5.10 s**;
+warm wall time was **5.18 s**; the first run including model initialization took
+**7.36 s** (2.00 s model initialization). This measures the model, not microphone
+stop, optional text cleanup, persistence, or active-app paste. The selected
+production settings were Parakeet v3, Automatic provider, and local cleanup off.
+Dictation warms the offline model while recording but starts the actual
+transcription on shortcut release; incremental transcription currently belongs
+to the opt-in live meeting path. The current app logs privacy-safe
+`captureStopMs`, `asrWallMs`, `textPipelineMs`, `persistenceMs`, `deliveryMs`, and
+`totalMs` for a real dictation. A perceived 30-second release-to-paste delay
+needs a fresh one-minute trace before changing the model or pipeline.
 
 The repository supplies the schema enforcement, CPU/CUDA runner, paste-target
 runner, unit tests, and privacy gates. The human-reviewed audio/reference corpus
