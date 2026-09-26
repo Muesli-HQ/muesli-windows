@@ -702,4 +702,3 @@ public sealed class WindowsUiAutomationLocalAdapter : IApprovedLocalUiAutomation
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 }
-
