@@ -14,30 +14,30 @@ moving branch. The pin lives in `windows-native/shared-core.lock.json`:
 }
 ```
 
-`revision` is intentionally empty on this branch. An empty revision:
+`revision` is intentionally empty because the proposed macOS bridge PR was withdrawn at the
+user's request. An empty revision:
 - fails `.github/workflows/windows-ci.yml` at the "Read pinned shared-core revision" step;
 - fails local release packaging (`scripts/rehearse-windows-release.ps1` and
   `scripts/build-signed-release.ps1`) unless development explicitly opts into the unpinned
   `MUESLI_SHARED_CORE_PACKAGE` override, in which case it emits a loud warning and the resulting
   build is tagged `sharedCoreReleaseEvidence=false` in the rehearsal report.
 
-## Exact user step to pin
+## Pin only after an approved upstream source exists
 
-1. In the shared Swift/macOS checkout (`C:\Users\madha\Downloads\muesli-main\muesli-main`),
-   commit the pending `native/MuesliNative` changes on `main` (or the intended release branch).
-2. Take the committed SHA:
+1. Obtain a reviewed commit already reachable from `Muesli-HQ/muesli` that contains the
+   ABI Windows requires (capabilities bitmask `3`: persistence and text processing).
+   A local commit or a deleted fork branch is not a valid release pin.
+2. Take that upstream commit's 40-character SHA:
 
    ```powershell
-   git -C C:\Users\madha\Downloads\muesli-main\muesli-main rev-parse HEAD
+   git -C C:\Users\madha\Downloads\muesli-main\muesli-main rev-parse origin/main
    ```
 
-3. Confirm the commit contains the ABI the Windows bridge requires (capabilities bitmask `3`:
-   persistence + text processing) and that the commit is reachable from the configured
-   `repository`/`packagePath`.
+3. Confirm the commit is reachable from the configured `repository`/`packagePath`.
 4. Write the 40-character SHA into `windows-native/shared-core.lock.json`:
 
    ```powershell
-   $sha = git -C C:\Users\madha\Downloads\muesli-main\muesli-main rev-parse HEAD
+   $sha = git -C C:\Users\madha\Downloads\muesli-main\muesli-main rev-parse origin/main
    # edit windows-native/shared-core.lock.json: "revision": "<$sha>"
    ```
 
