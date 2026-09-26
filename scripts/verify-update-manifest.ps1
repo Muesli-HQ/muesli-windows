@@ -23,6 +23,13 @@ $manifest = Get-Content -LiteralPath $resolvedManifest -Raw | ConvertFrom-Json
 if ([int]$manifest.schemaVersion -ne 1 -or [string]$manifest.contract -ne "muesli.windows.update-channel") {
     throw "Unsupported update manifest contract or schema."
 }
+$minimumSupported = [string]$manifest.minimumSupportedVersion
+if (-not [string]::IsNullOrWhiteSpace($minimumSupported)) {
+    $parsedMinimum = $null
+    if (-not [version]::TryParse($minimumSupported.Trim().TrimStart('v'), [ref]$parsedMinimum)) {
+        throw "Update manifest minimumSupportedVersion is not a valid version: '$minimumSupported'."
+    }
+}
 $mode = [string]$manifest.signing.mode
 if (-not [string]::IsNullOrWhiteSpace($ExpectedSigningMode) -and $mode -ne $ExpectedSigningMode) {
     throw "Update manifest signing mode '$mode' did not match expected '$ExpectedSigningMode'."

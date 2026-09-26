@@ -2,6 +2,21 @@
 # Production signing is performed only by sign-windows-release.ps1.
 # Do not claim CUDA is included in the public package.
 
+function Get-MuesliRelativePath {
+    param(
+        [Parameter(Mandatory = $true)][string]$BasePath,
+        [Parameter(Mandatory = $true)][string]$TargetPath
+    )
+
+    # Windows PowerShell 5.1 runs on .NET Framework, where Path.GetRelativePath does not exist.
+    # Uri.MakeRelativeUri keeps the release scripts compatible with both powershell.exe and pwsh.
+    $baseFull = [IO.Path]::GetFullPath($BasePath).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $targetFull = [IO.Path]::GetFullPath($TargetPath)
+    $baseUri = [Uri]::new($baseFull)
+    $targetUri = [Uri]::new($targetFull)
+    return [Uri]::UnescapeDataString($baseUri.MakeRelativeUri($targetUri).ToString()).Replace('/', [IO.Path]::DirectorySeparatorChar)
+}
+
 function Get-MuesliRepoRootFromScript {
     param([string]$ScriptRoot)
     return (Resolve-Path (Join-Path $ScriptRoot "..")).Path
@@ -445,8 +460,8 @@ function Get-MuesliReleaseLegalProductGates {
             id = "UPD-01"
             area = "Update channel"
             status = "ManualUpdatesForV1"
-            detail = "Release-side update manifest signing/verification exists; there is no app-side check/download/install/rollback."
-            launchClaim = "v1 updates are manual; the app does not auto-update."
+            detail = "Release-side manifest signing/verification and an app-side check/verify/download/rollback workflow exist; automatic installation stays disabled until the production Authenticode certificate exists (D5), so v1 updates install manually."
+            launchClaim = "v1 updates are manual: the app can check and verify a signed manifest, but does not auto-install."
             disableSwitch = ""
         },
         [ordered]@{
@@ -613,7 +628,7 @@ function Get-MuesliDirectoryContentInventory {
     }
     $files = [System.Collections.Generic.List[object]]::new()
     foreach ($file in @(Get-ChildItem -LiteralPath $resolved -Recurse -File -Force | Sort-Object FullName)) {
-        $relative = [IO.Path]::GetRelativePath($resolved, $file.FullName).Replace('\', '/')
+        $relative = (Get-MuesliRelativePath -BasePath $resolved -TargetPath $file.FullName).Replace('\', '/')
         $hashBytes = [IO.File]::ReadAllBytes($file.FullName)
         if ([IO.Path]::GetFileName($relative) -eq "native-runtime-inventory.json") {
             try {

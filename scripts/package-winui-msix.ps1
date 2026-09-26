@@ -32,6 +32,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'release-common.ps1')
 $project = Join-Path $repoRoot 'windows-native\Muesli.Windows.WinUI\Muesli.Windows.WinUI.csproj'
 if (-not (Test-Path $project)) { throw "WinUI project not found at $project" }
 
@@ -156,7 +157,7 @@ function Rebuild-MsixPayload {
         # Reject foreign-RID content last, after the staged bridge/companion copies, so a win-x64
         # package can never carry ARM64/x86/foreign runtimes from any source.
         $foreign = @(Get-ChildItem -LiteralPath $scratch -Recurse -File -Force | Where-Object {
-            Test-ForeignRidPath -RelativePath ([IO.Path]::GetRelativePath($scratch, $_.FullName))
+            Test-ForeignRidPath -RelativePath (Get-MuesliRelativePath -BasePath $scratch -TargetPath $_.FullName)
         })
         foreach ($file in $foreign) { Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue }
         if ($foreign.Count -gt 0) {
@@ -172,11 +173,25 @@ function Rebuild-MsixPayload {
 }
 
 $makeAppx = Get-MakeAppxPath
-$primaryMsix = Get-ChildItem -Path $OutputDirectory -Recurse -Filter 'Muesli.Windows.WinUI_*.msix' -ErrorAction SilentlyContinue | Select-Object -First 1
+$primaryMsix = Get-ChildItem -Path $OutputDirectory -Recurse -File -Filter 'Muesli.Windows.WinUI_*.msix' -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' } |
+    Sort-Object LastWriteTimeUtc -Descending |
+    Select-Object -First 1
 $looseNames = Get-ChildItem (Join-Path $repoRoot "windows-native\Muesli.Windows.WinUI\bin\x64\$Configuration") -Recurse -Filter 'muesli-swift-bridge-files.txt' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($primaryMsix -and $looseNames -and $makeAppx) {
     if (Rebuild-MsixPayload -MsixPath $primaryMsix.FullName -LooseDir (Split-Path -Parent $looseNames.FullName) -MakeAppx $makeAppx -RepoRoot $repoRoot) {
         Write-Host "Added the shared Swift bridge/runtime and WPF companion, pruned foreign-RID content, and included notices/licenses." -ForegroundColor Cyan
+    }
+
+    # Publish one stable top-level filename. Selecting the first recursive result previously
+    # repacked an older artifact while leaving the package produced by this build untouched.
+    [xml]$versionProperties = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Build.props') -Raw
+    $productVersion = [string]($versionProperties.Project.PropertyGroup.MuesliVersion | Select-Object -First 1)
+    if ([string]::IsNullOrWhiteSpace($productVersion)) { throw 'MuesliVersion is missing from Directory.Build.props.' }
+    $canonicalMsixPath = Join-Path $OutputDirectory ("Muesli.Windows.WinUI_{0}_x64.msix" -f $productVersion)
+    if (-not $primaryMsix.FullName.Equals($canonicalMsixPath, [StringComparison]::OrdinalIgnoreCase)) {
+        Copy-Item -LiteralPath $primaryMsix.FullName -Destination $canonicalMsixPath -Force
+        $primaryMsix = Get-Item -LiteralPath $canonicalMsixPath
     }
 } elseif (-not $makeAppx) {
     throw 'MakeAppx.exe was not found; the MSIX cannot be normalized (bridge, companion, licenses, foreign-RID pruning).'

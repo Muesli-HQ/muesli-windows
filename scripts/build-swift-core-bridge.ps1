@@ -228,17 +228,27 @@ New-Item -ItemType Directory -Path $scratchRoot -Force | Out-Null
 # shared repository is never read or rewritten by a Windows build.
 $stagingPackage = New-WindowsSwiftPackageStage -Package $package -DestinationRoot (Join-Path $scratchRoot 'package')
 
+$vcpkgRoot = Resolve-FirstPath @($env:VCPKG_ROOT, $env:MUESLI_VCPKG_ROOT)
+$vcpkgLib = if ($vcpkgRoot) { Resolve-FirstPath @((Join-Path $vcpkgRoot 'installed\x64-windows\lib')) } else { $null }
+$vcpkgBin = if ($vcpkgRoot) { Resolve-FirstPath @((Join-Path $vcpkgRoot 'installed\x64-windows\bin')) } else { $null }
+if (-not $vcpkgLib) {
+    $message = 'vcpkg x64-windows libraries were not found. Set VCPKG_ROOT after installing sqlite3, zlib, and lzfse.'
+    if ($Require) { throw $message }
+    Remove-StagedBridge -Targets $targets -Reason "$message Quarantined stale bridge output."
+    return
+}
+
 if ($Test) {
     # Staging contains only MuesliCoreTests and MuesliCoreABITests, so an unfiltered run executes
     # exactly the portable and ABI suites Windows consumes.
-    & $swift test --package-path $stagingPackage --scratch-path $scratch --cache-path $cache
+    & $swift test --package-path $stagingPackage --scratch-path $scratch --cache-path $cache -Xlinker "/LIBPATH:$vcpkgLib"
     if ($LASTEXITCODE -ne 0) { throw "Swift shared-core tests failed with exit code $LASTEXITCODE." }
     Write-Host "Swift shared-core portable and ABI tests passed from isolated package staging."
     return
 }
 
 if (-not $SkipBuild) {
-    & $swift build -c $Configuration.ToLowerInvariant() --product MuesliCoreABI --scratch-path $scratch --cache-path $cache --package-path $stagingPackage
+    & $swift build -c $Configuration.ToLowerInvariant() --product MuesliCoreABI --scratch-path $scratch --cache-path $cache --package-path $stagingPackage -Xlinker "/LIBPATH:$vcpkgLib"
     if ($LASTEXITCODE -ne 0) { throw "swift build for MuesliCoreABI failed with exit code $LASTEXITCODE." }
 }
 
@@ -252,11 +262,6 @@ if (-not $bridgeDll) {
 }
 
 $runtimeDir = Resolve-FirstPath @($env:MUESLI_SWIFT_RUNTIME_DIR, (Join-Path $env:LOCALAPPDATA 'Programs\Swift\Runtimes\6.4.0\usr\bin'))
-$vcpkgCandidates = @()
-foreach ($root in @($env:VCPKG_ROOT, $env:MUESLI_VCPKG_ROOT)) {
-    if ($root) { $vcpkgCandidates += (Join-Path $root 'installed\x64-windows\bin') }
-}
-$vcpkgBin = Resolve-FirstPath $vcpkgCandidates
 
 $searchDirs = @($runtimeDir, $vcpkgBin) | Where-Object { $_ }
 $resolved = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)

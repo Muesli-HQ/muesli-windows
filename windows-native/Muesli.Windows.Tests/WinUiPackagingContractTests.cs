@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Xml.Linq;
 
 namespace Muesli.Windows.Tests;
@@ -71,6 +72,91 @@ public sealed class WinUiPackagingContractTests
     }
 
     [Fact]
+    public void PackageIncludesCompleteStartAndTaskbarIconFamilies()
+    {
+        var assets = WinUiPath("Assets");
+        var expectedSizes = new[] { 16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256 };
+        foreach (var size in expectedSizes)
+        {
+            AssertPngSize(Path.Combine(assets, $"Square44x44Logo.targetsize-{size}.png"), size, size);
+            AssertPngSize(Path.Combine(assets, $"Square44x44Logo.targetsize-{size}_altform-unplated.png"), size, size);
+            AssertPngSize(Path.Combine(assets, $"Square44x44Logo.targetsize-{size}_altform-lightunplated.png"), size, size);
+        }
+
+        var project = File.ReadAllText(WinUiPath("Muesli.Windows.WinUI.csproj"));
+        Assert.Contains("Assets\\*.png", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("MuesliAppIcon.png", project, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CanonicalIconSourceIsLargeEnoughForShellAssetGeneration()
+    {
+        AssertPngSize(WinUiPath(Path.Combine("Branding", "MuesliAppIcon.png")), 1024, 1024);
+    }
+
+    [Fact]
+    public void SmallStartIconKeepsTheWaveformBarsDistinct()
+    {
+        using var image = new Bitmap(WinUiPath(Path.Combine(
+            "Assets",
+            "Square44x44Logo.targetsize-24.png")));
+        var blueColumns = Enumerable.Range(0, image.Width)
+            .Where(x => Enumerable.Range(0, image.Height).Any(y =>
+            {
+                var pixel = image.GetPixel(x, y);
+                return pixel.A > 200 && pixel.B > 170 && pixel.B > pixel.R + 40;
+            }))
+            .ToList();
+
+        var runs = 0;
+        var previous = -2;
+        foreach (var column in blueColumns)
+        {
+            if (column != previous + 1)
+            {
+                runs++;
+            }
+
+            previous = column;
+        }
+
+        Assert.True(runs >= 7, $"The 24px waveform collapsed into only {runs} visible blue run(s).");
+    }
+
+    [Fact]
+    public void TaskbarIconKeepsTheWaveformBarsDistinctAtSmallSizes()
+    {
+        // AppWindow.SetIcon binds Assets\AppIcon.ico directly, so its 16/24px frames (not the
+        // package Square44x44Logo assets) are what the taskbar and tray actually draw. A single
+        // bicubic-downsampled raster collapses them into an unreadable "8".
+        var iconPath = WinUiPath(Path.Combine("Assets", "AppIcon.ico"));
+        using var icon = new Icon(iconPath, 16, 16);
+        using var image = icon.ToBitmap();
+
+        var blueColumns = Enumerable.Range(0, image.Width)
+            .Where(x => Enumerable.Range(0, image.Height).Any(y =>
+            {
+                var pixel = image.GetPixel(x, y);
+                return pixel.A > 200 && pixel.B > 170 && pixel.B > pixel.R + 40;
+            }))
+            .ToList();
+
+        var runs = 0;
+        var previous = -2;
+        foreach (var column in blueColumns)
+        {
+            if (column != previous + 1)
+            {
+                runs++;
+            }
+
+            previous = column;
+        }
+
+        Assert.True(runs >= 5, $"The 16px taskbar icon collapsed into only {runs} visible blue run(s).");
+    }
+
+    [Fact]
     public void CoreRepairsTheMislinkedLLamaSharpNativeRuntimes()
     {
         var project = File.ReadAllText(Path.Combine(
@@ -86,6 +172,14 @@ public sealed class WinUiPackagingContractTests
 
     private static string WinUiPath(string relativePath) =>
         Path.Combine(RepositoryRoot(), "windows-native", "Muesli.Windows.WinUI", relativePath);
+
+    private static void AssertPngSize(string path, int width, int height)
+    {
+        Assert.True(File.Exists(path), $"Expected package image is missing: {path}");
+        using var image = Image.FromFile(path);
+        Assert.Equal(width, image.Width);
+        Assert.Equal(height, image.Height);
+    }
 
     private static string RepositoryRoot() => TestRepositoryLayout.Root;
 }

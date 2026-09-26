@@ -18,7 +18,9 @@ param(
     [string]$ManifestCertificateThumbprint = "",
     [string]$ExpectedPublisherPublicKeySha256 = "",
     [string]$ExpectedPublisherCertificateThumbprint = "",
-    [string]$ExpectedPublisherSubject = ""
+    [string]$ExpectedPublisherSubject = "",
+    [string]$MinimumSupportedVersion = "",
+    [string]$ReleaseNotes = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,6 +85,8 @@ $manifest = [ordered]@{
     channel = $release.Channel
     version = $release.Version
     runtime = "win-x64"
+    minimumSupportedVersion = if ([string]::IsNullOrWhiteSpace($MinimumSupportedVersion)) { $null } else { $MinimumSupportedVersion.Trim().TrimStart('v') }
+    releaseNotes = if ([string]::IsNullOrWhiteSpace($ReleaseNotes)) { $null } else { $ReleaseNotes }
     signing = [ordered]@{
         mode = $SigningMode
         status = $manifestSignatureStatus

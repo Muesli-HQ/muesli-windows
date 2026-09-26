@@ -47,4 +47,13 @@ public sealed class MsixPayloadContractTests
         var script = PackageScript();
         Assert.Contains("MakeAppx.exe was not found", script, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void MsixPackagingNormalizesTheNewestBuildAndPublishesAStableArtifactName()
+    {
+        var script = PackageScript();
+        Assert.Contains("Sort-Object LastWriteTimeUtc -Descending", script, StringComparison.Ordinal);
+        Assert.Contains("Muesli.Windows.WinUI_{0}_x64.msix", script, StringComparison.Ordinal);
+        Assert.Contains("Directory.Build.props", script, StringComparison.Ordinal);
+    }
 }
