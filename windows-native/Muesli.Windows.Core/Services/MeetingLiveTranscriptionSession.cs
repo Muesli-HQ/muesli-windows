@@ -80,8 +80,8 @@ internal sealed class NativeLiveRecognizer : ILiveRecognizer
         public string Text { get; set; } = "";
     }
 
-    private readonly OnlineRecognizer _recognizer;
-    private readonly Dictionary<LiveTranscriptChannel, StreamState> _streams;
+    private OnlineRecognizer? _recognizer;
+    private Dictionary<LiveTranscriptChannel, StreamState> _streams = [];
     private bool _disposed;
 
     public NativeLiveRecognizer(StreamingModelDefinition model)
@@ -89,6 +89,65 @@ internal sealed class NativeLiveRecognizer : ILiveRecognizer
         if (!new StreamingModelInstaller(model).IsVerified)
             throw new InvalidOperationException($"{model.DisplayName} is not downloaded and verified.");
 
+        const ExecutionProviderRole role = ExecutionProviderRole.LiveTranscription;
+        var candidates = ExecutionProviderService.PreferredProviders(role, streaming: true);
+        Exception? lastError = null;
+        for (var index = 0; index < candidates.Count; index++)
+        {
+            var candidate = candidates[index];
+            var attempt = Stopwatch.StartNew();
+            try
+            {
+                if (candidate.IsGpu && !ExecutionProviderService.TryGetQualifiedCudaEvidence(model.Id, out _))
+                {
+                    var probe = ExecutionProviderService.BeginWarmUp(candidate.Provider, model.Id);
+                    try
+                    {
+                        using (var probeRecognizer = new OnlineRecognizer(BuildConfig(model, probe.ProviderString)))
+                        {
+                            WarmUp(probeRecognizer);
+                        }
+
+                        var evidence = probe.Complete();
+                        if (!evidence.ConfirmedGpuInference)
+                        {
+                            lastError = new InvalidOperationException(evidence.Detail);
+                            ExecutionProviderService.RecordFailure(role, candidate.Provider, model.Id, attempt.ElapsedMilliseconds, evidence.Detail);
+                            continue;
+                        }
+
+                        ExecutionProviderService.StoreQualifiedCudaEvidence(model.Id, evidence);
+                    }
+                    catch (Exception probeException)
+                    {
+                        probe.Abandon(probeException);
+                        throw;
+                    }
+                }
+
+                var load = Stopwatch.StartNew();
+                _recognizer = new OnlineRecognizer(BuildConfig(model, candidate.Provider));
+                load.Stop();
+                _streams = Enum.GetValues<LiveTranscriptChannel>().ToDictionary(channel => channel, _ => NewStream());
+                ExecutionProviderService.RecordActive(role, candidate.Provider, model.Id, load.ElapsedMilliseconds);
+                return;
+            }
+            catch (Exception exception)
+            {
+                lastError = exception;
+                _recognizer?.Dispose();
+                _recognizer = null;
+                ExecutionProviderService.RecordFailure(role, candidate.Provider, model.Id, attempt.ElapsedMilliseconds, exception.Message);
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"{model.DisplayName} could not initialize on an available execution provider.",
+            lastError);
+    }
+
+    private static OnlineRecognizerConfig BuildConfig(StreamingModelDefinition model, string provider)
+    {
         string File(string name) => Path.Combine(model.ModelPath, name);
         var config = new OnlineRecognizerConfig
         {
@@ -101,20 +160,42 @@ internal sealed class NativeLiveRecognizer : ILiveRecognizer
         };
         config.FeatConfig.SampleRate = 16000;
         config.FeatConfig.FeatureDim = 80;
-        config.ModelConfig.NumThreads = Math.Clamp(Environment.ProcessorCount, 1, 8);
-        config.ModelConfig.Provider = "cpu";
+        config.ModelConfig.NumThreads = provider.Equals("cuda", StringComparison.OrdinalIgnoreCase)
+            ? Math.Clamp(Environment.ProcessorCount, 1, 4)
+            : Math.Clamp(Environment.ProcessorCount, 1, 8);
+        config.ModelConfig.Provider = provider;
         config.ModelConfig.Debug = 0;
         config.ModelConfig.Transducer.Encoder = File("encoder.int8.onnx");
         config.ModelConfig.Transducer.Decoder = File("decoder.int8.onnx");
         config.ModelConfig.Transducer.Joiner = File("joiner.int8.onnx");
         config.ModelConfig.Tokens = File("tokens.txt");
-        _recognizer = new OnlineRecognizer(config);
-        _streams = Enum.GetValues<LiveTranscriptChannel>().ToDictionary(channel => channel, _ => NewStream());
+        return config;
+    }
+
+    /// <summary>
+    /// A real warm-up decode on a throwaway stream. Endpointing is disabled for the session, so the
+    /// probe stream is simply discarded.
+    /// </summary>
+    private static void WarmUp(OnlineRecognizer recognizer)
+    {
+        const int sampleRate = 16000;
+        var samples = new float[sampleRate / 2];
+        var random = new Random(20260920);
+        for (var i = 0; i < samples.Length; i++)
+        {
+            samples[i] = (float)((random.NextDouble() - 0.5) * 0.002);
+        }
+
+        using var stream = recognizer.CreateStream();
+        stream.AcceptWaveform(sampleRate, samples);
+        while (recognizer.IsReady(stream)) recognizer.Decode(stream);
+        _ = recognizer.GetResult(stream).Text;
     }
 
     private StreamState NewStream()
     {
-        var stream = _recognizer.CreateStream();
+        var recognizer = _recognizer ?? throw new ObjectDisposedException(nameof(NativeLiveRecognizer));
+        var stream = recognizer.CreateStream();
         if (stream.HasOption("language")) stream.SetOption("language", "auto");
         return new StreamState(stream);
     }
@@ -122,10 +203,11 @@ internal sealed class NativeLiveRecognizer : ILiveRecognizer
     public string Feed(LiveTranscriptChannel channel, float[] samples)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        var recognizer = _recognizer ?? throw new ObjectDisposedException(nameof(NativeLiveRecognizer));
         var state = _streams[channel];
         state.Stream.AcceptWaveform(16000, samples);
-        while (_recognizer.IsReady(state.Stream)) _recognizer.Decode(state.Stream);
-        state.Text = Clean(_recognizer.GetResult(state.Stream).Text);
+        while (recognizer.IsReady(state.Stream)) recognizer.Decode(state.Stream);
+        state.Text = Clean(recognizer.GetResult(state.Stream).Text);
         return state.Text;
     }
 
@@ -142,10 +224,11 @@ internal sealed class NativeLiveRecognizer : ILiveRecognizer
     public string Finish(LiveTranscriptChannel channel)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        var recognizer = _recognizer ?? throw new ObjectDisposedException(nameof(NativeLiveRecognizer));
         var state = _streams[channel];
         state.Stream.InputFinished();
-        while (_recognizer.IsReady(state.Stream)) _recognizer.Decode(state.Stream);
-        state.Text = Clean(_recognizer.GetResult(state.Stream).Text);
+        while (recognizer.IsReady(state.Stream)) recognizer.Decode(state.Stream);
+        state.Text = Clean(recognizer.GetResult(state.Stream).Text);
         return state.Text;
     }
 
@@ -156,7 +239,8 @@ internal sealed class NativeLiveRecognizer : ILiveRecognizer
         if (_disposed) return;
         _disposed = true;
         foreach (var state in _streams.Values) state.Stream.Dispose();
-        _recognizer.Dispose();
+        _recognizer?.Dispose();
+        _recognizer = null;
     }
 }
 

@@ -49,7 +49,7 @@ public sealed class PostMeetingAutomationService
                 error: "Post-meeting automation requires a completed meeting.");
         }
 
-        if (!options.HookEnabled && !options.AutoExportEnabled)
+        if (!options.HookEnabled && !options.AutoExportEnabled && !options.AutoExportPdfEnabled)
         {
             return Result(runId, PostMeetingAutomationStatus.Disabled, startedAt, export: PostMeetingExportDiagnostic.NotRequested);
         }
@@ -70,17 +70,33 @@ public sealed class PostMeetingAutomationService
                 meeting.AutomationResult?.Export,
                 cancellationToken).ConfigureAwait(false);
 
+        var pdfExport = await ExportPdfIfRequestedAsync(
+            meeting, completionEvent, options, cancellationToken).ConfigureAwait(false);
+
         if (cancellationToken.IsCancellationRequested)
-            return Result(runId, PostMeetingAutomationStatus.Cancelled, startedAt, error: export.Error, export: export);
+        {
+            return Result(
+                runId,
+                PostMeetingAutomationStatus.Cancelled,
+                startedAt,
+                error: CombineErrors(export.Error, pdfExport?.Error),
+                export: export,
+                pdfExport: pdfExport);
+        }
+
+        var exportCompleted = (!export.Requested || export.Completed) &&
+                              (pdfExport is not { Requested: true } || pdfExport.Completed);
+        var exportError = CombineErrors(export.Error, pdfExport?.Error);
 
         if (!options.HookEnabled)
         {
             return Result(
                 runId,
-                export.Completed ? PostMeetingAutomationStatus.Succeeded : PostMeetingAutomationStatus.Failed,
+                exportCompleted ? PostMeetingAutomationStatus.Succeeded : PostMeetingAutomationStatus.Failed,
                 startedAt,
-                error: export.Error,
-                export: export);
+                error: exportError,
+                export: export,
+                pdfExport: pdfExport);
         }
 
         var executableError = ValidateExecutable(options.HookExecutablePath, out var executablePath);
@@ -90,8 +106,9 @@ public sealed class PostMeetingAutomationService
                 runId,
                 PostMeetingAutomationStatus.InvalidConfiguration,
                 startedAt,
-                error: CombineErrors(executableError, export.Error),
-                export: export);
+                error: CombineErrors(executableError, exportError),
+                export: export,
+                pdfExport: pdfExport);
         }
 
         var payload = BuildPayload(meeting, completionEvent, options.TranscriptPolicy, export);
@@ -105,6 +122,43 @@ public sealed class PostMeetingAutomationService
             suppressCapturedOutput: sensitiveValues.Count > 0,
             options,
             export,
+            pdfExport,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs the optional automatic PDF beside the Markdown export. Null when PDF auto-export was
+    /// not requested; a fail-closed diagnostic when requested but the EXP-01 license gate is shut.
+    /// </summary>
+    private static async Task<PostMeetingExportDiagnostic?> ExportPdfIfRequestedAsync(
+        MeetingItem meeting,
+        PostMeetingCompletionEvent completionEvent,
+        PostMeetingAutomationOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (!options.AutoExportPdfEnabled)
+        {
+            return null;
+        }
+
+        if (!MeetingDocumentWriter.PdfExportApproved)
+        {
+            return new PostMeetingExportDiagnostic(
+                Requested: true,
+                Completed: false,
+                DestinationPath: null,
+                DestinationOwnership: AutomationDestinationOwnership.None,
+                Error: "PDF export is disabled until QuestPDF Community-license eligibility is approved (EXP-01).",
+                Attempts: 0);
+        }
+
+        return await PostMeetingMarkdownAutoExporter.ExportPdfAsync(
+            meeting,
+            completionEvent,
+            options.AutoExportDirectory,
+            options.AutoExportMode,
+            options.RetryPolicy?.MaxAttempts ?? 1,
+            meeting.AutomationResult?.PdfExport,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -158,6 +212,7 @@ public sealed class PostMeetingAutomationService
             suppressCapturedOutput: false,
             testOptions,
             export,
+            pdfExport: null,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -260,6 +315,7 @@ public sealed class PostMeetingAutomationService
         bool suppressCapturedOutput,
         PostMeetingAutomationOptions options,
         PostMeetingExportDiagnostic export,
+        PostMeetingExportDiagnostic? pdfExport,
         CancellationToken cancellationToken)
     {
         var attempts = Math.Clamp(options.RetryPolicy?.MaxAttempts ?? 1, 1, MaximumAttempts);
@@ -275,7 +331,7 @@ public sealed class PostMeetingAutomationService
         {
             if (cancellationToken.IsCancellationRequested)
             {
-                return Result(runId, PostMeetingAutomationStatus.Cancelled, startedAt, attempt - 1, export: export);
+                return Result(runId, PostMeetingAutomationStatus.Cancelled, startedAt, attempt - 1, export: export, pdfExport: pdfExport);
             }
 
             last = await WindowsJobProcessRunner.RunAsync(
@@ -308,19 +364,23 @@ public sealed class PostMeetingAutomationService
 
             if (last.Status == PostMeetingAutomationStatus.Succeeded)
             {
-                var overallStatus = export.Requested && !export.Completed
+                var exportFailed = (export.Requested && !export.Completed) ||
+                                   pdfExport is { Requested: true, Completed: false };
+                var overallStatus = exportFailed
                     ? PostMeetingAutomationStatus.Failed
                     : last.Status;
                 return Result(runId, overallStatus, startedAt, attempt, last.ExitCode, redactedOut, redactedError,
                     last.StandardOutputTruncated, last.StandardErrorTruncated,
-                    CombineErrors(redactedMessage, export.Error), export);
+                    CombineErrors(redactedMessage, CombineErrors(export.Error, pdfExport?.Error)), export,
+                    pdfExport: pdfExport);
             }
 
             if (last.Status is PostMeetingAutomationStatus.Cancelled or PostMeetingAutomationStatus.TimedOut || attempt == attempts)
             {
                 return Result(runId, last.Status, startedAt, attempt, last.ExitCode, redactedOut, redactedError,
                     last.StandardOutputTruncated, last.StandardErrorTruncated,
-                    CombineErrors(redactedMessage, export.Error), export);
+                    CombineErrors(redactedMessage, CombineErrors(export.Error, pdfExport?.Error)), export,
+                    pdfExport: pdfExport);
             }
 
             if (delay > TimeSpan.Zero)
@@ -333,7 +393,8 @@ public sealed class PostMeetingAutomationService
                 {
                     return Result(runId, PostMeetingAutomationStatus.Cancelled, startedAt, attempt, last.ExitCode,
                         redactedOut, redactedError, last.StandardOutputTruncated, last.StandardErrorTruncated,
-                        CombineErrors(redactedMessage, export.Error), export);
+                        CombineErrors(redactedMessage, CombineErrors(export.Error, pdfExport?.Error)), export,
+                        pdfExport: pdfExport);
                 }
             }
         }
@@ -352,7 +413,8 @@ public sealed class PostMeetingAutomationService
         bool standardOutputTruncated = false,
         bool standardErrorTruncated = false,
         string? error = null,
-        PostMeetingExportDiagnostic? export = null) =>
+        PostMeetingExportDiagnostic? export = null,
+        PostMeetingExportDiagnostic? pdfExport = null) =>
         new(
             runId,
             status,
@@ -365,7 +427,10 @@ public sealed class PostMeetingAutomationService
             standardOutputTruncated,
             standardErrorTruncated,
             error,
-            export ?? PostMeetingExportDiagnostic.NotRequested);
+            export ?? PostMeetingExportDiagnostic.NotRequested)
+        {
+            PdfExport = pdfExport
+        };
 
     private static string? CombineErrors(string? first, string? second)
     {
@@ -402,6 +467,12 @@ public sealed record PostMeetingHookNotes(string Generated, string Manual);
 public sealed record PostMeetingHookCompletion(string State);
 public sealed record PostMeetingHookExport(string? Path, AutomationDestinationOwnership Ownership);
 
+internal enum PostMeetingExportFormat
+{
+    Markdown,
+    Pdf
+}
+
 internal static class PostMeetingMarkdownAutoExporter
 {
     private const int ManifestVersion = 1;
@@ -409,19 +480,60 @@ internal static class PostMeetingMarkdownAutoExporter
     private const string OwnershipMarkerName = ".owner.json";
     private static readonly TimeSpan ClaimWaitLimit = TimeSpan.FromSeconds(10);
     private static readonly JsonSerializerOptions ControlJsonOptions = new(JsonSerializerDefaults.Web);
-    internal static Func<string>? TemporaryTokenFactoryForTests { get; set; }
+    private static readonly AsyncLocal<Func<string>?> TemporaryTokenFactory = new();
+    internal static Func<string>? TemporaryTokenFactoryForTests
+    {
+        get => TemporaryTokenFactory.Value;
+        set => TemporaryTokenFactory.Value = value;
+    }
 
-    public static async Task<PostMeetingExportDiagnostic> ExportAsync(
+    public static Task<PostMeetingExportDiagnostic> ExportAsync(
         MeetingItem meeting,
         PostMeetingCompletionEvent completionEvent,
         string? selectedDirectory,
         MeetingExportMode mode,
         int requestedAttempts,
         PostMeetingExportDiagnostic? previousExport,
+        CancellationToken cancellationToken) =>
+        ExportCoreAsync(
+            meeting, completionEvent, selectedDirectory, mode, requestedAttempts, previousExport,
+            PostMeetingExportFormat.Markdown, cancellationToken);
+
+    /// <summary>
+    /// Publishes an automatic PDF using the same atomic, collision-safe, manifest-backed machinery
+    /// as Markdown. Fails closed without creating anything when the EXP-01 license gate is closed.
+    /// </summary>
+    public static Task<PostMeetingExportDiagnostic> ExportPdfAsync(
+        MeetingItem meeting,
+        PostMeetingCompletionEvent completionEvent,
+        string? selectedDirectory,
+        MeetingExportMode mode,
+        int requestedAttempts,
+        PostMeetingExportDiagnostic? previousExport,
+        CancellationToken cancellationToken) =>
+        ExportCoreAsync(
+            meeting, completionEvent, selectedDirectory, mode, requestedAttempts, previousExport,
+            PostMeetingExportFormat.Pdf, cancellationToken);
+
+    private static async Task<PostMeetingExportDiagnostic> ExportCoreAsync(
+        MeetingItem meeting,
+        PostMeetingCompletionEvent completionEvent,
+        string? selectedDirectory,
+        MeetingExportMode mode,
+        int requestedAttempts,
+        PostMeetingExportDiagnostic? previousExport,
+        PostMeetingExportFormat format,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(selectedDirectory) || !Path.IsPathRooted(selectedDirectory))
             return Failure("Select a rooted auto-export directory.", 0);
+
+        if (format == PostMeetingExportFormat.Pdf && !MeetingDocumentWriter.PdfExportApproved)
+        {
+            return Failure(
+                "PDF export is disabled until QuestPDF Community-license eligibility is approved (EXP-01).",
+                0);
+        }
 
         string directory;
         try
@@ -435,9 +547,29 @@ internal static class PostMeetingMarkdownAutoExporter
         }
 
         var markdown = MeetingExportFormatter.BuildMarkdown(meeting, mode, meeting.SpeakerAliases);
-        var markdownBytes = new UTF8Encoding(false).GetBytes(markdown);
-        var contentHash = Convert.ToHexString(SHA256.HashData(markdownBytes)).ToLowerInvariant();
-        var paths = GetControlPaths(directory, meeting.Id, completionEvent, mode);
+        byte[] contentBytes;
+        string extension;
+        if (format == PostMeetingExportFormat.Pdf)
+        {
+            try
+            {
+                contentBytes = MeetingDocumentWriter.GeneratePdfBytes(markdown);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or NotSupportedException)
+            {
+                return Failure("The automatic PDF could not be rendered.", 0);
+            }
+
+            extension = ".pdf";
+        }
+        else
+        {
+            contentBytes = new UTF8Encoding(false).GetBytes(markdown);
+            extension = ".md";
+        }
+
+        var contentHash = Convert.ToHexString(SHA256.HashData(contentBytes)).ToLowerInvariant();
+        var paths = GetControlPaths(directory, meeting.Id, completionEvent, mode, format);
         var controlError = EnsureOwnedControlDirectory(directory, paths.ControlDirectory);
         if (controlError is not null) return Failure(controlError, 0);
 
@@ -502,13 +634,13 @@ internal static class PostMeetingMarkdownAutoExporter
                 }
 
                 exportTemporaryPath = Path.Combine(directory, $".muesli-{paths.Key}.{NextTemporaryToken()}.tmp");
-                WriteThroughNewFile(exportTemporaryPath, markdownBytes, out exportTemporaryOwned);
+                WriteThroughNewFile(exportTemporaryPath, contentBytes, out exportTemporaryOwned);
 
-                var suggested = Path.ChangeExtension(MeetingExportFormatter.SuggestFilename(meeting, mode), ".md");
+                var suggested = Path.ChangeExtension(MeetingExportFormatter.SuggestFilename(meeting, mode), extension);
                 var stem = Path.GetFileNameWithoutExtension(suggested);
                 for (var suffix = 1; suffix <= 10_000; suffix++)
                 {
-                    var filename = suffix == 1 ? $"{stem}.md" : $"{stem} ({suffix}).md";
+                    var filename = suffix == 1 ? $"{stem}{extension}" : $"{stem} ({suffix}){extension}";
                     claim = claim with { FileName = filename };
                     ReplaceOwnedClaim(paths.ClaimPath, claim);
                     var destination = Path.Combine(directory, filename);
@@ -553,9 +685,10 @@ internal static class PostMeetingMarkdownAutoExporter
         string directory,
         string meetingId,
         PostMeetingCompletionEvent completionEvent,
-        MeetingExportMode mode)
+        MeetingExportMode mode,
+        PostMeetingExportFormat format = PostMeetingExportFormat.Markdown)
     {
-        var keyMaterial = $"{meetingId}\n{completionEvent}\n{mode}";
+        var keyMaterial = $"{meetingId}\n{completionEvent}\n{mode}\n{format}";
         var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(keyMaterial)))
             .ToLowerInvariant()[..32];
         var controlDirectory = Path.Combine(directory, ".muesli-automation");

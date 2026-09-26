@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -44,6 +45,19 @@ internal static class NativeSherpaRuntime
     private static string _diagnostic = "Sherpa native runtime selection has not run.";
     private static string? _cudaRuntimeDirectory;
     private static readonly List<IntPtr> DllDirectoryCookies = [];
+
+    public static IReadOnlyList<string> NvidiaDependencyFileNames => NvidiaDependencyFiles;
+
+    public static bool HasLoadedRuntime
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return _checked;
+            }
+        }
+    }
 
     public static bool IsAvailable
     {
@@ -98,6 +112,40 @@ internal static class NativeSherpaRuntime
             "native-sherpa-cuda-dependencies",
             "cuda12-cudnn9");
 
+    /// <summary>
+    /// The CUDA bundle this process would load, without loading anything. Used by the settings UI to
+    /// tell the user whether a provider change needs a restart.
+    /// </summary>
+    public static string? ResolveCudaBundleDirectory()
+    {
+        if (ExecutionProviderService.Preference == ExecutionProviderPreference.Cpu)
+        {
+            return null;
+        }
+
+        foreach (var directory in CudaBundleDirectories().Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (ValidateCudaBundleDirectory(directory, out _))
+            {
+                return directory;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// NVIDIA runtime files the CUDA bundle needs but cannot resolve. An empty result means every
+    /// pinned CUDA 12 / cuDNN 9 dependency is present somewhere the loader searches.
+    /// </summary>
+    public static IReadOnlyList<string> ResolveMissingNvidiaDependencies(string cudaBundleDirectory)
+    {
+        var directories = NativeDependencyDirectories(cudaBundleDirectory).ToArray();
+        return NvidiaDependencyFiles
+            .Where(file => ResolveFile(file, directories) is null)
+            .ToArray();
+    }
+
     private static void EnsureLoaded()
     {
         lock (Gate)
@@ -115,17 +163,24 @@ internal static class NativeSherpaRuntime
     private static bool TryLoad()
     {
         var cudaDiagnostics = new List<string>();
-        foreach (var directory in CudaBundleDirectories().Distinct(StringComparer.OrdinalIgnoreCase))
+        if (ExecutionProviderService.Preference != ExecutionProviderPreference.Cpu)
         {
-            if (TryLoadCudaRuntime(directory, out var diagnostic))
+            foreach (var directory in CudaBundleDirectories().Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                _selectedRuntime = "cuda";
-                _cudaRuntimeDirectory = directory;
-                _diagnostic = diagnostic;
-                return true;
-            }
+                if (TryLoadCudaRuntime(directory, out var diagnostic))
+                {
+                    _selectedRuntime = "cuda";
+                    _cudaRuntimeDirectory = directory;
+                    _diagnostic = diagnostic;
+                    return true;
+                }
 
-            cudaDiagnostics.Add(diagnostic);
+                cudaDiagnostics.Add(diagnostic);
+            }
+        }
+        else
+        {
+            cudaDiagnostics.Add("CPU only was requested, so the CUDA bundle was not considered.");
         }
 
         foreach (var directory in CpuRuntimeDirectories())
@@ -152,48 +207,8 @@ internal static class NativeSherpaRuntime
 
     private static bool TryLoadCudaRuntime(string directory, out string diagnostic)
     {
-        var manifestPath = Path.Combine(directory, ManifestFileName);
-        if (!File.Exists(manifestPath))
+        if (!ValidateCudaBundleDirectory(directory, out diagnostic))
         {
-            diagnostic = $"CUDA bundle unavailable at {directory}: missing {ManifestFileName}.";
-            return false;
-        }
-
-        try
-        {
-            using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
-            var root = manifest.RootElement;
-            var runtimeVersion = root.TryGetProperty("runtimeVersion", out var runtimeVersionElement)
-                ? runtimeVersionElement.GetString()
-                : null;
-            if (!string.Equals(runtimeVersion, ExpectedRuntimeVersion, StringComparison.Ordinal))
-            {
-                diagnostic =
-                    $"CUDA bundle at {directory} has runtime version '{runtimeVersion ?? "unknown"}'; expected {ExpectedRuntimeVersion}.";
-                return false;
-            }
-
-            var managedVersion = typeof(OfflineRecognizer).Assembly.GetName().Version?.ToString(3) ?? "unknown";
-            if (!managedVersion.StartsWith(ExpectedRuntimeVersion, StringComparison.Ordinal))
-            {
-                diagnostic =
-                    $"Managed Sherpa version {managedVersion} does not match CUDA runtime {ExpectedRuntimeVersion}.";
-                return false;
-            }
-        }
-        catch (Exception exception)
-        {
-            diagnostic = $"CUDA runtime manifest is invalid at {manifestPath}: {exception.Message}";
-            return false;
-        }
-
-        var missingRuntimeFiles = CudaRuntimeFiles
-            .Where(file => !File.Exists(Path.Combine(directory, file)))
-            .ToArray();
-        if (missingRuntimeFiles.Length > 0)
-        {
-            diagnostic =
-                $"CUDA bundle incomplete at {directory}: missing {string.Join(", ", missingRuntimeFiles)}.";
             return false;
         }
 
@@ -255,7 +270,120 @@ internal static class NativeSherpaRuntime
             Environment.NewLine,
             $"CUDA-capable Sherpa runtime {ExpectedRuntimeVersion} loaded from {directory}.",
             $"NVIDIA dependency directories: {string.Join("; ", searchDirectories)}.",
-            "CUDA 12.x and cuDNN 9.x dependency checks passed.");
+            "CUDA 12.x and cuDNN 9.x dependency checks passed.",
+            "GPU inference is only claimed after a real model warm-up inference confirms the execution provider.");
+        return true;
+    }
+
+    /// <summary>
+    /// Version and provenance gate for a CUDA directory. A bundle that declares per-file hashes is
+    /// held to them, which is what makes the managed acceleration pack reproducible.
+    /// </summary>
+    private static bool ValidateCudaBundleDirectory(string directory, out string diagnostic)
+    {
+        var manifestPath = Path.Combine(directory, ManifestFileName);
+        if (!File.Exists(manifestPath))
+        {
+            diagnostic = $"CUDA bundle unavailable at {directory}: missing {ManifestFileName}.";
+            return false;
+        }
+
+        NativeCudaManifestFiles manifest;
+        try
+        {
+            manifest = NativeCudaManifestFiles.Parse(File.ReadAllText(manifestPath));
+        }
+        catch (Exception exception)
+        {
+            diagnostic = $"CUDA runtime manifest is invalid at {manifestPath}: {exception.Message}";
+            return false;
+        }
+
+        if (!string.Equals(manifest.RuntimeVersion, ExpectedRuntimeVersion, StringComparison.Ordinal))
+        {
+            diagnostic =
+                $"CUDA bundle at {directory} has runtime version '{manifest.RuntimeVersion ?? "unknown"}'; expected {ExpectedRuntimeVersion}.";
+            return false;
+        }
+
+        var managedVersion = typeof(OfflineRecognizer).Assembly.GetName().Version?.ToString(3) ?? "unknown";
+        if (!managedVersion.StartsWith(ExpectedRuntimeVersion, StringComparison.Ordinal))
+        {
+            diagnostic =
+                $"Managed Sherpa version {managedVersion} does not match CUDA runtime {ExpectedRuntimeVersion}.";
+            return false;
+        }
+
+        var runtimeFiles = manifest.RequiredRuntimeFiles.Length > 0 ? manifest.RequiredRuntimeFiles : CudaRuntimeFiles;
+        var missingRuntimeFiles = runtimeFiles
+            .Where(file => !File.Exists(Path.Combine(directory, file)))
+            .ToArray();
+        if (missingRuntimeFiles.Length > 0)
+        {
+            diagnostic =
+                $"CUDA bundle incomplete at {directory}: missing {string.Join(", ", missingRuntimeFiles)}.";
+            return false;
+        }
+
+        var expectedOrt = manifest.OnnxRuntimeFileVersion ?? manifest.OnnxRuntimeVersion;
+        if (expectedOrt is { Length: > 0 })
+        {
+            try
+            {
+                var ortPath = Path.Combine(directory, "onnxruntime.dll");
+                var actualOrt = FileVersionInfo.GetVersionInfo(ortPath).FileVersion ?? "";
+                if (!actualOrt.StartsWith(expectedOrt, StringComparison.Ordinal))
+                {
+                    diagnostic =
+                        $"CUDA bundle at {directory} bundles ONNX Runtime {actualOrt}; the manifest pins {expectedOrt}.";
+                    return false;
+                }
+            }
+            catch (Exception exception)
+            {
+                diagnostic = $"CUDA ONNX Runtime version could not be read at {directory}: {exception.Message}";
+                return false;
+            }
+        }
+
+        if (manifest.FileSha256.Count > 0)
+        {
+            foreach (var pair in manifest.FileSha256)
+            {
+                var path = Path.Combine(directory, pair.Key);
+                if (!File.Exists(path))
+                {
+                    diagnostic = $"CUDA bundle integrity check failed at {directory}: missing {pair.Key}.";
+                    return false;
+                }
+
+                string actual;
+                using (var stream = File.OpenRead(path))
+                {
+                    actual = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
+                }
+
+                if (!actual.Equals(pair.Value, StringComparison.OrdinalIgnoreCase))
+                {
+                    diagnostic =
+                        $"CUDA bundle integrity check failed for {pair.Key} at {directory}. Expected {pair.Value}; found {actual}.";
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            diagnostic =
+                $"CUDA bundle at {directory} declares no per-file SHA-256 values; provenance is unverified.";
+            // Unpinned bundles are only accepted when they sit outside the managed install root,
+            // which is how a developer stages a local build. The managed pack always pins hashes.
+            if (directory.StartsWith(CudaAccelerationPack.InstallRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        diagnostic = $"CUDA bundle at {directory} matches sherpa-onnx {ExpectedRuntimeVersion}.";
         return true;
     }
 
@@ -274,6 +402,7 @@ internal static class NativeSherpaRuntime
             yield return Path.GetFullPath(configured);
         }
 
+        yield return CudaAccelerationPack.InstallDirectory;
         yield return Path.Combine(AppContext.BaseDirectory, "native-sherpa-cuda");
     }
 

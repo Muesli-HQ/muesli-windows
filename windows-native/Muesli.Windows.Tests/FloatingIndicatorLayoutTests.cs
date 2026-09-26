@@ -239,12 +239,13 @@ public sealed class FloatingIndicatorLayoutTests
             FloatingIndicatorLayout.WaveformMinHeight,
             FloatingIndicatorLayout.WaveformMaxHeight);
 
-        // The envelope is symmetric: the inner bars reach higher than the outer ones.
+        // The five-bar envelope is symmetric: the inner bars reach higher than the outer ones, and
+        // the two outermost bars match.
         Assert.True(FloatingIndicatorLayout.RecordingBarHeight(1, 1) >
                     FloatingIndicatorLayout.RecordingBarHeight(1, 0));
         Assert.Equal(
             FloatingIndicatorLayout.RecordingBarHeight(1, 0),
-            FloatingIndicatorLayout.RecordingBarHeight(1, 3),
+            FloatingIndicatorLayout.RecordingBarHeight(1, 4),
             3);
     }
 

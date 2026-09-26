@@ -51,6 +51,7 @@ public partial class IndicatorWindow : Window
     private bool _meetingPaused;
     private string _recordingAccentHex = "1e1e2e";
     private string _hotkeyLabel = "shortcut";
+    private bool _handsFree;
     private string _message = "";
     private string _indicatorAnchor = "Middle Right";
     private double? _savedLeft;
@@ -177,6 +178,7 @@ public partial class IndicatorWindow : Window
         _owner = snapshot.Owner;
         _visible = snapshot.Visible;
         _meetingPaused = snapshot.MeetingPaused;
+        _handsFree = snapshot.HandsFree;
         _hotkeyLabel = string.IsNullOrWhiteSpace(snapshot.HotkeyLabel) ? "shortcut" : snapshot.HotkeyLabel;
         _recordingAccentHex = string.IsNullOrWhiteSpace(snapshot.RecordingColorHex) ? "1e1e2e" : snapshot.RecordingColorHex;
         _message = snapshot.Message ?? "";
@@ -314,7 +316,9 @@ public partial class IndicatorWindow : Window
         stack.Children.Add(MuesliGlyph(15, new Thickness()));
         stack.Children.Add(new TextBlock
         {
-            Text = $"Hold {_hotkeyLabel} to dictate",
+            Text = _handsFree
+                ? $"Hold {_hotkeyLabel} to dictate, or double-tap for hands-free"
+                : $"Hold {_hotkeyLabel} to dictate",
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
             Foreground = new SolidColorBrush(MediaColor.FromArgb(0xBF, 0xFF, 0xFF, 0xFF)),
@@ -355,17 +359,24 @@ public partial class IndicatorWindow : Window
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
 
-        var leftGlyph = _owner == IndicatorOwnerKind.Meeting
+        // Symmetric 16/…/16 columns keep the waveform centred on the pill exactly as the macOS
+        // reference centres it across the full width.
+        var isMeeting = _owner == IndicatorOwnerKind.Meeting;
+        var leftGlyph = isMeeting
             ? (_meetingPaused ? "▶" : "❚❚")
-            : "×";
+            : FloatingIndicatorLayout.RecordingCancelGlyph;
         var left = new TextBlock
         {
             Text = leftGlyph,
-            FontSize = leftGlyph.Length > 1 ? 7 : 11,
+            FontSize = isMeeting
+                ? FloatingIndicatorLayout.MeetingControlFontSize
+                : FloatingIndicatorLayout.RecordingCancelFontSize,
             FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(MediaColor.FromArgb(0x99, 0xFF, 0xFF, 0xFF)),
+            Foreground = new SolidColorBrush(MediaColor.FromArgb(
+                isMeeting ? FloatingIndicatorLayout.MeetingControlAlpha : FloatingIndicatorLayout.RecordingCancelAlpha,
+                0xFF, 0xFF, 0xFF)),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -403,8 +414,9 @@ public partial class IndicatorWindow : Window
             Height = FloatingIndicatorLayout.StopSquareSize,
             CornerRadius = new CornerRadius(FloatingIndicatorLayout.StopSquareRadius),
             Background = brush,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, FloatingIndicatorLayout.StopSquareRightMargin, 0)
         };
         Grid.SetColumn(stop, 2);
         grid.Children.Add(stop);

@@ -86,11 +86,15 @@ public sealed class NativeDiarizationClient : IDisposable
     {
         get
         {
-            var asrProvider = Environment.GetEnvironmentVariable("MUESLI_PARAKEET_PROVIDER");
-            var diarizationProvider = Environment.GetEnvironmentVariable("MUESLI_DIARIZATION_PROVIDER");
-            return NativeSherpaRuntime.IsCudaCapable &&
-                   !string.Equals(asrProvider, "cpu", StringComparison.OrdinalIgnoreCase) &&
-                   !string.Equals(diarizationProvider, "cpu", StringComparison.OrdinalIgnoreCase);
+            // Overlapping diarization with ASR only pays off when both genuinely run on the GPU.
+            // An environment override or a persisted CPU-only preference must turn it off rather
+            // than double-book the same GPU.
+            const ExecutionProviderRole role = ExecutionProviderRole.Diarization;
+            var candidates = ExecutionProviderService.PreferredProviders(role);
+            return candidates.Any(candidate => candidate.IsGpu) &&
+                   ExecutionProviderService.PreferredProviders(ExecutionProviderRole.OfflineTranscription)
+                       .Any(candidate => candidate.IsGpu) &&
+                   ExecutionProviderService.Preference != ExecutionProviderPreference.Cpu;
         }
     }
 
@@ -159,16 +163,48 @@ public sealed class NativeDiarizationClient : IDisposable
             return;
         }
 
+        const ExecutionProviderRole role = ExecutionProviderRole.Diarization;
+        var candidates = ExecutionProviderService.PreferredProviders(role);
         Exception? lastError = null;
-        foreach (var provider in PreferredProviders())
+        for (var index = 0; index < candidates.Count; index++)
         {
+            var candidate = candidates[index];
+            var attempt = System.Diagnostics.Stopwatch.StartNew();
             try
             {
+                if (candidate.IsGpu && !ExecutionProviderService.TryGetQualifiedCudaEvidence("diarization", out _))
+                {
+                    var probe = ExecutionProviderService.BeginWarmUp(candidate.Provider, "diarization");
+                    try
+                    {
+                        using (var probeDiarizer = new OfflineSpeakerDiarization(BuildConfig(probe.ProviderString)))
+                        {
+                            WarmUp(probeDiarizer);
+                        }
+
+                        var evidence = probe.Complete();
+                        if (!evidence.ConfirmedGpuInference)
+                        {
+                            lastError = new InvalidOperationException(evidence.Detail);
+                            ExecutionProviderService.RecordFailure(role, candidate.Provider, "diarization", attempt.ElapsedMilliseconds, evidence.Detail);
+                            continue;
+                        }
+
+                        ExecutionProviderService.StoreQualifiedCudaEvidence("diarization", evidence);
+                    }
+                    catch (Exception probeException)
+                    {
+                        probe.Abandon(probeException);
+                        throw;
+                    }
+                }
+
                 var load = System.Diagnostics.Stopwatch.StartNew();
-                _diarizer = new OfflineSpeakerDiarization(BuildConfig(provider));
+                _diarizer = new OfflineSpeakerDiarization(BuildConfig(candidate.Provider));
                 load.Stop();
-                _provider = provider;
+                _provider = candidate.Provider;
                 _initialModelLoadMs = load.ElapsedMilliseconds;
+                ExecutionProviderService.RecordActive(role, candidate.Provider, "diarization", _initialModelLoadMs);
                 return;
             }
             catch (Exception exception)
@@ -176,16 +212,31 @@ public sealed class NativeDiarizationClient : IDisposable
                 lastError = exception;
                 _diarizer?.Dispose();
                 _diarizer = null;
-                if (ProviderWasExplicitlyConfigured())
+                ExecutionProviderService.RecordFailure(role, candidate.Provider, "diarization", attempt.ElapsedMilliseconds, exception.Message);
+                if (ExecutionProviderService.IsProviderForcedByEnvironment(role))
                 {
                     throw new InvalidOperationException(
-                        $"Diarization provider '{provider}' could not initialize: {exception.Message}",
+                        $"Diarization provider '{candidate.Provider}' could not initialize: {exception.Message}",
                         exception);
                 }
             }
         }
 
         throw new InvalidOperationException("No native diarization provider could initialize.", lastError);
+    }
+
+    /// <summary>Real warm-up segmentation so a GPU claim is backed by executed graph nodes.</summary>
+    private static void WarmUp(OfflineSpeakerDiarization diarizer)
+    {
+        const int sampleRate = 16000;
+        var samples = new float[sampleRate / 2];
+        var random = new Random(20260920);
+        for (var i = 0; i < samples.Length; i++)
+        {
+            samples[i] = (float)((random.NextDouble() - 0.5) * 0.002);
+        }
+
+        diarizer.Process(samples);
     }
 
     private static OfflineSpeakerDiarizationConfig BuildConfig(string provider)
@@ -204,30 +255,6 @@ public sealed class NativeDiarizationClient : IDisposable
         config.Clustering.Threshold = 0.50f;
         return config;
     }
-
-    private static IEnumerable<string> PreferredProviders()
-    {
-        var configured = Environment.GetEnvironmentVariable("MUESLI_DIARIZATION_PROVIDER");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            yield return configured.Trim().ToLowerInvariant() switch
-            {
-                "gpu" => "cuda",
-                var value => value
-            };
-            yield break;
-        }
-
-        if (NativeSherpaRuntime.IsCudaCapable)
-        {
-            yield return "cuda";
-        }
-
-        yield return "cpu";
-    }
-
-    private static bool ProviderWasExplicitlyConfigured() =>
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MUESLI_DIARIZATION_PROVIDER"));
 
     private static int ThreadCount(string provider)
     {

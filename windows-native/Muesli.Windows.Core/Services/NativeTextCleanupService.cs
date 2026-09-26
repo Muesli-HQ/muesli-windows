@@ -31,9 +31,16 @@ public sealed class NativeTextCleanupService : IDisposable
         _logService = logService ?? new AppLogService();
     }
 
-    public static string ModelCacheDirectory =>
-        Environment.GetEnvironmentVariable("MUESLI_NATIVE_CLEANUP_CACHE") ??
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "muesli", "native-cleanup");
+    public static string ModelCacheDirectory => CleanupModelCatalog.ModelCacheDirectory;
+
+    /// <summary>
+    /// The cleanup model the user selected. Set once at startup from settings; an empty value keeps
+    /// the legacy behaviour of using any GGUF already placed in the cache.
+    /// </summary>
+    public static string SelectedModelId { get; private set; } = "";
+
+    public static void Configure(string? selectedModelId) =>
+        SelectedModelId = CleanupModelCatalog.Normalize(selectedModelId);
 
     public static bool IsRuntimeAvailable => RuntimeAvailable();
 
@@ -100,14 +107,7 @@ public sealed class NativeTextCleanupService : IDisposable
 
     public static string? FindModelPath()
     {
-        if (!Directory.Exists(ModelCacheDirectory))
-        {
-            return null;
-        }
-
-        return Directory.EnumerateFiles(ModelCacheDirectory, "*.gguf", SearchOption.AllDirectories)
-            .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
+        return CleanupModelCatalog.ResolveInstalledModelPath(SelectedModelId);
     }
 
     public static void OpenModelCacheDirectory()
@@ -280,7 +280,7 @@ public sealed class NativeTextCleanupService : IDisposable
 
         using var context = _model.CreateContext(_modelParams);
         var executor = new InteractiveExecutor(context);
-        var prompt = BuildPrompt(text, preserveStructure);
+        var prompt = BuildPrompt(text, preserveStructure, PromptContractFor(modelPath));
         var inferenceParams = new InferenceParams
         {
             MaxTokens = Math.Min(1024, Math.Max(96, text.Length / 2 + 64)),
@@ -319,8 +319,28 @@ public sealed class NativeTextCleanupService : IDisposable
         _loadedModelPath = modelPath;
     }
 
-    private static string BuildPrompt(string text, bool preserveStructure)
+    /// <summary>
+    /// S1-mini was trained on one fixed control line rather than free-form instructions, so Muesli
+    /// switches prompt shape for it exactly as the macOS cleanup stage does.
+    /// </summary>
+    internal static CleanupPromptContract PromptContractFor(string modelPath) =>
+        CleanupModelCatalog.DefinitionForPath(modelPath)?.Id == CleanupModelCatalog.S1MiniId
+            ? CleanupPromptContract.S1Mini
+            : CleanupPromptContract.Configurable;
+
+    internal static string BuildPrompt(string text, bool preserveStructure, CleanupPromptContract contract)
     {
+        if (contract == CleanupPromptContract.S1Mini)
+        {
+            return $"""
+                    [Styling: semi-formal] [Structure: prose] [Context: general]
+
+                    {text}
+
+                    CLEANED TEXT:
+                    """;
+        }
+
         var structureRule = preserveStructure
             ? "Preserve paragraph breaks and line breaks."
             : "Return only the cleaned utterance body.";

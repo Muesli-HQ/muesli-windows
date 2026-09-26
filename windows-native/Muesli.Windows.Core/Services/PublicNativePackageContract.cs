@@ -19,7 +19,7 @@ internal static class PublicNativePackageContract
     public const string ExpectedSherpaRuntimeVersion = "1.13.4";
 
     public const string PublicPackageDisclosure =
-        "Public Wave 0 package includes the CPU Sherpa provider only. NVIDIA CUDA is not included. A version-matched CUDA provider is optional external staging and is not shipped until L11 qualifies it.";
+        "Public package includes the CPU Sherpa provider only. NVIDIA CUDA and DirectML are not included. The optional NVIDIA CUDA acceleration pack is a separate, SHA-256-verified download from the pinned sherpa-onnx 1.13.4 release and is never shipped inside this package.";
 
     public const string FalseCudaIncludedClaim =
         "The primary Muesli package includes the version-matched sherpa-onnx CUDA provider";
@@ -116,6 +116,22 @@ internal sealed record NativeCudaManifestFiles(
     string[] RequiredRuntimeFiles,
     string[] RequiredNvidiaFiles)
 {
+    /// <summary>The ONNX Runtime version the bundle declares, when the manifest pins one.</summary>
+    public string? OnnxRuntimeVersion { get; init; }
+
+    /// <summary>
+    /// The exact Win32 file version of the bundled ONNX Runtime DLL. This is the provenance gate;
+    /// <see cref="OnnxRuntimeVersion"/> is only the human-facing release number.
+    /// </summary>
+    public string? OnnxRuntimeFileVersion { get; init; }
+
+    /// <summary>
+    /// Per-file SHA-256 values the bundle commits to. A bundle that declares them is held to them
+    /// before its libraries are loaded; a bundle that declares none is unpinned provenance.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> FileSha256 { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
     public static NativeCudaManifestFiles Parse(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -123,10 +139,41 @@ internal sealed record NativeCudaManifestFiles(
         var runtimeVersion = root.TryGetProperty("runtimeVersion", out var versionElement)
             ? versionElement.GetString()
             : null;
+        var onnxRuntimeVersion = root.TryGetProperty("onnxRuntimeVersion", out var ortElement)
+            ? ortElement.GetString()
+            : null;
+        var onnxRuntimeFileVersion = root.TryGetProperty("onnxRuntimeFileVersion", out var ortFileElement)
+            ? ortFileElement.GetString()
+            : null;
         return new NativeCudaManifestFiles(
             runtimeVersion,
             ReadStringArray(root, "requiredRuntimeFiles"),
-            ReadStringArray(root, "requiredNvidiaFiles"));
+            ReadStringArray(root, "requiredNvidiaFiles"))
+        {
+            OnnxRuntimeVersion = onnxRuntimeVersion,
+            OnnxRuntimeFileVersion = onnxRuntimeFileVersion,
+            FileSha256 = ReadStringMap(root, "fileSha256")
+        };
+    }
+
+    private static IReadOnlyDictionary<string, string> ReadStringMap(JsonElement root, string name)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!root.TryGetProperty(name, out var element) || element.ValueKind != JsonValueKind.Object)
+        {
+            return result;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            var value = property.Value.GetString();
+            if (!string.IsNullOrWhiteSpace(property.Name) && !string.IsNullOrWhiteSpace(value))
+            {
+                result[property.Name] = value;
+            }
+        }
+
+        return result;
     }
 
     private static string[] ReadStringArray(JsonElement root, string name)

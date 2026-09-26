@@ -67,6 +67,7 @@ public static class IndicatorProtocol
         !string.Equals(previous.Message, current.Message, StringComparison.Ordinal) ||
         !string.Equals(previous.RecordingColorHex, current.RecordingColorHex, StringComparison.Ordinal) ||
         previous.MeetingPaused != current.MeetingPaused ||
+        previous.HandsFree != current.HandsFree ||
         !string.Equals(previous.IndicatorAnchor, current.IndicatorAnchor, StringComparison.Ordinal) ||
         previous.SavedLeft != current.SavedLeft ||
         previous.SavedTop != current.SavedTop ||
@@ -157,6 +158,12 @@ public sealed record IndicatorSnapshot
     public string RecordingColorHex { get; init; } = "1e1e2e";
 
     public bool MeetingPaused { get; init; }
+
+    /// <summary>
+    /// True when double-tap (hands-free) dictation is enabled, so the idle hover copy can mention
+    /// it. Matches the macOS reference's "Hold … or double-tap for hands-free" hint.
+    /// </summary>
+    public bool HandsFree { get; init; }
 
     public string IndicatorAnchor { get; init; } = "Middle Right";
     public double? SavedLeft { get; init; }

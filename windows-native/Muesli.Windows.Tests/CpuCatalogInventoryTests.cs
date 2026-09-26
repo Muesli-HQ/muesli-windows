@@ -203,19 +203,29 @@ public sealed class CpuCatalogInventoryTests
     }
 
     [Fact]
-    public void CudaProvenanceGapDocDoesNotClaimAPackagedProvider()
+    public void CudaProvenanceDocDoesNotClaimAPackagedProvider()
     {
         var gap = File.ReadAllText(Path.Combine(RepositoryRoot, "docs", "L11_CUDA_PROVENANCE_GAP.md"));
-        Assert.Contains("gap analysis", gap, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not shipped in the public package", gap, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(PublicNativePackageContract.ExpectedSherpaRuntimeVersion, gap, StringComparison.Ordinal);
         Assert.Contains("org.k2fsa.sherpa.onnx", gap, StringComparison.Ordinal);
-        Assert.Contains("No CUDA NuGet runtime package", gap, StringComparison.Ordinal);
+        Assert.Contains(CudaAccelerationPack.ArchiveUrl, gap, StringComparison.Ordinal);
+        Assert.Contains(CudaAccelerationPack.ArchiveSha256, gap, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(CudaAccelerationPack.OnnxRuntimeFileVersion, gap, StringComparison.Ordinal);
+        Assert.Contains("SHERPA_ONNX_ENABLE_DIRECTML", gap, StringComparison.Ordinal);
+        foreach (var file in CudaAccelerationPack.RequiredFiles)
+        {
+            Assert.Contains(file.Sha256, gap, StringComparison.OrdinalIgnoreCase);
+        }
+
         Assert.DoesNotContain(PublicNativePackageContract.FalseCudaIncludedClaim, gap, StringComparison.Ordinal);
         Assert.DoesNotContain("CUDA is included in the public package", gap, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("| MOD-01 | Complete", gap, StringComparison.Ordinal);
 
         var ledger = File.ReadAllText(Path.Combine(RepositoryRoot, "docs", "WINDOWS_LAUNCH_LEDGER.md"));
         var mod01 = ledger.Split('\n').First(line => line.Contains("| MOD-01 |", StringComparison.Ordinal));
-        Assert.Contains("Partial", mod01, StringComparison.Ordinal);
+        // MOD-01 may advance past "Partial" as measured evidence lands, but it must never claim the
+        // CUDA provider is part of the public package while the public notices/inventory stay CPU-only.
+        Assert.DoesNotContain("Complete and verified", mod01, StringComparison.Ordinal);
+        Assert.Contains("public notices/inventory stay CPU-only", mod01, StringComparison.Ordinal);
     }
 }

@@ -215,11 +215,13 @@ public static class MeetingSummaryService
                 "openai" => await SummarizeWithOpenAIAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
                 "openrouter" => await SummarizeWithOpenRouterAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
                 "ollama" => await SummarizeWithOllamaAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
+                "lmstudio" => await SummarizeWithLmStudioAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
+                "custom" => await SummarizeWithCustomLlmAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
                 _ => CreateLocalSummary(transcript, meetingTitle, settings)
             };
             return new SummaryGenerationResult(
                 summary,
-                provider is "openai" or "openrouter" or "ollama" ? provider : "local",
+                provider is "openai" or "openrouter" or "ollama" or "lmstudio" or "custom" ? provider : "local",
                 false,
                 null);
         }
@@ -369,6 +371,157 @@ public static class MeetingSummaryService
         return string.IsNullOrWhiteSpace(text)
             ? throw new SummaryProviderException("empty-response")
             : text.Trim();
+    }
+
+    /// <summary>
+    /// LM Studio's local server exposes the OpenAI chat-completions contract. It needs no
+    /// credential, so nothing here may be stored or logged as one.
+    /// </summary>
+    private static Task<string> SummarizeWithLmStudioAsync(
+        string transcript,
+        string meetingTitle,
+        MuesliSettings settings,
+        HttpClient httpClient,
+        CancellationToken cancellationToken)
+    {
+        var endpoint = string.IsNullOrWhiteSpace(settings.LmStudioEndpoint)
+            ? "http://localhost:1234"
+            : settings.LmStudioEndpoint.Trim();
+        if (!TryCreateHttpUri(endpoint, out var baseUri))
+        {
+            throw new SummaryProviderException("invalid-endpoint");
+        }
+
+        var model = settings.LmStudioModel?.Trim() ?? "";
+        if (model.Length == 0)
+        {
+            throw new SummaryProviderException("missing-model");
+        }
+
+        return SummarizeWithChatCompletionsAsync(
+            transcript,
+            meetingTitle,
+            settings,
+            new Uri(baseUri, "/v1/chat/completions"),
+            model,
+            apiKey: "",
+            httpClient,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Documented custom HTTP contract: POST to the user's OpenAI-compatible chat-completions
+    /// endpoint with an optional bearer token. The token is read from
+    /// <c>MUESLI_CUSTOM_LLM_API_KEY</c> first and then the Credential Manager-backed setting, so no
+    /// key, endpoint, or response body is ever logged or placed in a safe failure reason.
+    /// </summary>
+    private static Task<string> SummarizeWithCustomLlmAsync(
+        string transcript,
+        string meetingTitle,
+        MuesliSettings settings,
+        HttpClient httpClient,
+        CancellationToken cancellationToken)
+    {
+        if (!TryResolveCustomLlmUri(settings.CustomLlmEndpoint, out var uri))
+        {
+            throw new SummaryProviderException("invalid-endpoint");
+        }
+
+        var model = settings.CustomLlmModel?.Trim() ?? "";
+        if (model.Length == 0)
+        {
+            throw new SummaryProviderException("missing-model");
+        }
+
+        var apiKey = Environment.GetEnvironmentVariable("MUESLI_CUSTOM_LLM_API_KEY");
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            apiKey = settings.ResolvedCustomLlmApiKey;
+        }
+
+        return SummarizeWithChatCompletionsAsync(
+            transcript,
+            meetingTitle,
+            settings,
+            uri,
+            model,
+            apiKey ?? "",
+            httpClient,
+            cancellationToken);
+    }
+
+    private static async Task<string> SummarizeWithChatCompletionsAsync(
+        string transcript,
+        string meetingTitle,
+        MuesliSettings settings,
+        Uri uri,
+        string model,
+        string apiKey,
+        HttpClient httpClient,
+        CancellationToken cancellationToken)
+    {
+        var body = new
+        {
+            model,
+            stream = false,
+            messages = new object[]
+            {
+                new { role = "system", content = EffectiveSystemPrompt(settings) },
+                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle) }
+            },
+            max_tokens = 2500
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, uri);
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        }
+
+        request.Content = JsonContent(body);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            // A stopped server and a missing model are the two failures users actually hit.
+            throw new SummaryProviderException(
+                response.StatusCode == System.Net.HttpStatusCode.NotFound
+                    ? "model-not-installed"
+                    : $"http-{(int)response.StatusCode}");
+        }
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var document = JsonDocument.Parse(json);
+        var text = ExtractOpenRouterText(document.RootElement);
+        return string.IsNullOrWhiteSpace(text)
+            ? throw new SummaryProviderException("empty-response")
+            : text.Trim();
+    }
+
+    private static bool TryCreateHttpUri(string endpoint, out Uri uri)
+    {
+        if (Uri.TryCreate(endpoint, UriKind.Absolute, out var parsed) &&
+            (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps))
+        {
+            uri = parsed;
+            return true;
+        }
+
+        uri = null!;
+        return false;
+    }
+
+    private static bool TryResolveCustomLlmUri(string? endpoint, out Uri uri)
+    {
+        uri = null!;
+        var candidate = endpoint?.Trim() ?? "";
+        if (candidate.Length == 0 || !TryCreateHttpUri(candidate, out var parsed))
+        {
+            return false;
+        }
+
+        // Accept either a base URL or the full chat-completions path.
+        uri = parsed.AbsolutePath is "" or "/" ? new Uri(parsed, "/v1/chat/completions") : parsed;
+        return true;
     }
 
     private static async Task<string> SummarizeWithOpenRouterAsync(

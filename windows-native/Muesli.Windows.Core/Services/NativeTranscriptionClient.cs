@@ -158,6 +158,7 @@ public sealed class NativeTranscriptionClient : IDisposable
     private TranscriptionModelDefinition _model;
     private ITranscriptionModelSession? _session;
     private bool _disposed;
+    private readonly Action _languageChanged;
 
     public NativeTranscriptionClient(string? modelId = null)
         : this(TranscriptionModelCatalog.GetRequired(modelId ?? TranscriptionModelCatalog.DefaultModelId),
@@ -173,7 +174,13 @@ public sealed class NativeTranscriptionClient : IDisposable
         _model = model;
         _sessionFactory = sessionFactory;
         _isReady = isReady ?? TranscriptionModelReadiness.IsVerified;
+        // A language change must not leave a recognizer running with the old language; the next
+        // transcription rebuilds the session from the new selection.
+        _languageChanged = () => _reconfigurePending = true;
+        TranscriptionLanguageSelection.Changed += _languageChanged;
     }
+
+    private volatile bool _reconfigurePending;
 
     public string EngineId => $"native-sherpa-onnx/{_model.Kind.ToString().ToLowerInvariant()}";
     public string ModelId => _model.Id;
@@ -249,6 +256,14 @@ public sealed class NativeTranscriptionClient : IDisposable
                     $"{_model.DisplayName} is not downloaded and verified. Prepare it from Models first.");
             }
 
+            // A language change invalidates the pooled recognizer so it is rebuilt with the new
+            // selection instead of transcribing with the previous language.
+            if (_reconfigurePending)
+            {
+                DisposeSession();
+                _reconfigurePending = false;
+            }
+
             _session ??= _sessionFactory.Create(_model);
             return await operation(_session);
         }
@@ -295,6 +310,7 @@ public sealed class NativeTranscriptionClient : IDisposable
             }
 
             _disposed = true;
+            TranscriptionLanguageSelection.Changed -= _languageChanged;
             DisposeSession();
         }
         finally

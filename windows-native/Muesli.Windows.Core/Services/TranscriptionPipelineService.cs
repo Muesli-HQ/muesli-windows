@@ -50,21 +50,42 @@ public sealed class TranscriptionPipelineService
     public async Task<string> PrepareMeetingTranscriptAsync(
         string mergedTranscript,
         bool enableCleanup,
-        IEnumerable<DictionaryEntryRecord> dictionaryEntries)
+        IEnumerable<DictionaryEntryRecord> dictionaryEntries,
+        bool removeFillerWords = false)
     {
         var cleaned = await CleanupAsync(mergedTranscript, enableCleanup, "meeting");
-        return ApplyDictionaryPreservingSpeakerPrefixes(cleaned, dictionaryEntries);
+        return FinishSpeakerTranscript(cleaned, removeFillerWords, dictionaryEntries);
     }
 
     public async Task<string> PrepareImportedTranscriptAsync(
         string rawTranscript,
         bool enableCleanup,
         IEnumerable<DictionaryEntryRecord> dictionaryEntries,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool removeFillerWords = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var cleaned = await CleanupAsync(rawTranscript, enableCleanup, "imported media");
         cancellationToken.ThrowIfCancellationRequested();
+        return FinishSpeakerTranscript(cleaned, removeFillerWords, dictionaryEntries);
+    }
+
+    /// <summary>
+    /// TXT-03: meeting and import transcripts now share dictation's filler-then-dictionary order.
+    /// Both passes run on line bodies only, so a timestamp or speaker prefix is never rewritten.
+    /// Filler removal is opt-in through the same <c>RemoveFillerWords</c> setting as dictation; the
+    /// default <c>false</c> preserves the retired WPF caller's behavior.
+    /// </summary>
+    private static string FinishSpeakerTranscript(
+        string cleaned,
+        bool removeFillerWords,
+        IEnumerable<DictionaryEntryRecord> dictionaryEntries)
+    {
+        if (removeFillerWords)
+        {
+            cleaned = ApplyFillerPreservingSpeakerPrefixes(cleaned);
+        }
+
         return ApplyDictionaryPreservingSpeakerPrefixes(cleaned, dictionaryEntries);
     }
 
@@ -96,10 +117,28 @@ public sealed class TranscriptionPipelineService
             return text;
         }
 
+        return MapLineBodies(text, body => DictionaryCorrectionService.Apply(body, entries));
+    }
+
+    /// <summary>
+    /// Applies deterministic filler removal per line body so speaker/timestamp prefixes survive.
+    /// </summary>
+    public static string ApplyFillerPreservingSpeakerPrefixes(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        return MapLineBodies(text, FillerWordFilter.Apply);
+    }
+
+    private static string MapLineBodies(string text, Func<string, string> transform)
+    {
         var lines = text.Replace("\r\n", "\n").Split('\n');
         for (var i = 0; i < lines.Length; i++)
         {
-            lines[i] = ApplyDictionaryToLineBody(lines[i], entries);
+            lines[i] = ApplyToLineBody(lines[i], transform);
         }
 
         return string.Join(Environment.NewLine, lines);
@@ -130,23 +169,23 @@ public sealed class TranscriptionPipelineService
         }
     }
 
-    private static string ApplyDictionaryToLineBody(string line, IReadOnlyList<DictionaryEntryRecord> entries)
+    private static string ApplyToLineBody(string line, Func<string, string> transform)
     {
         var timestampMatch = TimestampSpeakerLine.Match(line);
         if (timestampMatch.Success)
         {
             return timestampMatch.Groups["prefix"].Value +
-                   DictionaryCorrectionService.Apply(timestampMatch.Groups["body"].Value, entries);
+                   transform(timestampMatch.Groups["body"].Value);
         }
 
         var bracketMatch = BracketSpeakerLine.Match(line);
         if (bracketMatch.Success)
         {
             return bracketMatch.Groups["prefix"].Value +
-                   DictionaryCorrectionService.Apply(bracketMatch.Groups["body"].Value, entries);
+                   transform(bracketMatch.Groups["body"].Value);
         }
 
-        return DictionaryCorrectionService.Apply(line, entries);
+        return transform(line);
     }
 
 }

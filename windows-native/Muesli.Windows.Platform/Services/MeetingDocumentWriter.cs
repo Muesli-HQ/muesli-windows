@@ -91,7 +91,27 @@ public static class MeetingDocumentWriter
         return result;
     }
 
+    /// <summary>
+    /// Renders deterministic Markdown to PDF bytes for callers that own their own atomic write
+    /// (for example the automatic exporter). Honors the same EXP-01 release gate as
+    /// <see cref="Write"/>.
+    /// </summary>
+    public static byte[] GeneratePdfBytes(string markdown)
+    {
+        if (!PdfExportApproved)
+        {
+            throw new InvalidOperationException(
+                "PDF export is disabled until QuestPDF Community-license eligibility is approved (EXP-01). " +
+                "Markdown export remains available.");
+        }
+
+        return CreatePdfDocument(markdown).GeneratePdf();
+    }
+
     private static void GeneratePdf(string markdown, string outputPath)
+        => CreatePdfDocument(markdown).GeneratePdf(outputPath);
+
+    private static IDocument CreatePdfDocument(string markdown)
     {
         // This build selects QuestPDF's Community license. The distributing legal
         // entity must confirm that it satisfies QuestPDF's current eligibility terms.
@@ -99,7 +119,7 @@ public static class MeetingDocumentWriter
 
         var lines = markdown.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
 
-        Document.Create(container =>
+        return Document.Create(container =>
         {
             container.Page(page =>
             {
@@ -160,7 +180,7 @@ public static class MeetingDocumentWriter
                     }
                 });
             });
-        }).GeneratePdf(outputPath);
+        });
     }
 
     internal static string SuggestFilename(MeetingItem meeting, MeetingExportMode mode)

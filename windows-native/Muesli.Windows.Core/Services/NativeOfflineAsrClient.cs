@@ -285,29 +285,101 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
             return;
         }
 
+        const ExecutionProviderRole role = ExecutionProviderRole.OfflineTranscription;
+        var candidates = ExecutionProviderService.PreferredProviders(role, _model.Kind);
         Exception? lastError = null;
-        foreach (var provider in PreferredProviders())
+        for (var index = 0; index < candidates.Count; index++)
         {
+            var candidate = candidates[index];
+            var started = Stopwatch.StartNew();
             try
             {
-                var started = Stopwatch.StartNew();
-                _recognizer = new OfflineRecognizer(BuildRecognizerConfig(provider));
-                started.Stop();
-                _provider = provider;
-                _modelLoadMs = started.ElapsedMilliseconds;
+                ProviderEvidence? evidence = null;
+                if (candidate.IsGpu)
+                {
+                    if (!ExecutionProviderService.TryGetQualifiedCudaEvidence(_model.Id, out var cachedEvidence))
+                    {
+                        // The first CUDA use on this machine runs a real warm-up decode with ONNX
+                        // Runtime profiling enabled. The profile proves which execution provider
+                        // actually executed the graph; a request alone is never accepted.
+                        var probe = ExecutionProviderService.BeginWarmUp(candidate.Provider, _model.Id);
+                        try
+                        {
+                            using (var probeRecognizer = new OfflineRecognizer(BuildRecognizerConfig(probe.ProviderString)))
+                            {
+                                WarmUp(probeRecognizer);
+                            }
+
+                            var probed = probe.Complete();
+                            if (!probed.ConfirmedGpuInference)
+                            {
+                                lastError = new InvalidOperationException(probed.Detail);
+                                ExecutionProviderService.RecordFailure(role, candidate.Provider, _model.Id, started.ElapsedMilliseconds, probed.Detail);
+                                continue;
+                            }
+
+                            ExecutionProviderService.StoreQualifiedCudaEvidence(_model.Id, probed);
+                            evidence = probed;
+                        }
+                        catch (Exception probeException)
+                        {
+                            probe.Abandon(probeException);
+                            throw;
+                        }
+                    }
+                    else
+                    {
+                        evidence = cachedEvidence;
+                    }
+                }
+
+                var loadStarted = Stopwatch.StartNew();
+                var recognizer = new OfflineRecognizer(BuildRecognizerConfig(candidate.Provider));
+                loadStarted.Stop();
+                _recognizer = recognizer;
+                _provider = candidate.Provider;
+                _modelLoadMs = loadStarted.ElapsedMilliseconds;
+                ExecutionProviderService.RecordActive(role, candidate.Provider, _model.Id, _modelLoadMs, evidence);
+                if (candidate.IsGpu && index > 0)
+                {
+                    ExecutionProviderService.RecordFallback(role, _model.Id, "cuda", "CUDA bundle was not loadable.");
+                }
+
                 return;
             }
             catch (Exception exception)
             {
                 lastError = exception;
-                if (ProviderWasExplicitlyConfigured())
+                ExecutionProviderService.RecordFailure(role, candidate.Provider, _model.Id, started.ElapsedMilliseconds, exception.Message);
+                if (ExecutionProviderService.Preference == ExecutionProviderPreference.Cuda && index + 1 < candidates.Count)
                 {
-                    break;
+                    ExecutionProviderService.RecordFallback(role, _model.Id, candidate.Provider, exception.Message);
                 }
             }
         }
 
         throw new InvalidOperationException($"{_model.DisplayName} could not initialize on an available execution provider.", lastError);
+    }
+
+    /// <summary>
+    /// A real half-second decode that forces the graph to execute on the selected provider before
+    /// the model is accepted for user audio. Quiet noise keeps the decoder active without
+    /// producing a meaningful hypothesis.
+    /// </summary>
+    private static void WarmUp(OfflineRecognizer recognizer)
+    {
+        const int sampleRate = 16000;
+        var samples = new float[sampleRate / 2];
+        var random = new Random(20260920);
+        for (var i = 0; i < samples.Length; i++)
+        {
+            samples[i] = (float)((random.NextDouble() - 0.5) * 0.002);
+        }
+
+        using var stream = recognizer.CreateStream();
+        stream.AcceptWaveform(sampleRate, samples);
+        recognizer.Decode(stream);
+        _ = stream.Result.Text;
     }
 
     private OfflineRecognizerConfig BuildRecognizerConfig(string provider)
@@ -333,7 +405,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
             case NativeAsrModelKind.Whisper:
                 config.ModelConfig.Whisper.Encoder = FilePath(_model.RequiredFiles[0]);
                 config.ModelConfig.Whisper.Decoder = FilePath(_model.RequiredFiles[1]);
-                config.ModelConfig.Whisper.Language = _model.Language;
+                config.ModelConfig.Whisper.Language = TranscriptionLanguageSelection.Resolve(_model);
                 config.ModelConfig.Whisper.Task = "transcribe";
                 // The official INT8 release archives do not include Whisper's
                 // cross-attention outputs, so sherpa cannot produce aligned token
@@ -362,7 +434,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
             case NativeAsrModelKind.CohereTranscribe:
                 config.ModelConfig.CohereTranscribe.Encoder = FilePath("encoder.int8.onnx");
                 config.ModelConfig.CohereTranscribe.Decoder = FilePath("decoder.int8.onnx");
-                config.ModelConfig.CohereTranscribe.Language = _model.Language;
+                config.ModelConfig.CohereTranscribe.Language = TranscriptionLanguageSelection.Resolve(_model);
                 config.ModelConfig.CohereTranscribe.UsePunct = 1;
                 config.ModelConfig.CohereTranscribe.UseItn = 1;
                 config.ModelConfig.Tokens = FilePath("tokens.txt");
@@ -649,28 +721,6 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
             new ModelVerificationStamp(_model.ArchiveSha256, files),
             new JsonSerializerOptions { WriteIndented = true }));
     }
-
-    private static IEnumerable<string> PreferredProviders()
-    {
-        var configured = Environment.GetEnvironmentVariable("MUESLI_ASR_PROVIDER");
-        configured ??= Environment.GetEnvironmentVariable("MUESLI_PARAKEET_PROVIDER");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            yield return configured.Trim().Equals("gpu", StringComparison.OrdinalIgnoreCase) ? "cuda" : configured.Trim().ToLowerInvariant();
-            yield break;
-        }
-
-        if (NativeSherpaRuntime.IsCudaCapable)
-        {
-            yield return "cuda";
-        }
-
-        yield return "cpu";
-    }
-
-    private static bool ProviderWasExplicitlyConfigured() =>
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MUESLI_ASR_PROVIDER")) ||
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MUESLI_PARAKEET_PROVIDER"));
 
     private static int ThreadCount(string provider) => provider.Equals("cuda", StringComparison.OrdinalIgnoreCase)
         ? Math.Clamp(Environment.ProcessorCount, 1, 4)

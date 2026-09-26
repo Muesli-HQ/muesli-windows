@@ -127,6 +127,134 @@ public sealed class Phase7NotesTests
                 Transcript, "t", Settings("ollama"), cancelled.Token, client));
     }
 
+    // ---- LM Studio contract (SUM-02) ---------------------------------------------
+
+    [Fact]
+    public async Task LmStudioUsesLocalChatCompletionsWithNoCredential()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"choices\":[{\"message\":{\"content\":\"## Summary\\n- Ship on Friday\"}}]}");
+        using var client = new HttpClient(handler);
+        var settings = Settings("lmstudio") with
+        {
+            LmStudioEndpoint = "http://localhost:1234",
+            LmStudioModel = "qwen2.5-7b-instruct"
+        };
+
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(
+            Transcript, "Release sync", settings, CancellationToken.None, client);
+
+        Assert.Equal("lmstudio", result.Provider);
+        Assert.False(result.UsedLocalFallback);
+        Assert.Null(result.SafeFailureReason);
+        Assert.Contains("Ship on Friday", result.Summary, StringComparison.Ordinal);
+        Assert.Equal("http://localhost:1234/v1/chat/completions", handler.LastRequestUri?.ToString());
+        Assert.Contains("\"stream\":false", handler.LastRequestBody, StringComparison.Ordinal);
+        Assert.Contains("qwen2.5-7b-instruct", handler.LastRequestBody, StringComparison.Ordinal);
+        Assert.Null(handler.LastAuthorizationHeader);
+    }
+
+    [Fact]
+    public async Task LmStudioRequiresAModelAndFailsClosedWithoutAnyRequest()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"choices\":[{\"message\":{\"content\":\"x\"}}]}");
+        using var client = new HttpClient(handler);
+
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(
+            Transcript, "t", Settings("lmstudio") with { LmStudioModel = "" }, CancellationToken.None, client);
+
+        Assert.True(result.UsedLocalFallback);
+        Assert.Equal("missing-model", result.SafeFailureReason);
+        Assert.Equal("lmstudio", result.Provider);
+        Assert.Null(handler.LastRequestUri);
+    }
+
+    // ---- Custom HTTP contract (SUM-02) -------------------------------------------
+
+    [Fact]
+    public async Task CustomLlmPostsToTheConfiguredEndpointWithOptionalBearerKey()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"choices\":[{\"message\":{\"content\":\"notes\"}}]}");
+        using var client = new HttpClient(handler);
+        var settings = Settings("custom") with
+        {
+            CustomLlmEndpoint = "http://localhost:8080/v1/chat/completions",
+            CustomLlmModel = "my-local-model",
+            ResolvedCustomLlmApiKey = "local-test-key"
+        };
+
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(
+            Transcript, "t", settings, CancellationToken.None, client);
+
+        Assert.Equal("custom", result.Provider);
+        Assert.False(result.UsedLocalFallback);
+        Assert.Equal("http://localhost:8080/v1/chat/completions", handler.LastRequestUri?.ToString());
+        Assert.Equal("Bearer local-test-key", handler.LastAuthorizationHeader);
+        Assert.Contains("my-local-model", handler.LastRequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CustomLlmBaseUrlReceivesTheChatCompletionsPathAndNoAuthWhenKeyless()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"choices\":[{\"message\":{\"content\":\"notes\"}}]}");
+        using var client = new HttpClient(handler);
+        var settings = Settings("custom") with
+        {
+            CustomLlmEndpoint = "http://127.0.0.1:9000",
+            CustomLlmModel = "keyless-model",
+            ResolvedCustomLlmApiKey = ""
+        };
+
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(
+            Transcript, "t", settings, CancellationToken.None, client);
+
+        Assert.False(result.UsedLocalFallback);
+        Assert.Equal("http://127.0.0.1:9000/v1/chat/completions", handler.LastRequestUri?.ToString());
+        Assert.Null(handler.LastAuthorizationHeader);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, "{}", "model-not-installed")]
+    [InlineData(HttpStatusCode.InternalServerError, "{}", "http-500")]
+    [InlineData(HttpStatusCode.OK, "not json", "malformed-response")]
+    [InlineData(HttpStatusCode.OK, "{\"choices\":[]}", "empty-response")]
+    public async Task CustomLlmFailuresFallBackLocallyWithAnHonestReason(
+        HttpStatusCode status, string body, string expectedReason)
+    {
+        using var client = new HttpClient(new StubHandler(status, body));
+        var settings = Settings("custom") with
+        {
+            CustomLlmEndpoint = "http://localhost:8080/v1/chat/completions",
+            CustomLlmModel = "model"
+        };
+
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(
+            Transcript, "t", settings, CancellationToken.None, client);
+
+        Assert.True(result.UsedLocalFallback);
+        Assert.Equal(expectedReason, result.SafeFailureReason);
+        Assert.Equal("custom", result.Provider);
+        Assert.False(string.IsNullOrWhiteSpace(result.Summary));
+    }
+
+    [Fact]
+    public async Task CustomLlmFailsClosedForAMissingModelOrEndpoint()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{}");
+        using var client = new HttpClient(handler);
+
+        var missingEndpoint = await MeetingSummaryService.CreateSummaryResultAsync(
+            Transcript, "t", Settings("custom") with { CustomLlmEndpoint = "not-a-url", CustomLlmModel = "m" },
+            CancellationToken.None, client);
+        Assert.Equal("invalid-endpoint", missingEndpoint.SafeFailureReason);
+
+        var missingModel = await MeetingSummaryService.CreateSummaryResultAsync(
+            Transcript, "t", Settings("custom") with { CustomLlmEndpoint = "http://localhost:8080", CustomLlmModel = "" },
+            CancellationToken.None, client);
+        Assert.Equal("missing-model", missingModel.SafeFailureReason);
+
+        Assert.Null(handler.LastRequestUri);
+    }
+
     // ---- disclosure --------------------------------------------------------------
 
     [Theory]
@@ -136,6 +264,23 @@ public sealed class Phase7NotesTests
     [InlineData("openrouter", true)]
     public void OnlyCloudProvidersAreDisclosedAsLeavingTheMachine(string provider, bool leaves) =>
         Assert.Equal(leaves, SummaryProviderDisclosure.LeavesMachine(provider));
+
+    [Fact]
+    public void LmStudioAndCustomHttpAreLocalByDefaultButDiscloseRemoteEndpoints()
+    {
+        Assert.False(SummaryProviderDisclosure.LeavesMachine("lmstudio", null, "http://localhost:1234", null));
+        Assert.True(SummaryProviderDisclosure.LeavesMachine("lmstudio", null, "http://192.168.1.50:1234", null));
+        Assert.Contains("leaves this machine",
+            SummaryProviderDisclosure.DisclosureFor("lmstudio", null, "http://192.168.1.50:1234", null), StringComparison.Ordinal);
+
+        Assert.False(SummaryProviderDisclosure.LeavesMachine("custom", null, null, "http://localhost:8080/v1/chat/completions"));
+        Assert.True(SummaryProviderDisclosure.LeavesMachine("custom", null, null, "http://10.0.0.5/v1/chat/completions"));
+        Assert.Contains("leaves this machine",
+            SummaryProviderDisclosure.DisclosureFor("custom", null, null, "http://10.0.0.5/v1/chat/completions"), StringComparison.Ordinal);
+
+        Assert.Contains("lmstudio", SummaryProviderDisclosure.AvailableIds);
+        Assert.Contains("custom", SummaryProviderDisclosure.AvailableIds);
+    }
 
     [Fact]
     public void ARemoteOllamaEndpointIsDisclosedAsLeavingTheMachine()

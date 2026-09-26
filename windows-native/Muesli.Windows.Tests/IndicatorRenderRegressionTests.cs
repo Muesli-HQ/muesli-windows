@@ -72,6 +72,7 @@ public sealed class IndicatorRenderRegressionTests
         Assert.True(IndicatorProtocol.IsStructuralChange(baseline, baseline with { Message = "Done" }));
         Assert.True(IndicatorProtocol.IsStructuralChange(baseline, baseline with { RecordingColorHex = "00FF00" }));
         Assert.True(IndicatorProtocol.IsStructuralChange(baseline, baseline with { MeetingPaused = true }));
+        Assert.True(IndicatorProtocol.IsStructuralChange(baseline, baseline with { HandsFree = true }));
         Assert.True(IndicatorProtocol.IsStructuralChange(baseline, baseline with { IndicatorAnchor = "Top Left" }));
         Assert.True(IndicatorProtocol.IsStructuralChange(baseline, baseline with { SavedLeft = 5 }));
         Assert.True(IndicatorProtocol.IsStructuralChange(baseline, baseline with { SavedTop = 5 }));

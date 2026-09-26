@@ -5,7 +5,7 @@
     "cpuProviderIncluded": true,
     "cudaProviderIncluded": false,
     "cudaQualificationModule": "L11",
-    "disclosure": "Public Wave 0 package includes the CPU Sherpa provider only. NVIDIA CUDA is not included. A version-matched CUDA provider is optional external staging and is not shipped until L11 qualifies it."
+    "disclosure": "Public package includes the CPU Sherpa provider only. NVIDIA CUDA and DirectML are not included. The optional NVIDIA CUDA acceleration pack is a separate, SHA-256-verified download from the pinned sherpa-onnx 1.13.4 release and is never shipped inside this package."
   },
   "forbiddenPublicCudaFiles": [
     "onnxruntime_providers_cuda.dll",

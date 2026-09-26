@@ -78,8 +78,11 @@ public static class FloatingIndicatorLayout
     /// <summary>Bar width in DIPs.</summary>
     public const double WaveformBarWidth = 3;
 
-    /// <summary>Gap between bars in DIPs.</summary>
-    public const double WaveformBarSpacing = 4;
+    /// <summary>
+    /// Gap between bars in DIPs. The macOS reference's <c>setupWaveformBars</c> uses 3pt (not the
+    /// design-system table's 4pt); the live renderer is the behaviour we clone.
+    /// </summary>
+    public const double WaveformBarSpacing = 3;
 
     /// <summary>Quietest and loudest bar heights in DIPs.</summary>
     public const double WaveformMinHeight = 5;
@@ -98,7 +101,7 @@ public static class FloatingIndicatorLayout
     /// <summary>
     /// The effective loudest bar height for a state's pill. Preparing keeps the full 26-DIP
     /// design envelope (its 28-DIP compact pill leaves 1 DIP of breathing room top and bottom);
-    /// Recording scales the span down to a 14-DIP ceiling so the four bars stay inside the
+    /// Recording scales the span down to a 14-DIP ceiling so the five bars stay inside the
     /// 22-DIP capsule without visual overflow.
     /// </summary>
     public static double WaveformMaxHeightFor(FloatingIndicatorState state) =>
@@ -110,6 +113,22 @@ public static class FloatingIndicatorLayout
     /// <summary>Stop square size in DIPs (6×6) and its corner radius (1 DIP).</summary>
     public const double StopSquareSize = 6;
     public const double StopSquareRadius = 1;
+
+    /// <summary>
+    /// Gap from the right edge of the recording pill to the stop square, matching the macOS
+    /// reference's <c>addStopLayer</c> (<c>x = width - 6 - 8</c>).
+    /// </summary>
+    public const double StopSquareRightMargin = 8;
+
+    /// <summary>
+    /// The recording pill's left control. Dictation uses the heavy cross mark U+2715 at 7pt and
+    /// 45% white; meetings swap in pause/play at 8pt and 86% white, per the macOS reference.
+    /// </summary>
+    public const string RecordingCancelGlyph = "\u2715";
+    public const double RecordingCancelFontSize = 7;
+    public const byte RecordingCancelAlpha = 0x73;
+    public const double MeetingControlFontSize = 8;
+    public const byte MeetingControlAlpha = 0xDB;
 
     // ─── Waveform animation, per "Waveform Specifications" and "Animation & Interaction" ─────
     /// <summary>Full pulse period (one scale-Y cycle) in seconds.</summary>
@@ -127,8 +146,12 @@ public static class FloatingIndicatorLayout
     /// <summary>The five-bar preparing envelope, symmetric about the centre.</summary>
     public static readonly double[] PreparingBarMultipliers = [0.6, 0.85, 1.0, 0.85, 0.6];
 
-    /// <summary>The four-bar recording envelope.</summary>
-    public static readonly double[] RecordingBarMultipliers = [0.7, 1.0, 1.0, 0.7];
+    /// <summary>
+    /// The recording envelope. The macOS reference animates the same five-bar symmetric envelope
+    /// for both preparing and recording (its <c>waveformTimerFired</c> multipliers); the retired
+    /// Windows port's four-bar shape and 4-DIP spacing were the deviation.
+    /// </summary>
+    public static readonly double[] RecordingBarMultipliers = [0.6, 0.85, 1.0, 0.85, 0.6];
 
     /// <summary>Resting preparing heights: the envelope at its quiet baseline.</summary>
     public static readonly double[] PreparingBarHeights =

@@ -9,10 +9,23 @@ namespace Muesli.Windows.Services;
 public sealed class MeetingDetectionService : IDisposable
 {
     private static readonly TimeSpan ScanInterval = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Hard ceiling for one scan's window walk. A browser UI Automation subtree can stall; the walk
+    /// stops as soon as this elapses so the 3-second cadence is not held hostage by one window.
+    /// </summary>
+    private const long ScanBudgetMs = 5000;
+
+    /// <summary>How long a browser URL observation is reused so repeated scans do not re-walk UIA.</summary>
+    private static readonly TimeSpan BrowserUrlCacheTtl = TimeSpan.FromSeconds(5);
+
+    private const int MaxBrowserEditScan = 32;
+
     private readonly AppLogService _logService = new();
     private readonly MeetingPresenceSignals _signals = new();
     private readonly MeetingCandidateResolver _resolver = new();
-    private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private readonly MeetingScanGate _scanGate = new();
+    private readonly Dictionary<string, (string Url, DateTime At)> _browserUrlCache = new();
     private CancellationTokenSource? _loop;
     private Task? _loopTask;
     private int _scanCount;
@@ -21,12 +34,15 @@ public sealed class MeetingDetectionService : IDisposable
     public event EventHandler<DetectedMeeting>? MeetingDetected;
     public event EventHandler<MeetingDetectionScan>? ScanCompleted;
 
+    /// <summary>Raised when a confirmed meeting genuinely ends, so prompt suppression can be forgotten.</summary>
+    public event EventHandler<string>? MeetingEnded;
+
     public bool IsRunning => _loop is { IsCancellationRequested: false };
 
     /// <summary>
-    /// Scanning runs on a background loop rather than a a UI timer. A scan walks
-    /// every top-level window and, for browsers, a UI Automation subtree; on the dispatcher that
-    /// stalls rendering and input for as long as the walk takes.
+    /// Scanning runs on a background loop rather than a UI timer. A scan walks top-level windows and,
+    /// for plausible browser candidates only, a bounded UI Automation subtree; on the dispatcher that
+    /// would stall rendering and input for as long as the walk takes.
     /// </summary>
     public void Start()
     {
@@ -63,6 +79,7 @@ public sealed class MeetingDetectionService : IDisposable
         loop.Dispose();
         _loopTask = null;
         _resolver.Reset();
+        _browserUrlCache.Clear();
         _logService.Info("Meeting detection stopped.");
     }
 
@@ -71,7 +88,6 @@ public sealed class MeetingDetectionService : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         Stop();
         _signals.Dispose();
-        _scanGate.Dispose();
     }
 
     /// <summary>Suppresses further prompts for this meeting until it ends and starts again.</summary>
@@ -80,70 +96,110 @@ public sealed class MeetingDetectionService : IDisposable
     public MeetingDetectionScan CheckNow(bool publish = true) =>
         ScanAsync(publish, CancellationToken.None).GetAwaiter().GetResult();
 
-    private async Task<MeetingDetectionScan> ScanAsync(bool publish, CancellationToken cancellationToken)
+    /// <summary>
+    /// Runs one scan. Overlapping scans are collapsed rather than queued: a slow scan must never let
+    /// a second one run on top of it.
+    /// </summary>
+    private Task<MeetingDetectionScan> ScanAsync(bool publish, CancellationToken cancellationToken)
     {
-        if (!await _scanGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        if (!_scanGate.TryEnter())
         {
-            return MeetingDetectionScan.NotFound("A detection scan was already running.", 0);
+            _logService.Info($"Meeting detection scan skipped: a scan was already running. skippedScans={_scanGate.SkippedCount}");
+            return Task.FromResult(MeetingDetectionScan.NotFound("A detection scan was already running.", 0));
         }
+
         try
         {
-            return DetectMeeting(publish);
+            return Task.FromResult(DetectMeeting(publish, cancellationToken));
         }
         catch (Exception exception)
         {
             _logService.Info($"Meeting detection scan failed. category={exception.GetType().Name}");
-            return MeetingDetectionScan.NotFound("Detection scan failed.", 0);
+            return Task.FromResult(MeetingDetectionScan.NotFound("Detection scan failed.", 0));
         }
         finally
         {
-            _scanGate.Release();
+            _scanGate.Exit();
         }
     }
 
-    private MeetingDetectionScan DetectMeeting(bool publish)
+    private MeetingDetectionScan DetectMeeting(bool publish, CancellationToken cancellationToken)
     {
         _scanCount++;
-        var handle = GetForegroundWindow();
-        if (handle == IntPtr.Zero)
-        {
-            return DetectVisibleMeetingWindow(publish, "No foreground window.");
-        }
+        var stopwatch = Stopwatch.StartNew();
+        var candidates = 0;
 
-        if (TryDetectMeeting(handle, out var meeting))
+        var foreground = GetForegroundWindow();
+        if (foreground != IntPtr.Zero &&
+            ObserveWindow(foreground) is { } foregroundObservation &&
+            TryDetectMeeting(foregroundObservation, isForeground: true, out var foregroundMeeting))
         {
+            candidates++;
             if (publish)
             {
-                PublishMeeting(meeting);
+                PublishMeeting(foregroundMeeting);
             }
 
-            return CompleteScan(MeetingDetectionScan.Detected(meeting, "foreground"));
+            return CompleteScan(MeetingDetectionScan.Detected(foregroundMeeting, "foreground"), stopwatch, candidates);
         }
 
-        return DetectVisibleMeetingWindow(publish, DescribeWindow(handle, "Foreground not a meeting"));
+        var foregroundSummary = foreground == IntPtr.Zero
+            ? "No foreground window."
+            : DescribeWindow(foreground, "Foreground not a meeting");
+        return DetectVisibleMeetingWindow(publish, foregroundSummary, stopwatch, cancellationToken);
     }
 
-    private MeetingDetectionScan DetectVisibleMeetingWindow(bool publish, string foregroundSummary)
+    private MeetingDetectionScan DetectVisibleMeetingWindow(
+        bool publish, string foregroundSummary, Stopwatch stopwatch, CancellationToken cancellationToken)
     {
-        DetectedMeeting? detected = null;
+        var observations = new List<WindowObservation>();
         var visibleWindowCount = 0;
         EnumWindows((handle, _) =>
         {
-            if (!IsWindowVisible(handle) || IsIconic(handle) || handle == IntPtr.Zero)
+            if (!IsWindowVisible(handle) || IsIconic(handle) || IsWindowCloaked(handle) || handle == IntPtr.Zero)
             {
                 return true;
             }
 
             visibleWindowCount++;
-
-            if (TryDetectMeeting(handle, out var meeting))
+            if (ObserveWindow(handle) is { } observation)
             {
-                detected = meeting;
-                return false;
+                observations.Add(observation);
             }
 
             return true;
         }, IntPtr.Zero);
+
+        // Meeting-shaped windows first, browsers next, unrelated windows last; the scan budget is
+        // spent on the candidates most likely to be a meeting.
+        observations.Sort(static (a, b) => a.Priority.CompareTo(b.Priority));
+
+        var candidates = 0;
+        var budgetExceeded = false;
+        DetectedMeeting? detected = null;
+        foreach (var observation in observations)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+            if (MeetingScanBudget.ShouldStop(stopwatch.ElapsedMilliseconds, ScanBudgetMs))
+            {
+                budgetExceeded = true;
+                break;
+            }
+
+            if (!IsPlausibleForUiAutomation(observation, isForeground: false)) continue;
+            candidates++;
+            if (TryDetectMeeting(observation, isForeground: false, out var meeting))
+            {
+                detected = meeting;
+                break;
+            }
+        }
+
+        if (budgetExceeded)
+        {
+            _logService.Info(
+                $"Meeting detection scan stopped at the {ScanBudgetMs} ms budget. candidates={candidates}; visibleWindows={visibleWindowCount}");
+        }
 
         if (detected is null)
         {
@@ -152,10 +208,12 @@ public sealed class MeetingDetectionService : IDisposable
             if (decision.Action == MeetingCandidateAction.Ended)
             {
                 _resolver.Forget(decision.Key);
+                if (!string.IsNullOrWhiteSpace(decision.Key)) MeetingEnded?.Invoke(this, decision.Key);
             }
+
             return CompleteScan(MeetingDetectionScan.NotFound(
                 $"{foregroundSummary}. Suppressed: {MeetingCandidateResolver.DescribeSuppression(empty)}",
-                visibleWindowCount));
+                visibleWindowCount), stopwatch, candidates);
         }
 
         if (publish)
@@ -163,16 +221,16 @@ public sealed class MeetingDetectionService : IDisposable
             PublishMeeting(detected);
         }
 
-        return CompleteScan(MeetingDetectionScan.Detected(detected, "visible windows"));
+        return CompleteScan(MeetingDetectionScan.Detected(detected, "visible windows"), stopwatch, candidates);
     }
 
-    private static bool TryDetectMeeting(IntPtr handle, out DetectedMeeting meeting)
+    /// <summary>Collects native title/process/evidence without any UI Automation work.</summary>
+    private static WindowObservation? ObserveWindow(IntPtr handle)
     {
-        meeting = default!;
         var title = GetWindowTitle(handle);
         if (string.IsNullOrWhiteSpace(title))
         {
-            return false;
+            return null;
         }
 
         _ = GetWindowThreadProcessId(handle, out var processId);
@@ -184,18 +242,52 @@ public sealed class MeetingDetectionService : IDisposable
         }
         catch
         {
-            // The process can exit between foreground capture and lookup.
+            return null;
+        }
+
+        if (IsSelfProcess(processName) || title.StartsWith("Muesli", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var evidence = MeetingEvidenceClassifier.Classify(title, processName, null);
+        var isBrowser = IsBrowserProcess(processName);
+        var isDedicated = MeetingPresenceSignals.IsDedicatedMeetingProcess(processName);
+        var priority = isDedicated || evidence == MeetingEvidenceStrength.Strong ? 0
+            : evidence != MeetingEvidenceStrength.None ? 1
+            : isBrowser && MeetingEvidenceClassifier.TitleMentionsPlatform(title) ? 2
+            : 3;
+
+        return new WindowObservation(handle, title, processName, checked((int)processId), evidence, isBrowser, priority);
+    }
+
+    /// <summary>
+    /// True when a window is worth a UI Automation walk: it carries meeting evidence, or it is a
+    /// browser whose title/foreground position makes a meeting URL plausible. A generic browser or
+    /// unrelated window is skipped before any expensive work.
+    /// </summary>
+    private static bool IsPlausibleForUiAutomation(WindowObservation observation, bool isForeground) =>
+        observation.Evidence != MeetingEvidenceStrength.None ||
+        (observation.IsBrowser &&
+         (isForeground || MeetingEvidenceClassifier.TitleMentionsPlatform(observation.Title)));
+
+    private bool TryDetectMeeting(WindowObservation observation, bool isForeground, out DetectedMeeting meeting)
+    {
+        meeting = default!;
+        if (!IsPlausibleForUiAutomation(observation, isForeground))
+        {
+            return false;
         }
 
         var browserUrl = "";
         MeetingUrlMatch? urlMatch = null;
-        if (IsBrowserProcess(processName))
+        if (observation.IsBrowser)
         {
-            browserUrl = TryGetBrowserUrl(handle, processName) ?? "";
+            browserUrl = TryGetBrowserUrl(observation) ?? "";
             urlMatch = MeetingUrlParser.TryParse(browserUrl);
         }
 
-        var evidence = MeetingEvidenceClassifier.Classify(title, processName, browserUrl);
+        var evidence = MeetingEvidenceClassifier.Classify(observation.Title, observation.ProcessName, browserUrl);
         if (evidence == MeetingEvidenceStrength.None)
         {
             return false;
@@ -203,29 +295,32 @@ public sealed class MeetingDetectionService : IDisposable
 
         // A validated join URL names the platform authoritatively; otherwise fall back to the
         // process/title heuristic, which only ever produces weak evidence.
-        var platform = urlMatch?.Platform ?? DetectPlatform(title, processName, browserUrl);
+        var platform = urlMatch?.Platform ?? DetectPlatform(observation.Title, observation.ProcessName, browserUrl);
         if (platform is null)
         {
             return false;
         }
 
-        var meetingTitle = urlMatch?.DisplayName ?? CleanMeetingTitle(title, platform, browserUrl);
+        var meetingTitle = urlMatch?.DisplayName ?? CleanMeetingTitle(observation.Title, platform, browserUrl);
         var joinUrl = urlMatch?.JoinUrl ?? "";
-        var key = $"{platform}|{processName}|{meetingTitle}|{joinUrl}".ToLowerInvariant();
+        var key = $"{platform}|{observation.ProcessName}|{meetingTitle}|{joinUrl}".ToLowerInvariant();
         meeting = new DetectedMeeting(
-            platform, meetingTitle, title, processName, joinUrl, key, checked((int)processId), evidence);
+            platform, meetingTitle, observation.Title, observation.ProcessName, joinUrl, key,
+            observation.ProcessId, evidence, observation.Handle);
         return true;
     }
 
-    private MeetingDetectionScan CompleteScan(MeetingDetectionScan scan)
+    private MeetingDetectionScan CompleteScan(MeetingDetectionScan scan, Stopwatch stopwatch, int candidates)
     {
-        ScanCompleted?.Invoke(this, scan);
-        if (scan.DetectedMeeting is not null || _scanCount % 10 == 1)
+        var enriched = scan with { ElapsedMs = stopwatch.ElapsedMilliseconds, CandidateCount = candidates };
+        ScanCompleted?.Invoke(this, enriched);
+        if (enriched.DetectedMeeting is not null || _scanCount % 10 == 1)
         {
-            _logService.Info($"Meeting detection scan: {scan.Summary}");
+            _logService.Info(
+                $"Meeting detection scan: {enriched.Summary} elapsedMs={enriched.ElapsedMs}; candidates={enriched.CandidateCount}; skippedScans={_scanGate.SkippedCount}.");
         }
 
-        return scan;
+        return enriched;
     }
 
     private void PublishMeeting(DetectedMeeting meeting)
@@ -237,6 +332,7 @@ public sealed class MeetingDetectionService : IDisposable
         if (decision.Action == MeetingCandidateAction.Ended)
         {
             _resolver.Forget(decision.Key);
+            if (!string.IsNullOrWhiteSpace(decision.Key)) MeetingEnded?.Invoke(this, decision.Key);
             return;
         }
         if (decision.Action != MeetingCandidateAction.Prompt)
@@ -318,20 +414,40 @@ public sealed class MeetingDetectionService : IDisposable
         return cleaned;
     }
 
-    private static string? TryGetBrowserUrl(IntPtr handle, string processName)
+    /// <summary>
+    /// Reads the browser's address bar through a bounded UI Automation walk, caching the observation
+    /// briefly so the 3-second loop does not re-walk the same subtree every scan.
+    /// </summary>
+    private string? TryGetBrowserUrl(WindowObservation observation)
     {
-        if (!IsBrowserProcess(processName))
+        var key = $"{observation.ProcessName}:{observation.Handle.ToInt64():X}";
+        if (_browserUrlCache.TryGetValue(key, out var cached) &&
+            DateTime.UtcNow - cached.At < BrowserUrlCacheTtl)
         {
-            return null;
+            return string.IsNullOrEmpty(cached.Url) ? null : cached.Url;
         }
 
+        var url = ReadBrowserUrlBounded(observation.Handle);
+        if (_browserUrlCache.Count > 64)
+        {
+            _browserUrlCache.Clear();
+        }
+
+        _browserUrlCache[key] = (url ?? "", DateTime.UtcNow);
+        return url;
+    }
+
+    private static string? ReadBrowserUrlBounded(IntPtr handle)
+    {
         try
         {
             using var automation = new UIA3Automation();
             var root = automation.FromHandle(handle);
             var edits = root.FindAllDescendants(cf => cf.ByControlType(ControlType.Edit));
+            var scanned = 0;
             foreach (var edit in edits)
             {
+                if (++scanned > MaxBrowserEditScan) break;
                 if (!edit.Patterns.Value.IsSupported) continue;
                 var value = edit.Patterns.Value.Pattern.Value.ValueOrDefault;
                 if (value is not null && LooksLikeMeetingUrl(value))
@@ -355,6 +471,14 @@ public sealed class MeetingDetectionService : IDisposable
                processName.Equals("brave", StringComparison.OrdinalIgnoreCase) ||
                processName.Equals("firefox", StringComparison.OrdinalIgnoreCase) ||
                processName.Equals("opera", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSelfProcess(string processName)
+    {
+        return processName.Equals("Muesli.Windows.WinUI", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("Muesli.Windows.Indicator.Wpf", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("Muesli.Windows.CommandHost", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("Muesli", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Strict, host-anchored validation; a substring match would accept lookalike domains.</summary>
@@ -403,6 +527,15 @@ public sealed class MeetingDetectionService : IDisposable
         return string.IsNullOrWhiteSpace(prefix) ? description : $"{prefix}: {description}";
     }
 
+    private sealed record WindowObservation(
+        IntPtr Handle,
+        string Title,
+        string ProcessName,
+        int ProcessId,
+        MeetingEvidenceStrength Evidence,
+        bool IsBrowser,
+        int Priority);
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
@@ -425,6 +558,24 @@ public sealed class MeetingDetectionService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern bool IsIconic(IntPtr hWnd);
+
+    private const int DwmwaCloaked = 14;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hWnd, int attribute, out int value, int size);
+
+    /// <summary>A cloaked window is a UWP/ghost window that is not really on screen.</summary>
+    private static bool IsWindowCloaked(IntPtr hWnd)
+    {
+        try
+        {
+            return DwmGetWindowAttribute(hWnd, DwmwaCloaked, out var cloaked, sizeof(int)) == 0 && cloaked != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }
 
 public sealed record DetectedMeeting(
@@ -435,13 +586,17 @@ public sealed record DetectedMeeting(
     string? BrowserUrl,
     string Key,
     int ProcessId,
-    MeetingEvidenceStrength Evidence = MeetingEvidenceStrength.Weak);
+    MeetingEvidenceStrength Evidence = MeetingEvidenceStrength.Weak,
+    nint WindowHandle = 0);
 
 public sealed record MeetingDetectionScan(
     bool Found,
     string Summary,
     DetectedMeeting? DetectedMeeting)
 {
+    public long ElapsedMs { get; init; }
+    public int CandidateCount { get; init; }
+
     public static MeetingDetectionScan Detected(DetectedMeeting meeting, string source)
     {
         return new MeetingDetectionScan(

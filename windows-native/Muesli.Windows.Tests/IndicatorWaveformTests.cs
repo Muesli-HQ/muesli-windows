@@ -18,11 +18,13 @@ public sealed class IndicatorWaveformTests
     }
 
     [Fact]
-    public void Recording_uses_the_four_bar_symmetric_envelope()
+    public void Recording_uses_the_five_bar_symmetric_envelope()
     {
-        Assert.Equal(4, IndicatorWaveform.BarCountFor(FloatingIndicatorState.Recording));
+        // The macOS reference animates the same five-bar envelope for recording and preparing;
+        // the retired Windows port's four-bar shape was the deviation.
+        Assert.Equal(5, IndicatorWaveform.BarCountFor(FloatingIndicatorState.Recording));
         Assert.Equal(FloatingIndicatorLayout.RecordingBarMultipliers, IndicatorWaveform.MultipliersFor(FloatingIndicatorState.Recording));
-        Assert.Equal([0.7, 1.0, 1.0, 0.7], FloatingIndicatorLayout.RecordingBarMultipliers);
+        Assert.Equal([0.6, 0.85, 1.0, 0.85, 0.6], FloatingIndicatorLayout.RecordingBarMultipliers);
     }
 
     [Fact]

@@ -50,6 +50,7 @@ public sealed record PostMeetingAutomationOptions
         HookEnabled = settings.PostMeetingHookEnabled,
         HookExecutablePath = settings.PostMeetingHookExecutablePath,
         AutoExportEnabled = settings.AutoExportMarkdownEnabled,
+        AutoExportPdfEnabled = settings.AutoExportPdfEnabled,
         AutoExportDirectory = settings.AutoExportMarkdownDirectory,
         AutoExportMode = settings.AutoExportMarkdownContent switch
         {
@@ -74,6 +75,14 @@ public sealed record PostMeetingAutomationOptions
     public bool HookEnabled { get; init; }
     public string? HookExecutablePath { get; init; }
     public bool AutoExportEnabled { get; init; }
+
+    /// <summary>
+    /// Asks for an additional automatic PDF alongside the Markdown export. PDF still respects
+    /// <see cref="MeetingDocumentWriter.PdfExportApproved"/> (EXP-01): when that release gate is
+    /// closed the request is reported as failed-closed rather than silently skipped.
+    /// </summary>
+    public bool AutoExportPdfEnabled { get; init; }
+
     public string? AutoExportDirectory { get; init; }
     public MeetingExportMode AutoExportMode { get; init; } = MeetingExportMode.FullMeeting;
     public PostMeetingTranscriptPolicy TranscriptPolicy { get; init; } = PostMeetingTranscriptPolicy.MetadataOnly;
@@ -109,4 +118,11 @@ public sealed record PostMeetingAutomationResult(
     PostMeetingExportDiagnostic Export)
 {
     public bool Completed => Status == PostMeetingAutomationStatus.Succeeded;
+
+    /// <summary>
+    /// The optional automatic PDF export diagnostic (AUTO-01). Null when PDF auto-export was not
+    /// requested. Kept as an additive, nullable property so older serialized results deserialize
+    /// unchanged.
+    /// </summary>
+    public PostMeetingExportDiagnostic? PdfExport { get; init; }
 }

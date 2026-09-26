@@ -8,6 +8,7 @@ public sealed class SettingsStore
 {
     public const string OpenAISecretKey = "openai-api-key";
     public const string OpenRouterSecretKey = "openrouter-api-key";
+    public const string CustomLlmSecretKey = "custom-llm-api-key";
 
     private readonly string _settingsPath;
     private readonly AtomicJsonFile _json;
@@ -102,7 +103,8 @@ public sealed class SettingsStore
                 PlaintextOpenAIApiKeyForMigration = null,
                 PlaintextOpenRouterApiKeyForMigration = null,
                 ResolvedOpenAIApiKey = _secretStore.Read(OpenAISecretKey) ?? "",
-                ResolvedOpenRouterApiKey = _secretStore.Read(OpenRouterSecretKey) ?? ""
+                ResolvedOpenRouterApiKey = _secretStore.Read(OpenRouterSecretKey) ?? "",
+                ResolvedCustomLlmApiKey = _secretStore.Read(CustomLlmSecretKey) ?? ""
             };
             if (migrated)
             {
@@ -163,7 +165,8 @@ public sealed class SettingsStore
             ComputerUseBrowserInterface = NormalizeComputerUseBrowserInterface(settings.ComputerUseBrowserInterface),
             ComputerUseBrowserEndpoint = NormalizeLoopbackEndpoint(settings.ComputerUseBrowserEndpoint),
             ResolvedOpenAIApiKey = "",
-            ResolvedOpenRouterApiKey = ""
+            ResolvedOpenRouterApiKey = "",
+            ResolvedCustomLlmApiKey = ""
         };
         _json.Save(_settingsPath, sanitized, saveMode);
     }
@@ -221,13 +224,24 @@ public sealed class SettingsStore
             ComputerUseBrowserEndpoint = NormalizeLoopbackEndpoint(settings.ComputerUseBrowserEndpoint),
             IndicatorAnchor = DefaultIfBlank(settings.IndicatorAnchor, "Middle Right").Trim(),
             DictionarySuggestions = NormalizeDictionarySuggestions(settings.DictionarySuggestions),
+            ModelLanguages = NormalizeModelLanguages(settings.ModelLanguages),
+            ExecutionProvider = NormalizeExecutionProvider(settings.ExecutionProvider),
+            CleanupModelId = CleanupModelCatalog.Normalize(settings.CleanupModelId),
             OpenAIModel = DefaultIfBlank(settings.OpenAIModel, "gpt-5.4-mini").Trim(),
             OpenRouterModel = DefaultIfBlank(settings.OpenRouterModel, "stepfun/step-3.5-flash:free").Trim(),
             OllamaEndpoint = NormalizeOllamaEndpoint(settings.OllamaEndpoint),
             OllamaModel = DefaultIfBlank(settings.OllamaModel, "llama3.1:8b").Trim(),
+            LmStudioEndpoint = NormalizeOllamaEndpoint(settings.LmStudioEndpoint, "http://localhost:1234"),
+            LmStudioModel = settings.LmStudioModel?.Trim() ?? "",
+            CustomLlmEndpoint = NormalizeAbsoluteHttpEndpoint(settings.CustomLlmEndpoint, "http://localhost:8080/v1/chat/completions"),
+            CustomLlmModel = settings.CustomLlmModel?.Trim() ?? "",
+            UpdateManifestUrl = NormalizeOptionalHttpUrl(settings.UpdateManifestUrl),
+            UpdateSignatureUrl = NormalizeOptionalHttpUrl(settings.UpdateSignatureUrl),
+            UpdatePublisherPublicKeySha256 = NormalizeOptionalSha256(settings.UpdatePublisherPublicKeySha256),
             Theme = DefaultIfBlank(settings.Theme, "dark").Trim(),
             ResolvedOpenAIApiKey = settings.ResolvedOpenAIApiKey ?? "",
             ResolvedOpenRouterApiKey = settings.ResolvedOpenRouterApiKey ?? "",
+            ResolvedCustomLlmApiKey = settings.ResolvedCustomLlmApiKey ?? "",
         };
     }
 
@@ -240,13 +254,43 @@ public sealed class SettingsStore
         return candidate.Length == 6 && candidate.All(Uri.IsHexDigit) ? candidate.ToLowerInvariant() : "1e1e2e";
     }
 
-    private static string NormalizeOllamaEndpoint(string? value)
+    private static string NormalizeOllamaEndpoint(string? value, string fallback = "http://localhost:11434")
     {
         var candidate = (value ?? "").Trim();
         return Uri.TryCreate(candidate, UriKind.Absolute, out var endpoint) &&
                (endpoint.Scheme == Uri.UriSchemeHttp || endpoint.Scheme == Uri.UriSchemeHttps)
             ? endpoint.GetLeftPart(UriPartial.Authority)
-            : "http://localhost:11434";
+            : fallback;
+    }
+
+    private static string NormalizeAbsoluteHttpEndpoint(string? value, string fallback)
+    {
+        var candidate = (value ?? "").Trim();
+        return Uri.TryCreate(candidate, UriKind.Absolute, out var endpoint) &&
+               (endpoint.Scheme == Uri.UriSchemeHttp || endpoint.Scheme == Uri.UriSchemeHttps)
+            ? candidate
+            : fallback;
+    }
+
+    /// <summary>An empty value disables the update check; a malformed URL does the same, fail-closed.</summary>
+    private static string NormalizeOptionalHttpUrl(string? value)
+    {
+        var candidate = (value ?? "").Trim();
+        if (candidate.Length == 0)
+        {
+            return "";
+        }
+
+        return Uri.TryCreate(candidate, UriKind.Absolute, out var endpoint) &&
+               (endpoint.Scheme == Uri.UriSchemeHttp || endpoint.Scheme == Uri.UriSchemeHttps)
+            ? candidate
+            : "";
+    }
+
+    private static string NormalizeOptionalSha256(string? value)
+    {
+        var candidate = (value ?? "").Trim().ToLowerInvariant();
+        return candidate.Length == 64 && candidate.All(Uri.IsHexDigit) ? candidate : "";
     }
 
     private static IReadOnlyList<DictionarySuggestion> NormalizeDictionarySuggestions(
@@ -259,10 +303,41 @@ public sealed class SettingsStore
                 .Where(item => !string.IsNullOrWhiteSpace(item.Observed))
                 .ToArray();
 
+    /// <summary>
+    /// Keeps only known model ids with a language the model actually supports, coercing invalid or
+    /// obsolete choices to that model's default.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> NormalizeModelLanguages(
+        IReadOnlyDictionary<string, string>? languages)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (languages is null)
+        {
+            return result;
+        }
+
+        foreach (var pair in languages)
+        {
+            if (string.IsNullOrWhiteSpace(pair.Key)) continue;
+            if (!TranscriptionModelCatalog.TryGet(pair.Key, out var model)) continue;
+            result[model.Id] = ModelLanguageSupport.Normalize(model, pair.Value);
+        }
+
+        return result;
+    }
+
     private static string NormalizePersistedModelId(string? modelId) =>
         TranscriptionModelCatalog.TryGet(modelId, out var model)
             ? model.Id
             : TranscriptionModelCatalog.DefaultModelId;
+
+    /// <summary>
+    /// Coerces a persisted execution-provider string to a value the runtime understands. An
+    /// obsolete or invalid value falls back to Automatic rather than selecting a different provider
+    /// behind the user's back; <c>directml</c> is preserved so the UI can explain why it is not used.
+    /// </summary>
+    private static string NormalizeExecutionProvider(string? value) =>
+        ExecutionProviderService.ToSettingValue(ExecutionProviderService.Parse(value));
 
     private static string? NormalizeStreamingModelId(string? modelId) =>
         StreamingModelCatalog.Get(modelId)?.Id;
@@ -344,7 +419,7 @@ public sealed class SettingsStore
 
 public sealed record MuesliSettings
 {
-    public const int CurrentSchemaVersion = 8;
+    public const int CurrentSchemaVersion = 11;
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string UserName { get; init; } = "";
     public string Hotkey { get; init; } = "F8";
@@ -353,6 +428,17 @@ public sealed record MuesliSettings
     public string FinalMeetingModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
     public string? LiveMeetingModelId { get; init; }
     public string LiveTranscriptOwnership { get; init; } = "preview-only";
+
+    /// <summary>
+    /// Requested execution provider: <c>auto</c>, <c>cpu</c>, <c>cuda</c>, or <c>directml</c>.
+    /// Changing between the CPU and CUDA native runtimes needs a restart because the two builds
+    /// cannot be swapped safely inside a loaded process.
+    /// </summary>
+    public string ExecutionProvider { get; init; } = "auto";
+
+    /// <summary>Selected local cleanup model id, or empty when none is chosen.</summary>
+    public string CleanupModelId { get; init; } = "";
+
     public bool ShowLiveWaveformOnHover { get; init; }
     [JsonPropertyName("TranscriptionModelId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -388,6 +474,12 @@ public sealed record MuesliSettings
     public bool AutoExportMarkdownEnabled { get; init; }
     public string AutoExportMarkdownDirectory { get; init; } = "";
     public string AutoExportMarkdownContent { get; init; } = "notes";
+
+    /// <summary>
+    /// Asks for an automatic PDF beside the Markdown copy. PDF still honors the EXP-01 QuestPDF
+    /// release gate, so enabling this while the gate is closed fails closed and reports why.
+    /// </summary>
+    public bool AutoExportPdfEnabled { get; init; }
     public bool ComputerUseEnabled { get; init; }
     public string ComputerUsePlannerProvider { get; init; } = "none";
     public string ComputerUsePlannerModel { get; init; } = "";
@@ -405,6 +497,10 @@ public sealed record MuesliSettings
     public bool SoundEnabled { get; init; } = true;
     public string IndicatorAnchor { get; init; } = "Middle Right";
     public IReadOnlyList<DictionarySuggestion> DictionarySuggestions { get; init; } = [];
+
+    /// <summary>Per-model language code selections, keyed by model id. Empty uses each model's default.</summary>
+    public IReadOnlyDictionary<string, string> ModelLanguages { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     [JsonPropertyName("OpenAIApiKey")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string? PlaintextOpenAIApiKeyForMigration { get; init; }
@@ -425,10 +521,35 @@ public sealed record MuesliSettings
     /// </summary>
     public string OllamaEndpoint { get; init; } = "http://localhost:11434";
     public string OllamaModel { get; init; } = "llama3.1:8b";
+
+    /// <summary>
+    /// LM Studio serves the OpenAI chat-completions contract on the user's own machine, so it needs
+    /// no credential and, on a loopback endpoint, no off-machine disclosure.
+    /// </summary>
+    public string LmStudioEndpoint { get; init; } = "http://localhost:1234";
+    public string LmStudioModel { get; init; } = "";
+
+    /// <summary>
+    /// User-supplied OpenAI-compatible chat-completions endpoint. The optional bearer token is kept
+    /// in the credential store (<see cref="ResolvedCustomLlmApiKey"/>), never in this JSON.
+    /// </summary>
+    public string CustomLlmEndpoint { get; init; } = "http://localhost:8080/v1/chat/completions";
+    public string CustomLlmModel { get; init; } = "";
+    [JsonIgnore]
+    public string ResolvedCustomLlmApiKey { get; init; } = "";
     public string Theme { get; init; } = "dark";
     public string? MicrophoneName { get; init; }
     public double? IndicatorLeft { get; init; }
     public double? IndicatorTop { get; init; }
     public bool CrashReportingEnabled { get; init; }
     public bool CrashReportingPromptShown { get; init; }
+
+    /// <summary>
+    /// App-side update channel (UPD-01). Empty manifest/signature URLs or an empty publisher pin
+    /// disable the check entirely; a configured channel still fails closed unless the manifest
+    /// verifies against this pinned RSA public-key SHA-256.
+    /// </summary>
+    public string UpdateManifestUrl { get; init; } = "";
+    public string UpdateSignatureUrl { get; init; } = "";
+    public string UpdatePublisherPublicKeySha256 { get; init; } = "";
 }

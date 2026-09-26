@@ -20,6 +20,8 @@ public static class SummaryProviderDisclosure
     public const string OpenAI = "openai";
     public const string OpenRouter = "openrouter";
     public const string Ollama = "ollama";
+    public const string LmStudio = "lmstudio";
+    public const string CustomLlm = "custom";
     public const string ChatGptSubscription = "chatgpt-subscription";
 
     private static readonly SummaryProviderInfo LocalInfo = new(
@@ -36,6 +38,20 @@ public static class SummaryProviderDisclosure
         RequiresApiKey: false,
         "Sends the transcript to Ollama on this machine. Nothing leaves your computer while the endpoint stays on localhost.");
 
+    private static readonly SummaryProviderInfo LmStudioInfo = new(
+        LmStudio,
+        "LM Studio (local server)",
+        SendsTranscriptOffMachine: false,
+        RequiresApiKey: false,
+        "Sends the transcript to an OpenAI-compatible LM Studio server on this machine. Nothing leaves your computer while the endpoint stays on localhost.");
+
+    private static readonly SummaryProviderInfo CustomLlmInfo = new(
+        CustomLlm,
+        "Custom HTTP (OpenAI-compatible)",
+        SendsTranscriptOffMachine: false,
+        RequiresApiKey: false,
+        "Sends the transcript to the OpenAI-compatible HTTP endpoint you configured. Keep it on localhost to keep the transcript on this machine.");
+
     private static readonly SummaryProviderInfo OpenAIInfo = new(
         OpenAI,
         "OpenAI API",
@@ -51,7 +67,7 @@ public static class SummaryProviderDisclosure
         "Uploads the full meeting transcript to OpenRouter over HTTPS, which routes it to the model you select.");
 
     public static IReadOnlyList<SummaryProviderInfo> Available { get; } =
-        [LocalInfo, OllamaInfo, OpenAIInfo, OpenRouterInfo];
+        [LocalInfo, OllamaInfo, LmStudioInfo, CustomLlmInfo, OpenAIInfo, OpenRouterInfo];
 
     public static IReadOnlyList<string> AvailableIds { get; } = Available.Select(info => info.Id).ToList();
 
@@ -63,23 +79,47 @@ public static class SummaryProviderDisclosure
 
     /// <summary>
     /// True when this provider, as configured, will transmit the transcript to another machine.
-    /// Ollama is local by default but can be pointed at a remote host, which changes the answer.
+    /// Ollama, LM Studio, and the custom HTTP endpoint are local by default but can be pointed at
+    /// a remote host, which changes the answer.
     /// </summary>
-    public static bool LeavesMachine(string? providerId, string? ollamaEndpoint = null)
+    public static bool LeavesMachine(
+        string? providerId,
+        string? ollamaEndpoint = null,
+        string? lmStudioEndpoint = null,
+        string? customEndpoint = null)
     {
         var info = For(providerId);
-        if (info.Id != Ollama) return info.SendsTranscriptOffMachine;
-        return !IsLoopbackEndpoint(ollamaEndpoint);
+        return info.Id switch
+        {
+            Ollama => !IsLoopbackEndpoint(ollamaEndpoint),
+            LmStudio => !IsLoopbackEndpoint(lmStudioEndpoint),
+            CustomLlm => !IsLoopbackEndpoint(customEndpoint),
+            _ => info.SendsTranscriptOffMachine
+        };
     }
 
-    public static string DisclosureFor(string? providerId, string? ollamaEndpoint = null)
+    public static string DisclosureFor(
+        string? providerId,
+        string? ollamaEndpoint = null,
+        string? lmStudioEndpoint = null,
+        string? customEndpoint = null)
     {
         var info = For(providerId);
-        if (info.Id == Ollama && !IsLoopbackEndpoint(ollamaEndpoint))
+        switch (info.Id)
         {
-            return "Sends the full meeting transcript to a remote Ollama server you configured. It leaves this machine.";
+            case Ollama when !IsLoopbackEndpoint(ollamaEndpoint):
+                return "Sends the full meeting transcript to a remote Ollama server you configured. It leaves this machine.";
+            case LmStudio when !IsLoopbackEndpoint(lmStudioEndpoint):
+                return "Sends the full meeting transcript to a remote LM Studio server you configured. It leaves this machine.";
+            case LmStudio:
+                return "Sends the transcript to LM Studio on this machine. Nothing leaves your computer while the endpoint stays on localhost.";
+            case CustomLlm when !IsLoopbackEndpoint(customEndpoint):
+                return "Sends the full meeting transcript to the OpenAI-compatible endpoint you configured. It leaves this machine.";
+            case CustomLlm:
+                return "Sends the transcript to the OpenAI-compatible endpoint on this machine. Nothing leaves your computer while the endpoint stays on localhost.";
+            default:
+                return info.Disclosure;
         }
-        return info.Disclosure;
     }
 
     public static bool IsLoopbackEndpoint(string? endpoint)

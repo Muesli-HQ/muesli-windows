@@ -514,23 +514,77 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         }
 
         DeleteObsoleteDownloadArtifacts();
+        if (Environment.GetEnvironmentVariable("MUESLI_PARAKEET_PROVIDER")?.Trim()
+                .Equals("off", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            throw new InvalidOperationException("Parakeet is disabled by MUESLI_PARAKEET_PROVIDER=off.");
+        }
+
+        const ExecutionProviderRole role = ExecutionProviderRole.OfflineTranscription;
+        var candidates = ExecutionProviderService.PreferredProviders(role, NativeAsrModelKind.Parakeet);
         Exception? lastError = null;
         var attemptedProviders = new List<string>();
-        foreach (var provider in PreferredProviders())
+        for (var index = 0; index < candidates.Count; index++)
         {
-            attemptedProviders.Add(provider);
+            var candidate = candidates[index];
+            attemptedProviders.Add(candidate.Provider);
+            var attemptStarted = Stopwatch.StartNew();
             try
             {
+                ProviderEvidence? evidence = null;
+                if (candidate.IsGpu)
+                {
+                    if (!ExecutionProviderService.TryGetQualifiedCudaEvidence(ModelDirectoryName, out var cachedEvidence))
+                    {
+                        // Prove CUDA with a real warm-up decode before accepting it for user audio. The
+                        // probe recognizer is released so ONNX Runtime flushes its execution profile.
+                        var probe = ExecutionProviderService.BeginWarmUp(candidate.Provider, ModelDirectoryName);
+                        try
+                        {
+                            using (var probeRecognizer = new OfflineRecognizer(BuildRecognizerConfig(probe.ProviderString)))
+                            {
+                                WarmUp(probeRecognizer);
+                            }
+
+                            var probed = probe.Complete();
+                            if (!probed.ConfirmedGpuInference)
+                            {
+                                lastError = new InvalidOperationException(probed.Detail);
+                                ExecutionProviderService.RecordFailure(role, candidate.Provider, ModelDirectoryName, attemptStarted.ElapsedMilliseconds, probed.Detail);
+                                if (ProviderFallbackDisabled() || ExecutionProviderService.IsProviderForcedByEnvironment(role))
+                                {
+                                    throw new InvalidOperationException($"Parakeet provider '{candidate.Provider}' could not be proven: {probed.Detail}");
+                                }
+
+                                continue;
+                            }
+
+                            ExecutionProviderService.StoreQualifiedCudaEvidence(ModelDirectoryName, probed);
+                            evidence = probed;
+                        }
+                        catch (Exception probeException)
+                        {
+                            probe.Abandon(probeException);
+                            throw;
+                        }
+                    }
+                    else
+                    {
+                        evidence = cachedEvidence;
+                    }
+                }
+
                 var loadStarted = Stopwatch.StartNew();
-                var recognizer = new OfflineRecognizer(BuildRecognizerConfig(provider));
+                var recognizer = new OfflineRecognizer(BuildRecognizerConfig(candidate.Provider));
                 loadStarted.Stop();
                 _recognizer = recognizer;
-                _recognizerProvider = provider;
+                _recognizerProvider = candidate.Provider;
                 _initialModelLoadMs = loadStarted.ElapsedMilliseconds;
-                _providerSelectionDiagnostic = provider.Equals("cuda", StringComparison.OrdinalIgnoreCase)
+                ExecutionProviderService.RecordActive(role, candidate.Provider, ModelDirectoryName, _initialModelLoadMs, evidence);
+                _providerSelectionDiagnostic = candidate.IsGpu
                     ? string.Join(
                         Environment.NewLine,
-                        $"CUDA provider initialized successfully after {string.Join(", ", attemptedProviders)}.",
+                        $"CUDA provider initialized and verified by warm-up inference after {string.Join(", ", attemptedProviders)}.",
                         NativeSherpaRuntime.Diagnostic)
                     : HasCudaProviderFiles()
                         ? string.Join(
@@ -546,10 +600,11 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
             catch (Exception exception)
             {
                 lastError = exception;
-                if (ProviderFallbackDisabled() || ProviderWasExplicitlyConfigured())
+                ExecutionProviderService.RecordFailure(role, candidate.Provider, ModelDirectoryName, attemptStarted.ElapsedMilliseconds, exception.Message);
+                if (ProviderFallbackDisabled())
                 {
                     throw new InvalidOperationException(
-                        $"Parakeet provider '{provider}' could not initialize: {exception.Message}",
+                        $"Parakeet provider '{candidate.Provider}' could not initialize: {exception.Message}",
                         exception);
                 }
             }
@@ -560,43 +615,24 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
             lastError);
     }
 
-    private static IEnumerable<string> PreferredProviders()
+    /// <summary>
+    /// A real half-second decode that forces the encoder, decoder, and joiner graphs to execute on
+    /// the selected provider before the model is accepted for user audio.
+    /// </summary>
+    private static void WarmUp(OfflineRecognizer recognizer)
     {
-        var value = Environment.GetEnvironmentVariable("MUESLI_PARAKEET_PROVIDER");
-        if (!string.IsNullOrWhiteSpace(value))
+        const int sampleRate = 16000;
+        var samples = new float[sampleRate / 2];
+        var random = new Random(20260920);
+        for (var i = 0; i < samples.Length; i++)
         {
-            var normalized = value.Trim().ToLowerInvariant();
-            if (normalized == "off")
-            {
-                throw new InvalidOperationException("Parakeet is disabled by MUESLI_PARAKEET_PROVIDER=off.");
-            }
-
-            yield return NormalizeProviderName(normalized);
-            yield break;
+            samples[i] = (float)((random.NextDouble() - 0.5) * 0.002);
         }
 
-        if (HasCudaProviderFiles())
-        {
-            yield return "cuda";
-        }
-
-        yield return "cpu";
-    }
-
-    private static string NormalizeProviderName(string provider)
-    {
-        return provider switch
-        {
-            "gpu" => "cuda",
-            "dml" => "directml",
-            _ => provider
-        };
-    }
-
-    private static bool ProviderWasExplicitlyConfigured()
-    {
-        return !string.IsNullOrWhiteSpace(
-            Environment.GetEnvironmentVariable("MUESLI_PARAKEET_PROVIDER"));
+        using var stream = recognizer.CreateStream();
+        stream.AcceptWaveform(sampleRate, samples);
+        recognizer.Decode(stream);
+        _ = stream.Result.Text;
     }
 
     private static bool HasCudaProviderFiles()
