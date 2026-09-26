@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Muesli.Windows.WinUI.ViewModels;
 
@@ -38,6 +39,17 @@ public sealed partial class MeetingsPage : Page
                 RestoreFolderSelection();
                 SyncShellFolders();
             }
+
+            if (args.PropertyName is nameof(ViewModel.SortIndex) or nameof(ViewModel.TimeRangeIndex))
+            {
+                UpdateSortPill();
+                UpdateTimeRangePill();
+            }
+
+            if (args.PropertyName is nameof(ViewModel.TimeRangeOptions))
+            {
+                UpdateTimeRangePill();
+            }
         };
         Loaded += OnLoaded;
         SizeChanged += OnPageSizeChanged;
@@ -49,6 +61,8 @@ public sealed partial class MeetingsPage : Page
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         UpdateEmptyState();
+        UpdateSortPill();
+        UpdateTimeRangePill();
         ApplyResponsiveLayout(RootGrid.ActualWidth);
     }
 
@@ -227,11 +241,94 @@ public sealed partial class MeetingsPage : Page
         }
     }
 
-    private void MeetingSourceFilter_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    /// <summary>
+    /// Compact sort pill matching MeetingsView.swift: the flyout lists both orders and checks the
+    /// active one; the pill takes the accent tone only when the order is not the newest-first default.
+    /// </summary>
+    private void MeetingsSort_Click(object sender, RoutedEventArgs e)
     {
-        if (sender.SelectedItem is { Tag: string tag } && int.TryParse(tag, out var filterIndex))
+        MeetingsSortFlyout.Items.Clear();
+        var sorts = new[] { "Newest first", "Oldest first" };
+        for (var index = 0; index < sorts.Length; index++)
         {
-            ViewModel.SetSourceFilter(filterIndex);
+            var target = index;
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = sorts[index],
+                IsChecked = ViewModel.SortIndex == target
+            };
+            AutomationProperties.SetAutomationId(item, target == 0 ? "MeetingsSortNewest" : "MeetingsSortOldest");
+            AutomationProperties.SetName(item, sorts[index]);
+            item.Click += (_, _) =>
+            {
+                ViewModel.SortIndex = target;
+                UpdateSortPill();
+            };
+            MeetingsSortFlyout.Items.Add(item);
+        }
+    }
+
+    /// <summary>
+    /// Compact date-filter pill matching MeetingsView.swift: neutral (no label) at All time, accent
+    /// with the range label when a narrower range is active. The flyout checks the active choice.
+    /// </summary>
+    private void MeetingsTimeRange_Click(object sender, RoutedEventArgs e)
+    {
+        MeetingsTimeRangeFlyout.Items.Clear();
+        var options = ViewModel.TimeRangeOptions;
+        for (var index = 0; index < options.Count; index++)
+        {
+            var target = index;
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = options[index],
+                IsChecked = ViewModel.TimeRangeIndex == target
+            };
+            AutomationProperties.SetAutomationId(item, $"MeetingsTimeRangeChoice_{target}");
+            AutomationProperties.SetName(item, options[index]);
+            item.Click += (_, _) =>
+            {
+                ViewModel.TimeRangeIndex = target;
+                UpdateTimeRangePill();
+            };
+            MeetingsTimeRangeFlyout.Items.Add(item);
+        }
+    }
+
+    private void UpdateSortPill()
+    {
+        MeetingsSortLabel.Text = ViewModel.SortLabel;
+        ApplyPillTone(MeetingsSortButton, MeetingsSortIcon, MeetingsSortLabel, active: !ViewModel.IsDefaultSort);
+    }
+
+    private void UpdateTimeRangePill()
+    {
+        MeetingsTimeRangeLabel.Text = ViewModel.IsAllTimeRange ? "" : ViewModel.TimeRangeLabel;
+        ApplyPillTone(MeetingsTimeRangeButton, MeetingsTimeRangeIcon, MeetingsTimeRangeLabel, active: !ViewModel.IsAllTimeRange);
+    }
+
+    /// <summary>
+    /// Applies the macOS pill tones: neutral surfaces when the choice is the default, accent at 12%
+    /// with an accent foreground when a non-default choice is active.
+    /// </summary>
+    private static void ApplyPillTone(Button button, FontIcon icon, TextBlock label, bool active)
+    {
+        if (active)
+        {
+            var accent = (Brush)Application.Current.Resources["MuesliAccentBrush"];
+            button.Background = (Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
+            button.Foreground = accent;
+            button.BorderBrush = accent;
+            icon.Foreground = accent;
+            label.Foreground = accent;
+        }
+        else
+        {
+            button.ClearValue(Control.BackgroundProperty);
+            button.ClearValue(Control.ForegroundProperty);
+            button.ClearValue(Control.BorderBrushProperty);
+            icon.ClearValue(IconElement.ForegroundProperty);
+            label.ClearValue(TextBlock.ForegroundProperty);
         }
     }
 

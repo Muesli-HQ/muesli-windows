@@ -59,6 +59,11 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool IsWorking { get; private set; }
     [ObservableProperty] public partial double WorkProgress { get; private set; }
     [ObservableProperty] public partial IReadOnlyList<string> HealthWarnings { get; private set; } = [];
+    [ObservableProperty] public partial bool HasAutomationResult { get; private set; }
+    [ObservableProperty] public partial string AutomationStatusLabel { get; private set; } = PostMeetingAutomationDiagnostics.StatusLabel(null);
+    [ObservableProperty] public partial string AutomationDiagnostics { get; private set; } = PostMeetingAutomationDiagnostics.NoResultMessage;
+    [ObservableProperty] public partial string AutomationRawOutput { get; private set; } = "";
+    [ObservableProperty] public partial bool HasAutomationRawOutput { get; private set; }
     [ObservableProperty] public partial string SelectedTemplate { get; set; } = "Standard Meeting Notes";
     [ObservableProperty] public partial IReadOnlyList<MeetingPlaybackTrack> PlaybackTracks { get; private set; } = [];
     [ObservableProperty] public partial MeetingPlaybackTrack? SelectedPlaybackTrack { get; set; }
@@ -121,6 +126,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             HasSavedTranscript = false;
             HasHealthWarnings = false;
             HealthWarnings = [];
+            ApplyAutomationDiagnostics(null);
             HasRecording = false;
             ClearCandidate();
             NotifyCommands();
@@ -314,6 +320,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             HasSavedTranscript = false;
             HasHealthWarnings = false;
             HealthWarnings = [];
+            ApplyAutomationDiagnostics(null);
             HasRecording = false;
             ClearCandidate();
             NotifyCommands();
@@ -376,6 +383,16 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         if (value is not null) LoadPlaybackTrackCommand.Execute(null);
     }
 
+    private void ApplyAutomationDiagnostics(PersistedMeeting? meeting)
+    {
+        var result = meeting?.AutomationResult;
+        HasAutomationResult = PostMeetingAutomationDiagnostics.HasResult(result);
+        AutomationStatusLabel = PostMeetingAutomationDiagnostics.StatusLabel(result);
+        AutomationDiagnostics = PostMeetingAutomationDiagnostics.Format(result);
+        AutomationRawOutput = PostMeetingAutomationDiagnostics.RawOutput(result);
+        HasAutomationRawOutput = !string.IsNullOrWhiteSpace(AutomationRawOutput);
+    }
+
     private void ApplyMeeting(PersistedMeeting meeting, bool keepTranscriptDraft = false)
     {
         Title = meeting.Title;
@@ -394,6 +411,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             ? meeting.HealthWarnings.Where(warning => !string.IsNullOrWhiteSpace(warning)).ToList()
             : [];
         HasHealthWarnings = HealthWarnings.Count > 0;
+        ApplyAutomationDiagnostics(meeting);
         SelectedTemplate = string.IsNullOrWhiteSpace(meeting.TemplateName) ? "Standard Meeting Notes" : meeting.TemplateName;
         SpeakerAliases = meeting.SpeakerAliases
             .OrderBy(pair => pair.Key, StringComparer.CurrentCultureIgnoreCase)

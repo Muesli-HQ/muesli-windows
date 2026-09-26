@@ -198,7 +198,7 @@ public partial class InsightsPageViewModel(
             day.Date.ToString("MMM d, yyyy"),
             day.Words,
             day.Meetings,
-            HeatIntensity(ActivityModeIndex == 1 ? day.Meetings : day.Words, peak))).ToList();
+                HeatLevel(ActivityModeIndex == 1 ? day.Meetings : day.Words, peak))).ToList();
         var heatmapLead = HeatmapLead(snapshot.DailyActivity);
         Days = AlignHeatmapToMonday(heatmapLead, cells);
         MonthLabels = BuildMonthLabels(snapshot.DailyActivity, heatmapLead);
@@ -274,25 +274,20 @@ public partial class InsightsPageViewModel(
     }
 
     /// <summary>
-    /// Discrete five-level intensity matching the macOS heatmap: level 0 is the quiet cell and
-    /// levels 1-4 follow a log scale so sparse activity stays visible next to heavy days.
+    /// Discrete five-level heatmap matching macOS <c>InsightsPalette.intensity</c>: level 0 is the
+    /// quiet cell (surface at 62%), levels 1-2 are accent at 24%/48%, and levels 3-4 are cyan at
+    /// 67%/95%. The level is exposed so the page can apply the distinct palette rather than one
+    /// blue brush at four opacities.
     /// </summary>
-    private static double HeatIntensity(int count, int peak)
+    private static int HeatLevel(int count, int peak)
     {
         if (count <= 0)
         {
-            return 0.10;
+            return 0;
         }
 
         var ratio = Math.Log(count + 1) / Math.Log(Math.Max(1, peak) + 1);
-        var level = Math.Min(4, Math.Max(1, (int)Math.Ceiling(ratio * 4)));
-        return level switch
-        {
-            1 => 0.24,
-            2 => 0.48,
-            3 => 0.70,
-            _ => 0.95
-        };
+        return Math.Min(4, Math.Max(1, (int)Math.Ceiling(ratio * 4)));
     }
 
     /// <summary>
@@ -379,9 +374,10 @@ public partial class InsightsPageViewModel(
     }
 }
 
-public sealed record InsightsDayItem(string DateLabel, int Words, int Meetings, double Intensity, bool IsPlaceholder = false)
+public sealed record InsightsDayItem(string DateLabel, int Words, int Meetings, int Level, bool IsPlaceholder = false)
 {
-    public static InsightsDayItem Placeholder { get; } = new("", 0, 0, 0, true);
+    /// <summary>Padding cells render nothing; -1 is the "no level" sentinel.</summary>
+    public static InsightsDayItem Placeholder { get; } = new("", 0, 0, -1, true);
 
     public string AccessibleLabel => IsPlaceholder
         ? "Padding cell"

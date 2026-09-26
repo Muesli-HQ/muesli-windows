@@ -166,6 +166,29 @@
                                        AutomationProperties.Name="Runtime version"
                                        AutomationProperties.AutomationId="AboutRuntimeVersionValue" />
                         </Grid>
+                        <Border Style="{StaticResource AboutDividerStyle}" />
+                        <Grid Padding="16,10" ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel MinWidth="0" Spacing="2">
+                                <TextBlock Text="Updates" Style="{StaticResource AboutRowTitleStyle}" />
+                                <TextBlock Text="{x:Bind ViewModel.UpdateStatus, Mode=OneWay}"
+                                           Style="{StaticResource AboutRowHelpStyle}"
+                                           TextWrapping="Wrap"
+                                           AutomationProperties.Name="Update status"
+                                           AutomationProperties.AutomationId="UpdateStatusText" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                    VerticalAlignment="Center"
+                                    Command="{x:Bind ViewModel.CheckForUpdatesCommand}"
+                                    Content="Check for updates"
+                                    IsEnabled="{x:Bind local:AboutPage.Not(ViewModel.IsBusy), Mode=OneWay}"
+                                    AutomationProperties.Name="Check for updates"
+                                    AutomationProperties.AutomationId="CheckForUpdatesButton" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -418,6 +441,13 @@
                                     Content="Copy diagnostics"
                                     AutomationProperties.Name="Copy diagnostics"
                                     AutomationProperties.AutomationId="CopyDiagnosticsButton" />
+                            <Button x:Name="ExportSupportBundleButton"
+                                    Style="{StaticResource MuesliGhostButtonStyle}"
+                                    Command="{x:Bind ViewModel.ExportSupportBundleCommand}"
+                                    Content="Support bundle"
+                                    IsEnabled="{x:Bind local:AboutPage.Not(ViewModel.IsBusy), Mode=OneWay}"
+                                    AutomationProperties.Name="Preview and export a support bundle"
+                                    AutomationProperties.AutomationId="ExportSupportBundleButton" />
                             <Button x:Name="OpenLogsButton"
                                     Style="{StaticResource MuesliGhostButtonStyle}"
                                     Command="{x:Bind ViewModel.OpenLogsCommand}"

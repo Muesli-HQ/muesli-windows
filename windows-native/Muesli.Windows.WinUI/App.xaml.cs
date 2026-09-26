@@ -78,7 +78,7 @@ public partial class App : Application
     private UiExceptionPolicy _uiExceptionPolicy = null!;
     private OnboardingWindow? _onboarding;
     private ComputerUseConfirmationWindow? _computerUseConfirmation;
-    private bool _detectionPromptOpen;
+    private WinUiMeetingNotificationService? _meetingNotifications;
 
     /// <summary>
     /// The native window handle (HWND). Use for file pickers,
@@ -140,6 +140,16 @@ public partial class App : Application
         _mainInstance = AppInstance.FindOrRegisterForKey("Muesli.WinUI.Primary");
         if (!_mainInstance.IsCurrent)
         {
+            // Unpackaged hosts do not raise AppInstance.Activated reliably, so the primary shell
+            // would stay on whatever page it had open. Signal the desktop activation pipe as well,
+            // then redirect as before; a duplicate request is harmless because it only re-shows the
+            // dashboard.
+            using var secondary = SingleInstanceCoordinator.AcquireForCurrentUser();
+            if (!secondary.IsPrimary)
+            {
+                await secondary.SignalActivationAsync();
+            }
+
             await _mainInstance.RedirectActivationToAsync(currentInstance.GetActivatedEventArgs());
             Exit();
             return;
@@ -164,6 +174,12 @@ public partial class App : Application
 
         Library = new WinUiLibraryContext(MuesliProfilePaths.Current());
         Settings = new WinUiSettingsContext(Library);
+        // Execution-provider and cleanup-model choices are fixed before the first native recognizer
+        // is created: the packaged CPU and the optional CUDA sherpa builds cannot be mixed inside
+        // one process, so a provider change is applied on the next launch.
+        var startupSettings = Settings.Load();
+        ExecutionProviderService.Configure(startupSettings.ExecutionProvider);
+        NativeTextCleanupService.Configure(startupSettings.CleanupModelId);
         Startup = new WinUiStartupRegistrationService();
         Window = new MainWindow();
         TrackTheme(Window);
@@ -178,6 +194,12 @@ public partial class App : Application
         ComputerUse.CaptureStarted = () => ((MainWindow)Window).HideDashboard();
         ComputerUse.RegisterVoiceShortcut(UiDispatcher);
         MeetingDetection = new WinUiMeetingDetectionService();
+        _meetingNotifications = new WinUiMeetingNotificationService(
+            UiDispatcher,
+            _log,
+            () => Settings.Load().AutoMeetingDetectionEnabled,
+            () => Meetings.IsRecording || Meetings.IsPaused,
+            () => Meetings.IsBusy);
         Dialogs = new WinUiDialogService(() => Window.Content as FrameworkElement);
         Clipboard = new WinUiClipboardService();
         FilePickers = new WinUiFilePickerService(() => WindowHandle);
@@ -226,7 +248,9 @@ public partial class App : Application
         ComputerUse.ConfirmationRequested += (_, request) => UiDispatcher.TryEnqueue(() =>
             ShowComputerUseConfirmation(request.Preview, request.Notice));
         MeetingDetection.MeetingDetected += (_, meeting) =>
-            UiDispatcher.TryEnqueue(() => _ = PromptDetectedMeetingAsync(meeting));
+            UiDispatcher.TryEnqueue(() => PresentDetectedMeeting(meeting));
+        MeetingDetection.MeetingEnded += (_, key) =>
+            UiDispatcher.TryEnqueue(() => _meetingNotifications?.Forget(key));
         MeetingDetection.ScanCompleted += (_, scan) => UiDispatcher.TryEnqueue(() =>
         {
             if (Meetings.IsRecording && !Meetings.IsBusy &&
@@ -240,6 +264,7 @@ public partial class App : Application
         {
                 _onboarding?.Close();
                 _computerUseConfirmation?.Close();
+                _meetingNotifications?.Dispose();
                 Tray.Dispose();
                 DictationIndicator?.Dispose();
                 IndicatorHost?.Dispose();
@@ -262,6 +287,13 @@ public partial class App : Application
              Environment.GetCommandLineArgs().Contains("--background") ||
              !Settings.Load().OpenDashboardOnLaunch))
             mainWindow.HideDashboard();
+
+        // Development-only deterministic preview route for visual qualification. It never persists a
+        // fake meeting and never starts capture.
+        if (TryGetMeetingNotificationPreview(out var previewState))
+        {
+            UiDispatcher.TryEnqueue(() => ShowMeetingNotificationPreview(previewState));
+        }
     }
 
     private async Task StopDetectedMeetingAsync()
@@ -487,48 +519,94 @@ public partial class App : Application
         _onboarding.Activate();
     }
 
-    private async Task PromptDetectedMeetingAsync(WinUiDetectedMeeting meeting)
+    /// <summary>
+    /// Presents the detected-meeting notification. The dedicated window owns its own surface, so a
+    /// hidden or occluded dashboard no longer suppresses the prompt. For an already-joined meeting the
+    /// only action is "Start Transcribing"; it never opens the meeting URL.
+    /// </summary>
+    private void PresentDetectedMeeting(WinUiDetectedMeeting detected)
     {
-        if (_detectionPromptOpen || Meetings.IsRecording || Meetings.IsPaused || Meetings.IsBusy)
-        {
-            return;
-        }
+        if (detected.Meeting is not { } meeting || _meetingNotifications is null) return;
+        var request = MeetingNotificationRequestFactory.FromDetectedMeeting(meeting);
+        var callbacks = new MeetingNotificationCallbacks(
+            OnAction: action => _ = HandleMeetingNotificationActionAsync(meeting, action),
+            OnDismiss: () => { },
+            OnAutoDismiss: () => { });
+        _meetingNotifications.Present(request, callbacks);
+    }
 
-        _detectionPromptOpen = true;
+    private async Task HandleMeetingNotificationActionAsync(DetectedMeeting meeting, MeetingNotificationAction action)
+    {
         try
         {
-            var dialog = new ContentDialog
+            if (action is MeetingNotificationAction.JoinAndRecord or MeetingNotificationAction.JoinOnly)
             {
-                Title = "Meeting detected",
-                Content = meeting.Description + "\n\nRecording captures your microphone and meeting audio. If process capture is unavailable, Muesli discloses the system-audio fallback.",
-                PrimaryButtonText = meeting.Meeting?.BrowserUrl is { Length: > 0 } ? "Join & record" : "Record only",
-                SecondaryButtonText = meeting.Meeting?.BrowserUrl is { Length: > 0 } ? "Join only" : "",
-                CloseButtonText = "Dismiss",
-                DefaultButton = ContentDialogButton.Primary,
-                XamlRoot = Window.Content.XamlRoot
-            };
-            var result = await dialog.ShowAsync();
-            MeetingDetection.Dismiss(meeting.Key);
-            if (result is ContentDialogResult.Primary or ContentDialogResult.Secondary &&
-                MeetingUrlParser.TryParse(meeting.Meeting?.BrowserUrl) is { } url)
-            {
-                await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url.JoinUrl));
+                await LaunchMeetingUrlAsync(meeting);
             }
-            if (result == ContentDialogResult.Primary)
+
+            // Join-only opens the meeting and never records or transcribes.
+            if (action == MeetingNotificationAction.JoinOnly)
             {
-                await Meetings.StartMeetingAsync(meeting.Meeting?.Title ?? "Meeting", meeting.Meeting?.ProcessId);
-                _autoStop = new MeetingAutoStopTracker(MeetingRecordingStartOrigin.DetectedMeeting, meeting.Key);
-                _autoStop.Observe(meeting.Key, DateTimeOffset.UtcNow);
-                ShowLiveTranscript();
+                return;
             }
+
+            await StartDetectedMeetingCaptureAsync(meeting);
         }
         catch (Exception exception)
         {
-            _log.Error("Meeting detection prompt failed.", exception);
+            _log.Error("Meeting notification action failed.", exception);
         }
-        finally
+    }
+
+    private static async Task LaunchMeetingUrlAsync(DetectedMeeting meeting)
+    {
+        if (MeetingUrlParser.TryParse(meeting.BrowserUrl) is { } url)
         {
-            _detectionPromptOpen = false;
+            await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url.JoinUrl));
         }
+    }
+
+    private async Task StartDetectedMeetingCaptureAsync(DetectedMeeting meeting)
+    {
+        await Meetings.StartMeetingAsync(meeting.Title, meeting.ProcessId);
+        _autoStop = new MeetingAutoStopTracker(MeetingRecordingStartOrigin.DetectedMeeting, meeting.Key);
+        _autoStop.Observe(meeting.Key, DateTimeOffset.UtcNow);
+        ShowLiveTranscript();
+    }
+
+    private static bool TryGetMeetingNotificationPreview(out string state)
+    {
+        state = "active";
+        var args = Environment.GetCommandLineArgs();
+        for (var index = 0; index < args.Length; index++)
+        {
+            var argument = args[index];
+            if (!argument.StartsWith("--preview-meeting-notification", StringComparison.OrdinalIgnoreCase)) continue;
+            var separator = argument.IndexOf('=');
+            if (separator >= 0 && separator < argument.Length - 1)
+            {
+                state = argument[(separator + 1)..];
+            }
+            else if (index + 1 < args.Length && !args[index + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                state = args[index + 1];
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ShowMeetingNotificationPreview(string state)
+    {
+        if (_meetingNotifications is null) return;
+        var requests = MeetingNotificationRequestFactory.Preview(state);
+        _log.Info($"Meeting notification preview requested. state={state}; count={requests.Count}");
+        var callbacks = new MeetingNotificationCallbacks(
+            OnAction: action => _log.Info($"Meeting notification preview action. state={state}; action={action}"),
+            OnDismiss: () => { },
+            OnAutoDismiss: () => { });
+        _meetingNotifications.Present(requests[0], callbacks, bypassSuppression: true);
     }
 }

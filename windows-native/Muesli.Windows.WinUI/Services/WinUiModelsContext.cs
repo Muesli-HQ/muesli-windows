@@ -51,6 +51,65 @@ public sealed class WinUiModelsContext : IDisposable
 
     public bool IsSelected(string modelId) => SelectedModelIds().Contains(modelId);
 
+    // ------------------------------------------------------------------ local cleanup models
+
+    private CleanupModelLifecycleService CleanupLifecycle() =>
+        new(_settingsStore.Load().CleanupModelId);
+
+    public IReadOnlyList<CleanupModelSnapshot> CleanupSnapshots() => CleanupLifecycle().Snapshots();
+
+    public Task PrepareCleanupAsync(
+        string modelId,
+        IProgress<ModelDownloadProgress>? progress,
+        CancellationToken cancellationToken) =>
+        CleanupLifecycle().PrepareAsync(modelId, progress, cancellationToken);
+
+    public Task VerifyCleanupAsync(string modelId, CancellationToken cancellationToken) =>
+        CleanupLifecycle().VerifyAsync(modelId, cancellationToken);
+
+    public Task DeleteCleanupAsync(string modelId, CancellationToken cancellationToken) =>
+        CleanupLifecycle().DeleteAsync(modelId, cancellationToken);
+
+    /// <summary>
+    /// Records the cleanup model the user chose. Selecting a model never downloads or activates it;
+    /// the cleanup stage keeps using whatever is selected until the user changes it.
+    /// </summary>
+    public void SetCleanupModel(string modelId)
+    {
+        var normalized = CleanupModelCatalog.Normalize(modelId);
+        var settings = _settingsStore.Load();
+        _settingsStore.Save(settings with { CleanupModelId = normalized });
+        NativeTextCleanupService.Configure(normalized);
+        ModelChanged?.Invoke(this, normalized);
+    }
+
+    // ------------------------------------------------------------------ execution provider
+
+    public ExecutionProviderStatus ProviderStatus() => ExecutionProviderService.Inspect();
+
+    public void SetExecutionProvider(ExecutionProviderPreference preference)
+    {
+        var settings = _settingsStore.Load();
+        _settingsStore.Save(settings with
+        {
+            ExecutionProvider = ExecutionProviderService.ToSettingValue(preference)
+        });
+        // Applied on the next launch: the CPU and CUDA native runtimes cannot be swapped inside a
+        // process that has already built a recognizer.
+        ModelChanged?.Invoke(this, "execution-provider");
+    }
+
+    public Task<ModelOperationResult> PrepareCudaPackAsync(
+        IProgress<ModelDownloadProgress>? progress,
+        CancellationToken cancellationToken) =>
+        new CudaAccelerationPackInstaller().PrepareAsync(progress, cancellationToken);
+
+    public Task<CudaPackVerification> VerifyCudaPackAsync(CancellationToken cancellationToken) =>
+        new CudaAccelerationPackInstaller().VerifyAsync(cancellationToken);
+
+    public Task<ModelOperationResult> DeleteCudaPackAsync(CancellationToken cancellationToken) =>
+        new CudaAccelerationPackInstaller().DeleteAsync(cancellationToken);
+
     public void Dispose() => _lifecycle.Dispose();
 
     private IReadOnlySet<string> SelectedModelIds()

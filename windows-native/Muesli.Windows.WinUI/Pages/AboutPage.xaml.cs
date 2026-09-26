@@ -10,6 +10,8 @@ public sealed partial class AboutPage : Page
         App.Library,
         App.Settings,
         App.Clipboard,
+        App.FilePickers,
+        App.Dialogs,
         () => App.ShowOnboarding(explicitResume: true),
         App.ShowFeatureTour);
 
@@ -90,7 +92,7 @@ public sealed partial class AboutPage : Page
         PlacePathRow(CacheLabel, CacheValue, tight);
 
         DiagnosticActions.Orientation = tight ? Orientation.Vertical : Orientation.Horizontal;
-        foreach (var button in new[] { RefreshDiagnosticsButton, CopyDiagnosticsButton, OpenLogsButton, OpenModelCacheButton })
+        foreach (var button in new[] { RefreshDiagnosticsButton, CopyDiagnosticsButton, ExportSupportBundleButton, OpenLogsButton, OpenModelCacheButton })
         {
             button.HorizontalAlignment = tight ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         }

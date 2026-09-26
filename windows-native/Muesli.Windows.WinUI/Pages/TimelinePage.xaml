@@ -96,24 +96,14 @@
 
                 <!--
                     P2-05: no page-level search field. The sidebar field is the shell's single
-                    search entry point (macOS SearchResultsView has no field of its own either),
-                    so this row carries only the kind filter, the result count and the sort order
-                    and fits on one line at every qualification size.
-                    P2-09: the permanently disabled "This PC" label is gone. Windows has exactly
-                    one capture source (BACKEND-05), so a source filter would have a single
-                    option; the kind filter is the honest Windows taxonomy for a mixed list.
+                    search entry point (macOS SearchResultsView has no field of its own either).
+                    The redundant All/Dictations/Meetings segmented control is gone: Timeline is one
+                    chronological mixed feed, so the control only duplicated the sort/count row.
+                    This row now carries the result count and sort order, right-aligned, with no
+                    empty left-hand space.
                 -->
-                <Grid x:Name="TimelineToolbar" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                    <Border Style="{StaticResource MuesliSegmentedContainerStyle}">
-                        <SelectorBar x:Name="TimelineFilterBar"
-                                     SelectionChanged="TimelineFilter_SelectionChanged"
-                                     AutomationProperties.Name="Filter timeline activity">
-                            <SelectorBarItem Text="All" Tag="0" IsSelected="True" AutomationProperties.Name="Show all timeline activity" AutomationProperties.AutomationId="TimelineFilterAll" />
-                            <SelectorBarItem Text="Dictations" Tag="1" AutomationProperties.Name="Show dictations" AutomationProperties.AutomationId="TimelineFilterDictations" />
-                            <SelectorBarItem Text="Meetings" Tag="2" AutomationProperties.Name="Show meetings" AutomationProperties.AutomationId="TimelineFilterMeetings" />
-                        </SelectorBar>
-                    </Border>
-                    <StackPanel x:Name="ActionsGroup" Grid.Column="2" Orientation="Horizontal" Spacing="12">
+                <Grid x:Name="TimelineToolbar" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                    <StackPanel x:Name="ActionsGroup" Grid.Column="1" Orientation="Horizontal" Spacing="12">
                         <TextBlock x:Name="ResultCountText"
                                    Text="{x:Bind ViewModel.ResultCountLabel, Mode=OneWay}"
                                    VerticalAlignment="Center"

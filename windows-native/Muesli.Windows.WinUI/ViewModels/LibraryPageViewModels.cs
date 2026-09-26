@@ -32,18 +32,9 @@ public partial class TimelinePageViewModel : ObservableObject
     public partial IReadOnlyList<TimelineGroup> Groups { get; private set; } = [];
 
     [ObservableProperty]
-    public partial int FilterIndex { get; private set; }
-
-    [ObservableProperty]
     public partial int SortIndex { get; set; }
 
     public bool HasEntries => Entries.Count > 0;
-
-    /// <summary>
-    /// True when the kind filter is narrowing the list, so the empty state can say "this filter
-    /// matches nothing" rather than "you have no history".
-    /// </summary>
-    public bool IsFiltered => FilterIndex != 0;
 
     public string ResultCountLabel => $"{Entries.Count:N0} {(Entries.Count == 1 ? "item" : "items")}";
     /// <summary>
@@ -65,13 +56,6 @@ public partial class TimelinePageViewModel : ObservableObject
         NotifyDerived();
     }
 
-    public void SetFilter(int filterIndex)
-    {
-        if (filterIndex is < 0 or > 2) return;
-        FilterIndex = filterIndex;
-        ApplyFilterAndSort();
-    }
-
     partial void OnSnapshotChanged(WinUiLibrarySnapshot value) => NotifyDerived();
 
     partial void OnSortIndexChanged(int value) => ApplyFilterAndSort();
@@ -79,20 +63,13 @@ public partial class TimelinePageViewModel : ObservableObject
     partial void OnEntriesChanged(IReadOnlyList<WinUiTimelineEntry> value) => NotifyDerived();
 
     /// <summary>
-    /// Kind filter plus sort order. P2-05 removed this page's own search field — the shell's
-    /// single search entry point routes cross-library queries to <c>SearchPage</c> — so the text
-    /// predicate that used to live here is gone with it. Ordering and the kind filter are
-    /// unchanged.
+    /// Sort order only. P2-05 removed this page's own search field — the shell's single search
+    /// entry point routes cross-library queries to <c>SearchPage</c>. The redundant kind filter is
+    /// gone too: Timeline is one chronological mixed feed, matching macOS.
     /// </summary>
     private void ApplyFilterAndSort()
     {
-        IEnumerable<WinUiTimelineEntry> query = Snapshot.Timeline;
-        query = FilterIndex switch
-        {
-            1 => query.Where(item => item.Kind == WinUiTimelineKind.Dictation),
-            2 => query.Where(item => item.Kind == WinUiTimelineKind.Meeting),
-            _ => query
-        };
+        var query = Snapshot.Timeline.AsEnumerable();
         Entries = SortIndex == 1
             ? query.OrderBy(item => item.Timestamp).ToList()
             : query.OrderByDescending(item => item.Timestamp).ToList();
@@ -121,7 +98,6 @@ public partial class TimelinePageViewModel : ObservableObject
         OnPropertyChanged(nameof(Entries));
         OnPropertyChanged(nameof(Groups));
         OnPropertyChanged(nameof(HasEntries));
-        OnPropertyChanged(nameof(IsFiltered));
         OnPropertyChanged(nameof(ResultCountLabel));
         OnPropertyChanged(nameof(DictationWordsLabel));
         OnPropertyChanged(nameof(AveragePaceLabel));
@@ -569,6 +545,18 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     public string ResultCountHint =>
         $"{(Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings")} · Open a meeting to review notes, transcript, and template-driven summaries";
 
+    /// <summary>Current sort, shown on the compact sort pill (MeetingsView.swift parity).</summary>
+    public string SortLabel => SortIndex == 1 ? "Oldest first" : "Newest first";
+
+    /// <summary>Newest-first is the neutral default; a non-default sort gets the accent pill.</summary>
+    public bool IsDefaultSort => SortIndex != 1;
+
+    public string TimeRangeLabel =>
+        TimeRangeIndex >= 0 && TimeRangeIndex < TimeRangeOptions.Count ? TimeRangeOptions[TimeRangeIndex] : "All time";
+
+    /// <summary>At All time the date pill is neutral (no label), matching macOS.</summary>
+    public bool IsAllTimeRange => TimeRangeIndex <= 0;
+
     private string _currentFolderLabel = "All Meetings";
 
     /// <summary>
@@ -780,12 +768,16 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(EmptyStateInstruction));
     }
 
-    partial void OnSortIndexChanged(int value) => ApplyFilterAndSort();
+    partial void OnSortIndexChanged(int value)
+    {
+        ApplyFilterAndSort();
+        OnPropertyChanged(nameof(SortLabel));
+        OnPropertyChanged(nameof(IsDefaultSort));
+    }
 
     /// <summary>
-    /// P3-06: a <c>ComboBox</c> reports <c>SelectedIndex = -1</c> whenever its <c>ItemsSource</c> is
-    /// replaced, and the TwoWay binding pushes that here. -1 is not a range the user can pick, so it
-    /// is normalised back to "All time" instead of leaving a filter control with no visible value.
+    /// P3-06: an index of -1 is not a range the user can pick, so it is normalised back to
+    /// "All time" instead of leaving the date filter with no visible value.
     /// </summary>
     partial void OnTimeRangeIndexChanged(int value)
     {
@@ -796,6 +788,8 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         }
 
         ApplyFilterAndSort();
+        OnPropertyChanged(nameof(TimeRangeLabel));
+        OnPropertyChanged(nameof(IsAllTimeRange));
         OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(EmptyStateInstruction));
     }
@@ -813,21 +807,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         UpdateFolderContext();
         ApplyFilterAndSort();
     }
-
-    /// <summary>
-    /// The source filter mirrors the macOS origin picker (All / This Mac / From iPhone) scoped to
-    /// the only history a Windows profile carries: everything was captured on this PC. Both options
-    /// therefore resolve to the same local query, which is truthful rather than decorative.
-    /// </summary>
-    public void SetSourceFilter(int filterIndex)
-    {
-        if (filterIndex is < 0 or > 1) return;
-        SourceFilterIndex = filterIndex;
-        ApplyFilterAndSort();
-    }
-
-    [ObservableProperty]
-    public partial int SourceFilterIndex { get; private set; }
 
     private void UpdateFolderContext()
     {

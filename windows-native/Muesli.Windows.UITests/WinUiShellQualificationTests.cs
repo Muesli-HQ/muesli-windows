@@ -319,6 +319,22 @@ public sealed class WinUiShellQualificationTests
     });
 
     /// <summary>
+    /// DIAG-01: the support-bundle export is a first-class About action, not a hidden artifact.
+    /// The button must be realized and enabled so a user can preview and save a redacted bundle.
+    /// </summary>
+    [WinUiAutomationFact]
+    public void About_publishes_a_support_bundle_export_action() => StaRunner.Run(() =>
+    {
+        using var session = MuesliWinUiSession.Launch();
+        session.Run(() =>
+        {
+            session.NavigateTo("about", "NavAbout", "RefreshDiagnosticsButton");
+            var button = session.RequireAutomationId("ExportSupportBundleButton", mustBeOnscreen: true);
+            Assert.True(button.Current.IsEnabled, "The support-bundle export action must be enabled.");
+        });
+    });
+
+    /// <summary>
     /// Explicit unpackaged coverage: the loose executable has no package identity, so the
     /// MSIX startup task must report itself unavailable instead of pretending to work.
     /// </summary>

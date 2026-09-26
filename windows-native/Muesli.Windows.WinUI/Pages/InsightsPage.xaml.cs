@@ -104,8 +104,24 @@ public sealed partial class InsightsPage : Page
     public static FontWeight WordWeight(bool isTop) =>
         isTop ? FontWeights.Bold : FontWeights.Medium;
 
-    public static double PlaceholderOpacity(bool isPlaceholder) =>
-        isPlaceholder ? 0 : 1;
+    // Heatmap palette (macOS InsightsPalette.intensity): empty = surface 62%; L1/L2 = accent
+    // 24%/48%; L3/L4 = cyan 67%/95%. Three themed layers share the cell so Light/Dark/Contrast
+    // repaint through ThemeResource without rebuilding the grid.
+    public static double HeatEmptyOpacity(int level) => level == 0 ? 0.62 : 0;
+
+    public static double HeatAccentOpacity(int level) => level switch
+    {
+        1 => 0.24,
+        2 => 0.48,
+        _ => 0
+    };
+
+    public static double HeatCyanOpacity(int level) => level switch
+    {
+        3 => 0.67,
+        4 => 0.95,
+        _ => 0
+    };
 
     /// <summary>
     /// Width of the word-balance bar halves. The view-model reports fractions, so both columns
@@ -154,12 +170,26 @@ public sealed partial class InsightsPage : Page
             return;
         }
 
+        // High Contrast keeps the card's system fill flat; a decorative tint must not reduce the
+        // contrast of the hero text.
+        if (new AccessibilitySettings().HighContrast)
+        {
+            HeroGradient.GradientStops = new GradientStopCollection
+            {
+                new() { Color = Color.FromArgb(0x00, 0x00, 0x00, 0x00), Offset = 0 },
+                new() { Color = Color.FromArgb(0x00, 0x00, 0x00, 0x00), Offset = 1 }
+            };
+            return;
+        }
+
+        // macOS: accent ~13% at the top-left, a very faint cyan ~2.5%, transparent to the
+        // bottom-right, over the raised card fill.
         var color = accent.Color;
         HeroGradient.GradientStops = new GradientStopCollection
         {
             new() { Color = Color.FromArgb(0x21, color.R, color.G, color.B), Offset = 0 },
-            new() { Color = Color.FromArgb(0x08, color.R, color.G, color.B), Offset = 0.6 },
-            new() { Color = Color.FromArgb(0x00, color.R, color.G, color.B), Offset = 1 }
+            new() { Color = Color.FromArgb(0x06, 0x00, 0xC8, 0xD7), Offset = 0.5 },
+            new() { Color = Color.FromArgb(0x00, 0x00, 0xC8, 0xD7), Offset = 1 }
         };
     }
 

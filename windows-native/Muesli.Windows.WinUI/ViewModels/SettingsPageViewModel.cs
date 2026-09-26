@@ -90,6 +90,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool SaveMeetingRecordings { get; set; }
     [ObservableProperty] public partial bool AutoExportMarkdownEnabled { get; set; }
     [ObservableProperty] public partial string AutoExportMarkdownDirectory { get; set; } = "";
+    [ObservableProperty] public partial bool AutoExportPdfEnabled { get; set; }
     [ObservableProperty] public partial bool PostMeetingHookEnabled { get; set; }
     [ObservableProperty] public partial string PostMeetingHookExecutablePath { get; set; } = "";
     [ObservableProperty] public partial int PostMeetingHookTimeoutSeconds { get; set; } = 30;
@@ -135,11 +136,20 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowOllamaSettings))]
     [NotifyPropertyChangedFor(nameof(ShowOpenAISettings))]
     [NotifyPropertyChangedFor(nameof(ShowOpenRouterSettings))]
+    [NotifyPropertyChangedFor(nameof(ShowLmStudioSettings))]
+    [NotifyPropertyChangedFor(nameof(ShowCustomHttpSettings))]
     [NotifyPropertyChangedFor(nameof(SummaryDisclosure))]
     [ObservableProperty] public partial SummaryProviderInfo? SelectedSummaryProvider { get; set; } = SummaryProviderDisclosure.For("local");
     [NotifyPropertyChangedFor(nameof(SummaryDisclosure))]
     [ObservableProperty] public partial string OllamaEndpoint { get; set; } = "http://localhost:11434";
     [ObservableProperty] public partial string OllamaModel { get; set; } = "llama3.1:8b";
+    [NotifyPropertyChangedFor(nameof(SummaryDisclosure))]
+    [ObservableProperty] public partial string LmStudioEndpoint { get; set; } = "http://localhost:1234";
+    [ObservableProperty] public partial string LmStudioModel { get; set; } = "";
+    [NotifyPropertyChangedFor(nameof(SummaryDisclosure))]
+    [ObservableProperty] public partial string CustomLlmEndpoint { get; set; } = "http://localhost:8080/v1/chat/completions";
+    [ObservableProperty] public partial string CustomLlmModel { get; set; } = "";
+    [ObservableProperty] public partial string CustomLlmApiKey { get; set; } = "";
     [ObservableProperty] public partial string OpenAIModel { get; set; } = "";
     [ObservableProperty] public partial string OpenRouterModel { get; set; } = "";
     [ObservableProperty] public partial string OpenAIApiKey { get; set; } = "";
@@ -153,8 +163,14 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public bool ShowOllamaSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.Ollama;
     public bool ShowOpenAISettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenAI;
     public bool ShowOpenRouterSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenRouter;
+    public bool ShowLmStudioSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.LmStudio;
+    public bool ShowCustomHttpSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.CustomLlm;
     public string SummaryDisclosure =>
-        SummaryProviderDisclosure.DisclosureFor(SelectedSummaryProvider?.Id, OllamaEndpoint);
+        SummaryProviderDisclosure.DisclosureFor(
+            SelectedSummaryProvider?.Id,
+            OllamaEndpoint,
+            LmStudioEndpoint,
+            CustomLlmEndpoint);
     public string ChatGptSubscriptionNotice { get; } =
         "ChatGPT subscription sign-in is not available on Windows. Cloud providers in the list above send transcript text to the selected destination.";
 
@@ -173,6 +189,16 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     /// blank box. An empty directory makes the exporter fail with "Select a rooted auto-export
     /// directory." (Muesli.Windows.Platform/Services/PostMeetingAutomationService.cs:423-424).
     /// </summary>
+    /// <summary>
+    /// PDF auto-export is real but release-gated (EXP-01). The control stays disabled until the
+    /// QuestPDF Community-license decision is recorded, so the UI never promises a PDF it cannot
+    /// write.
+    /// </summary>
+    public bool PdfAutoExportAvailable => MeetingDocumentWriter.PdfExportApproved;
+    public string PdfAutoExportHelp => PdfAutoExportAvailable
+        ? "Save a PDF copy beside the Markdown file. Existing edited files are kept."
+        : "Unavailable until QuestPDF Community-license eligibility is approved (EXP-01).";
+
     public string AutoExportFolderHelp =>
         !AutoExportMarkdownEnabled
             ? "Turn on automatic export to choose where the Markdown copy is written."
@@ -252,6 +278,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         SaveMeetingRecordings = _source.SaveMeetingRecordings;
         AutoExportMarkdownEnabled = _source.AutoExportMarkdownEnabled;
         AutoExportMarkdownDirectory = _source.AutoExportMarkdownDirectory;
+        AutoExportPdfEnabled = _source.AutoExportPdfEnabled;
         PostMeetingHookEnabled = _source.PostMeetingHookEnabled;
         PostMeetingHookExecutablePath = _source.PostMeetingHookExecutablePath;
         PostMeetingHookTimeoutSeconds = _source.PostMeetingHookTimeoutSeconds;
@@ -297,6 +324,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         SelectedSummaryProvider = SummaryProviderDisclosure.For(_source.MeetingSummaryProvider);
         OllamaEndpoint = _source.OllamaEndpoint;
         OllamaModel = _source.OllamaModel;
+        LmStudioEndpoint = _source.LmStudioEndpoint;
+        LmStudioModel = _source.LmStudioModel;
+        CustomLlmEndpoint = _source.CustomLlmEndpoint;
+        CustomLlmModel = _source.CustomLlmModel;
+        CustomLlmApiKey = _source.ResolvedCustomLlmApiKey;
         OpenAIModel = _source.OpenAIModel;
         OpenRouterModel = _source.OpenRouterModel;
         OpenAIApiKey = _source.ResolvedOpenAIApiKey;
@@ -329,6 +361,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             SaveMeetingRecordings = SaveMeetingRecordings,
             AutoExportMarkdownEnabled = AutoExportMarkdownEnabled,
             AutoExportMarkdownDirectory = AutoExportMarkdownDirectory.Trim(),
+            AutoExportPdfEnabled = AutoExportPdfEnabled,
             PostMeetingHookEnabled = PostMeetingHookEnabled,
             PostMeetingHookExecutablePath = PostMeetingHookExecutablePath.Trim(),
             PostMeetingHookTimeoutSeconds = Math.Clamp(PostMeetingHookTimeoutSeconds, 1, 600),
@@ -364,10 +397,15 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             MeetingSummaryProvider = SelectedSummaryProvider?.Id ?? "local",
             OllamaEndpoint = OllamaEndpoint.Trim(),
             OllamaModel = OllamaModel.Trim(),
+            LmStudioEndpoint = LmStudioEndpoint.Trim(),
+            LmStudioModel = LmStudioModel.Trim(),
+            CustomLlmEndpoint = CustomLlmEndpoint.Trim(),
+            CustomLlmModel = CustomLlmModel.Trim(),
             OpenAIModel = OpenAIModel.Trim(),
             OpenRouterModel = OpenRouterModel.Trim(),
             ResolvedOpenAIApiKey = OpenAIApiKey.Trim(),
-            ResolvedOpenRouterApiKey = OpenRouterApiKey.Trim()
+            ResolvedOpenRouterApiKey = OpenRouterApiKey.Trim(),
+            ResolvedCustomLlmApiKey = CustomLlmApiKey.Trim()
         };
         if (draft.ComputerUseEnabled &&
             !ComputerUseConfiguration.TryValidate(draft, draft.ResolvedOpenAIApiKey, out var error))
@@ -383,7 +421,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         try
         {
             if (IsStartupAvailable) await _startup.SetEnabledAsync(StartAtLogin);
-            _settingsContext.SaveProviderKeys(OpenAIApiKey, OpenRouterApiKey);
+            _settingsContext.SaveProviderKeys(OpenAIApiKey, OpenRouterApiKey, CustomLlmApiKey);
             _settingsContext.Save(draft);
             _source = draft;
             _applyDetection(draft.AutoMeetingDetectionEnabled);

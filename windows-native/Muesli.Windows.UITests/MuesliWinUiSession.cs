@@ -28,16 +28,21 @@ internal sealed class MuesliWinUiSession : IDisposable
 
     private readonly MuesliCleanProfile _profile;
     private readonly Process _process;
+    private readonly bool _nonActivatingShell;
     private AutomationElement? _window;
     private bool _disposed;
 
-    private MuesliWinUiSession(MuesliCleanProfile profile, Process process, AutomationElement window)
+    private MuesliWinUiSession(MuesliCleanProfile profile, Process process, AutomationElement window, bool nonActivatingShell = false)
     {
         _profile = profile;
         _process = process;
         _window = window;
+        _nonActivatingShell = nonActivatingShell;
         Directory.CreateDirectory(UiScreenshot.ArtifactDirectory);
-        ActivateMainWindow();
+        if (!_nonActivatingShell)
+        {
+            ActivateMainWindow();
+        }
     }
 
     public int ProcessId => _process.Id;
@@ -121,6 +126,21 @@ internal sealed class MuesliWinUiSession : IDisposable
             indicatorProbe: true);
 
     /// <summary>
+    /// Launches the packaged shell with the development-only deterministic meeting-notification
+    /// preview armed. The preview never persists a fake meeting and never starts capture.
+    /// </summary>
+    public static MuesliWinUiSession LaunchWithMeetingNotificationPreview(string state = "active", bool background = false)
+    {
+        var extra = $"--preview-meeting-notification={state}";
+        if (background) extra += " --background";
+        return LaunchPackaged(
+            new MuesliCleanProfile(false, false, completeFirstRun: true),
+            extraArgs: extra,
+            // With --background the dashboard is hidden, so attach to the notification window instead.
+            shellProofId: background ? "MeetingNotificationWindow" : "MainNavigation");
+    }
+
+    /// <summary>
     /// The command-line flag that arms the indicator's presentation probe, and the profile file it
     /// watches. These mirror <c>Muesli.Windows.Core.Services.FloatingIndicatorProbe</c>; this
     /// harness deliberately takes no project reference on the product, so the contract is restated
@@ -137,17 +157,22 @@ internal sealed class MuesliWinUiSession : IDisposable
     public void SetIndicatorProbeState(string state) =>
         File.WriteAllText(Path.Combine(ProfileRoot, IndicatorProbeStateFile), state);
 
-    private static MuesliWinUiSession LaunchPackaged(MuesliCleanProfile profile, bool indicatorProbe = false)
+    private static MuesliWinUiSession LaunchPackaged(
+        MuesliCleanProfile profile,
+        bool indicatorProbe = false,
+        string? extraArgs = null,
+        string shellProofId = "MainNavigation")
     {
         try
         {
             ThrowIfAlreadyRunning();
             profile.AssertIsolatedFromDeveloperProfile();
-            var process = StartPackagedShell(profile, indicatorProbe);
+            var process = StartPackagedShell(profile, indicatorProbe, extraArgs);
             try
             {
-                var window = WaitForShellWindow(process, TimeSpan.FromSeconds(90));
-                return new MuesliWinUiSession(profile, process, window) { ExecutablePath = "" };
+                var window = WaitForShellWindow(process, TimeSpan.FromSeconds(90), shellProofId);
+                return new MuesliWinUiSession(profile, process, window,
+                    nonActivatingShell: shellProofId != "MainNavigation") { ExecutablePath = "" };
             }
             catch (Exception exception)
             {
@@ -167,7 +192,7 @@ internal sealed class MuesliWinUiSession : IDisposable
         }
     }
 
-    private static Process StartPackagedShell(MuesliCleanProfile profile, bool indicatorProbe = false)
+    private static Process StartPackagedShell(MuesliCleanProfile profile, bool indicatorProbe = false, string? extraArgs = null)
     {
         var start = new ProcessStartInfo
         {
@@ -188,6 +213,7 @@ internal sealed class MuesliWinUiSession : IDisposable
         start.ArgumentList.Add("--args");
         var forwarded = $"--profile-root \"{profile.MuesliRoot}\"";
         if (indicatorProbe) forwarded += $" {IndicatorProbeFlag}";
+        if (!string.IsNullOrWhiteSpace(extraArgs)) forwarded += $" {extraArgs}";
         start.ArgumentList.Add(forwarded);
 
         using var launcher = Process.Start(start)
@@ -408,7 +434,10 @@ internal sealed class MuesliWinUiSession : IDisposable
     {
         try
         {
-            ActivateMainWindow();
+            if (!_nonActivatingShell)
+            {
+                ActivateMainWindow();
+            }
             body();
         }
         catch
@@ -890,7 +919,7 @@ internal sealed class MuesliWinUiSession : IDisposable
         }
     }
 
-    private static AutomationElement WaitForShellWindow(Process process, TimeSpan timeout)
+    private static AutomationElement WaitForShellWindow(Process process, TimeSpan timeout, string proofAutomationId = "MainNavigation")
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
@@ -917,10 +946,10 @@ internal sealed class MuesliWinUiSession : IDisposable
                     try
                     {
                         var window = AutomationElement.FromHandle(handle);
-                        var navigation = window.FindFirst(
+                        var proof = window.FindFirst(
                             TreeScope.Descendants,
-                            new PropertyCondition(AutomationElement.AutomationIdProperty, "MainNavigation"));
-                        if (navigation is not null)
+                            new PropertyCondition(AutomationElement.AutomationIdProperty, proofAutomationId));
+                        if (proof is not null)
                             return window;
                     }
                     catch (ElementNotAvailableException)
@@ -935,7 +964,7 @@ internal sealed class MuesliWinUiSession : IDisposable
             Thread.Sleep(250);
         }
 
-        throw new TimeoutException($"Timed out waiting for the WinUI shell window for pid {process.Id}.");
+        throw new TimeoutException($"Timed out waiting for the WinUI shell window for pid {process.Id} (proof '{proofAutomationId}').");
     }
 
     private AutomationElement FindByAutomationId(string automationId, TimeSpan timeout)

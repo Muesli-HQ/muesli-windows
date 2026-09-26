@@ -310,7 +310,11 @@ public sealed class WinUiMeetingContext : IDisposable
         // Cancellation/failure of either must never discard a completed transcription.
         SaveMeeting(meeting);
         var transcript = await _pipeline.PrepareImportedTranscriptAsync(
-            meeting.Transcript, _settings.EnableLocalCleanup, _library.LoadDictionary(), cancellationToken);
+            meeting.Transcript,
+            _settings.EnableLocalCleanup,
+            _library.LoadDictionary(),
+            cancellationToken,
+            removeFillerWords: _settings.RemoveFillerWords);
         meeting = meeting with { Transcript = transcript, WordCount = CountWords(transcript) };
         SaveMeeting(meeting);
         var summarySettings = _settings;

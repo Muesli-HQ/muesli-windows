@@ -9,6 +9,22 @@
     xmlns:vm="using:Muesli.Windows.WinUI.ViewModels"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
+    <Page.Resources>
+        <!--
+            Page-local compact pill menus for the meetings browser. Mirrors MeetingsView.swift's
+            borderless Menu pills; kept local so the global Muesli button styles are untouched.
+        -->
+        <Style x:Key="MuesliPillMenuButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{ThemeResource MuesliSurfaceBrush}" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Page.Resources>
     <Grid x:Name="RootGrid" Background="{ThemeResource MuesliBackgroundBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="16">
@@ -62,26 +78,40 @@
                                 AutomationProperties.Name="Import meeting audio or video"
                                 AutomationProperties.AutomationId="ImportAudioButton">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE898;" FontSize="14" />
+                                <!-- Windows equivalent of macOS square.and.arrow.down (Download). -->
+                                <FontIcon Glyph="&#xE896;" FontSize="14" />
                                 <TextBlock Text="Import Audio" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
                     <StackPanel x:Name="SecondaryActions" Orientation="Horizontal" Spacing="8">
-                        <ComboBox SelectedIndex="{x:Bind ViewModel.SortIndex, Mode=TwoWay}"
-                                  MinWidth="148"
-                                  VerticalAlignment="Center"
-                                  AutomationProperties.Name="Sort meetings"
-                                  AutomationProperties.AutomationId="MeetingsSort">
-                            <ComboBoxItem Content="Newest first" />
-                            <ComboBoxItem Content="Oldest first" />
-                        </ComboBox>
-                        <ComboBox ItemsSource="{x:Bind ViewModel.TimeRangeOptions, Mode=OneWay}"
-                                  SelectedIndex="{x:Bind ViewModel.TimeRangeIndex, Mode=TwoWay}"
-                                  MinWidth="132"
-                                  VerticalAlignment="Center"
-                                  AutomationProperties.Name="Meeting time range"
-                                  AutomationProperties.AutomationId="MeetingsTimeRange" />
+                        <!-- Compact pill menus matching MeetingsView.swift: sort symbols + label. -->
+                        <Button x:Name="MeetingsSortButton"
+                                Style="{StaticResource MuesliPillMenuButtonStyle}"
+                                Click="MeetingsSort_Click"
+                                AutomationProperties.Name="Sort meetings"
+                                AutomationProperties.AutomationId="MeetingsSort">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon x:Name="MeetingsSortIcon" Glyph="&#xE8CB;" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock x:Name="MeetingsSortLabel" FontSize="11" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button.Flyout>
+                                <MenuFlyout x:Name="MeetingsSortFlyout" Placement="Bottom" />
+                            </Button.Flyout>
+                        </Button>
+                        <Button x:Name="MeetingsTimeRangeButton"
+                                Style="{StaticResource MuesliPillMenuButtonStyle}"
+                                Click="MeetingsTimeRange_Click"
+                                AutomationProperties.Name="Meeting time range"
+                                AutomationProperties.AutomationId="MeetingsTimeRange">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon x:Name="MeetingsTimeRangeIcon" Glyph="&#xE71C;" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock x:Name="MeetingsTimeRangeLabel" FontSize="11" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button.Flyout>
+                                <MenuFlyout x:Name="MeetingsTimeRangeFlyout" Placement="Bottom" />
+                            </Button.Flyout>
+                        </Button>
                         <Button Style="{StaticResource MuesliSecondaryButtonStyle}"
                                 Click="ManageTemplates_Click"
                                 AutomationProperties.Name="Manage meeting templates"
@@ -172,21 +202,12 @@
                 </Border>
 
                 <!--
-                    Origin picker is All / This PC only. Windows never had an iPhone capture path,
-                    so a third segment would be decorative. Search stays on this row because the
-                    shell search is global history, not this folder's meeting list.
+                    Search stays on this row because the shell search is global history, not this
+                    folder's meeting list. The redundant All / This PC source selector is gone: both
+                    options resolved to the same local query, so it only added noise.
                 -->
-                <Grid x:Name="FilterRow" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
-                    <Border Style="{StaticResource MuesliSegmentedContainerStyle}">
-                        <SelectorBar x:Name="MeetingSourceFilter"
-                                     SelectionChanged="MeetingSourceFilter_SelectionChanged"
-                                     AutomationProperties.Name="Meeting source filter">
-                            <SelectorBarItem Text="All" Tag="0" IsSelected="True" AutomationProperties.Name="Show all meetings" AutomationProperties.AutomationId="MeetingFilterAll" />
-                            <SelectorBarItem Text="This PC" Tag="1" AutomationProperties.Name="Show meetings from this PC" AutomationProperties.AutomationId="MeetingFilterThisPc" />
-                        </SelectorBar>
-                    </Border>
+                <Grid x:Name="FilterRow" ColumnDefinitions="*">
                     <Border x:Name="SearchWell"
-                            Grid.Column="1"
                             Style="{StaticResource MuesliSegmentedContainerStyle}"
                             Padding="8,0"
                             HorizontalAlignment="Stretch"

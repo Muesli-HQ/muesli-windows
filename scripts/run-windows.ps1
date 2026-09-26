@@ -14,6 +14,8 @@ param(
     [string]$ProfileRoot,
     [switch]$SkipBuild,
     [int]$Wait = 10,
+    # Extra application arguments, e.g. "--preview-meeting-notification=active" or "--background".
+    [string]$AppArgs = "",
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Debug'
 )
@@ -80,8 +82,15 @@ try {
     Write-Host "Payload built: $($payload.LastWriteTime)" -ForegroundColor DarkGray
 
     $arguments = @('run', $manifest.Directory.FullName, '--detach', '--json')
+    $forwarded = [System.Collections.Generic.List[string]]::new()
     if (-not [string]::IsNullOrWhiteSpace($ProfileRoot)) {
-        $arguments += @('--args', "--profile-root=$ProfileRoot")
+        $forwarded.Add("--profile-root=$ProfileRoot")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($AppArgs)) {
+        $forwarded.Add($AppArgs)
+    }
+    if ($forwarded.Count -gt 0) {
+        $arguments += @('--args', ($forwarded -join ' '))
     }
 
     Write-Host "Launching Muesli WinUI ($Configuration, x64)..." -ForegroundColor Cyan

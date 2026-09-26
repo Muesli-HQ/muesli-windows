@@ -1,12 +1,13 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Muesli.Windows.Services;
 using Muesli.Windows.WinUI.ViewModels;
 
 namespace Muesli.Windows.WinUI.Pages;
 
 public sealed partial class ModelsPage : Page
 {
-    public ModelsPageViewModel ViewModel { get; } = new(App.Models, App.UiDispatcher, App.Dialogs);
+    public ModelsPageViewModel ViewModel { get; } = new(App.Models, App.Settings, App.UiDispatcher, App.Dialogs);
 
     public ModelsPage()
     {
@@ -26,6 +27,24 @@ public sealed partial class ModelsPage : Page
 
     public static Visibility InvertBoolToVisibility(bool value) =>
         value ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Persists a per-model language choice when the user changes the picker.</summary>
+    private void ModelLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { DataContext: ModelFamilyCardItem card, SelectedItem: ModelLanguageOption option } combo)
+        {
+            return;
+        }
+
+        // Ignore the selection the template sets while binding the persisted value.
+        if (!combo.IsLoaded) return;
+        if (string.Equals(card.SelectedVariant?.SelectedLanguageCode, option.Code, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        ViewModel.SetLanguage(card.SelectedVariant, option.Code);
+    }
 
     private void CategoryBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {

@@ -105,7 +105,9 @@ public sealed class WinUiShellParityTests
         Assert.Contains("ComputerUsePreviewConfirmationButton", settings);
 
         var timeline = File.ReadAllText(Path.Combine(winUi, "Pages", "TimelinePage.xaml"));
-        Assert.Contains("This PC", timeline);
+        // Timeline is one chronological mixed feed: no source filter and no kind segmented control.
+        Assert.Contains("TimelineSort", timeline);
+        Assert.DoesNotContain("TimelineFilterAll", timeline);
         Assert.DoesNotContain("From iPhone", timeline);
         Assert.DoesNotContain("This Mac", timeline);
 

@@ -10,6 +10,8 @@ namespace Muesli.Windows.WinUI.Pages;
 
 public sealed partial class ShortcutsPage : Page
 {
+    private bool _ready;
+
     public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey);
 
     /// <summary>
@@ -43,6 +45,7 @@ public sealed partial class ShortcutsPage : Page
             ViewModel.Load();
             ApplyResponsiveLayout(ContentRoot.ActualWidth);
             ApplyCaptureChrome();
+            _ready = true;
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
         ActualThemeChanged += (_, _) => ApplyCaptureChrome();
@@ -61,6 +64,34 @@ public sealed partial class ShortcutsPage : Page
         ViewModel.BeginCapture();
         ApplyCaptureChrome();
         Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>Persists double-tap (hands-free) enablement from this page once the user toggles it.</summary>
+    private void HandsFree_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        ViewModel.SetHandsFreeEnabled(HandsFreeToggle.IsOn);
+    }
+
+    /// <summary>Persists Computer Use enablement from this page once the user toggles it.</summary>
+    private void ComputerUse_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        ViewModel.SetComputerUseEnabled(ComputerUseToggle.IsOn);
+    }
+
+    /// <summary>Routes to the Settings Computer Use section when the feature is not yet configured.</summary>
+    private void ComputerUseConfigure_Click(object sender, RoutedEventArgs e)
+    {
+        (App.Window as MainWindow)?.ShellPage?.SyncRailSelection("settings");
+        Frame?.Navigate(typeof(SettingsPage), "computer-use");
+    }
+
+    /// <summary>Meeting recording has no global shortcut yet; open the page that starts it.</summary>
+    private void OpenMeetings_Click(object sender, RoutedEventArgs e)
+    {
+        (App.Window as MainWindow)?.ShellPage?.SyncRailSelection("meetings");
+        Frame?.Navigate(typeof(MeetingsPage));
     }
 
     protected override void OnKeyDown(KeyRoutedEventArgs e)

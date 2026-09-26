@@ -104,7 +104,8 @@
                     <StackPanel Spacing="10"><TextBlock Text="Insights are temporarily unavailable" FontSize="22" FontWeight="SemiBold" /><TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" Style="{StaticResource MuesliBodyStyle}" TextWrapping="Wrap" /><Button Command="{x:Bind ViewModel.RefreshCommand}" Style="{StaticResource MuesliSecondaryButtonStyle}" HorizontalAlignment="Left" AutomationProperties.Name="Try again" AutomationProperties.AutomationId="InsightsErrorRetryButton"><TextBlock Text="Try Again" /></Button></StackPanel>
                 </Border>
 
-                <Border Style="{StaticResource InsightCardStyle}" Background="{ThemeResource MuesliRaisedBrush}" Padding="28,26,28,23" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Insights hero" AutomationProperties.AutomationId="InsightsHeroCard">
+                <!-- macOS hero base is backgroundRaised (#1C1D20), not a large opaque slate panel. -->
+                <Border Style="{StaticResource InsightCardStyle}" Background="{ThemeResource MuesliSurfaceBrush}" Padding="28,26,28,23" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Insights hero" AutomationProperties.AutomationId="InsightsHeroCard">
                     <Grid>
                         <!--
                             P7-08. The tint sits inside the card's 28/26/28/23 padding, so in Light
@@ -224,9 +225,15 @@
                                         </ItemsRepeater.Layout>
                                         <ItemsRepeater.ItemTemplate>
                                             <DataTemplate x:DataType="vm:InsightsDayItem">
+                                                <!--
+                                                    macOS heatmap palette: empty = surface 62%; L1/L2 =
+                                                    accent 24%/48%; L3/L4 = cyan 67%/95%. Distinct
+                                                    hues, not one blue brush at four opacities.
+                                                -->
                                                 <Grid Width="14" Height="14" AutomationProperties.Name="{x:Bind AccessibleLabel}">
-                                                    <Border CornerRadius="3" Background="{ThemeResource MuesliSurfaceRaisedBrush}" Opacity="{x:Bind local:InsightsPage.PlaceholderOpacity(IsPlaceholder)}" />
-                                                    <Border CornerRadius="3" Background="{ThemeResource MuesliAccentBrush}" Opacity="{x:Bind Intensity}" />
+                                                    <Border CornerRadius="3" Background="{ThemeResource MuesliSurfaceRaisedBrush}" Opacity="{x:Bind local:InsightsPage.HeatEmptyOpacity(Level)}" />
+                                                    <Border CornerRadius="3" Background="{ThemeResource MuesliAccentBrush}" Opacity="{x:Bind local:InsightsPage.HeatAccentOpacity(Level)}" />
+                                                    <Border CornerRadius="3" Background="#AB00C8D7" Opacity="{x:Bind local:InsightsPage.HeatCyanOpacity(Level)}" />
                                                 </Grid>
                                             </DataTemplate>
                                         </ItemsRepeater.ItemTemplate>
@@ -236,11 +243,12 @@
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="7" Margin="34,10,0,0">
                             <TextBlock Text="QUIET" Style="{StaticResource MuesliSectionLabelStyle}" FontSize="9" CharacterSpacing="120" VerticalAlignment="Center" />
-                            <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliSurfaceRaisedBrush}" />
+                            <!-- Legend uses the same palette as the cells. -->
+                            <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliSurfaceRaisedBrush}" Opacity="0.62" />
                             <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliAccentBrush}" Opacity="0.24" />
                             <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliAccentBrush}" Opacity="0.48" />
-                            <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliAccentBrush}" Opacity="0.70" />
-                            <Border Width="14" Height="14" CornerRadius="4" Background="{ThemeResource MuesliAccentBrush}" Opacity="0.95" />
+                            <Border Width="14" Height="14" CornerRadius="4" Background="#AB00C8D7" />
+                            <Border Width="14" Height="14" CornerRadius="4" Background="#F200C8D7" />
                             <TextBlock Text="LOUD" Style="{StaticResource MuesliSectionLabelStyle}" FontSize="9" CharacterSpacing="120" VerticalAlignment="Center" />
                         </StackPanel>
                     </StackPanel>

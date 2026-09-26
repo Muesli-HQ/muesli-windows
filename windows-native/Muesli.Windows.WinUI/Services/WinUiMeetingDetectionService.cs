@@ -15,9 +15,13 @@ public sealed class WinUiMeetingDetectionService : IDisposable
             Status = scan.Summary;
             ScanCompleted?.Invoke(this, scan);
         };
+        _detector.MeetingEnded += (_, key) => MeetingEnded?.Invoke(this, key);
     }
     public event EventHandler<WinUiDetectedMeeting>? MeetingDetected;
     public event EventHandler<MeetingDetectionScan>? ScanCompleted;
+
+    /// <summary>Raised when a confirmed meeting ends, so notification suppression can be forgotten.</summary>
+    public event EventHandler<string>? MeetingEnded;
     public string Status { get; private set; } = "No current Windows meeting evidence.";
     public void Start() => _detector.Start();
     public void Stop() { _detector.Stop(); Status = "Meeting detection is off."; }

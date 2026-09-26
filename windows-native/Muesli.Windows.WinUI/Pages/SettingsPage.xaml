@@ -801,6 +801,63 @@
                                          AutomationProperties.Name="Ollama model"
                                          AutomationProperties.AutomationId="OllamaModelBox" />
                             </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="LM Studio server" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="A localhost address keeps the transcript on this machine." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <TextBox Grid.Column="1"
+                                         Style="{StaticResource ValueBoxStyle}"
+                                         Text="{x:Bind ViewModel.LmStudioEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="LM Studio server"
+                                         AutomationProperties.AutomationId="LmStudioEndpointBox" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="LM Studio model" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="The model identifier loaded in LM Studio." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <TextBox Grid.Column="1"
+                                         Style="{StaticResource ValueBoxStyle}"
+                                         Text="{x:Bind ViewModel.LmStudioModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="LM Studio model"
+                                         AutomationProperties.AutomationId="LmStudioModelBox" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Custom endpoint" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="An OpenAI-compatible /v1/chat/completions URL. A localhost address keeps the transcript on this machine." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <TextBox Grid.Column="1"
+                                         Style="{StaticResource ValueBoxStyle}"
+                                         Text="{x:Bind ViewModel.CustomLlmEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Custom summary endpoint"
+                                         AutomationProperties.AutomationId="CustomLlmEndpointBox" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Custom model" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="The model identifier that endpoint expects." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <TextBox Grid.Column="1"
+                                         Style="{StaticResource ValueBoxStyle}"
+                                         Text="{x:Bind ViewModel.CustomLlmModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Custom summary model"
+                                         AutomationProperties.AutomationId="CustomLlmModelBox" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}" />
+                            <StackPanel Padding="20,14" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}">
+                                <PasswordBox Header="Custom API key (optional)"
+                                             Password="{x:Bind ViewModel.CustomLlmApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PasswordRevealMode="Hidden"
+                                             AutomationProperties.Name="Custom summary API key"
+                                             AutomationProperties.AutomationId="CustomLlmApiKeyBox" />
+                                <TextBlock Text="Protected by Windows Credential Manager. Leave empty for keyless local servers." Style="{StaticResource RowHelpStyle}" />
+                            </StackPanel>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
@@ -887,6 +944,18 @@
                                             AutomationProperties.HelpText="Enable Automatically export Markdown to choose a folder."
                                             AutomationProperties.AutomationId="AutoExportMarkdownBrowseButton" />
                                 </StackPanel>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Also export PDF" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.PdfAutoExportHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.AutoExportPdfEnabled, Mode=TwoWay}"
+                                              IsEnabled="{x:Bind ViewModel.PdfAutoExportAvailable, Mode=OneWay}"
+                                              AutomationProperties.Name="Also export PDF"
+                                              AutomationProperties.AutomationId="AutoExportPdfToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">

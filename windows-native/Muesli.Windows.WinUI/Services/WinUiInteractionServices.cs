@@ -1,6 +1,7 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Muesli.Windows.Core.Contracts;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
@@ -81,6 +82,51 @@ public sealed class WinUiDialogService(Func<FrameworkElement?> xamlRootOwner) : 
         dialog.PrimaryButtonText = string.IsNullOrWhiteSpace(primaryLabel) ? "OK" : primaryLabel;
         dialog.CloseButtonText = string.IsNullOrWhiteSpace(cancelLabel) ? "Cancel" : cancelLabel;
         dialog.DefaultButton = ContentDialogButton.Close;
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary
+            ? AppDialogChoice.Primary
+            : AppDialogChoice.Cancel;
+    }
+
+    public async Task<AppDialogChoice> ShowPreviewAsync(
+        string message,
+        string title,
+        string primaryLabel,
+        string cancelLabel,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var owner = xamlRootOwner()
+            ?? throw new InvalidOperationException("The application window is not ready to show a dialog.");
+        var body = new Border
+        {
+            MinWidth = 520,
+            MaxHeight = 420,
+            Child = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = new TextBlock
+                {
+                    Text = message,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                    FontFamily = new FontFamily("Consolas, Cascadia Mono, monospace"),
+                    FontSize = 12,
+                    LineHeight = 18
+                }
+            }
+        };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = owner.XamlRoot,
+            Title = title,
+            Content = body,
+            PrimaryButtonText = string.IsNullOrWhiteSpace(primaryLabel) ? "Save" : primaryLabel,
+            CloseButtonText = string.IsNullOrWhiteSpace(cancelLabel) ? "Cancel" : cancelLabel,
+            DefaultButton = ContentDialogButton.Close
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(dialog, title);
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary
             ? AppDialogChoice.Primary

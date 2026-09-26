@@ -303,7 +303,9 @@ public sealed partial class DictationIndicatorWindow : Window, IDisposable
                 return string.IsNullOrWhiteSpace(status) ? "" : status;
             case FloatingIndicatorState.Idle:
                 var hotkey = string.IsNullOrWhiteSpace(settings.Hotkey) ? "shortcut" : settings.Hotkey;
-                return $"Hold {hotkey} to dictate";
+                return settings.EnableDoubleTapDictation
+                    ? $"Hold {hotkey} to dictate, or double-tap for hands-free"
+                    : $"Hold {hotkey} to dictate";
             case FloatingIndicatorState.Preparing:
             case FloatingIndicatorState.Recording:
                 return "";
@@ -386,9 +388,20 @@ public sealed partial class DictationIndicatorWindow : Window, IDisposable
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
 
-        var cancel = TransparentButton("Cancel dictation", "FloatingDictationCancel", "\u00D7", 10);
+        // Symmetric 16/…/16 columns keep the waveform centred on the pill; the heavy cross mark at
+        // 7pt/45% white matches the macOS recording control.
+        var cancel = TransparentButton(
+            "Cancel dictation",
+            "FloatingDictationCancel",
+            FloatingIndicatorLayout.RecordingCancelGlyph,
+            FloatingIndicatorLayout.RecordingCancelFontSize);
+        if (cancel.Content is FontIcon cancelIcon)
+        {
+            cancelIcon.Foreground = new SolidColorBrush(Color.FromArgb(
+                FloatingIndicatorLayout.RecordingCancelAlpha, 0xFF, 0xFF, 0xFF));
+        }
         cancel.Click += (_, _) => _ = _dictation.CancelAsync();
         Grid.SetColumn(cancel, 0);
         grid.Children.Add(cancel);
@@ -408,12 +421,13 @@ public sealed partial class DictationIndicatorWindow : Window, IDisposable
         stop.Click += (_, _) => _ = _dictation.StopRecordingAsync();
         var square = new Border
         {
-            Width = 6,
-            Height = 6,
-            CornerRadius = new CornerRadius(1),
+            Width = FloatingIndicatorLayout.StopSquareSize,
+            Height = FloatingIndicatorLayout.StopSquareSize,
+            CornerRadius = new CornerRadius(FloatingIndicatorLayout.StopSquareRadius),
             Background = new SolidColorBrush(Color.FromArgb(WaveformAlphaByte, 0xFF, 0xFF, 0xFF)),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, FloatingIndicatorLayout.StopSquareRightMargin, 0)
         };
         stop.Content = square;
         Grid.SetColumn(stop, 2);

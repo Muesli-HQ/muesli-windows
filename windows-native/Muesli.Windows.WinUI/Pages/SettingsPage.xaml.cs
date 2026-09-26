@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
 using Muesli.Windows.WinUI.ViewModels;
 
 namespace Muesli.Windows.WinUI.Pages;
@@ -50,6 +51,29 @@ public sealed partial class SettingsPage : Page
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
         ActualThemeChanged += (_, _) => ViewModel.RefreshPermissionPresentation();
+    }
+
+    /// <summary>
+    /// Lets another page deep-link a Settings section (for example the Shortcuts page's
+    /// "Configure in Settings" action for Computer Use).
+    /// </summary>
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        if (e.Parameter is not string key) return;
+        var index = key switch
+        {
+            "general" => 0,
+            "dictation" => 1,
+            "computer-use" => 2,
+            "meetings" => 3,
+            "appearance" => 4,
+            _ => -1
+        };
+        if (index < 0 || index >= SectionBar.Items.Count) return;
+        SectionBar.SelectedItem = SectionBar.Items[index];
+        ViewModel.SectionIndex = index;
+        UpdateSections();
     }
 
     public static Visibility BoolToVisibility(bool value) =>

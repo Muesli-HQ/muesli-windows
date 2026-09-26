@@ -46,21 +46,8 @@ public sealed partial class TimelinePage : Page
         EmptyState.Visibility = ViewModel.HasEntries ? Visibility.Collapsed : Visibility.Visible;
         TimelineList.Visibility = ViewModel.HasEntries ? Visibility.Visible : Visibility.Collapsed;
 
-        // "Nothing recorded yet" and "this filter matches nothing" are different states and the
-        // copy has to say which one the user is looking at.
-        var filtered = ViewModel.IsFiltered;
-        EmptyStateTitle.Text = filtered ? "No activity in this view" : "No timeline activity yet";
-        EmptyStateBody.Text = filtered
-            ? "Choose All to see every dictation and meeting in your history."
-            : "Saved dictations and completed meetings will appear here.";
-    }
-
-    private void TimelineFilter_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
-    {
-        if (sender.SelectedItem is { Tag: string tag } && int.TryParse(tag, out var filterIndex))
-        {
-            ViewModel.SetFilter(filterIndex);
-        }
+        EmptyStateTitle.Text = "No timeline activity yet";
+        EmptyStateBody.Text = "Saved dictations and completed meetings will appear here.";
     }
 
     /// <summary>

@@ -177,7 +177,30 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Computer Use uses a fixed toggle gesture; feature enablement lives in Settings. -->
+                <!-- Hands-Free Mode: macOS "Hands-Free Mode" - double-tap the dictation shortcut
+                     to lock recording instead of holding it. -->
+                <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Hands-Free Mode">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                        <StackPanel Spacing="4" MinWidth="0">
+                            <TextBlock Text="Hands-Free Mode" Style="{StaticResource ShortcutTitleStyle}" />
+                            <TextBlock Text="Double-tap the dictation shortcut to start; tap again to stop"
+                                       Style="{StaticResource ShortcutHelpStyle}" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="HandsFreeToggle"
+                                      Grid.Column="1"
+                                      Style="{StaticResource ShortcutToggleStyle}"
+                                      IsOn="{x:Bind ViewModel.HandsFreeEnabled, Mode=OneWay}"
+                                      Toggled="HandsFree_Toggled"
+                                      AutomationProperties.Name="Hands-free dictation enabled"
+                                      AutomationProperties.HelpText="Double-tap the dictation shortcut to lock recording hands-free." />
+                    </Grid>
+                </Border>
+
+                <!--
+                    Computer Use: the shortcut is fixed, but the feature can be enabled here once the
+                    shared configuration validates. Incomplete configuration stays off and shows the
+                    exact validation reason plus a route to Settings.
+                -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Computer Use Command shortcut">
                     <StackPanel>
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
@@ -185,13 +208,14 @@
                                 <TextBlock Text="Computer Use Command" Style="{StaticResource ShortcutTitleStyle}" />
                                 <TextBlock Text="Press to record a command; press again to submit it" Style="{StaticResource ShortcutHelpStyle}" />
                             </StackPanel>
-                            <ToggleSwitch Grid.Column="1"
+                            <ToggleSwitch x:Name="ComputerUseToggle"
+                                          Grid.Column="1"
                                           Style="{StaticResource ShortcutToggleStyle}"
                                           IsOn="{x:Bind ViewModel.ComputerUseEnabled, Mode=OneWay}"
-                                          IsEnabled="False"
-                                          AutomationProperties.Name="Computer Use shortcut availability"
-                                          AutomationProperties.HelpText="This mirrors the Computer Use switch in Settings. Turn the feature on or off there."
-                                          ToolTipService.ToolTip="This mirrors the Computer Use switch in Settings. Turn the feature on or off there." />
+                                          IsEnabled="{x:Bind ViewModel.ComputerUseConfigured, Mode=OneWay}"
+                                          Toggled="ComputerUse_Toggled"
+                                          AutomationProperties.Name="Computer Use shortcut enabled"
+                                          AutomationProperties.HelpText="Enable the fixed Computer Use shortcut for focused allowed apps." />
                         </Grid>
                         <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" Margin="0,12,0,12" />
                         <Grid x:Name="ComputerUseControls" ColumnSpacing="12" RowSpacing="8">
@@ -217,11 +241,11 @@
                                        VerticalAlignment="Center" />
                             <Button x:Name="ComputerUseChange"
                                     Grid.Column="2"
-                                    Content="Change Shortcut"
-                                    IsEnabled="False"
+                                    Content="Configure in Settings"
+                                    Click="ComputerUseConfigure_Click"
                                     VerticalAlignment="Center"
-                                    AutomationProperties.Name="Change Computer Use shortcut"
-                                    AutomationProperties.HelpText="The Computer Use shortcut is currently fixed to Ctrl+Shift+F8." />
+                                    Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.ComputerUseNeedsConfiguration), Mode=OneWay}"
+                                    AutomationProperties.Name="Configure Computer Use in Settings" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -240,16 +264,21 @@
                                 <TextBlock Text="Quill" Style="{StaticResource ShortcutTitleStyle}" />
                                 <TextBlock Text="Highlight text, hold to speak an editing instruction, then release to replace" Style="{StaticResource ShortcutHelpStyle}" />
                             </StackPanel>
-                            <ToggleSwitch Grid.Column="2"
-                                          Style="{StaticResource ShortcutToggleStyle}"
-                                          IsOn="False"
-                                          IsEnabled="False"
-                                          AutomationProperties.Name="Quill shortcut availability"
-                                          AutomationProperties.HelpText="Unavailable until the Windows global shortcut is implemented."
-                                          ToolTipService.ToolTip="Unavailable until the Windows global shortcut is implemented." />
+                            <Border Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="4"
+                                    Padding="8,3"
+                                    Background="{ThemeResource MuesliSurfaceBrush}"
+                                    BorderBrush="{ThemeResource MuesliBorderBrush}"
+                                    BorderThickness="1"
+                                    AutomationProperties.Name="Quill is not available on Windows yet">
+                                <TextBlock Text="Not available on Windows yet"
+                                           FontSize="11"
+                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </Border>
                         </Grid>
                         <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" Margin="0,12,0,12" />
-                        <Grid x:Name="QuillControls" ColumnSpacing="12" RowSpacing="8" Opacity="0.62">
+                        <Grid x:Name="QuillControls" ColumnSpacing="12" RowSpacing="8">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -260,10 +289,10 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border x:Name="QuillKeycap" Style="{StaticResource ShortcutKeycapStyle}">
-                                <TextBlock Text="Not assigned"
+                                <TextBlock Text="No shortcut"
                                            FontSize="13"
                                            FontWeight="SemiBold"
-                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
                             </Border>
                             <TextBlock x:Name="QuillReason"
                                        Grid.Column="1"
@@ -274,9 +303,9 @@
                                     Grid.Column="2"
                                     Content="Change Shortcut"
                                     IsEnabled="False"
+                                    Visibility="Collapsed"
                                     VerticalAlignment="Center"
-                                    AutomationProperties.Name="Change Quill shortcut"
-                                    AutomationProperties.HelpText="Unavailable until the Windows global shortcut is implemented." />
+                                    AutomationProperties.Name="Change Quill shortcut" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -289,16 +318,21 @@
                                 <TextBlock Text="Meeting Recording" Style="{StaticResource ShortcutTitleStyle}" />
                                 <TextBlock Text="Toggle meeting recording on or off" Style="{StaticResource ShortcutHelpStyle}" />
                             </StackPanel>
-                            <ToggleSwitch Grid.Column="1"
-                                          Style="{StaticResource ShortcutToggleStyle}"
-                                          IsOn="False"
-                                          IsEnabled="False"
-                                          AutomationProperties.Name="Meeting recording shortcut availability"
-                                          AutomationProperties.HelpText="Unavailable until the Windows global shortcut is implemented."
-                                          ToolTipService.ToolTip="Unavailable until the Windows global shortcut is implemented." />
+                            <Border Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    CornerRadius="4"
+                                    Padding="8,3"
+                                    Background="{ThemeResource MuesliSurfaceBrush}"
+                                    BorderBrush="{ThemeResource MuesliBorderBrush}"
+                                    BorderThickness="1"
+                                    AutomationProperties.Name="No global shortcut yet">
+                                <TextBlock Text="No global shortcut yet"
+                                           FontSize="11"
+                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </Border>
                         </Grid>
                         <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" Margin="0,12,0,12" />
-                        <Grid x:Name="MeetingControls" ColumnSpacing="12" RowSpacing="8" Opacity="0.62">
+                        <Grid x:Name="MeetingControls" ColumnSpacing="12" RowSpacing="8">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -309,10 +343,10 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border x:Name="MeetingKeycap" Style="{StaticResource ShortcutKeycapStyle}">
-                                <TextBlock Text="Not assigned"
+                                <TextBlock Text="No shortcut"
                                            FontSize="13"
                                            FontWeight="SemiBold"
-                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
                             </Border>
                             <TextBlock x:Name="MeetingReason"
                                        Grid.Column="1"
@@ -321,11 +355,10 @@
                                        VerticalAlignment="Center" />
                             <Button x:Name="MeetingChange"
                                     Grid.Column="2"
-                                    Content="Change Shortcut"
-                                    IsEnabled="False"
+                                    Content="Open Meetings"
+                                    Click="OpenMeetings_Click"
                                     VerticalAlignment="Center"
-                                    AutomationProperties.Name="Change meeting recording shortcut"
-                                    AutomationProperties.HelpText="Unavailable until the Windows global shortcut is implemented." />
+                                    AutomationProperties.Name="Open the Meetings page to start or stop recording" />
                         </Grid>
                     </StackPanel>
                 </Border>

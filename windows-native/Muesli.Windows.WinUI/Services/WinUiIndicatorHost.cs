@@ -200,6 +200,7 @@ public sealed class WinUiIndicatorHost : IDisposable
             Message = ComposeMessage(_state, _dictation.Status ?? ""),
             RecordingColorHex = settings.RecordingColorHex,
             MeetingPaused = _meetingPaused,
+            HandsFree = settings.EnableDoubleTapDictation,
             IndicatorAnchor = _indicatorAnchor,
             SavedLeft = _savedLeft,
             SavedTop = _savedTop,

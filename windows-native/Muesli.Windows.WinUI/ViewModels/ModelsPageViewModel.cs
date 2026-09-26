@@ -26,6 +26,7 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
 {
     private bool _disposed;
     private readonly WinUiModelsContext _models;
+    private readonly WinUiSettingsContext _settings;
     private readonly IUiDispatcher _dispatcher;
     private readonly IAppDialogService _dialogs;
     private readonly Dictionary<string, ModelFamilyCardItem> _families = new(StringComparer.Ordinal);
@@ -34,14 +35,34 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
 
     public ModelsPageViewModel(
         WinUiModelsContext models,
+        WinUiSettingsContext settings,
         IUiDispatcher dispatcher,
         IAppDialogService dialogs)
     {
         _models = models;
+        _settings = settings;
         _dispatcher = dispatcher;
         _dialogs = dialogs;
         _models.ModelChanged += OnModelChanged;
         Reload();
+    }
+
+    /// <summary>
+    /// Persists a per-model language choice and updates the live selection. Pooled native clients
+    /// observe the change and rebuild their recognizer before the next transcription.
+    /// </summary>
+    public void SetLanguage(ModelVariantItem? item, string? code)
+    {
+        if (item is null || !TranscriptionModelCatalog.TryGet(item.Id, out var model)) return;
+        var normalized = ModelLanguageSupport.Normalize(model, code);
+        var settings = _settings.Load();
+        var map = new Dictionary<string, string>(settings.ModelLanguages, StringComparer.OrdinalIgnoreCase)
+        {
+            [model.Id] = normalized
+        };
+        _settings.Save(settings with { ModelLanguages = map });
+        item.ApplyLanguage(normalized);
+        ShowStatus($"{model.DisplayName} language set to {ModelLanguageSupport.LabelFor(model, normalized)}.");
     }
 
     [ObservableProperty] public partial IReadOnlyList<ModelFamilyCardItem> Items { get; private set; } = [];
@@ -202,8 +223,10 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
     private void Reload()
     {
         if (_disposed) return;
+        RefreshAcceleration();
         if (CategoryIndex == 2)
         {
+            ReloadCleanup();
             if (Items.Count > 0) Items = [];
             return;
         }
@@ -278,22 +301,24 @@ internal static class ModelFamilyCatalog
             key,
             "Parakeet Family",
             "NVIDIA",
-            "",
+            "",
             "The most responsive choices for everyday dictation, with multilingual and English-only options.",
             "Recommended: Unified",
-            "parakeet-unified-en-int8"),
+            "parakeet-unified-en-int8",
+            "nvidia-logo"),
         "whisper" => new ModelFamilyDescriptor(
             key,
             "Whisper",
             "OpenAI",
-            "",
+            "",
             "Dependable alternatives when you prefer Whisper's transcription style or need broader multilingual coverage.",
             "Default: Small",
-            "whisper-small-en"),
-        "sensevoice" => new ModelFamilyDescriptor(key, "SenseVoice", "Alibaba", "", "", "", first.Id),
-        "qwen3-asr" => new ModelFamilyDescriptor(key, "Qwen3-ASR", "Alibaba", "", "", "", first.Id),
-        "cohere-transcribe" => new ModelFamilyDescriptor(key, "Cohere Transcribe", "Cohere", "", "", "", first.Id),
-        _ => new ModelFamilyDescriptor(key, first.DisplayName, "Local model", "", "", "", first.Id)
+            "whisper-small-en",
+            "openai-logo"),
+        "sensevoice" => new ModelFamilyDescriptor(key, "SenseVoice", "Alibaba", "", "", "", first.Id, "qwen-logo"),
+        "qwen3-asr" => new ModelFamilyDescriptor(key, "Qwen3-ASR", "Alibaba", "", "", "", first.Id, "qwen-logo"),
+        "cohere-transcribe" => new ModelFamilyDescriptor(key, "Cohere Transcribe", "Cohere", "", "", "", first.Id, "cohere-logo"),
+        _ => new ModelFamilyDescriptor(key, first.DisplayName, "Local model", "", "", "", first.Id, "")
     };
 }
 
@@ -304,7 +329,9 @@ internal sealed record ModelFamilyDescriptor(
     string Glyph,
     string Summary,
     string BadgeLabel,
-    string DefaultModelId);
+    string DefaultModelId,
+    // Repository-owned vendor mark filename (without extension), or "" for a neutral fallback.
+    string LogoFile);
 
 /// <summary>
 /// One card. Owns the family's variants and the variant the card is currently showing.
@@ -321,6 +348,10 @@ public sealed partial class ModelFamilyCardItem : ObservableObject
     public string FamilyLabel => _descriptor.Label;
     public string VendorLabel => _descriptor.Vendor;
     public string VendorGlyph => _descriptor.Glyph;
+
+    /// <summary>Repository-owned vendor mark filename (no extension), or "" for a neutral glyph.</summary>
+    public string LogoFile => _descriptor.LogoFile;
+    public bool HasLogo => !string.IsNullOrWhiteSpace(LogoFile);
     public string BadgeLabel => _descriptor.BadgeLabel;
     public bool HasBadge => !string.IsNullOrWhiteSpace(BadgeLabel);
 
@@ -437,15 +468,19 @@ public sealed partial class ModelFamilyCardItem : ObservableObject
 /// One catalog entry as the card presents it. Mutable and observable so the card can be updated
 /// in place; every value is read from the real <see cref="TranscriptionModelSnapshot"/>.
 /// </summary>
-public sealed class ModelVariantItem : ObservableObject
+public sealed partial class ModelVariantItem : ObservableObject
 {
+    private readonly TranscriptionModelDefinition _model;
+
     public ModelVariantItem(TranscriptionModelDefinition model)
     {
+        _model = model;
         Id = model.Id;
         DisplayName = model.DisplayName;
         Summary = model.Summary;
         Languages = model.Languages;
         SizeLabel = model.SizeLabel;
+        SelectedLanguageCode = ModelLanguageSupport.Normalize(model, TranscriptionLanguageSelection.Resolve(model));
     }
 
     public string Id { get; }
@@ -453,6 +488,20 @@ public sealed class ModelVariantItem : ObservableObject
     public string Summary { get; }
     public string Languages { get; }
     public string SizeLabel { get; }
+
+    /// <summary>The languages this model's runtime genuinely accepts (English-only, automatic, or a list).</summary>
+    public IReadOnlyList<ModelLanguageOption> LanguageOptions => ModelLanguageSupport.OptionsFor(_model);
+    public bool IsLanguageSelectable => ModelLanguageSupport.IsSelectable(_model);
+    public string LanguageAccessibleName => $"{DisplayName} language";
+
+    [ObservableProperty] public partial string SelectedLanguageCode { get; private set; }
+
+    public string SelectedLanguageLabel => ModelLanguageSupport.LabelFor(_model, SelectedLanguageCode);
+
+    partial void OnSelectedLanguageCodeChanged(string value) => OnPropertyChanged(nameof(SelectedLanguageLabel));
+
+    /// <summary>Updates the shown choice after a persisted language change.</summary>
+    public void ApplyLanguage(string code) => SelectedLanguageCode = ModelLanguageSupport.Normalize(_model, code);
 
     public TranscriptionModelStatus Status { get; private set; }
     public string StatusText { get; private set; } = "";

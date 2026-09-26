@@ -412,6 +412,62 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Post-meeting automation diagnostics (HOOK-01/AUTO-01). Renders the persisted
+                     automation result exactly as POST_MEETING_AUTOMATION.md promises; hidden until a
+                     run exists so an untouched meeting does not show an empty card. -->
+                <Border Style="{StaticResource MeetingSectionCardStyle}"
+                        Padding="12,10"
+                        Visibility="{x:Bind BoolToVisibility(ViewModel.HasAutomationResult), Mode=OneWay}"
+                        AutomationProperties.Name="After-meeting automation">
+                    <StackPanel Spacing="6">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="After-meeting automation"
+                                       Style="{StaticResource MuesliRowTitleStyle}"
+                                       FontSize="12"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{x:Bind ViewModel.AutomationStatusLabel, Mode=OneWay}"
+                                       Style="{StaticResource MuesliBodyStyle}"
+                                       VerticalAlignment="Center"
+                                       AutomationProperties.Name="After-meeting automation status"
+                                       AutomationProperties.AutomationId="AutomationStatusLabel" />
+                        </Grid>
+                        <TextBlock Text="{x:Bind ViewModel.AutomationDiagnostics, Mode=OneWay}"
+                                   Style="{StaticResource MuesliBodyStyle}"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.Name="After-meeting automation details"
+                                   AutomationProperties.AutomationId="AutomationDiagnosticsText" />
+                        <Expander Header="Retained hook output (redacted)"
+                                  HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Stretch"
+                                  Visibility="{x:Bind BoolToVisibility(ViewModel.HasAutomationRawOutput), Mode=OneWay}"
+                                  AutomationProperties.Name="Show retained hook output"
+                                  AutomationProperties.AutomationId="AutomationRawOutputExpander">
+                            <Border Background="{ThemeResource MuesliBackgroundDeepBrush}"
+                                    BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="10,8"
+                                    MaxHeight="200">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                    <TextBlock Text="{x:Bind ViewModel.AutomationRawOutput, Mode=OneWay}"
+                                               FontFamily="Consolas, Cascadia Mono, monospace"
+                                               FontSize="12"
+                                               LineHeight="18"
+                                               TextWrapping="Wrap"
+                                               IsTextSelectionEnabled="True"
+                                               AutomationProperties.AutomationId="AutomationRawOutputText" />
+                                </ScrollViewer>
+                            </Border>
+                        </Expander>
+                    </StackPanel>
+                </Border>
+
                 <StackPanel x:Name="NotesPanel"
                             Spacing="12"
                             Visibility="{x:Bind BoolToVisibility(ViewModel.ShowNotesContent), Mode=OneWay}">

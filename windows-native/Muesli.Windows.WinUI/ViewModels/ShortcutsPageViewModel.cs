@@ -33,37 +33,110 @@ public partial class ShortcutsPageViewModel(
     [ObservableProperty] public partial bool IsStatusError { get; private set; }
     [NotifyPropertyChangedFor(nameof(ComputerUseShortcutState))]
     [ObservableProperty] public partial bool ComputerUseEnabled { get; private set; }
+    [NotifyPropertyChangedFor(nameof(ComputerUseShortcutState))]
+    [ObservableProperty] public partial bool ComputerUseConfigured { get; private set; }
+    [NotifyPropertyChangedFor(nameof(ComputerUseShortcutState))]
+    [ObservableProperty] public partial string ComputerUseConfigurationReason { get; private set; } = "";
     [ObservableProperty] public partial int HoldThresholdMs { get; set; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
+    [NotifyPropertyChangedFor(nameof(PushToTalkDescription))]
+    [ObservableProperty] public partial bool HandsFreeEnabled { get; private set; }
 
-    public string PushToTalkDescription => "Hold to record, release to transcribe";
+    public string PushToTalkDescription => HandsFreeEnabled
+        ? "Hold to record, release to transcribe, or double-tap to lock hands-free"
+        : "Hold to record, release to transcribe";
     public string CaptureCancelHint => "Escape cancels capture";
 
     /// <summary>
-    /// P5-02. Ctrl+Shift+F8 is genuinely registered for the whole session by
-    /// <c>WinUiComputerUseContext.RegisterVoiceShortcut</c>
-    /// (Services/WinUiComputerUseContext.cs:25-29, called unconditionally from App.xaml.cs:131),
-    /// so this row describes a working shortcut with a precondition — not a missing one.
+    /// Ctrl+Shift+F8 is genuinely registered for the whole session by
+    /// <c>WinUiComputerUseContext.RegisterVoiceShortcut</c>, so this row describes a working
+    /// shortcut with a precondition. When the required configuration is incomplete the row says so
+    /// with the exact validation reason and offers a route to Settings.
     /// </summary>
-    public string ComputerUseShortcutState =>
-        ComputerUseEnabled
-            ? "Registered for this session. Focus an allowed app, then press the shortcut to start and finish a command."
-            : "Registered for this session, but it does nothing until Computer Use is turned on in Settings.";
+    public string ComputerUseShortcutState
+    {
+        get
+        {
+            if (!ComputerUseConfigured)
+            {
+                return string.IsNullOrWhiteSpace(ComputerUseConfigurationReason)
+                    ? "Not configured. Computer Use needs an OpenAI planner, an allowed app, and privacy observation off."
+                    : ComputerUseConfigurationReason;
+            }
+
+            return ComputerUseEnabled
+                ? "Registered for this session. Focus an allowed app, then press the shortcut to start and finish a command."
+                : "Registered for this session. Turn it on here to use the shortcut.";
+        }
+    }
+
+    public bool ComputerUseNeedsConfiguration => !ComputerUseConfigured;
 
     /// <summary>
     /// P5-02. No Windows global shortcut exists for Quill; say that in Windows terms rather than
     /// describing it as "this macOS command".
     /// </summary>
     public string QuillUnavailableReason =>
-        "No Windows global shortcut has been implemented for Quill, so it cannot be triggered from the keyboard.";
+        "Quill has no Windows runtime or global shortcut yet, so it cannot be triggered from the keyboard.";
     public string MeetingRecordingUnavailableReason =>
-        "Use the Meetings page, tray, or live transcript controls until a dedicated global shortcut is registered.";
+        "Meeting recording works, but no dedicated global shortcut is registered yet. Use the Meetings page, tray, or live notification to start and stop recording.";
 
     public void Load()
     {
         _settings = settingsContext.Load();
         ApplyHotkey(_settings.Hotkey);
         ComputerUseEnabled = _settings.ComputerUseEnabled;
+        HandsFreeEnabled = _settings.EnableDoubleTapDictation;
         HoldThresholdMs = _settings.HotkeyTriggerThresholdMs;
+        RefreshComputerUseConfiguration();
+    }
+
+    /// <summary>Re-reads the shared Computer Use configuration and the exact validation reason.</summary>
+    public void RefreshComputerUseConfiguration()
+    {
+        _settings = settingsContext.Load();
+        ComputerUseConfigured = ComputerUseConfiguration.TryValidate(
+            _settings, _settings.ResolvedOpenAIApiKey, out var reason);
+        ComputerUseConfigurationReason = ComputerUseConfigured ? "" : reason;
+        OnPropertyChanged(nameof(ComputerUseNeedsConfiguration));
+        OnPropertyChanged(nameof(ComputerUseShortcutState));
+    }
+
+    /// <summary>
+    /// Enables or disables Computer Use from the Shortcuts page, using the same validation as
+    /// Settings. An incomplete configuration keeps it off and reports the reason instead.
+    /// </summary>
+    public void SetComputerUseEnabled(bool enabled)
+    {
+        RefreshComputerUseConfiguration();
+        if (enabled && !ComputerUseConfigured)
+        {
+            ComputerUseEnabled = false;
+            ShowStatus(ComputerUseConfigurationReason, isError: true);
+            return;
+        }
+
+        _settings = _settings with { ComputerUseEnabled = enabled };
+        settingsContext.Save(_settings);
+        ComputerUseEnabled = enabled;
+        OnPropertyChanged(nameof(ComputerUseShortcutState));
+        ShowStatus(enabled
+            ? "Computer Use shortcut enabled."
+            : "Computer Use shortcut disabled.");
+    }
+
+    /// <summary>
+    /// Enables double-tap (hands-free) dictation. The dictation context reads
+    /// <c>EnableDoubleTapDictation</c> from settings on every key event, so saving is enough to
+    /// change the live gesture without re-registering the hook.
+    /// </summary>
+    public void SetHandsFreeEnabled(bool enabled)
+    {
+        _settings = _settings with { EnableDoubleTapDictation = enabled };
+        settingsContext.Save(_settings);
+        HandsFreeEnabled = enabled;
+        ShowStatus(enabled
+            ? "Hands-free dictation enabled. Double-tap the shortcut to start and stop."
+            : "Hands-free dictation disabled.");
     }
 
     public void BeginCapture(string target = "push")
