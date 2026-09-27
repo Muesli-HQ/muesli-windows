@@ -162,6 +162,7 @@ public sealed class AutoPdfExportTests
                 meeting, Options(directory.Path), PostMeetingCompletionEvent.RecordingCompleted);
             Assert.True(first.PdfExport!.Completed);
 
+            await Task.Delay(1100);
             var second = await service.RunAsync(
                 meeting with { AutomationResult = first },
                 Options(directory.Path),

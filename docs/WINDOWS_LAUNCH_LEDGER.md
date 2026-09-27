@@ -115,7 +115,7 @@ Remaining class: **None** (done at the stated status), **Implementation**, **Qua
 
 | ID | Capability | Status | Owner | Remaining |
 |---|---|---|---|---|
-| MOD-01 | Offline Parakeet TDT with CPU/CUDA provider selection | Partial | Phase 1 / 13 | CPU provider is packaged; public notices/inventory now say CPU-only. CUDA selection exists for an externally staged matching bundle, but the public package must not claim NVIDIA until L11 / Wave 5 stages and qualifies the provider |
+| MOD-01 | Offline Parakeet TDT with CPU/CUDA provider selection | Partial | Phase 1 / 13 | CPU provider is packaged; public notices/inventory stay CPU-only. The optional pinned CUDA acceleration pack is downloaded separately and requires hardware qualification. |
 | MOD-02 | Twelve pinned offline ASR families | Implemented with verification debt | Phase 1 | Qualification: twelve-family CPU matrix; retained CUDA smoke is historical |
 | MOD-03 | Prepare/cancel/retry/verify/delete/recovery lifecycle | Implemented with verification debt | Phase 1 | Qualification: Models UI during real downloads; destructive cache delete against user caches not repeated here |
 | MOD-04 | Opt-in Nemotron 3.5 live model; no CoreML EOU | Implemented with verification debt | Phase 4 | Qualification: long meeting, Bluetooth/route, CUDA-live, multilingual human review |
