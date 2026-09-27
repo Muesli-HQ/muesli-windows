@@ -480,6 +480,8 @@ internal static class PostMeetingMarkdownAutoExporter
     private const string OwnershipMarkerName = ".owner.json";
     private static readonly TimeSpan ClaimWaitLimit = TimeSpan.FromSeconds(10);
     private static readonly JsonSerializerOptions ControlJsonOptions = new(JsonSerializerDefaults.Web);
+    // ponytail: Serializes same-process exports; use per-meeting gates if export throughput becomes material.
+    private static readonly SemaphoreSlim ExportGate = new(1, 1);
     private static readonly AsyncLocal<Func<string>?> TemporaryTokenFactory = new();
     internal static Func<string>? TemporaryTokenFactoryForTests
     {
@@ -516,6 +518,36 @@ internal static class PostMeetingMarkdownAutoExporter
             PostMeetingExportFormat.Pdf, cancellationToken);
 
     private static async Task<PostMeetingExportDiagnostic> ExportCoreAsync(
+        MeetingItem meeting,
+        PostMeetingCompletionEvent completionEvent,
+        string? selectedDirectory,
+        MeetingExportMode mode,
+        int requestedAttempts,
+        PostMeetingExportDiagnostic? previousExport,
+        PostMeetingExportFormat format,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ExportGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failure("Auto-export was cancelled.", 0);
+        }
+
+        try
+        {
+            return await ExportLockedAsync(meeting, completionEvent, selectedDirectory, mode,
+                requestedAttempts, previousExport, format, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ExportGate.Release();
+        }
+    }
+
+    private static async Task<PostMeetingExportDiagnostic> ExportLockedAsync(
         MeetingItem meeting,
         PostMeetingCompletionEvent completionEvent,
         string? selectedDirectory,
