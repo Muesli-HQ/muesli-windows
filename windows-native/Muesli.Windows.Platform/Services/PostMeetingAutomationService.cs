@@ -553,7 +553,7 @@ internal static class PostMeetingMarkdownAutoExporter
         {
             try
             {
-                contentBytes = MeetingDocumentWriter.GeneratePdfBytes(markdown);
+                contentBytes = MeetingDocumentWriter.GeneratePdfBytes(markdown, new DateTimeOffset(meeting.CreatedAt));
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException or NotSupportedException)
             {

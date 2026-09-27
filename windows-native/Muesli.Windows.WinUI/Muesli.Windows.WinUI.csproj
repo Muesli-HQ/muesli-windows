@@ -96,7 +96,7 @@
   -->
   <Target Name="BuildIndicatorCompanion" BeforeTargets="StageIndicatorCompanion">
     <MSBuild Projects="$(MSBuildProjectDirectory)\..\Muesli.Windows.Indicator.Wpf\Muesli.Windows.Indicator.Wpf.csproj"
-             Targets="Build"
+             Targets="Restore;Build"
              Properties="Configuration=$(Configuration)"
              BuildInParallel="false" />
   </Target>
