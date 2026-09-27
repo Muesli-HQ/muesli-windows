@@ -76,17 +76,18 @@ public sealed class AtomicPersistenceTests
     }
 
     [Fact]
-    public async Task TransientReadLockIsRetriedWithoutQuarantiningValidJson()
+    public void TransientReadLockIsRetriedWithoutQuarantiningValidJson()
     {
         using var directory = new TestDirectory();
         var path = directory.File("locked.json");
         new AtomicJsonFile().Save(path, new[] { "valid" });
         using var exclusiveStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
-        var release = Task.Run(async () =>
+        var release = new Thread(() =>
         {
-            await Task.Delay(40);
+            Thread.Sleep(40);
             exclusiveStream.Dispose();
-        });
+        }) { IsBackground = true };
+        release.Start();
 
         AtomicJsonLoadResult<string[]> result;
         try
@@ -99,7 +100,7 @@ public sealed class AtomicPersistenceTests
             // torn down. This keeps a failed assertion or retry exhaustion from leaking the handle
             // into TestDirectory.Dispose on slower Windows CI workers.
             exclusiveStream.Dispose();
-            await release;
+            release.Join();
         }
 
         Assert.Equal(["valid"], result.Value);
