@@ -29,23 +29,42 @@ jobs:
         with:
           global-json-file: global.json
 
-      # The shared Swift core is a real production dependency, so CI must build the
-      # bridge (and therefore the packaged app) before packaging. Provision Swift,
-      # the vcpkg native libraries and the shared repository checkout.
+      # The shared Swift core is optional at the release boundary. When the lock pins an approved
+      # ABI commit, CI builds the bridge. When bridgeRequired=false (no approved upstream ABI
+      # exists), the release ships the parity-tested managed text processor and must not require a
+      # moving branch or the withdrawn PR.
       - name: Read pinned shared-core revision
         id: shared_core_lock
         shell: pwsh
         run: |
           $lock = Get-Content windows-native/shared-core.lock.json -Raw | ConvertFrom-Json
-          if ([string]::IsNullOrWhiteSpace($lock.revision)) {
-            throw "windows-native/shared-core.lock.json has no pinned revision. Commit the shared Swift changes, then set revision to the committed SHA; release CI must never resolve a moving branch."
-          }
           if ($lock.repository -ne 'Muesli-HQ/muesli') {
             throw "shared-core.lock.json points at unexpected repository '$($lock.repository)'."
           }
-          "revision=$($lock.revision)" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          $bridgeRequired = if ($null -eq $lock.PSObject.Properties['bridgeRequired']) { $true } else { [bool]$lock.bridgeRequired }
+          $revision = [string]$lock.revision
+          if ($bridgeRequired) {
+            if ([string]::IsNullOrWhiteSpace($revision)) {
+              throw "windows-native/shared-core.lock.json has no pinned revision. Commit the shared Swift changes, then set revision to the committed SHA; release CI must never resolve a moving branch."
+            }
+            if ($revision -notmatch '^[0-9a-fA-F]{40}$') {
+              throw "windows-native/shared-core.lock.json revision '$revision' is not a full 40-character commit SHA; release CI must never resolve a moving branch."
+            }
+          } elseif (-not [string]::IsNullOrWhiteSpace($revision)) {
+            throw "windows-native/shared-core.lock.json sets bridgeRequired=false but still pins revision '$revision'; choose a single shipping mode."
+          } else {
+            Write-Host "Shared core is unpinned and bridgeRequired=false: shipping the managed-fallback text processor."
+          }
+          "revision=$revision" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          "bridge_required=$($bridgeRequired.ToString().ToLowerInvariant())" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          if (-not $bridgeRequired) {
+            # The rehearsal re-derives this from the lock; set it so any direct packaging step also
+            # quarantines stale bridge output instead of requiring or shipping it.
+            "MUESLI_SHARED_CORE_MODE=managed-fallback" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+          }
 
       - name: Check out shared Swift repository (pinned)
+        if: steps.shared_core_lock.outputs.bridge_required == 'true'
         uses: actions/checkout@v4
         with:
           repository: Muesli-HQ/muesli
@@ -55,6 +74,7 @@ jobs:
           token: ${{ secrets.MUESLI_SHARED_REPO_TOKEN != '' && secrets.MUESLI_SHARED_REPO_TOKEN || github.token }}
 
       - name: Install Swift toolchain
+        if: steps.shared_core_lock.outputs.bridge_required == 'true'
         uses: compnerd/gha-setup-swift@main
         with:
           source: 'swift.org'
@@ -62,6 +82,7 @@ jobs:
           swift-build: '6.4.0-RELEASE'
 
       - name: Install vcpkg native dependencies
+        if: steps.shared_core_lock.outputs.bridge_required == 'true'
         shell: pwsh
         run: |
           $vcpkg = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { 'C:\vcpkg' }
@@ -81,7 +102,7 @@ jobs:
           name: windows-unsigned-release
           if-no-files-found: warn
           path: |
-            artifacts/msix/**/*.msix
+            artifacts/msix/Muesli.Windows.WinUI_*.msix
             artifacts/test-results/*.trx
             artifacts/msix-smoke-report.json
             artifacts/muesli-win32-manifest.xml

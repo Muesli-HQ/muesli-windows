@@ -1,9 +1,9 @@
 # Validates an unsigned WinUI MSIX payload without installing it.
 #
 # This is the MSIX replacement for the retired portable-zip smoke test. It proves the package
-# contains the shipping shell, the shared Swift bridge closure, the WPF indicator companion and
-# the CPU-only native runtime catalog, and that the package identity matches the release
-# properties. Installing an unsigned MSIX needs Developer Mode plus elevation, so launch
+# contains the shipping shell, the WPF indicator companion and the CPU-only native runtime catalog,
+# plus the shared Swift bridge closure when the lock pins it, and that the package identity matches
+# the release properties. Installing an unsigned MSIX needs Developer Mode plus elevation, so launch
 # verification is recorded honestly as performed / unavailable and is never counted as a pass.
 
 param(
@@ -96,7 +96,6 @@ try {
     $requiredEntries = @(
         "Muesli.Windows.WinUI.exe",
         "Muesli.Windows.WinUI.dll",
-        "MuesliCoreABI.dll",
         "Indicator/Muesli.Windows.Indicator.Wpf.exe",
         "sherpa-onnx.dll",
         "sherpa-onnx-c-api.dll",
@@ -108,6 +107,13 @@ try {
         "WINDOWS-PRIVACY.md",
         "licenses/Apache-2.0.txt"
     )
+    # The shared Swift bridge is optional when the lock ships the managed fallback; a pinned bridge
+    # must still be present in the payload.
+    if ($env:MUESLI_SHARED_CORE_MODE -ne 'managed-fallback') {
+        $requiredEntries += "MuesliCoreABI.dll"
+    } elseif ($entryNames -contains "MuesliCoreABI.dll" -or @($entryNames | Where-Object { $_.EndsWith('/MuesliCoreABI.dll') }).Count -gt 0) {
+        $failures.Add("Managed-fallback MSIX payload unexpectedly contains MuesliCoreABI.dll.")
+    }
     foreach ($required in $requiredEntries) {
         # Native dependencies can be resolved under runtimes\<rid>\native\; match by file name.
         $leaf = [IO.Path]::GetFileName($required)
