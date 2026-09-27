@@ -553,7 +553,8 @@ internal static class PostMeetingMarkdownAutoExporter
         {
             try
             {
-                contentBytes = MeetingDocumentWriter.GeneratePdfBytes(markdown, new DateTimeOffset(meeting.CreatedAt));
+                contentBytes = MeetingDocumentWriter.GeneratePdfBytes(
+                    markdown, new DateTimeOffset(meeting.CreatedAt));
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException or NotSupportedException)
             {
@@ -945,36 +946,43 @@ internal static class PostMeetingMarkdownAutoExporter
         if (!File.Exists(manifestPath))
             return new(ManifestInspectionState.Missing, null, null, null);
 
-        try
+        for (var attempt = 0; ; attempt++)
         {
-            var manifest = JsonSerializer.Deserialize<ExportManifest>(
-                File.ReadAllText(manifestPath),
-                ControlJsonOptions);
-            if (manifest?.SchemaVersion != ManifestVersion
-                || !TryGetManifestDestination(directory, manifest.FileName, out var destination)
-                || !IsSha256Hash(manifest.ContentSha256))
+            try
             {
-                return InvalidManifestInspection();
+                var manifest = JsonSerializer.Deserialize<ExportManifest>(
+                    File.ReadAllText(manifestPath),
+                    ControlJsonOptions);
+                if (manifest?.SchemaVersion != ManifestVersion
+                    || !TryGetManifestDestination(directory, manifest.FileName, out var destination)
+                    || !IsSha256Hash(manifest.ContentSha256))
+                {
+                    return InvalidManifestInspection();
+                }
+
+                if (!File.Exists(destination))
+                    return new(ManifestInspectionState.Stale, manifest, destination, null);
+
+                using var stream = File.OpenRead(destination);
+                var actualHash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+                if (!HashesEqual(actualHash, manifest.ContentSha256))
+                    return new(ManifestInspectionState.Stale, manifest, destination, null);
+
+                return new(ManifestInspectionState.Valid, manifest, destination, null);
             }
-
-            if (!File.Exists(destination))
-                return new(ManifestInspectionState.Stale, manifest, destination, null);
-
-            using var stream = File.OpenRead(destination);
-            var actualHash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-            if (!HashesEqual(actualHash, manifest.ContentSha256))
-                return new(ManifestInspectionState.Stale, manifest, destination, null);
-
-            return new(ManifestInspectionState.Valid, manifest, destination, null);
-        }
-        catch (Exception ex) when (
-            ex is IOException or UnauthorizedAccessException or NotSupportedException or JsonException)
-        {
-            return new(
-                ManifestInspectionState.Invalid,
-                null,
-                null,
-                $"The auto-export manifest could not be read ({ex.GetType().Name}) and was left untouched.");
+            catch (IOException) when (attempt < 3)
+            {
+                Thread.Sleep(25 * (attempt + 1));
+            }
+            catch (Exception ex) when (
+                ex is IOException or UnauthorizedAccessException or NotSupportedException or JsonException)
+            {
+                return new(
+                    ManifestInspectionState.Invalid,
+                    null,
+                    null,
+                    $"The auto-export manifest could not be read ({ex.GetType().Name}) and was left untouched.");
+            }
         }
     }
 
