@@ -396,7 +396,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     private void ApplyMeeting(PersistedMeeting meeting, bool keepTranscriptDraft = false)
     {
         Title = meeting.Title;
-        Metadata = $"{meeting.CreatedAt:MMM d, yyyy · h:mm tt} · {FormatDuration(meeting.DurationMs)} · {meeting.ModelProfile}";
+        Metadata = $"{meeting.CreatedAt.ToLocalTime():MMM d, yyyy · h:mm tt} · {FormatDuration(meeting.DurationMs)} · {meeting.ModelProfile}";
         HasManualTitle = meeting.TitleIsManual;
         TitleOwnershipLabel = meeting.TitleIsManual
             ? "Your title · kept when notes are regenerated"

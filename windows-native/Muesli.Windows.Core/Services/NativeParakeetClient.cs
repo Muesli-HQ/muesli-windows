@@ -476,7 +476,7 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
                 : "Token timestamps: none",
             $"Provider selection: {_providerSelectionDiagnostic}");
 
-        return new TranscriptionResult(text, diagnostic, inferenceMs, segments);
+        return new TranscriptionResult(text, diagnostic, audioDurationMs, segments);
     }
 
     private OfflineRecognizerResult Decode(float[] samples, int sampleRate)

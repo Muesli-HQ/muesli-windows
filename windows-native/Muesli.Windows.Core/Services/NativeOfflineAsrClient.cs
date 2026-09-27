@@ -268,7 +268,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                         $"Decode chunks: {chunkCount} (25 second maximum)",
                         $"Segments: {segments.Count}",
                         $"Timestamp segmentation: {string.Join(", ", timestampModes)}"),
-                    inferenceMs,
+                    durationMs,
                     segments);
             });
         }
