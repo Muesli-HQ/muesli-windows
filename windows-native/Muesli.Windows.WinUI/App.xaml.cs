@@ -216,6 +216,7 @@ public partial class App : Application
             // back to the in-process WinUI pill (creating it on demand) if the companion can't run.
             IndicatorHost = new WinUiIndicatorHost(Dictation, Meetings, ComputerUse, UiDispatcher);
             IndicatorHost.Start();
+            _meetingNotifications.UseWpfHost(IndicatorHost);
         }
         LiveTranscript = new MeetingLiveTranscriptWindow(Meetings, UiDispatcher, Clipboard);
         TrackTheme(LiveTranscript);

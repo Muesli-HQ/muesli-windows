@@ -63,6 +63,29 @@ public sealed class IndicatorProtocolTests
     }
 
     [Fact]
+    public void Meeting_notification_and_action_round_trip_through_pipe_protocol()
+    {
+        var snapshot = new IndicatorSnapshot
+        {
+            MeetingNotification = new IndicatorMeetingNotification(
+                "meeting-1", "Meeting detected", "Google Meet · Planning", "Google Meet",
+                "", "#3380FF", "MEET", "Start Transcribing", false,
+                Muesli.Windows.Services.MeetingJoinDefaultAction.TranscribeOnly, 15)
+        };
+        var received = IndicatorProtocol.DeserializeSnapshot(IndicatorProtocol.SerializeSnapshot(snapshot));
+        Assert.Equal(snapshot.MeetingNotification, received?.MeetingNotification);
+
+        var command = new IndicatorCommand
+        {
+            Type = IndicatorCommandType.MeetingNotificationAction,
+            NotificationPromptId = "meeting-1",
+            NotificationAction = "StartTranscribing"
+        };
+        var receivedCommand = IndicatorProtocol.DeserializeCommand(IndicatorProtocol.SerializeCommand(command));
+        Assert.Equal(command, receivedCommand);
+    }
+
+    [Fact]
     public void DeserializeSnapshot_rejects_unsupported_version()
     {
         var future = new IndicatorSnapshot { Version = IndicatorProtocol.CurrentVersion + 1 };

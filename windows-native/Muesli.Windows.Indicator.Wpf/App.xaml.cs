@@ -15,6 +15,7 @@ namespace Muesli.Windows.Indicator.Wpf;
 public partial class App : Application
 {
     private IndicatorWindow? _window;
+    private MeetingNotificationWindow? _notification;
     private IndicatorPipeClient? _client;
     private CancellationTokenSource? _lifetime;
     private int _parentProcessId = -1;
@@ -75,6 +76,18 @@ public partial class App : Application
         Dispatcher.InvokeAsync(() =>
         {
             if (_window is not null) _window.Apply(snapshot);
+            var request = snapshot.MeetingNotification;
+            if (request is null)
+            {
+                _notification?.CloseSilently();
+                _notification = null;
+            }
+            else if (_notification?.PromptId != request.PromptId)
+            {
+                _notification?.CloseSilently();
+                _notification = new MeetingNotificationWindow(request, SendCommand);
+                _notification.Show();
+            }
         });
     }
 
@@ -124,6 +137,7 @@ public partial class App : Application
         if (Dispatcher.HasShutdownStarted) return;
         Dispatcher.InvokeAsync(() =>
         {
+            _notification?.CloseSilently();
             _window?.Close();
             Shutdown(0);
         });
@@ -131,6 +145,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _notification?.CloseSilently();
         _client?.Dispose();
         _lifetime?.Cancel();
         _lifetime?.Dispose();

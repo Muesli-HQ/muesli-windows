@@ -39,6 +39,8 @@ public sealed class WinUiIndicatorHost : IDisposable
     private long _sessionId;
     private float _amplitude;
     private IndicatorSnapshot? _latest;
+    private IndicatorMeetingNotification? _meetingNotification;
+    private MeetingNotificationCallbacks? _meetingNotificationCallbacks;
     private string? _dismissedOutcomeStatus;
     private string? _pendingOutcomeStatus;
     private FloatingIndicatorState? _probeState;
@@ -66,6 +68,25 @@ public sealed class WinUiIndicatorHost : IDisposable
     }
 
     public bool IsFallbackActive => _fallback is not null;
+    public bool CanPresentMeetingNotification => _fallback is null && _server is not null && Volatile.Read(ref _disposed) == 0;
+    public bool IsMeetingNotificationVisible => _meetingNotification is not null;
+
+    public void PresentMeetingNotification(MeetingNotificationRequest request, MeetingNotificationCallbacks callbacks)
+    {
+        _meetingNotification = new IndicatorMeetingNotification(
+            request.PromptId, request.Title, request.Subtitle, request.Platform, request.Glyph,
+            request.AccentHex, request.ShortLabel, request.ActionLabel, request.HasSplitAction,
+            request.DefaultAction, request.DismissAfterSeconds);
+        _meetingNotificationCallbacks = callbacks;
+        Publish();
+    }
+
+    public void CloseMeetingNotification()
+    {
+        _meetingNotification = null;
+        _meetingNotificationCallbacks = null;
+        Publish();
+    }
 
     public void Start()
     {
@@ -206,7 +227,8 @@ public sealed class WinUiIndicatorHost : IDisposable
             SavedTop = _savedTop,
             Theme = settings.Theme,
             HighContrast = new AccessibilitySettings().HighContrast,
-            Amplitude = _state == FloatingIndicatorState.Recording ? _amplitude : 0f
+            Amplitude = _state == FloatingIndicatorState.Recording ? _amplitude : 0f,
+            MeetingNotification = _meetingNotification
         };
     }
 
@@ -256,6 +278,13 @@ public sealed class WinUiIndicatorHost : IDisposable
     private void OnCommand(IndicatorCommand command)
     {
         if (Volatile.Read(ref _disposed) != 0 || _fallback is not null) return;
+        if (command.Type is IndicatorCommandType.MeetingNotificationAction or
+            IndicatorCommandType.MeetingNotificationDismiss or
+            IndicatorCommandType.MeetingNotificationAutoDismiss)
+        {
+            _dispatcher.TryEnqueue(() => HandleMeetingNotificationCommand(command));
+            return;
+        }
         if (IndicatorProtocol.IsStaleSession(command.SessionId, _sessionId)) return;
 
         switch (command.Type)
@@ -300,6 +329,27 @@ public sealed class WinUiIndicatorHost : IDisposable
                 // Hover is rendered locally by the companion; heartbeat/exit only inform lifecycle.
                 break;
         }
+    }
+
+    private void HandleMeetingNotificationCommand(IndicatorCommand command)
+    {
+        if (_meetingNotification is null ||
+            !string.Equals(_meetingNotification.PromptId, command.NotificationPromptId, StringComparison.Ordinal)) return;
+        MeetingNotificationAction? action = null;
+        if (command.Type == IndicatorCommandType.MeetingNotificationAction)
+        {
+            if (!Enum.TryParse<MeetingNotificationAction>(command.NotificationAction, out var parsed) ||
+                (_meetingNotification.HasSplitAction
+                    ? parsed is not (MeetingNotificationAction.JoinAndRecord or MeetingNotificationAction.JoinOnly or MeetingNotificationAction.TranscribeOnly)
+                    : parsed != MeetingNotificationAction.StartTranscribing)) return;
+            action = parsed;
+        }
+        var callbacks = _meetingNotificationCallbacks;
+        CloseMeetingNotification();
+        if (callbacks is null) return;
+        if (command.Type == IndicatorCommandType.MeetingNotificationDismiss) callbacks.OnDismiss();
+        else if (command.Type == IndicatorCommandType.MeetingNotificationAutoDismiss) callbacks.OnAutoDismiss();
+        else if (action is { } validAction) callbacks.OnAction(validAction);
     }
 
     private void ApplyCustomPosition(double? left, double? top)

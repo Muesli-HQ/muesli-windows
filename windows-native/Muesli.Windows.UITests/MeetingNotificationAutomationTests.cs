@@ -16,16 +16,15 @@ public sealed class MeetingNotificationAutomationTests
         using var session = MuesliWinUiSession.LaunchWithMeetingNotificationPreview("active", background: true);
         session.Run(() =>
         {
-            // The shell attached here is the notification window itself because the dashboard was
-            // launched hidden; this proves the notification does not depend on the dashboard.
-            var title = session.RequireAutomationId("MeetingNotificationTitle", mustBeOnscreen: true);
+            var window = session.RequireCompanionWindow("MeetingNotificationTitle");
+            var title = Find(window, "MeetingNotificationTitle");
             Assert.Equal("Meeting detected", title.Current.Name);
-            var subtitle = session.RequireAutomationId("MeetingNotificationSubtitle");
+            var subtitle = Find(window, "MeetingNotificationSubtitle");
             Assert.Contains("Google Meet", subtitle.Current.Name, StringComparison.Ordinal);
-            var primary = session.RequireAutomationId("MeetingNotificationPrimaryAction");
+            var primary = Find(window, "MeetingNotificationPrimaryAction");
             Assert.Equal("Start Transcribing", primary.Current.Name);
-            var dismiss = session.RequireAutomationId("MeetingNotificationDismiss");
-            Assert.Equal("Dismiss", dismiss.Current.Name);
+            var dismiss = Find(window, "MeetingNotificationDismiss");
+            Assert.Equal("Dismiss meeting notification", dismiss.Current.Name);
 
             // The dashboard must remain hidden while the notification is shown.
             var navigation = session.TryFindAutomationId("MainNavigation", TimeSpan.FromSeconds(2));
@@ -43,7 +42,7 @@ public sealed class MeetingNotificationAutomationTests
         using var session = MuesliWinUiSession.LaunchWithMeetingNotificationPreview("scheduled");
         session.Run(() =>
         {
-            var window = session.RequireSecondaryWindow("MeetingNotificationWindow");
+            var window = session.RequireCompanionWindow("MeetingNotificationTitle");
             var primary = Find(window, "MeetingNotificationPrimaryAction");
             Assert.Equal("Join & Transcribe", primary.Current.Name);
             var chevron = Find(window, "MeetingNotificationChevron");

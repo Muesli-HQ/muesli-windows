@@ -136,8 +136,9 @@ internal sealed class MuesliWinUiSession : IDisposable
         return LaunchPackaged(
             new MuesliCleanProfile(false, false, completeFirstRun: true),
             extraArgs: extra,
-            // With --background the dashboard is hidden, so attach to the notification window instead.
-            shellProofId: background ? "MeetingNotificationWindow" : "MainNavigation");
+            shellProofId: background ? "MeetingNotificationTitle" : "MainNavigation",
+            nonActivatingShell: background,
+            attachCompanion: background);
     }
 
     /// <summary>
@@ -161,7 +162,9 @@ internal sealed class MuesliWinUiSession : IDisposable
         MuesliCleanProfile profile,
         bool indicatorProbe = false,
         string? extraArgs = null,
-        string shellProofId = "MainNavigation")
+        string shellProofId = "MainNavigation",
+        bool nonActivatingShell = false,
+        bool attachCompanion = false)
     {
         try
         {
@@ -170,9 +173,11 @@ internal sealed class MuesliWinUiSession : IDisposable
             var process = StartPackagedShell(profile, indicatorProbe, extraArgs);
             try
             {
-                var window = WaitForShellWindow(process, TimeSpan.FromSeconds(90), shellProofId);
+                var window = attachCompanion
+                    ? WaitForCompanionWindow(process, TimeSpan.FromSeconds(90), shellProofId)
+                    : WaitForShellWindow(process, TimeSpan.FromSeconds(90), shellProofId);
                 return new MuesliWinUiSession(profile, process, window,
-                    nonActivatingShell: shellProofId != "MainNavigation") { ExecutablePath = "" };
+                    nonActivatingShell: nonActivatingShell || shellProofId != "MainNavigation") { ExecutablePath = "" };
             }
             catch (Exception exception)
             {
@@ -403,6 +408,63 @@ internal sealed class MuesliWinUiSession : IDisposable
 
         Fail($"No window of the WinUI shell published automation id '{evidenceAutomationId}'.{lastFailure}");
         throw new InvalidOperationException("Unreachable");
+    }
+
+    public AutomationElement RequireCompanionWindow(string evidenceAutomationId, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(20));
+        while (DateTime.UtcNow < deadline)
+        {
+            ThrowIfProcessExited();
+            var window = FindCompanionWindow(evidenceAutomationId);
+            if (window is not null) return window;
+            Thread.Sleep(250);
+        }
+        Fail($"No WPF companion window published automation id '{evidenceAutomationId}'.");
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    private static AutomationElement WaitForCompanionWindow(Process process, TimeSpan timeout, string evidenceAutomationId)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (process.HasExited) throw new InvalidOperationException("The WinUI shell exited before its WPF notification appeared.");
+            var window = FindCompanionWindow(evidenceAutomationId);
+            if (window is not null) return window;
+            Thread.Sleep(250);
+        }
+        throw new TimeoutException($"Timed out waiting for WPF notification '{evidenceAutomationId}'.");
+    }
+
+    private static AutomationElement? FindCompanionWindow(string evidenceAutomationId)
+    {
+        var handles = new List<IntPtr>();
+        EnumWindows((handle, _) =>
+        {
+            GetWindowThreadProcessId(handle, out var owner);
+            try
+            {
+                using var process = Process.GetProcessById(unchecked((int)owner));
+                if (process.ProcessName == "Muesli.Windows.Indicator.Wpf") handles.Add(handle);
+            }
+            catch (ArgumentException) { }
+            catch (InvalidOperationException) { }
+            return true;
+        }, IntPtr.Zero);
+        foreach (var handle in handles)
+        {
+            try
+            {
+                var window = AutomationElement.FromHandle(handle);
+                if (window.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, evidenceAutomationId)) is not null)
+                    return window;
+            }
+            catch (ElementNotAvailableException) { }
+            catch (COMException) { }
+        }
+        return null;
     }
 
     /// <summary>

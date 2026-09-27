@@ -122,6 +122,9 @@ public static class IndicatorCommandType
     public const string HoverExit = "hover-exit";
     public const string Heartbeat = "heartbeat";
     public const string Exit = "exit";
+    public const string MeetingNotificationAction = "meeting-notification-action";
+    public const string MeetingNotificationDismiss = "meeting-notification-dismiss";
+    public const string MeetingNotificationAutoDismiss = "meeting-notification-auto-dismiss";
 }
 
 /// <summary>The owner labels WinUI publishes so the companion can render meeting vs dictation controls.</summary>
@@ -175,6 +178,8 @@ public sealed record IndicatorSnapshot
     /// <summary>Live microphone amplitude in [0,1]; the companion smooths it at 30 fps.</summary>
     public float Amplitude { get; init; }
 
+    public IndicatorMeetingNotification? MeetingNotification { get; init; }
+
     [JsonIgnore]
     public bool IsActive =>
         State is "preparing" or "recording" or "transcribing";
@@ -186,8 +191,23 @@ public sealed record IndicatorCommand
     public int Version { get; init; } = IndicatorProtocol.CurrentVersion;
     public long SessionId { get; init; }
     public string Type { get; init; } = "";
+    public string? NotificationPromptId { get; init; }
+    public string? NotificationAction { get; init; }
 
     /// <summary>Repaired custom centre after a drag completes, in DIPs.</summary>
     public double? DragLeft { get; init; }
     public double? DragTop { get; init; }
 }
+
+public sealed record IndicatorMeetingNotification(
+    string PromptId,
+    string Title,
+    string Subtitle,
+    string Platform,
+    string Glyph,
+    string AccentHex,
+    string ShortLabel,
+    string ActionLabel,
+    bool HasSplitAction,
+    Muesli.Windows.Services.MeetingJoinDefaultAction DefaultAction,
+    double DismissAfterSeconds);

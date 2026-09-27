@@ -30,6 +30,9 @@
     </AssemblyAttribute>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Assets\*.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- WindowsForms pulls System.Drawing / System.Windows.Forms into the implicit usings,
          which collides with WPF's Point, Brush, Application and MouseEventArgs. Only Screen /
          Cursor are used from WinForms, and those call sites are fully qualified. -->

@@ -17,6 +17,7 @@ public sealed class WinUiMeetingNotificationService : IDisposable
     private readonly Func<bool> _isBusy;
     private readonly MeetingNotificationSuppressionState _state = new();
     private MeetingNotificationWindow? _window;
+    private WinUiIndicatorHost? _wpfHost;
     private int _disposed;
 
     public WinUiMeetingNotificationService(
@@ -33,7 +34,9 @@ public sealed class WinUiMeetingNotificationService : IDisposable
         _isBusy = isBusy;
     }
 
-    public bool IsVisible => _window is { IsPresenting: true };
+    public bool IsVisible => _window is { IsPresenting: true } || _wpfHost?.IsMeetingNotificationVisible == true;
+
+    public void UseWpfHost(WinUiIndicatorHost host) => _wpfHost = host;
 
     public MeetingNotificationOutcome? LastOutcome { get; private set; }
 
@@ -75,6 +78,32 @@ public sealed class WinUiMeetingNotificationService : IDisposable
         {
             previous.SuppressCallbacks();
             _window = null;
+        }
+
+        _wpfHost?.CloseMeetingNotification();
+        if (_wpfHost is { CanPresentMeetingNotification: true } wpfHost)
+        {
+            _state.MarkShown(request.PromptId);
+            wpfHost.PresentMeetingNotification(request, new MeetingNotificationCallbacks(
+                action =>
+                {
+                    _state.MarkHidden();
+                    _state.MarkRecordingStarted(request.PromptId);
+                    callbacks.OnAction(action);
+                },
+                () =>
+                {
+                    _state.MarkHidden();
+                    _state.SuppressForUser(request.PromptId);
+                    callbacks.OnDismiss();
+                },
+                () =>
+                {
+                    _state.MarkHidden();
+                    _state.SuppressForAuto(request.PromptId);
+                    callbacks.OnAutoDismiss();
+                }));
+            return decision.Outcome;
         }
 
         MeetingNotificationWindow? window = null;
@@ -134,6 +163,7 @@ public sealed class WinUiMeetingNotificationService : IDisposable
         var window = _window;
         _window = null;
         _state.MarkHidden();
+        _wpfHost?.CloseMeetingNotification();
         window?.SuppressCallbacks();
     }
 
