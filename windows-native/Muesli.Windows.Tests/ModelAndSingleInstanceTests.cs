@@ -103,7 +103,7 @@ public sealed class ModelAndSingleInstanceTests
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(30));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => CrossProcessFileLock.AcquireAsync(
             lockPath,
-            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(10),
             cancellation.Token));
     }
 
