@@ -107,11 +107,11 @@ if ($sherpaCudaManifest.schemaVersion -ne 1 -or
     $sherpaCudaManifest.runtimeVersion -ne "1.13.4") {
     throw "Sherpa CUDA runtime manifest is invalid: $sherpaCudaManifestPath"
 }
-$sherpaCudaMissing = @($sherpaCudaManifest.requiredRuntimeFiles | Where-Object {
-    -not (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $sherpaCudaManifestPath) $_))
+$sherpaCudaIncluded = @($sherpaCudaManifest.requiredRuntimeFiles | Where-Object {
+    Test-Path -LiteralPath (Join-Path (Split-Path -Parent $sherpaCudaManifestPath) $_)
 })
-if ($sherpaCudaMissing.Count -gt 0) {
-    throw "Sherpa CUDA runtime is incomplete. Missing: $($sherpaCudaMissing -join ', ')"
+if ($sherpaCudaIncluded.Count -gt 0) {
+    throw "CPU-only public package includes Sherpa CUDA runtime files: $($sherpaCudaIncluded -join ', ')"
 }
 
 $forbiddenPatterns = @("Outlook.Application", "Microsoft.Office.Interop.Outlook", "MAPI")

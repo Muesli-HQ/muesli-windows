@@ -136,13 +136,13 @@ if ($sherpaCudaManifest.schemaVersion -ne 1 -or
     $sherpaCudaManifest.cudnnMajor -ne 9) {
     throw "Sherpa CUDA runtime manifest is invalid: $sherpaCudaManifestPath"
 }
-$sherpaCudaMissing = @($sherpaCudaManifest.requiredRuntimeFiles | Where-Object {
-    -not (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $sherpaCudaManifestPath) $_))
+$sherpaCudaIncluded = @($sherpaCudaManifest.requiredRuntimeFiles | Where-Object {
+    Test-Path -LiteralPath (Join-Path (Split-Path -Parent $sherpaCudaManifestPath) $_)
 })
-if ($sherpaCudaMissing.Count -gt 0) {
-    throw "Package is missing Sherpa CUDA runtime files: $($sherpaCudaMissing -join ', ')"
+if ($sherpaCudaIncluded.Count -gt 0) {
+    throw "CPU-only public package includes Sherpa CUDA runtime files: $($sherpaCudaIncluded -join ', ')"
 }
-Write-Host "Sherpa CUDA provider runtime files are complete."
+Write-Host "CPU-only public package excludes Sherpa CUDA runtime files."
 
 $installScript = Get-Content (Join-Path $WorkDir "install-windows.ps1") -Raw
 [scriptblock]::Create($installScript) | Out-Null
