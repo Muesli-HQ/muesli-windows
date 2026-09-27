@@ -409,40 +409,9 @@ internal static class PostMeetingMarkdownAutoExporter
     private const string OwnershipMarkerName = ".owner.json";
     private static readonly TimeSpan ClaimWaitLimit = TimeSpan.FromSeconds(10);
     private static readonly JsonSerializerOptions ControlJsonOptions = new(JsonSerializerDefaults.Web);
-    // ponytail: Serializes same-process exports; use per-meeting gates if export throughput becomes material.
-    private static readonly SemaphoreSlim ExportGate = new(1, 1);
     internal static Func<string>? TemporaryTokenFactoryForTests { get; set; }
 
     public static async Task<PostMeetingExportDiagnostic> ExportAsync(
-        MeetingItem meeting,
-        PostMeetingCompletionEvent completionEvent,
-        string? selectedDirectory,
-        MeetingExportMode mode,
-        int requestedAttempts,
-        PostMeetingExportDiagnostic? previousExport,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await ExportGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            return Failure("Auto-export was cancelled.", 0);
-        }
-
-        try
-        {
-            return await ExportCoreAsync(meeting, completionEvent, selectedDirectory, mode,
-                requestedAttempts, previousExport, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            ExportGate.Release();
-        }
-    }
-
-    private static async Task<PostMeetingExportDiagnostic> ExportCoreAsync(
         MeetingItem meeting,
         PostMeetingCompletionEvent completionEvent,
         string? selectedDirectory,
