@@ -133,6 +133,7 @@ function Remove-StagedBridge {
         }
         foreach ($name in $names) { Remove-Item -LiteralPath (Join-Path $target $name) -Force -ErrorAction SilentlyContinue }
         Remove-Item -LiteralPath (Join-Path $target $ManifestName) -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $target 'muesli-swift-bridge-files.txt') -Force -ErrorAction SilentlyContinue
     }
     if ($Reason) { Write-Warning $Reason }
 }
@@ -176,6 +177,11 @@ function New-WindowsSwiftPackageStage {
 $outDirFull = [System.IO.Path]::GetFullPath($OutDir)
 $targets = @($outDirFull)
 if ($AppXDir) { $targets += [System.IO.Path]::GetFullPath($AppXDir) }
+
+if ($env:MUESLI_SHARED_CORE_MODE -eq 'managed-fallback') {
+    Remove-StagedBridge -Targets $targets -Reason 'Managed-fallback release: quarantined shared Swift bridge output.'
+    return
+}
 
 $package = Resolve-FirstPath @($SharedCorePackage, $env:MUESLI_SHARED_CORE_PACKAGE)
 if (-not $package -or -not (Test-Path (Join-Path $package 'Package.swift'))) {

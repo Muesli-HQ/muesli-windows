@@ -66,7 +66,7 @@ public sealed class ReleasePackageReproducibilityTests
         Assert.Contains("rehearse-windows-release.ps1", workflow, StringComparison.Ordinal);
         Assert.Contains("Authenticode/MSIX signing is L05", workflow, StringComparison.Ordinal);
         Assert.Contains("Do not call scripts/sign-windows-release.ps1", workflow, StringComparison.Ordinal);
-        Assert.Contains("artifacts/msix/**/*.msix", workflow, StringComparison.Ordinal);
+        Assert.Contains("artifacts/msix/Muesli.Windows.WinUI_*.msix", workflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/test-results/*.trx", workflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/msix-smoke-report.json", workflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/muesli-win32-manifest.xml", workflow, StringComparison.Ordinal);
