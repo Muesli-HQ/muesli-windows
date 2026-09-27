@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <ProjectReference Include="..\Muesli.Windows.Core\Muesli.Windows.Core.csproj" />
+    <ProjectReference Include="..\Muesli.Windows.Platform\Muesli.Windows.Platform.csproj" />
+    <ProjectReference Include="..\Muesli.Automation.TestHost\Muesli.Automation.TestHost.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <Target Name="CopyAutomationTestHost" AfterTargets="Build">
+    <ItemGroup>
+      <_AutomationTestHostFile Include="..\Muesli.Automation.TestHost\bin\$(Platform)\$(Configuration)\net10.0\*.*" Condition="'$(Platform)' != 'AnyCPU'" />
+      <_AutomationTestHostFile Include="..\Muesli.Automation.TestHost\bin\$(Configuration)\net10.0\*.*" Condition="'$(Platform)' == 'AnyCPU'" />
+    </ItemGroup>
+    <MakeDir Directories="$(OutDir)AutomationTestHost" />
+    <Copy SourceFiles="@(_AutomationTestHostFile)" DestinationFolder="$(OutDir)AutomationTestHost" />
+  </Target>
+
+  <!--
+    The shared Swift bridge tests exercise the real native library, so this project
+    requires the bridge to be staged beside the test assembly. Fails loudly when the
+    bridge cannot be produced.
+  -->
+  <Target Name="StageSwiftCoreBridgeForTests" AfterTargets="Build" Condition="'$(MuesliSkipSwiftBridge)' != '1'">
+    <PropertyGroup>
+      <!-- The managed-fallback release passes MuesliRequireSwiftBridge=false; the script then
+           quarantines any stale bridge beside the test assembly and the bridge tests skip by
+           named prerequisite instead of failing. -->
+      <_SwiftBridgeRequireArg Condition="'$(MuesliRequireSwiftBridge)' != 'false'">-Require</_SwiftBridgeRequireArg>
+    </PropertyGroup>
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-swift-core-bridge.ps1&quot; -OutDir &quot;$(OutDir).&quot; $(_SwiftBridgeRequireArg)"
+          IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+  <ItemGroup>
+    <!-- Exercise the nonvisual WinUI composition against real shared persistence adapters. -->
+    <Compile Include="..\Muesli.Windows.WinUI\Services\WinUiLibraryContext.cs" Link="WinUi\WinUiLibraryContext.cs" />
+    <Compile Include="..\Muesli.Windows.WinUI\Services\WinUiSettingsContext.cs" Link="WinUi\WinUiSettingsContext.cs" />
+    <Compile Include="..\Muesli.Windows.WinUI\Services\WinUiModelsContext.cs" Link="WinUi\WinUiModelsContext.cs" />
+  </ItemGroup>
+</Project>

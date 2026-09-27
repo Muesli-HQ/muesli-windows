@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>Muesli.Windows.Indicator.Wpf</AssemblyName>
+    <RootNamespace>Muesli.Windows.Indicator.Wpf</RootNamespace>
+    <StartupObject>Muesli.Windows.Indicator.Wpf.App</StartupObject>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <IsPackable>false</IsPackable>
+    <!--
+      The companion runs inside the packaged WinUI layout, which cannot assume a machine-wide
+      .NET runtime. Building self-contained for win-x64 means the WPF/.NET runtime files are
+      part of the payload and the shell can launch the exe exactly as shipped.
+    -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <!-- A fixed output path (no per-platform segment) so the WinUI packaging target can harvest
+         the companion from one deterministic location regardless of how it was built. -->
+    <AppendPlatformToOutputPath>false</AppendPlatformToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Muesli.Windows.Core\Muesli.Windows.Core.csproj" />
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Muesli.Windows.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\*.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- WindowsForms pulls System.Drawing / System.Windows.Forms into the implicit usings,
+         which collides with WPF's Point, Brush, Application and MouseEventArgs. Only Screen /
+         Cursor are used from WinForms, and those call sites are fully qualified. -->
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+  <!--
+    The WinUI packaging project references this project with ReferenceOutputAssembly=false and
+    adds the published payload (this exe, Muesli.Windows.Core.dll, and the WPF/.NET runtime
+    files) into the MSIX layout as Content. The companion is never launched independently.
+  -->
+</Project>

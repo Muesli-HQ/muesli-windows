@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="Muesli.Windows.WinUI.DictationIndicatorWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Muesli dictation indicator">
+    <!--
+        The WPF reference gets its glass from AllowsTransparency plus a translucent Border. This
+        SDK (WindowsAppSDK 2.4.0) has no TransparentBackdrop, and a window with no backdrop at all
+        paints its opaque theme background — which washes the pill out to near-white in Light.
+        Acrylic is the closest available equivalent; the rectangular halo it used to draw around
+        the rounded corners is removed by clipping the window to a rounded region in code-behind
+        (ApplyRoundedRegion), so the backdrop can no longer paint outside the pill.
+    -->
+    <Window.SystemBackdrop>
+        <DesktopAcrylicBackdrop />
+    </Window.SystemBackdrop>
+    <Border
+        x:Name="RootBorder"
+        Background="Transparent"
+        BorderBrush="Transparent"
+        BorderThickness="1"
+        Padding="0"
+        CornerRadius="14"
+        PointerPressed="RootBorder_PointerPressed"
+        PointerMoved="RootBorder_PointerMoved"
+        PointerReleased="RootBorder_PointerReleased"
+        PointerEntered="RootBorder_PointerEntered"
+        PointerExited="RootBorder_PointerExited"
+        KeyDown="RootBorder_KeyDown"
+        IsTabStop="True"
+        KeyboardAcceleratorPlacementMode="Hidden">
+        <!-- P8-06: suppress the accelerator tooltip; a non-Control owner strands its popup host. -->
+        <Border.KeyboardAccelerators>
+            <KeyboardAccelerator Key="Escape" Invoked="CancelAccelerator_Invoked" />
+        </Border.KeyboardAccelerators>
+        <Grid x:Name="PillContent" HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Border>
+</Window>

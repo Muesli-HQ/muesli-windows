@@ -1,0 +1,90 @@
+{
+  "SchemaVersion": 1,
+  "CreatedAtUtc": "2026-09-20T15:37:15.1139097+00:00",
+  "AudioPath": "C:\\Users\\USER\\.cache\\muesli\\native-asr\\sherpa-onnx-whisper-medium.en\\test_wavs\\0.wav",
+  "AudioSha256": "6bc58a4efdf20daac252b6b1502632601a71efe0308f6757dc1eda34891a7e4f",
+  "ReferencePath": null,
+  "Engine": "native-sherpa-onnx/whisper",
+  "Model": "whisper-medium-en",
+  "Runs": 2,
+  "Provider": {
+    "Requested": "cuda",
+    "LoadedRuntime": "cuda",
+    "CudaPackInstalled": true,
+    "CudaPackVerified": true,
+    "NvidiaRuntimeComplete": true,
+    "DirectMlAvailable": false,
+    "Telemetry": {
+      "LastActiveProvider": "cuda",
+      "LastFallbackReason": null,
+      "LastModelLoadMs": 5257,
+      "LastWarmInferenceMs": null,
+      "LastWarmAudioMs": null,
+      "LastGpuEvidence": null,
+      "RecentAttempts": [
+        {
+          "Role": "OfflineTranscription",
+          "Provider": "cuda",
+          "ModelId": "whisper-medium-en",
+          "Succeeded": true,
+          "ElapsedMs": 5257,
+          "Detail": "Active provider: cuda."
+        }
+      ]
+    }
+  },
+  "SherpaOnnxRuntime": {
+    "IsAvailable": true,
+    "IsCudaCapable": true,
+    "SelectedRuntime": "cuda",
+    "RuntimeDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda\\sherpa-onnx-1.13.4-cuda12-cudnn9-win-x64",
+    "GpuDependencyCacheDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9",
+    "Diagnostic": "CUDA-capable Sherpa runtime 1.13.4 loaded from C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda\\sherpa-onnx-1.13.4-cuda12-cudnn9-win-x64.\r\nNVIDIA dependency directories: C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9; C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda\\sherpa-onnx-1.13.4-cuda12-cudnn9-win-x64.\r\nCUDA 12.x and cuDNN 9.x dependency checks passed.\r\nGPU inference is only claimed after a real model warm-up inference confirms the execution provider."
+  },
+  "Report": {
+    "Summary": "Whisper Medium English \u00B7  \u00B7 2029 ms warm wall \u00B7 RTF 0.306 \u00B7 deterministic yes",
+    "LaunchRecommendation": "Audio: 0.wav\r\nBackend: native-sherpa-onnx/whisper\r\nModel: whisper-medium-en\r\nProvider: cuda; device: ; compute: ; model reused: True",
+    "Results": [
+      {
+        "EngineId": "native-sherpa-onnx/whisper",
+        "ModelName": "whisper-medium-en",
+        "AudioDurationMs": 6625,
+        "FirstRunWallMs": 7681,
+        "FirstRunModelInitMs": 5257,
+        "WarmInferenceMs": 2027,
+        "WarmWallMs": 2029,
+        "RealtimeFactor": 0.3062641509433962,
+        "TranscriptCharacterCount": 105,
+        "SegmentCount": 1,
+        "HasUsefulTimestamps": true,
+        "TimestampRange": "0-6625 ms",
+        "FirstRunBackend": "cuda",
+        "WarmBackend": "cuda",
+        "ThreadCount": 4,
+        "AudioPreprocessing": "in-memory 16 kHz mono conversion (1 ms)",
+        "AudioPreprocessingMs": 0,
+        "Success": true,
+        "ErrorMessage": "",
+        "RunCount": 2,
+        "TranscriptSha256": "c8b3baa4cf2d40ca2c784ceca2648722df1068811a6d05123ee40573a4fc09ab",
+        "DistinctTranscriptCount": 1,
+        "DeterministicOutput": true,
+        "SegmentLayoutSha256": "8f04c201417cfe2705a4b32dd5001c80d5cb7d679917c0599eb9efca5d8dbdc1",
+        "DistinctSegmentLayoutCount": 1,
+        "DeterministicSegments": true,
+        "SegmentsChronological": true,
+        "SegmentTextMatchesTranscript": true,
+        "MaximumSegmentDurationMs": 6625,
+        "Device": "",
+        "ComputeType": "",
+        "ModelInstanceReused": true,
+        "ReportedTranscriptionWallMs": 0,
+        "WordErrorRate": null,
+        "CharacterErrorRate": null,
+        "InitializationWallMs": 5372,
+        "ModelVerificationMs": 0,
+        "ModelVerificationSource": ""
+      }
+    ]
+  }
+}

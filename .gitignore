@@ -3,8 +3,17 @@ dist/
 dist-electron/
 .vite/
 .env
+.env.*
+!.env.example
+!.env.template
 *.log
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
 __pycache__/
+*.py[cod]
 .venv/
 .venv-worker/
 .cache/
@@ -12,9 +21,77 @@ bin/
 obj/
 artifacts/
 publish/
+/shared-muesli/
+windows-native/Muesli.Windows/NativeRuntime/SherpaOnnxCuda/*.dll
+
+# .NET / test / coverage outputs
+TestResults/
+coverage/
+coverage-*/
+*.trx
+*.coverage
+*.coveragexml
+coverage.json
+coverage.xml
+lcov.info
+BenchmarkDotNet.Artifacts/
+*.pdb
+*.nupkg
+*.snupkg
+
+# Local packages, downloaded runtimes, and model caches
+packages/
+.nuget/
+/models/
+downloads/
+*.gguf
+*.onnx
+*.ort
+*.pt
+*.pth
+*.safetensors
+
+# Local secrets and signing material
+*.pfx
+*.p12
+*.key
+*.keystore
+secrets.json
+appsettings.Local.json
+appsettings.*.local.json
+
+# Local recordings, exports, and qualification fixtures/results
+captures/
+recordings/
+exports/
+qualification-results/
+*.wav
+*.mp3
+*.m4a
+*.mp4
+*.webm
+*.mov
+*.mkv
+*.ogg
+
+# Packaged/installable outputs
+installer-output/
+installers/output/
+*.msi
+*.msix
+*.appx
+*.appxbundle
+*.exe.zip
 
 # Agent context / handoffs
 Context/
+.agents/
+.codex/
+.claude/
+.cursor/
+.continue/
+CLAUDE.local.md
+AGENTS.local.md
 
 # IDE
 .vs/
@@ -23,9 +100,20 @@ Context/
 .idea/
 .vscode/
 
+# Windows / OS-local files
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.dmp
+*.mdmp
+
 # Temp/backup
 *.tmp
 *.bak
+*.orig
+*.swp
+*.swo
+*~
 
 # Legacy Electron/web stack (not used — WPF is the active app)
 shared/

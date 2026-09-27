@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "runtimeKind": "native-sherpa-onnx-cuda",
+  "runtimeVersion": "1.13.4",
+  "onnxRuntimeVersion": "1.24.4",
+  "cudaMajor": 12,
+  "cudnnMajor": 9,
+  "architecture": "win-x64",
+  "requiredRuntimeFiles": [
+    "onnxruntime.dll",
+    "onnxruntime_providers_shared.dll",
+    "onnxruntime_providers_cuda.dll",
+    "sherpa-onnx-c-api.dll"
+  ],
+  "requiredNvidiaFiles": [
+    "cublasLt64_12.dll",
+    "cublas64_12.dll",
+    "cufft64_11.dll",
+    "cudart64_12.dll",
+    "cudnn64_9.dll",
+    "cudnn_graph64_9.dll",
+    "cudnn_engines_runtime_compiled64_9.dll",
+    "cudnn_engines_precompiled64_9.dll",
+    "cudnn_heuristic64_9.dll",
+    "cudnn_ops64_9.dll",
+    "cudnn_adv64_9.dll",
+    "cudnn_cnn64_9.dll"
+  ]
+}

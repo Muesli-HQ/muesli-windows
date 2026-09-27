@@ -1,100 +1,79 @@
-# Windows v1 Release Checklist
+# Muesli Windows 0.3.0 Release Checklist
 
-## Build Artifact
+## Release policies (v1 / 0.3.0 beta)
 
-Create the downloadable zip:
+- **Updates are manual.** Muesli can check a signed update manifest and download/verify a package, but automatic installation is disabled until a production signing identity exists. Release notes and the project page remain the update channel.
+- **No audio interference.** Muesli records without pausing or ducking unrelated media.
+- **PDF export is disabled** (`PdfExportApproved=false`) pending an explicit QuestPDF Community-license eligibility decision. Markdown export remains available; PDF must not be advertised.
+- **Support/privacy publication and production signing are not final.** Public support and privacy URLs are pending, the package carries the development publisher, and it is unsigned until a production signing identity is configured.
 
-```powershell
-.\scripts\package-windows-v1.ps1
-```
+## Build artifacts (WinUI MSIX)
 
-Output:
-
-```text
-artifacts\muesli-windows-v1-win-x64.zip
-```
-
-Create the optional installer EXE when Inno Setup is installed:
+The shipping artifact is the unsigned/signed WinUI MSIX.
 
 ```powershell
-.\scripts\build-installer.ps1
+.\scripts\package-winui-msix.ps1
+.\scripts\sign-windows-release.ps1 -MsixPath <path-to.msix>   # production: cert + timestamp required
 ```
 
-Output:
+Expected outputs:
 
 ```text
-artifacts\MuesliSetup-0.2.0-win-x64.exe
+artifacts\msix\Muesli.Windows.WinUI_<version>_x64.msix
+artifacts\native-runtime-inventory.json
+artifacts\package-content-inventory.json
 ```
+
+The MSIX is normalized after Build: the shared Swift bridge closure and WPF companion are added,
+foreign-RID (ARM64/x86/foreign) native libraries are pruned, and notices/licenses are included.
+`scripts\generate-native-runtime-inventory.ps1` writes the CPU-only native inventory. Package tests
+fail if notices claim CUDA is included, if a packaged native DLL is missing from the catalog, or if
+the package carries ARM64/foreign or CUDA content.
 
 ## What Works
 
 - Native Windows WPF shell.
-- Hold `F8` to dictate.
-- Native WASAPI microphone capture.
-- Local Whisper transcription through the bundled worker script.
-- Optional Qwen post-processing toggle for grammar cleanup, punctuation, casing, and dictated list formatting.
-- Auto-paste into the previously focused app.
-- Clipboard fallback behavior.
-- Microphone/model/paste settings persisted locally.
-- Persistent dictation history with manual copy.
-- Persistent dictation history with delete controls.
-- Persistent dictionary replacements applied after dictation and meeting transcription.
-- Meeting media import/transcription with persistent meeting list.
-- Live meeting recording with microphone capture and best-effort system loopback capture.
-- Automatic meeting detection prompt for active Google Meet, Zoom, Teams, and Webex windows.
-- Meeting summaries stored with each meeting transcript.
-- Summary providers: local fallback, OpenAI API key, or OpenRouter API key.
-- Meeting copy, delete, and open-audio controls.
-- Real words-dictated and average-WPM stats based on captured dictation duration.
-- System tray icon with reopen/quit menu.
-- Installer support through zip install script and optional Inno Setup EXE.
-- Sidebar light/dark theme toggle with persisted theme setting.
+- Hold shortcut to dictate and paste into the active app.
+- Native WASAPI microphone capture and best-effort system loopback capture.
+- Seven pinned offline sherpa-onnx choices across Parakeet, Whisper, SenseVoice, Qwen3-ASR, and Cohere, with separate dictation and final meeting/import roles.
+- Optional native Qwen/GGUF cleanup through LLamaSharp, disabled by default.
+- Native sherpa-onnx diarization for recorded meeting system audio.
+- Persistent dictation and meeting history.
+- Import media into meeting records.
+- Meeting summaries through local fallback, OpenAI, or OpenRouter.
+- System tray, startup setting, themes, model cache management, and diagnostics.
 
-## Current v1 Runtime Requirements
+## Runtime Requirements
 
 - Windows x64.
-- Python 3.11 or 3.12 available as `py`, `python`, `python3`, or `MUESLI_PYTHON` pointing to `python.exe`.
-- Worker runtime installed from the packaged folder:
+- Self-contained .NET app package.
+- Explicit network-backed model preparation with independent cancel/retry/verify/delete behavior and on-demand diarization models.
+- The Python runtime has been removed. No Python, venv, or sidecar worker runtime is required.
+- Optional summary provider keys can be entered in Settings or supplied with `OPENAI_API_KEY` / `OPENROUTER_API_KEY`.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup-worker-runtime.ps1
-```
+## Known Limits
 
-Optional transcript cleanup dependencies:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup-worker-runtime.ps1 -WithPostProcessing
-```
-
-Qwen model downloads are opt-in. Set `MUESLI_ALLOW_MODEL_DOWNLOAD=1` for the first post-processor model download, or place the configured model in `%USERPROFILE%\.cache\muesli`. The default post-processor model is `Qwen/Qwen2.5-3B-Instruct`; override it with `MUESLI_POST_PROCESSOR_MODEL`.
-
-Optional meeting summary provider keys can be entered in Settings, or supplied through environment variables:
-
-```powershell
-$env:OPENAI_API_KEY="..."
-$env:OPENROUTER_API_KEY="..."
-```
-
-## Known v1 Limits
-
-- Python is not bundled into the app yet; the setup script creates a local `.venv` beside `Muesli.exe`.
-- The app is not code-signed yet, so Windows SmartScreen may warn on first launch.
-- Inno Setup compiler is only needed to build the EXE installer; the zip package remains the primary artifact.
-- ChatGPT account sign-in summary backend is not implemented yet; OpenAI/OpenRouter API-key backends are implemented.
-- Qwen post-processing uses a fallback cleanup when the optional model/dependencies are not installed.
-- Automatic meeting detection is heuristic in v1: it uses active app titles, supported browser URLs where accessible, and meeting app process names.
-- Meeting speaker separation is basic: mic transcript is labeled `You`; loopback transcript is labeled `System audio`.
+- The public package includes the **CPU Sherpa provider only**. It does not
+  claim NVIDIA acceleration. NVIDIA CUDA is an optional, SHA-256-verified
+  acceleration pack downloaded from the pinned sherpa-onnx 1.13.4 release into
+  `%LOCALAPPDATA%\muesli`; it requires a user-supplied CUDA 12 / cuDNN 9 runtime and
+  is only reported active after a real warm-up inference proves which execution
+  provider executed the graph. DirectML is not offered: the pinned Windows
+  sherpa-onnx build was compiled without `SHERPA_ONNX_ENABLE_DIRECTML` and logs
+  `DirectML is for Windows only. Fallback to cpu!`, so Muesli never labels CPU
+  inference as DirectML. Timestamped segments support recorded
+  meetings and speaker-diarization alignment.
+- Qwen cleanup has a native v1 runtime path.
+- Qwen cleanup is disabled by default and needs an explicitly installed and selected GGUF model. Existing manually placed compatible files remain usable.
 - System loopback capture can be blocked by some Windows audio/device setups; mic recording still works.
-- Parakeet is selectable as an optional backend when its runtime dependencies are installed.
+- First use of a model requires network access unless the model is already cached.
+- Installer is not code-signed until a signing certificate is configured.
 
 ## Clean Install QA
 
-Use a clean Windows user profile or a disposable folder under `%TEMP%`:
-
 ```powershell
-Expand-Archive .\artifacts\muesli-windows-v1-win-x64.zip -DestinationPath $env:TEMP\muesli-v1 -Force
-cd $env:TEMP\muesli-v1
-powershell -ExecutionPolicy Bypass -File .\setup-worker-runtime.ps1
+Expand-Archive .\artifacts\muesli-windows-0.3.0-win-x64.zip -DestinationPath $env:TEMP\muesli-0.3.0 -Force
+cd $env:TEMP\muesli-0.3.0
 .\Muesli.exe
 ```
 
@@ -104,25 +83,36 @@ Automated package smoke test:
 .\scripts\test-windows-package.ps1
 ```
 
-Pass criteria:
-
-- App opens without crashing.
-- Models > First-run Setup shows worker dependencies ready and worker found.
-- Download selected Whisper model succeeds for `base`.
-- Test mic moves from checking to a real signal or a clear device error.
-- Hold-to-dictate creates a row in Dictations.
-- Active-app paste works in Notepad; if it fails, transcript remains in Dictations and logs capture the failure.
-- About > Open Logs opens `%APPDATA%\muesli\logs`.
-- Settings > Start Muesli when I sign in creates/removes the HKCU startup entry.
-- Meeting detection prompt appears when opening a supported Google Meet/Zoom/Teams/Webex foreground window.
-- Import media creates a Meeting row and allows manual copy/open-audio.
-
-## Signing
-
-Before public distribution, sign `Muesli.exe` and the packaged scripts/artifact if possible:
+Packaged CPU release evidence (CUDA is not included in the public package):
 
 ```powershell
-.\scripts\sign-windows-release.ps1
+.\scripts\qualify-windows-release.ps1 `
+  -AudioPath .\testdata\dictation.wav `
+  -Provider cpu `
+  -Runs 10
 ```
 
-Unsigned builds are usable for internal testing, but they will have materially worse download/install trust.
+Pass criteria:
+
+The build, automated tests, package-structure checks, and native diagnostic are automated
+gates. The transcription-quality corpus, target-application paste checks, fresh-account
+installer/uninstaller exercise, CPU/GPU hardware qualification, signing, and SmartScreen
+reputation are separate human or externally provisioned gates and must not be inferred from
+automated benchmark JSON.
+
+- App opens without crashing.
+- Models page reports native runtime status.
+- Models page reports each catalog item as Missing, Downloading, Verifying, Ready/Selected, Failed, Runtime unavailable, or Deletion failed.
+- Models page reports Qwen cleanup as `Disabled`, `Needs model`, `Ready`, or `Runtime unavailable`.
+- Explicit preparation preserves role selection and pinned archive plus required-file SHA-256 verification succeeds.
+- Hold-to-dictate creates a row in Dictations.
+- Active-app paste works in Notepad; fallback keeps transcript in the app.
+- Recorded meeting produces transcript and notes.
+- Recorded meeting transcript uses speaker labels when diarization models and system audio are available.
+- Import media creates a meeting row.
+- Native meeting qualification passes deterministic ASR, diarization, merge, provider, reuse, and latency gates.
+- Approved media-import fixtures pass decoded-duration, determinism, latency, and optional WER/CER gates.
+- About > Open Logs opens `%APPDATA%\muesli\logs`.
+- Startup setting creates/removes the HKCU startup entry.
+- Package QA confirms no Python worker/runtime setup artifacts are included.
+- Package QA executes `--diagnose-native` and fails if the shipped Sherpa/ONNX files exist but cannot actually load.

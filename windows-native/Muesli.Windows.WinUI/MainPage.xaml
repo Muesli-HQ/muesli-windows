@@ -1,0 +1,428 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muesli.Windows.WinUI.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    KeyboardAcceleratorPlacementMode="Hidden">
+    <!--
+        P8-06: the stray 61x50 "Pop-upHost" left visible outside the window (seen by Prompts 5 and 6
+        after a ComboBox, and reproduced here after a toggle + Save with no ComboBox involved) is the
+        accelerator tooltip for the Escape accelerator below. PrintWindow on that HWND renders the
+        word "Esc". Because the accelerator's owner is the Page rather than a button, Auto placement
+        has no control rect to anchor to and parks the tooltip at a degenerate position — measured at
+        99,485 against a window spanning x 160..1760, i.e. 61 px past its left edge — where it then
+        stays. Hidden suppresses only this tooltip; per-button accelerators (Back/Next in setup) keep
+        theirs, and the Escape gesture itself is unchanged.
+    -->
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="Escape" Invoked="TourEscape_Invoked" />
+    </Page.KeyboardAccelerators>
+
+    <Grid x:Name="ShellRoot" Background="{ThemeResource MuesliBackgroundBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="NavigationColumn" Width="268" MinWidth="72" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!--
+            The left rail intentionally mirrors the WPF host's fixed 268px geometry. A hand-built
+            rail is also a better fit than NavigationView here: meeting folders and share links are
+            product navigation, not a second Windows settings hierarchy. Buttons retain the same
+            UI Automation ids and invoke semantics as the previous NavigationView items.
+        -->
+        <Border x:Name="Navigation"
+                Grid.Column="0"
+                Background="{ThemeResource MuesliSidebarBrush}"
+                BorderBrush="{ThemeResource MuesliBorderBrush}"
+                BorderThickness="0,0,1,0"
+                XYFocusKeyboardNavigation="Enabled"
+                AutomationProperties.AutomationId="MainNavigation"
+                AutomationProperties.Name="Muesli navigation">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" MinHeight="0" />
+                </Grid.RowDefinitions>
+
+                <StackPanel x:Name="NavigationHeader" Grid.Row="0" Margin="16,18,16,16">
+                    <Grid x:Name="BrandRow">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="30" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="30" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <!--
+                            P1-06 — the product brand mark, not a generic waveform.
+
+                            This is the Muesli "M" waveform: center-aligned rounded bars under a
+                            symmetric two-peak envelope whose valley forms the letter M. The
+                            geometry is the macOS app's own, transcribed from
+                            native/MuesliNative/Sources/MuesliNativeApp/MWaveformIcon.swift
+                            (barCount 13 preset: 0.30 0.50 0.75 0.95 1.00 0.65 0.30 0.65 1.00
+                            0.95 0.75 0.50 0.30, rounded caps, centred) — the same shape the
+                            shipped app icon draws. Code-native geometry: no asset was invented,
+                            downloaded, or copied in.
+
+                            Bars sit on a 2.2-unit pitch with a 1.6-unit round-capped stroke, so
+                            the Viewbox scales stroke and geometry together; Path.Stretch stays
+                            None because Fill would distort the bar widths.
+                        -->
+                        <Viewbox x:Name="BrandMark" Width="26" Height="24"
+                                 Stretch="Uniform"
+                                 VerticalAlignment="Center"
+                                 AutomationProperties.Name="Muesli"
+                                 AutomationProperties.AccessibilityView="Raw">
+                            <Path Data="M0.8,8.7 L0.8,15.3 M3,6.5 L3,17.5 M5.2,3.75 L5.2,20.25 M7.4,1.55 L7.4,22.45 M9.6,1 L9.6,23 M11.8,4.85 L11.8,19.15 M14,8.7 L14,15.3 M16.2,4.85 L16.2,19.15 M18.4,1 L18.4,23 M20.6,1.55 L20.6,22.45 M22.8,3.75 L22.8,20.25 M25,6.5 L25,17.5 M27.2,8.7 L27.2,15.3"
+                                  Stroke="{ThemeResource MuesliAccentBrush}"
+                                  StrokeThickness="1.6"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Stretch="None" />
+                        </Viewbox>
+                        <TextBlock x:Name="BrandNameText" Grid.Column="1"
+                                   Text="muesli"
+                                   Margin="12,0,0,0"
+                                   FontFamily="{StaticResource MuesliFontFamilySemiBold}"
+                                   FontSize="22"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                        <!--
+                            P1-05 — the macOS sidebar's collapse control. Collapsing reuses the
+                            existing responsive compact rail (72 DIP, icon-only) rather than
+                            introducing a second layout, and the control is hidden below 1008 DIP
+                            where the rail is already compact for want of width. It moves to its
+                            own centred row in the compact header (MainPage.ApplyResponsiveLayout)
+                            so the brand mark keeps the top row.
+                        -->
+                        <Button x:Name="SidebarCollapseButton"
+                                Grid.Column="2"
+                                Style="{StaticResource MuesliSidebarIconButtonStyle}"
+                                Click="ToggleSidebarCollapse_Click"
+                                AutomationProperties.AutomationId="SidebarCollapseToggle"
+                                AutomationProperties.Name="Collapse sidebar"
+                                ToolTipService.ToolTip="Collapse sidebar">
+                            <Button.Content>
+                                <FontIcon x:Name="SidebarCollapseIcon"
+                                          Glyph="&#xE8A0;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="14" />
+                            </Button.Content>
+                        </Button>
+                    </Grid>
+                    <TextBlock x:Name="GreetingText"
+                               Text="Hi there"
+                               Margin="42,2,0,0"
+                               FontFamily="{StaticResource MuesliFontFamily}"
+                               FontSize="12"
+                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                               AutomationProperties.AutomationId="SidebarGreeting" />
+
+                    <Border x:Name="SearchWell"
+                            Height="36"
+                            Margin="-4,18,-4,0"
+                            Padding="10,0"
+                            Background="{ThemeResource MuesliSurfaceBrush}"
+                            BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="22" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="24" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0"
+                                      Glyph="&#xE721;"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="14"
+                                      Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                      VerticalAlignment="Center" />
+                            <TextBox x:Name="SearchBox"
+                                     Grid.Column="1"
+                                     Style="{StaticResource MuesliSearchTextBoxStyle}"
+                                     PlaceholderText="Search..."
+                                     TextChanged="SearchBox_TextChanged"
+                                     GotFocus="SearchBox_GotFocus"
+                                     LostFocus="SearchBox_LostFocus"
+                                     AutomationProperties.AutomationId="HistorySearchBox"
+                                     AutomationProperties.Name="Search dictations and meetings" />
+                            <Button x:Name="SearchClearButton"
+                                    Grid.Column="2"
+                                    Style="{StaticResource MuesliSidebarIconButtonStyle}"
+                                    FontFamily="{StaticResource MuesliFontFamily}"
+                                    FontSize="16"
+                                    Visibility="Collapsed"
+                                    Click="ClearSearch_Click"
+                                    AutomationProperties.Name="Clear search"
+                                    ToolTipService.ToolTip="Clear search">
+                            <Button.Content>
+                                <FontIcon Glyph="&#xE894;"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="14" />
+                            </Button.Content>
+                            </Button>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <ScrollViewer Grid.Row="1"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="0,0,0,6">
+                    <StackPanel>
+                        <Button x:Name="TimelineNav"
+                                Style="{StaticResource MuesliSidebarButtonStyle}"
+                                Tag="timeline"
+                                Click="NavButton_Click"
+                                AutomationProperties.AutomationId="NavTimeline"
+                                AutomationProperties.Name="Navigate to Timeline">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon x:Name="TimelineIcon" Glyph="&#xE823;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                                <TextBlock Grid.Column="1" Text="Timeline" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+                        <Button x:Name="DictationsNav"
+                                Style="{StaticResource MuesliSidebarButtonStyle}"
+                                Tag="dictations"
+                                Click="NavButton_Click"
+                                AutomationProperties.AutomationId="NavDictations"
+                                AutomationProperties.Name="Navigate to Dictations">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon x:Name="DictationsIcon" Glyph="&#xE720;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                                <TextBlock Grid.Column="1" Text="Dictations" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+
+                        <Border Margin="8,2" CornerRadius="7">
+                            <Grid x:Name="MeetingsRow" Height="38">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="28" />
+                                    <ColumnDefinition Width="28" />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="MeetingsNav"
+                                        Grid.Column="0"
+                                        Margin="0"
+                                        Style="{StaticResource MuesliSidebarButtonStyle}"
+                                        Tag="meetings"
+                                        Click="NavButton_Click"
+                                        AutomationProperties.AutomationId="NavMeetings"
+                                        AutomationProperties.Name="Navigate to Meetings">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <FontIcon x:Name="MeetingsIcon" Glyph="&#xE716;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                                        <TextBlock Grid.Column="1" Text="Meetings" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Button x:Name="MeetingChevronButton"
+                                        Grid.Column="1"
+                                        Style="{StaticResource MuesliSidebarIconButtonStyle}"
+                                        FontSize="16"
+                                        Click="ToggleMeetingFolders_Click"
+                                        AutomationProperties.Name="Expand or collapse meeting folders"
+                                        AutomationProperties.AutomationId="MeetingFoldersChevron"
+                                        ToolTipService.ToolTip="Show or hide meeting folders">
+                                <Button.Content>
+                                    <FontIcon x:Name="MeetingChevronIcon"
+                                              Glyph="&#xE70D;"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="12" />
+                                </Button.Content>
+                                </Button>
+                                <Button x:Name="CreateMeetingFolderButton"
+                                        Grid.Column="2"
+                                        Style="{StaticResource MuesliSidebarIconButtonStyle}"
+                                        FontSize="15"
+                                        Click="CreateMeetingFolder_Click"
+                                        AutomationProperties.Name="Create meeting folder"
+                                        ToolTipService.ToolTip="New meeting folder">
+                                <Button.Content>
+                                    <FontIcon Glyph="&#xE710;"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="13" />
+                                </Button.Content>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel x:Name="MeetingChildrenHost"
+                                    Margin="16,0,0,0"
+                                    AutomationProperties.Name="Meeting folders"
+                                    AutomationProperties.AutomationId="MeetingFolderRail" />
+
+                        <Button x:Name="InsightsNav"
+                                Style="{StaticResource MuesliSidebarButtonStyle}"
+                                Tag="insights"
+                                Click="NavButton_Click"
+                                AutomationProperties.AutomationId="NavInsights"
+                                AutomationProperties.Name="Navigate to Insights">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon x:Name="InsightsIcon" Glyph="&#xE9D2;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                                <TextBlock Grid.Column="1" Text="Insights" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+                        <Button x:Name="DictionaryNav"
+                                Style="{StaticResource MuesliSidebarButtonStyle}"
+                                Tag="dictionary"
+                                Click="NavButton_Click"
+                                AutomationProperties.AutomationId="NavDictionary"
+                                AutomationProperties.Name="Navigate to Dictionary">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon x:Name="DictionaryIcon" Glyph="&#xE8A5;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                                <TextBlock Grid.Column="1" Text="Dictionary" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+
+                        <TextBlock x:Name="SpreadTheWordLabel" Text="Spread the Word" Style="{StaticResource MuesliSidebarGroupLabelStyle}" />
+                        <Button x:Name="TweetNav"
+                                Style="{StaticResource MuesliSidebarButtonStyle}"
+                                Tag="tweet"
+                                Click="Share_Click"
+                                AutomationProperties.Name="Tweet about Muesli">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE72D;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                                <TextBlock Grid.Column="1" Text="Tweet about Muesli" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+                        <Button x:Name="LinkedInNav"
+                                Style="{StaticResource MuesliSidebarButtonStyle}"
+                                Tag="linkedin"
+                                Click="Share_Click"
+                                AutomationProperties.Name="Post on LinkedIn">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE77B;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                                <TextBlock Grid.Column="1" Text="Post on LinkedIn" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+                <!--
+                    P1-05 — Models, Shortcuts, Settings, and About are the last group of ONE
+                    contiguous list, exactly like the macOS sidebar
+                    (docs/ui-reference/macos-current-2026-08-27/01-timeline.png). They used to be
+                    pinned to a third grid row, which left a dead band under "Post on LinkedIn"
+                    at tall window sizes and detached them from the list they belong to. They keep
+                    their automation ids, accessible names, click handlers, and order in
+                    AllNavItems()/VisibleNavItems(), so keyboard traversal is unchanged.
+                -->
+                <StackPanel Margin="0,10,0,4">
+                    <Button x:Name="ModelsNav"
+                            Style="{StaticResource MuesliSidebarButtonStyle}"
+                            Tag="models"
+                            Click="NavButton_Click"
+                            AutomationProperties.AutomationId="NavModels"
+                            AutomationProperties.Name="Navigate to Models">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <FontIcon x:Name="ModelsIcon" Glyph="&#xE950;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                            <TextBlock Grid.Column="1" Text="Models" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                    <Button x:Name="ShortcutsNav"
+                            Style="{StaticResource MuesliSidebarButtonStyle}"
+                            Tag="shortcuts"
+                            Click="NavButton_Click"
+                            AutomationProperties.AutomationId="NavShortcuts"
+                            AutomationProperties.Name="Navigate to Shortcuts">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <FontIcon x:Name="ShortcutsIcon" Glyph="&#xE765;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                            <TextBlock Grid.Column="1" Text="Shortcuts" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                    <Button x:Name="SettingsNav"
+                            Style="{StaticResource MuesliSidebarButtonStyle}"
+                            Tag="settings"
+                            Click="NavButton_Click"
+                            AutomationProperties.AutomationId="NavSettings"
+                            AutomationProperties.Name="Navigate to Settings">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <FontIcon x:Name="SettingsIcon" Glyph="&#xE713;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                            <TextBlock Grid.Column="1" Text="Settings" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                    <Button x:Name="AboutNav"
+                            Style="{StaticResource MuesliSidebarButtonStyle}"
+                            Tag="about"
+                            Click="NavButton_Click"
+                            AutomationProperties.AutomationId="NavAbout"
+                            AutomationProperties.Name="Navigate to About">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <FontIcon x:Name="AboutIcon" Glyph="&#xE946;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                            <TextBlock Grid.Column="1" Text="About" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!--
+            Horizontal gutters belong to the page (MuesliPageGutter* / page Padding). The shell
+            only reserves the 32-DIP caption strip so page titles sit below the native buttons
+            instead of under them, and so ContentFrame receives the full remaining width.
+        -->
+        <Grid x:Name="ContentHost"
+              Grid.Column="1"
+              Background="{ThemeResource MuesliBackgroundBrush}"
+              Padding="0,32,0,0">
+            <Frame x:Name="ContentFrame"
+                   AutomationProperties.AutomationId="ContentFrame" />
+        </Grid>
+
+        <Grid x:Name="TourOverlay"
+              Grid.ColumnSpan="2"
+              Visibility="Collapsed"
+              Background="{ThemeResource MuesliOverlayBrush}"
+              TabFocusNavigation="Cycle"
+              AutomationProperties.AutomationId="FeatureTourOverlay">
+            <Border x:Name="TourCard"
+                    Style="{StaticResource MuesliCardStyle}"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    Margin="40"
+                    MaxWidth="520"
+                    Padding="22">
+                <StackPanel Spacing="12">
+                    <TextBlock x:Name="TourStepLabel" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock x:Name="TourTitle"
+                               FontFamily="{StaticResource MuesliFontFamilySemiBold}"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                    <TextBlock x:Name="TourBody"
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Content="Skip tour"
+                                Click="TourSkip_Click"
+                                AutomationProperties.AutomationId="FeatureTourSkip"
+                                AutomationProperties.Name="Skip feature tour" />
+                        <Button x:Name="TourNextButton"
+                                Content="Next"
+                                Style="{StaticResource MuesliPrimaryButtonStyle}"
+                                Click="TourNext_Click"
+                                AutomationProperties.AutomationId="FeatureTourNext"
+                                AutomationProperties.Name="Next feature tour step" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>

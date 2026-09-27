@@ -1,0 +1,115 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Unsigned public MSIX package path (L04 / PKG-01).
+# Local and CI both run scripts/rehearse-windows-release.ps1 against the SDK
+# pinned in global.json and the release identity in Directory.Build.props.
+# Authenticode/MSIX signing is L05 / SIGN-01 / D5 and must not run here.
+# Do not call scripts/sign-windows-release.ps1 from this workflow.
+# The shipping artifact is the unsigned WinUI MSIX. A later signed-release
+# workflow (L05) will timestamp and sign it; this job stays CPU-only and unsigned.
+
+jobs:
+  unsigned-release:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      DOTNET_MULTILEVEL_LOOKUP: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # The shared Swift core is optional at the release boundary. When the lock pins an approved
+      # ABI commit, CI builds the bridge. When bridgeRequired=false (no approved upstream ABI
+      # exists), the release ships the parity-tested managed text processor and must not require a
+      # moving branch or the withdrawn PR.
+      - name: Read pinned shared-core revision
+        id: shared_core_lock
+        shell: pwsh
+        run: |
+          $lock = Get-Content windows-native/shared-core.lock.json -Raw | ConvertFrom-Json
+          if ($lock.repository -ne 'Muesli-HQ/muesli') {
+            throw "shared-core.lock.json points at unexpected repository '$($lock.repository)'."
+          }
+          $bridgeRequired = if ($null -eq $lock.PSObject.Properties['bridgeRequired']) { $true } else { [bool]$lock.bridgeRequired }
+          $revision = [string]$lock.revision
+          if ($bridgeRequired) {
+            if ([string]::IsNullOrWhiteSpace($revision)) {
+              throw "windows-native/shared-core.lock.json has no pinned revision. Commit the shared Swift changes, then set revision to the committed SHA; release CI must never resolve a moving branch."
+            }
+            if ($revision -notmatch '^[0-9a-fA-F]{40}$') {
+              throw "windows-native/shared-core.lock.json revision '$revision' is not a full 40-character commit SHA; release CI must never resolve a moving branch."
+            }
+          } elseif (-not [string]::IsNullOrWhiteSpace($revision)) {
+            throw "windows-native/shared-core.lock.json sets bridgeRequired=false but still pins revision '$revision'; choose a single shipping mode."
+          } else {
+            Write-Host "Shared core is unpinned and bridgeRequired=false: shipping the managed-fallback text processor."
+          }
+          "revision=$revision" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          "bridge_required=$($bridgeRequired.ToString().ToLowerInvariant())" | Out-File -Append -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          if (-not $bridgeRequired) {
+            # The rehearsal re-derives this from the lock; set it so any direct packaging step also
+            # quarantines stale bridge output instead of requiring or shipping it.
+            "MUESLI_SHARED_CORE_MODE=managed-fallback" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+          }
+
+      - name: Check out shared Swift repository (pinned)
+        if: steps.shared_core_lock.outputs.bridge_required == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Muesli-HQ/muesli
+          ref: ${{ steps.shared_core_lock.outputs.revision }}
+          path: shared-muesli
+          persist-credentials: false
+          token: ${{ secrets.MUESLI_SHARED_REPO_TOKEN != '' && secrets.MUESLI_SHARED_REPO_TOKEN || github.token }}
+
+      - name: Install Swift toolchain
+        if: steps.shared_core_lock.outputs.bridge_required == 'true'
+        uses: compnerd/gha-setup-swift@main
+        with:
+          source: 'swift.org'
+          swift-version: 'swift-6.4.0-release'
+          swift-build: '6.4.0-RELEASE'
+
+      - name: Install vcpkg native dependencies
+        if: steps.shared_core_lock.outputs.bridge_required == 'true'
+        shell: pwsh
+        run: |
+          $vcpkg = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { 'C:\vcpkg' }
+          & "$vcpkg\vcpkg.exe" install sqlite3 zlib lzfse --triplet x64-windows
+          "VCPKG_ROOT=$vcpkg" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+          "MUESLI_SHARED_CORE_PACKAGE=${{ github.workspace }}\shared-muesli\native\MuesliNative" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+
+      - name: Non-signing release rehearsal
+        shell: pwsh
+        run: |
+          pwsh -ExecutionPolicy Bypass -File .\scripts\rehearse-windows-release.ps1 -SkipTwoBuildCompare
+
+      - name: Upload unsigned release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-unsigned-release
+          if-no-files-found: warn
+          path: |
+            artifacts/msix/Muesli.Windows.WinUI_*.msix
+            artifacts/test-results/*.trx
+            artifacts/msix-smoke-report.json
+            artifacts/muesli-win32-manifest.xml
+            artifacts/release-hashes.json
+            artifacts/native-runtime-inventory.json
+            artifacts/package-content-inventory.json
+            artifacts/package-content-inventory-comparison.json
+            artifacts/release-rehearsal-report.json
+            artifacts/dirty-release-override.json
+            windows-native/Muesli.Windows.Tests/TestResults/*.trx

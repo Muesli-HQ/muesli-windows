@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Muesli.Windows.Core</RootNamespace>
+    <AssemblyName>Muesli.Windows.Core</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Muesli</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Muesli.Windows.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Muesli.Windows.CommandHost</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Muesli.Windows.Platform</_Parameter1>
+    </AssemblyAttribute>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="LLamaSharp" Version="0.27.0" />
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.4" />
+    <PackageReference Include="SharpCompress" Version="0.48.1" />
+  </ItemGroup>
+  <!--
+    LLamaSharp.Backend.Cpu's props are imported before this deliberately RID-neutral library has
+    a RuntimeIdentifier, so its fallback item group globs every platform's natives and emits a
+    Link of "runtimes\\<rid>\..." with a doubled separator. MakeAppx rejects that
+    relative package path, which blocks MSIX packaging for every consumer, and the linux/osx/musl
+    binaries can never load on Windows. Keep only the Windows natives and give them a valid
+    relative path. Runs before AssignTargetPaths so referencing projects inherit the repair.
+  -->
+  <Target Name="NormalizeLLamaSharpNativeRuntimes" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <LLamaSharpMislinkedNative Include="@(Content)"
+                                 Condition="$([System.String]::Copy('%(Content.Link)').StartsWith('runtimes\\'))" />
+      <Content Remove="@(LLamaSharpMislinkedNative)" />
+      <Content Include="@(LLamaSharpMislinkedNative)"
+               Condition="$([System.String]::Copy('%(LLamaSharpMislinkedNative.Link)').StartsWith('runtimes\\win-'))">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <Visible>false</Visible>
+        <Link>$([System.String]::Copy('%(LLamaSharpMislinkedNative.Link)').Replace('runtimes\\', 'runtimes\'))</Link>
+      </Content>
+    </ItemGroup>
+  </Target>
+</Project>

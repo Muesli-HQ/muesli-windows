@@ -1,0 +1,453 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="Muesli.Windows.WinUI.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Muesli.Windows.WinUI">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="ms-appx:///Themes/MuesliTheme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!--
+                SHARED RESOURCE CONTRACT — FROZEN.
+
+                Semantic brushes live in Themes/MuesliTheme.xaml (Light, Dark, HighContrast).
+                Typography, spacing, card, badge, settings-row, and sidebar styles live here.
+                Page agents consume these keys; they do not add, rename, or retune them.
+
+                Shell geometry:
+                  MuesliTitleBarHeight          caption strip reserved above ContentFrame
+                  MuesliSidebarWidthExpanded    268 DIP rail at ≥1280
+                  MuesliSidebarWidthMedium      236 DIP rail at 1008–1279
+                  MuesliSidebarWidthCompact     72 DIP icon rail below 1008
+                  MuesliPageGutter*             page-owned horizontal padding; the shell does
+                                                not apply a second gutter around ContentFrame
+
+                Page gutter — the ONE rule (P1-04):
+                  XAML:        Padding="{StaticResource MuesliPageContentPadding}" on the page's
+                               outermost content container, and nothing else.
+                  Code-behind: if the page resizes its padding, it must call
+                               MuesliPageMetrics.ContentPadding(contentWidth) (MuesliPageMetrics.cs)
+                               and assign the result verbatim. Never build a Thickness by hand and
+                               never invent a breakpoint — five private breakpoint sets is what
+                               put nine page titles on four different x positions.
+                  Tiers:       MuesliPageContentPadding / ...Medium / ...Compact, chosen at
+                               content widths 900 and 700 DIP.
+                  Capping:     a reading-width page uses MuesliPageContentMaxWidth with
+                               HorizontalAlignment="Left". Never Stretch + MaxWidth — that
+                               centres the column and breaks the gutter.
+
+                If a page needs a genuinely new token, request it from the shell owner rather
+                than editing this dictionary or MuesliTheme.xaml.
+            -->
+
+
+            <!--
+                Typography. Inter is loaded from the app package; the family reference points at
+                the folder so all four weights resolve as one family rather than being
+                synthesised from the regular face.
+            -->
+            <FontFamily x:Key="MuesliFontFamily">ms-appx:///Assets/fonts/Inter-Regular.ttf#Inter</FontFamily>
+            <FontFamily x:Key="MuesliFontFamilySemiBold">ms-appx:///Assets/fonts/Inter-SemiBold.ttf#Inter</FontFamily>
+            <FontFamily x:Key="MuesliFontFamilyMedium">ms-appx:///Assets/fonts/Inter-Medium.ttf#Inter</FontFamily>
+            <FontFamily x:Key="MuesliFontFamilyBold">ms-appx:///Assets/fonts/Inter-Bold.ttf#Inter</FontFamily>
+
+            <!-- Control templates reference this key directly, so inheritance alone is not enough. -->
+            <FontFamily x:Key="ContentControlThemeFontFamily">ms-appx:///Assets/fonts/Inter-Regular.ttf#Inter</FontFamily>
+
+            <!--
+                Non-brush chrome for the navigation and segmented control. Zero indicator width
+                removes WinUI's left selection bar and underline pill so the filled pill in the
+                brushes above is the only selection signal, which is what the macOS reference shows.
+            -->
+            <x:Double x:Key="NavigationViewSelectionIndicatorWidth">0</x:Double>
+            <x:Double x:Key="NavigationViewSelectionIndicatorHeight">0</x:Double>
+            <x:Double x:Key="SelectorBarItemPillHeight">0</x:Double>
+            <x:Double x:Key="SelectorBarItemPillWidth">0</x:Double>
+            <x:Double x:Key="SelectorBarItemSpacing">0</x:Double>
+            <Thickness x:Key="SelectorBarItemPadding">16,7,16,7</Thickness>
+            <Thickness x:Key="SelectorBarItemSelectionVisualMargin">0</Thickness>
+
+            <x:Double x:Key="MuesliCardCornerRadiusValue">12</x:Double>
+            <CornerRadius x:Key="MuesliCardCornerRadius">12</CornerRadius>
+            <CornerRadius x:Key="MuesliControlCornerRadius">6</CornerRadius>
+            <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
+            <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
+
+            <!-- Shared spacing and icon metrics. Pages consume these keys instead of inventing
+                 one-off geometry, keeping the shell and feature surfaces aligned. -->
+            <x:Double x:Key="MuesliIconSizeSmall">14</x:Double>
+            <x:Double x:Key="MuesliIconSizeMedium">16</x:Double>
+            <x:Double x:Key="MuesliIconSizeLarge">20</x:Double>
+            <x:Double x:Key="MuesliTitleBarHeight">32</x:Double>
+            <x:Double x:Key="MuesliSidebarWidthExpanded">268</x:Double>
+            <x:Double x:Key="MuesliSidebarWidthMedium">236</x:Double>
+            <x:Double x:Key="MuesliSidebarWidthCompact">72</x:Double>
+            <!-- Horizontal halves of the three MuesliPageContentPadding* thicknesses below. They
+                 are kept in sync deliberately: a page that needs only the gutter (to align a
+                 sibling to the page edge) must not end up 6 DIP off the page's own padding. -->
+            <x:Double x:Key="MuesliPageGutterLarge">34</x:Double>
+            <x:Double x:Key="MuesliPageGutterMedium">28</x:Double>
+            <x:Double x:Key="MuesliPageGutterCompact">20</x:Double>
+
+            <!--
+                P1-04 — ONE page gutter for every shell-hosted page.
+
+                Before this, each page hard-coded its own root padding (34,26,34,40 /
+                40,26,40,40 / 40,20,40,32 / 34,28,34,46 / 40,24,40,42 / 40,24,40,40), so page
+                titles started at four different x positions and on two different baselines.
+                Every page's outermost content container now sets
+                    Padding="{StaticResource MuesliPageContentPadding}"
+                and nothing else. Page prompts must not reintroduce a literal Thickness there.
+
+                MuesliPageContentMaxWidth is the shared cap for reading-width pages (Settings,
+                About, Shortcuts) that previously invented 840 / 880 / 920 / 850 each.
+                MuesliPageHeaderSpacing is the gap between the title block and the first
+                content block, so header rhythm matches across pages.
+            -->
+            <Thickness x:Key="MuesliPageContentPadding">34,26,34,40</Thickness>
+            <!--
+                The two narrower tiers of the same gutter. Nine pages recompute their padding
+                from code-behind on every size change; they all resolve it through
+                MuesliPageMetrics.ContentPadding(contentWidth), which picks one of these three
+                and nothing else. Do not reintroduce per-page breakpoints — see MuesliPageMetrics.
+            -->
+            <Thickness x:Key="MuesliPageContentPaddingMedium">28,26,28,40</Thickness>
+            <Thickness x:Key="MuesliPageContentPaddingCompact">20,22,20,32</Thickness>
+            <x:Double x:Key="MuesliPageContentMaxWidth">1040</x:Double>
+            <x:Double x:Key="MuesliPageHeaderSpacing">18</x:Double>
+            <Thickness x:Key="MuesliPageHeaderMargin">0,0,0,18</Thickness>
+
+            <!-- type ramp -->
+            <Style x:Key="MuesliPageTitleStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+                <Setter Property="FontSize" Value="32" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+            </Style>
+            <Style x:Key="MuesliPageSubtitleStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="MuesliSectionLabelStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="CharacterSpacing" Value="180" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+            </Style>
+            <Style x:Key="MuesliBodyStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="MuesliRowTitleStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+                <Setter Property="FontSize" Value="15" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+            <Style x:Key="MuesliRowSecondaryStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+            <Style x:Key="MuesliTimestampStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, monospace" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="MuesliStatValueStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+                <Setter Property="FontSize" Value="26" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="MuesliStatLabelStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+            </Style>
+
+            <!-- surfaces -->
+            <Style x:Key="MuesliCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource MuesliSurfaceBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="Padding" Value="18" />
+            </Style>
+            <Style x:Key="MuesliStatCardStyle" TargetType="Border" BasedOn="{StaticResource MuesliCardStyle}">
+                <Setter Property="Padding" Value="18,16" />
+            </Style>
+
+            <!--
+                Button hierarchy. Each is BasedOn the platform default so platform fixes keep
+                flowing through, and only the chrome that carries the product identity is
+                overridden.
+            -->
+            <Style x:Key="MuesliPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Padding" Value="16,7" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Background" Value="{ThemeResource MuesliAccentStrongBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+            </Style>
+            <Style x:Key="MuesliSecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Padding" Value="14,7" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+            </Style>
+            <Style x:Key="MuesliGhostButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource ControlFillColorTransparentBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlFillColorTransparentBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+                <Setter Property="Padding" Value="10,6" />
+                <Setter Property="CornerRadius" Value="6" />
+            </Style>
+            <Style x:Key="MuesliDestructiveButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource MuesliErrorMutedBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource MuesliErrorMutedBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliErrorBrush}" />
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Padding" Value="14,7" />
+                <Setter Property="CornerRadius" Value="6" />
+            </Style>
+
+            <!--
+                The shell uses a deliberately quiet button chrome.  Keeping this as a keyed
+                style (rather than replacing the implicit button style) means pages can continue
+                using the WinUI button behaviour while the sidebar retains the WPF/macOS geometry.
+            -->
+            <Style x:Key="MuesliSidebarButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+                <Setter Property="Height" Value="38" />
+                <Setter Property="MinHeight" Value="38" />
+                <Setter Property="Margin" Value="8,2" />
+                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Background" Value="{ThemeResource ControlFillColorTransparentBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlFillColorTransparentBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+                <Setter Property="CornerRadius" Value="7" />
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilyMedium}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+            </Style>
+            <Style x:Key="MuesliSidebarChildButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliSidebarButtonStyle}">
+                <Setter Property="Height" Value="32" />
+                <Setter Property="MinHeight" Value="32" />
+                <Setter Property="Margin" Value="8,1" />
+                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="FontWeight" Value="Normal" />
+            </Style>
+            <Style x:Key="MuesliSidebarIconButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="MinWidth" Value="28" />
+                <Setter Property="MinHeight" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+            </Style>
+            <Style x:Key="MuesliSidebarGroupLabelStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="CharacterSpacing" Value="100" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+                <Setter Property="Margin" Value="16,18,16,6" />
+            </Style>
+            <Style x:Key="MuesliSidebarIconStyle" TargetType="FontIcon">
+                <Setter Property="Width" Value="22" />
+                <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+            </Style>
+            <Style x:Key="MuesliSidebarCountStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+                <Setter Property="HorizontalAlignment" Value="Right" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+            <!--
+                P1-01 — the search field inside a rounded well.
+
+                Setting Height/Padding on top of DefaultTextBoxStyle was not enough. That
+                template's Focused visual state re-applies BorderElement.BorderThickness =
+                TextControlBorderThemeThicknessFocused (0,0,0,2) and BorderElement.BorderBrush =
+                TextControlBorderBrushFocused, so a focused field drew a full-width accent
+                underline *inside* the pill, and the template's own MinHeight/padding fought the
+                fixed 32-DIP height and clipped the top of the text and the caret. Setter values
+                cannot win against a visual state, so the chrome has to go from the template.
+
+                The well (Border) owns all the chrome, exactly like the macOS search bar
+                (native/.../SidebarView.swift searchBar: flat field, no underline). Only
+                ContentElement and PlaceholderTextContentPresenter are kept — the two parts
+                TextBox actually requires. Everything else (context/selection flyouts, selection
+                highlight, scroll modes) still comes from DefaultTextBoxStyle through BasedOn.
+                Keyboard focus remains visible: UseSystemFocusVisuals draws the platform focus
+                rect, and the shell additionally tints its well border (MainPage.SearchBox_*Focus).
+            -->
+            <Style x:Key="MuesliSearchTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Height" Value="32" />
+                <!--
+                    3 DIP of horizontal inset, not 0. The system focus visual is drawn on the
+                    control bounds, so with zero padding it lands on top of the first glyph and
+                    the caret — verified clipping the "p" of "planning" on the Search page well.
+                    The inset is small enough that the field still reads as flush inside its well.
+                -->
+                <Setter Property="Padding" Value="3,0,3,0" />
+                <Setter Property="Background" Value="{ThemeResource ControlFillColorTransparentBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlFillColorTransparentBrush}" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="0" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="ScrollViewer.VerticalScrollMode" Value="Disabled" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Grid Background="{TemplateBinding Background}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver" />
+                                        <VisualState x:Name="Focused" />
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentElement.Foreground" Value="{ThemeResource MuesliTextDisabledBrush}" />
+                                                <Setter Target="PlaceholderTextContentPresenter.Foreground" Value="{ThemeResource MuesliTextDisabledBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                    <VisualStateGroup x:Name="ButtonStates">
+                                        <VisualState x:Name="ButtonVisible" />
+                                        <VisualState x:Name="ButtonCollapsed" />
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+
+                                <ScrollViewer x:Name="ContentElement"
+                                              VerticalAlignment="Center"
+                                              HorizontalScrollMode="{TemplateBinding ScrollViewer.HorizontalScrollMode}"
+                                              HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                              VerticalScrollMode="{TemplateBinding ScrollViewer.VerticalScrollMode}"
+                                              VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"
+                                              IsDeferredScrollingEnabled="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}"
+                                              Padding="{TemplateBinding Padding}"
+                                              Foreground="{TemplateBinding Foreground}"
+                                              IsTabStop="False"
+                                              ZoomMode="Disabled"
+                                              AutomationProperties.AccessibilityView="Raw" />
+                                <TextBlock x:Name="PlaceholderTextContentPresenter"
+                                           VerticalAlignment="Center"
+                                           Padding="{TemplateBinding Padding}"
+                                           Foreground="{ThemeResource TextControlPlaceholderForeground}"
+                                           Text="{TemplateBinding PlaceholderText}"
+                                           TextAlignment="{TemplateBinding TextAlignment}"
+                                           TextWrapping="NoWrap"
+                                           TextTrimming="CharacterEllipsis"
+                                           IsHitTestVisible="False" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!--
+                Segmented control container. SelectorBar supplies the behaviour, keyboard model
+                and automation; this Border supplies the grouped well the segments sit in.
+            -->
+            <Style x:Key="MuesliSegmentedContainerStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource MuesliSurfaceRaisedBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderSoftBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="2" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+            </Style>
+
+            <!-- status pills: neutral, success and accent variants of one shape -->
+            <Style x:Key="MuesliBadgeStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource MuesliSurfaceRaisedBrush}" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Padding" Value="7,2" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="MuesliSuccessBadgeStyle" TargetType="Border" BasedOn="{StaticResource MuesliBadgeStyle}">
+                <Setter Property="Background" Value="{ThemeResource MuesliSuccessMutedBrush}" />
+            </Style>
+            <Style x:Key="MuesliAccentBadgeStyle" TargetType="Border" BasedOn="{StaticResource MuesliBadgeStyle}">
+                <Setter Property="Background" Value="{ThemeResource MuesliAccentMutedBrush}" />
+            </Style>
+            <Style x:Key="MuesliBadgeTextStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilyMedium}" />
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontWeight" Value="Medium" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+            </Style>
+            <Style x:Key="MuesliSuccessBadgeTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliBadgeTextStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource MuesliSuccessBrush}" />
+            </Style>
+            <Style x:Key="MuesliAccentBadgeTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliBadgeTextStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource MuesliAccentBrush}" />
+            </Style>
+
+            <!-- one settings row: label left, control right, hairline underneath -->
+            <Style x:Key="MuesliSettingsRowStyle" TargetType="Border">
+                <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderSoftBrush}" />
+                <Setter Property="BorderThickness" Value="0,0,0,1" />
+                <Setter Property="Padding" Value="16,14" />
+            </Style>
+            <Style x:Key="MuesliSettingsRowLastStyle" TargetType="Border" BasedOn="{StaticResource MuesliSettingsRowStyle}">
+                <Setter Property="BorderThickness" Value="0" />
+            </Style>
+            <Style x:Key="MuesliSettingsGroupStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource MuesliSurfaceBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="12" />
+            </Style>
+
+            <!-- Default look for every unstyled Button, TextBox and TextBlock in the shell. -->
+            <Style TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+            </Style>
+            <Style TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}" />
+            <Style TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+                <Setter Property="CornerRadius" Value="6" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

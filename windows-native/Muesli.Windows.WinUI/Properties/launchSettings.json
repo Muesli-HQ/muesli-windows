@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Muesli.Windows.WinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Muesli.Windows.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

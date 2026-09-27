@@ -1,0 +1,14 @@
+Microsoft Visual C++ Redistributable runtime (MSVCP140.dll, VCRUNTIME140.dll, VCRUNTIME140_1.dll)
+
+These binaries are the Microsoft Visual C++ 2022 x64 redistributable runtime, deployed beside the
+application because the shared Swift bridge and several native dependencies link against the
+Microsoft C++ runtime.
+
+Copyright (c) Microsoft Corporation.
+
+The Microsoft Visual C++ Redistributable is redistributed under Microsoft's own license terms, not
+an open-source license. Refer to the official redistribution terms:
+https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+https://visualstudio.microsoft.com/license-terms/
+
+This file is a provenance pointer, not a substitute for those terms.
