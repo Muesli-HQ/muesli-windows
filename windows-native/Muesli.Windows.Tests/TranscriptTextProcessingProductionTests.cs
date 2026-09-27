@@ -41,7 +41,7 @@ public sealed class TranscriptTextProcessingProductionTests
     private static string BridgePath() =>
         System.IO.Path.Combine(AppContext.BaseDirectory, "MuesliCoreABI.dll");
 
-    [Fact]
+    [BridgeFact]
     public async Task CompletedDictationNormalizesThroughSwiftAndStoresInWindowsSqlite()
     {
         using var temp = new TempDirectory();
@@ -89,7 +89,7 @@ public sealed class TranscriptTextProcessingProductionTests
         }
     }
 
-    [Fact]
+    [BridgeFact]
     public void TextProcessingDoesNotAlterExistingWindowsRecordsOrCreateASwiftDatabase()
     {
         using var temp = new TempDirectory();

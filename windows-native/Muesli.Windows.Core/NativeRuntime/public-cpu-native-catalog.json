@@ -92,7 +92,7 @@
       ],
       "noticesHeading": "Swift shared core (MuesliCoreABI) 6.4",
       "allowedInPublicWinX64": true,
-      "requiredInPublicWinX64": true,
+      "requiredInPublicWinX64": false,
       "nativeFiles": [
         "MuesliCoreABI.dll",
         "swiftCore.dll",
@@ -118,13 +118,13 @@
     },
     {
       "id": "msvc-cpp-runtime",
-      "source": "Microsoft Visual C++ 2022 x64 redistributable runtime deployed beside the application",
+      "source": "Microsoft Visual C++ 2022 x64 redistributable runtime used by the optional LLamaSharp/Qwen cleanup backend and the Swift bridge closure",
       "version": "v143",
       "license": "Microsoft Visual C++ Redistributable terms (see license file)",
       "licenseFile": "licenses/Microsoft-VCpp-Runtime.txt",
       "noticesHeading": "Microsoft Visual C++ 2022 runtime",
       "allowedInPublicWinX64": true,
-      "requiredInPublicWinX64": true,
+      "requiredInPublicWinX64": false,
       "nativeFiles": [ "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll" ]
     },
     {
