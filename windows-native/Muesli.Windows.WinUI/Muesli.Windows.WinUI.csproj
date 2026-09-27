@@ -97,7 +97,7 @@
   -->
   <Target Name="BuildIndicatorCompanion" BeforeTargets="StageIndicatorCompanion">
     <MSBuild Projects="$(MSBuildProjectDirectory)\..\Muesli.Windows.Indicator.Wpf\Muesli.Windows.Indicator.Wpf.csproj"
-             Targets="Build"
+             Targets="Restore;Build"
              Properties="Configuration=$(Configuration)"
              BuildInParallel="false" />
   </Target>
@@ -126,8 +126,12 @@
   -->
   <Target Name="StageSwiftCoreBridge" AfterTargets="Build" Condition="'$(MuesliSkipSwiftBridge)' != '1'">
     <PropertyGroup>
-      <!-- Release/packaged builds fail hard when the bridge or a runtime dependency is missing. -->
-      <_SwiftBridgeRequireArg Condition="'$(MuesliRequireSwiftBridge)' == 'true' or '$(Configuration)' == 'Release'">-Require</_SwiftBridgeRequireArg>
+      <!-- Release/packaged builds fail hard when the bridge or a runtime dependency is missing.
+           When the shared-core lock ships the managed fallback, the release passes
+           MuesliRequireSwiftBridge=false so the script runs in quarantine mode and removes any
+           stale bridge output instead of presenting an old bridge as current. -->
+      <_SwiftBridgeRequireArg Condition="'$(MuesliRequireSwiftBridge)' == 'true'">-Require</_SwiftBridgeRequireArg>
+      <_SwiftBridgeRequireArg Condition="'$(MuesliRequireSwiftBridge)' == '' and '$(Configuration)' == 'Release'">-Require</_SwiftBridgeRequireArg>
     </PropertyGroup>
     <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-swift-core-bridge.ps1&quot; -OutDir &quot;$(OutDir).&quot; -AppXDir &quot;$(OutDir)AppX&quot; $(_SwiftBridgeRequireArg)"
           IgnoreStandardErrorWarningFormat="true" />

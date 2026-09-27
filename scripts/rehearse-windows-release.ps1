@@ -50,6 +50,13 @@ $modelsStatus = Assert-MuesliModelSourcesPresent -Root $root
 $sdkVersion = Assert-MuesliPinnedSdk -Root $root
 $tree = Assert-MuesliCleanReleaseInputs -Root $root -AllowDirty:$AllowDirty
 $sharedCore = Assert-MuesliSharedCoreRevision -Root $root -AllowUnpinnedDevOverride
+$env:MUESLI_SHARED_CORE_MODE = if ($sharedCore.BridgeRequired) { 'shared-core' } else { 'managed-fallback' }
+# Managed fallback is a shipping decision, not a skip: the packaged app carries the parity-tested
+# managed text processor and the Swift bridge must not be staged or required.
+if (-not $sharedCore.BridgeRequired) {
+    # Quarantine rather than skip: the release must not present stale bridge output as current.
+    Write-Host "Shared core mode: $($sharedCore.Mode). Shipping the managed-fallback text processor; the Swift bridge is optional and any stale staging is removed."
+}
 $head = $tree.Head
 
 Write-Host "Muesli unsigned release rehearsal (L04, MSIX)"
@@ -65,11 +72,17 @@ if (-not $SkipTests) {
     Write-Host "Restoring and running Release tests..."
     dotnet restore (Join-Path $root "windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj") --force-evaluate
     if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed with exit code $LASTEXITCODE." }
-    dotnet test (Join-Path $root "windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj") `
-        -c $Configuration `
-        --no-restore `
-        --logger "trx;LogFileName=windows-tests.trx" `
-        --results-directory $testResultsDir
+    $testArguments = @(
+        "test", (Join-Path $root "windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj"),
+        "-c", $Configuration,
+        "--no-restore",
+        "--logger", "trx;LogFileName=windows-tests.trx",
+        "--results-directory", $testResultsDir
+    )
+    if ($env:MUESLI_SHARED_CORE_MODE -eq 'managed-fallback') {
+        $testArguments += "-p:MuesliRequireSwiftBridge=false"
+    }
+    dotnet @testArguments
     if ($LASTEXITCODE -ne 0) { throw "dotnet test failed with exit code $LASTEXITCODE." }
 }
 
@@ -114,11 +127,12 @@ if ($runTwoBuildCompare) {
         throw "Two clean MSIX builds produced different content inventories. See $comparisonPath"
     }
     Write-Host "Two-build content inventories matched (digest $($twoBuild.leftDigest))."
-    # Keep the first build as the shipped/reviewed MSIX.
-    $shippingMsix = Join-Path $OutputDirectory "Muesli.Windows.WinUI_$($release.Version)_x64.msix"
-    Copy-Item -LiteralPath $msixPath -Destination $shippingMsix -Force
-    $msixPath = $shippingMsix
 }
+
+# CI skips the optional comparison but still needs one predictable downloadable MSIX.
+$shippingMsix = Join-Path $OutputDirectory "Muesli.Windows.WinUI_$($release.Version)_x64.msix"
+Copy-Item -LiteralPath $msixPath -Destination $shippingMsix -Force
+$msixPath = $shippingMsix
 
 $manifestPath = Join-Path $artifactsDir "muesli-win32-manifest.xml"
 & (Join-Path $root "scripts\extract-win32-manifest.ps1") -MsixPath $msixPath -OutputPath $manifestPath
@@ -190,6 +204,7 @@ $report = [ordered]@{
     sharedCorePinned = [bool]$sharedCore.Pinned
     sharedCoreRevision = $sharedCore.Revision
     sharedCoreDevOverride = $sharedCore.DevOverride
+    sharedCoreMode = [string]$sharedCore.Mode
     sharedCoreReleaseEvidence = [bool]$sharedCore.Pinned
     msixPath = $msixPath
     msixIdentity = $smoke.identity
@@ -209,7 +224,7 @@ $report = [ordered]@{
         "AUD-03 audio-interference policy decision"
     )
     artifacts = @(
-        [IO.Path]::GetFileName($msixPath),
+        "msix/$([IO.Path]::GetFileName($msixPath))",
         "test-results/windows-tests.trx",
         "msix-smoke-report.json",
         "muesli-win32-manifest.xml",

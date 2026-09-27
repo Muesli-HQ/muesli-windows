@@ -15,7 +15,7 @@ public sealed class SharedCoreRevisionGateTests
 {
     private static string RepositoryRoot => TestRepositoryLayout.Root;
 
-    private static (string Root, string LockPath) CreateRoot(string revision)
+    private static (string Root, string LockPath) CreateRoot(string revision, bool bridgeRequired = true)
     {
         var root = Path.Combine(Path.GetTempPath(), "muesli-pin-" + Guid.NewGuid().ToString("N"));
         var dir = Path.Combine(root, "windows-native");
@@ -27,7 +27,8 @@ public sealed class SharedCoreRevisionGateTests
             repository = "Muesli-HQ/muesli",
             packagePath = "native/MuesliNative",
             revision,
-            requiredAbiCapabilities = 3
+            requiredAbiCapabilities = 3,
+            bridgeRequired
         }));
         return (root, lockPath);
     }
@@ -44,7 +45,7 @@ public sealed class SharedCoreRevisionGateTests
             . '{{common}}'
             try {
               $r = Assert-MuesliSharedCoreRevision -Root $Root -AllowUnpinnedDevOverride:$AllowUnpinnedDevOverride
-              Write-Output ("PINNED={0} REV={1} DEV={2}" -f $r.Pinned, $r.Revision, $r.DevOverride)
+              Write-Output ("PINNED={0} REV={1} DEV={2} MODE={3} BRIDGE={4}" -f $r.Pinned, $r.Revision, $r.DevOverride, $r.Mode, $r.BridgeRequired)
             } catch {
               Write-Output ("ERROR: " + $_.Exception.Message)
               exit 1
@@ -100,6 +101,48 @@ public sealed class SharedCoreRevisionGateTests
         finally { Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public void An_unpinned_lock_that_ships_the_managed_fallback_does_not_require_the_bridge()
+    {
+        var (root, _) = CreateRoot("", bridgeRequired: false);
+        try
+        {
+            var (exitCode, output) = InvokeGate(root, allowDevOverride: false);
+            Assert.True(exitCode == 0, output);
+            Assert.Contains("PINNED=False", output, StringComparison.Ordinal);
+            Assert.Contains("MODE=ManagedFallback", output, StringComparison.Ordinal);
+            Assert.Contains("BRIDGE=False", output, StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void Managed_fallback_rejects_a_pinned_revision()
+    {
+        var (root, _) = CreateRoot("a5414b301742c968d8063683bc04e858a48e6a77", bridgeRequired: false);
+        try
+        {
+            var (exitCode, output) = InvokeGate(root, allowDevOverride: false);
+            Assert.NotEqual(0, exitCode);
+            Assert.Contains("bridgeRequired=false but still pins revision", output, StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void A_pinned_lock_reports_the_bridge_as_required()
+    {
+        var (root, _) = CreateRoot("a5414b301742c968d8063683bc04e858a48e6a77");
+        try
+        {
+            var (exitCode, output) = InvokeGate(root, allowDevOverride: false);
+            Assert.True(exitCode == 0, output);
+            Assert.Contains("MODE=Pinned", output, StringComparison.Ordinal);
+            Assert.Contains("BRIDGE=True", output, StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Theory]
     [InlineData("main")]
     [InlineData("v1.2.3")]
@@ -138,5 +181,9 @@ public sealed class SharedCoreRevisionGateTests
             TestRepositoryLayout.Combine("windows-native", "shared-core.lock.json")));
         Assert.Equal(3, lockDocument.RootElement.GetProperty("requiredAbiCapabilities").GetInt32());
         Assert.Equal("Muesli-HQ/muesli", lockDocument.RootElement.GetProperty("repository").GetString());
+        // The lock records the deliberate shipping decision: no approved upstream ABI commit exists,
+        // so the release ships the parity-tested managed text processor rather than a moving branch.
+        Assert.False(lockDocument.RootElement.GetProperty("bridgeRequired").GetBoolean());
+        Assert.Equal("managed-fallback", lockDocument.RootElement.GetProperty("shippingMode").GetString());
     }
 }

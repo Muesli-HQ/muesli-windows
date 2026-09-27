@@ -31,7 +31,13 @@
     bridge cannot be produced.
   -->
   <Target Name="StageSwiftCoreBridgeForTests" AfterTargets="Build" Condition="'$(MuesliSkipSwiftBridge)' != '1'">
-    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-swift-core-bridge.ps1&quot; -OutDir &quot;$(OutDir).&quot; -Require"
+    <PropertyGroup>
+      <!-- The managed-fallback release passes MuesliRequireSwiftBridge=false; the script then
+           quarantines any stale bridge beside the test assembly and the bridge tests skip by
+           named prerequisite instead of failing. -->
+      <_SwiftBridgeRequireArg Condition="'$(MuesliRequireSwiftBridge)' != 'false'">-Require</_SwiftBridgeRequireArg>
+    </PropertyGroup>
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\build-swift-core-bridge.ps1&quot; -OutDir &quot;$(OutDir).&quot; $(_SwiftBridgeRequireArg)"
           IgnoreStandardErrorWarningFormat="true" />
   </Target>
   <ItemGroup>
