@@ -862,6 +862,9 @@ internal static class PostMeetingMarkdownAutoExporter
         try
         {
             using var process = Process.GetProcessById(claim.ProcessId);
+            if (claim.ProcessId == Environment.ProcessId
+                && claim.ClaimedAtUtc >= process.StartTime.ToUniversalTime())
+                return true;
             return Math.Abs((process.StartTime.ToUniversalTime() - claim.ProcessStartedAtUtc.UtcDateTime).TotalSeconds) < 1;
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
