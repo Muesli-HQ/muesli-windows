@@ -224,7 +224,7 @@ public sealed class Phase9AutomationTests
     {
         // The helper is a framework-dependent apphost; leave enough startup headroom when the full
         // suite is concurrently exercising models and persistence before timing out its spawned child.
-        var options = HookOptions() with { Timeout = TimeSpan.FromSeconds(2) };
+        var options = HookOptions() with { Timeout = TimeSpan.FromSeconds(5) };
         var meetingId = $"spawn-{Guid.NewGuid():N}";
         var markerPath = Path.Combine(Path.GetTempPath(), $"muesli-child-{meetingId}.txt");
         var result = await new PostMeetingAutomationService().RunAsync(
