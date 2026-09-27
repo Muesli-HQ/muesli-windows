@@ -36,6 +36,7 @@ jobs:
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
+        continue-on-error: true
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
@@ -51,3 +52,7 @@ jobs:
           display_report: true
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
+
+      - name: Report unavailable review
+        if: steps.claude-review.outcome == 'failure'
+        run: echo '::warning::Claude review did not complete; request a human review before merging.'
