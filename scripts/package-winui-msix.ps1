@@ -32,6 +32,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'release-common.ps1')
+$sharedCore = Assert-MuesliSharedCoreRevision -Root $repoRoot -AllowUnpinnedDevOverride
+$env:MUESLI_SHARED_CORE_MODE = if ($sharedCore.BridgeRequired) { 'shared-core' } else { 'managed-fallback' }
 $project = Join-Path $repoRoot 'windows-native\Muesli.Windows.WinUI\Muesli.Windows.WinUI.csproj'
 if (-not (Test-Path $project)) { throw "WinUI project not found at $project" }
 
@@ -64,6 +67,12 @@ $arguments = @(
 if ($Configuration -eq 'Release') {
     # ReadyToRun is a Release-only publish optimization; the project disables it for Debug.
     $arguments += '-p:PublishReadyToRun=true'
+}
+# When the shared-core lock ships the managed fallback (bridgeRequired=false), the release must not
+# require the Swift bridge and must remove any stale staging rather than shipping an old bridge.
+# The lock selects this mode for direct packaging and for CI/rehearsal.
+if ($env:MUESLI_SHARED_CORE_MODE -eq 'managed-fallback') {
+    $arguments += '-p:MuesliRequireSwiftBridge=false'
 }
 
 if ($CertificateThumbprint) {
@@ -172,14 +181,19 @@ function Rebuild-MsixPayload {
 }
 
 $makeAppx = Get-MakeAppxPath
-$primaryMsix = Get-ChildItem -Path $OutputDirectory -Recurse -Filter 'Muesli.Windows.WinUI_*.msix' -ErrorAction SilentlyContinue | Select-Object -First 1
-$looseNames = Get-ChildItem (Join-Path $repoRoot "windows-native\Muesli.Windows.WinUI\bin\x64\$Configuration") -Recurse -Filter 'muesli-swift-bridge-files.txt' -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($primaryMsix -and $looseNames -and $makeAppx) {
-    if (Rebuild-MsixPayload -MsixPath $primaryMsix.FullName -LooseDir (Split-Path -Parent $looseNames.FullName) -MakeAppx $makeAppx -RepoRoot $repoRoot) {
-        Write-Host "Added the shared Swift bridge/runtime and WPF companion, pruned foreign-RID content, and included notices/licenses." -ForegroundColor Cyan
+$primaryMsix = Get-ChildItem -Path $OutputDirectory -Recurse -File -Filter 'Muesli.Windows.WinUI_*.msix' -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' } |
+    Sort-Object LastWriteTimeUtc -Descending |
+    Select-Object -First 1
+$looseExe = Get-ChildItem (Join-Path $repoRoot "windows-native\Muesli.Windows.WinUI\bin\x64\$Configuration") -Recurse -Filter 'Muesli.Windows.WinUI.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($primaryMsix -and $looseExe -and $makeAppx) {
+    if (Rebuild-MsixPayload -MsixPath $primaryMsix.FullName -LooseDir $looseExe.DirectoryName -MakeAppx $makeAppx -RepoRoot $repoRoot) {
+        Write-Host "Added the WPF companion and any pinned Swift bridge, pruned foreign-RID content, and included notices/licenses." -ForegroundColor Cyan
     }
 } elseif (-not $makeAppx) {
     throw 'MakeAppx.exe was not found; the MSIX cannot be normalized (bridge, companion, licenses, foreign-RID pruning).'
+} else {
+    throw 'The WinUI MSIX or loose executable was not found; the package cannot be normalized.'
 }
 
 $packages = Get-ChildItem -Path $OutputDirectory -Recurse -Include '*.msix', '*.msixbundle' -ErrorAction SilentlyContinue

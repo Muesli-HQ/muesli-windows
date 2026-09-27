@@ -40,7 +40,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
     private static DateTimeOffset Utc(int year, int month, int day, int hour, int minute, int second) =>
         new(new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc));
 
-    [Fact]
+    [BridgeFact]
     public void AbiVersionMatchesExpectation()
     {
         Assert.Equal(1u, SharedDictationStore.ExpectedAbiVersion);
@@ -48,7 +48,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         Assert.Equal(Path.GetFullPath(DatabasePath), store.DatabasePath);
     }
 
-    [Fact]
+    [BridgeFact]
     public void InsertThenRecentRoundTripPreservesFields()
     {
         using var store = new SharedDictationStore(DatabasePath);
@@ -71,7 +71,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         Assert.Equal(Utc(2026, 9, 18, 10, 0, 3), record.Timestamp);
     }
 
-    [Fact]
+    [BridgeFact]
     public void OrderingAndLimitMatchNewestFirst()
     {
         using var store = new SharedDictationStore(DatabasePath);
@@ -89,7 +89,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         Assert.Equal(new[] { "item 4", "item 3" }, store.Recent(2).Select(item => item.Text));
     }
 
-    [Fact]
+    [BridgeFact]
     public void EmptyAndLargeTranscriptsRoundTrip()
     {
         using var store = new SharedDictationStore(DatabasePath);
@@ -103,14 +103,14 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         Assert.Equal(large.Length, recent[0].Text.Length);
     }
 
-    [Fact]
+    [BridgeFact]
     public void InsertRejectsNullArgument()
     {
         using var store = new SharedDictationStore(DatabasePath);
         Assert.Throws<ArgumentNullException>(() => store.Insert(null!));
     }
 
-    [Fact]
+    [BridgeFact]
     public void RecentRejectsNonPositiveLimit()
     {
         using var store = new SharedDictationStore(DatabasePath);
@@ -118,7 +118,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         Assert.Throws<ArgumentOutOfRangeException>(() => store.Recent(-3));
     }
 
-    [Fact]
+    [BridgeFact]
     public void OpenRejectsUnusablePathWithDomainException()
     {
         var parentIsFile = Path.Combine(_directory, "not-a-directory");
@@ -128,7 +128,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         Assert.NotEqual(SwiftDictationErrorCode.Ok, exception.Code);
     }
 
-    [Fact]
+    [BridgeFact]
     public void DataPersistsAcrossReopen()
     {
         using (var first = new SharedDictationStore(DatabasePath))
@@ -140,7 +140,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         Assert.Equal(new[] { "persisted row" }, reopened.Recent(10).Select(item => item.Text));
     }
 
-    [Fact]
+    [BridgeFact]
     public void RepeatedOpenInsertReadDisposeDoesNotLeakOrCorrupt()
     {
         for (var index = 0; index < 25; index++)
@@ -151,7 +151,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         }
     }
 
-    [Fact]
+    [BridgeFact]
     public void ConcurrentReadsAndWritesAreSafe()
     {
         using var store = new SharedDictationStore(DatabasePath);
@@ -164,7 +164,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         Assert.Equal(40, store.Recent(100).Count);
     }
 
-    [Fact]
+    [BridgeFact]
     public void DisposedStoreRejectsUse()
     {
         var store = new SharedDictationStore(DatabasePath);
@@ -179,7 +179,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
     /// deterministically and the legacy row is left intact. This is the evidence behind the
     /// migration product decision.
     /// </summary>
-    [Fact]
+    [BridgeFact]
     public void WindowsSchemaDatabaseIsNotSilentlyAdopted()
     {
         var databasePath = Path.Combine(_directory, "windows-schema.db");
@@ -217,7 +217,7 @@ public sealed class SwiftDictationBridgeTests : IDisposable
     /// user-visible row whether it is written through the existing JSON history path or the shared
     /// Swift core.
     /// </summary>
-    [Fact]
+    [BridgeFact]
     public void SupportedSliceMatchesExistingJsonHistoryBehavior()
     {
         var jsonStore = new JsonLibraryHistoryAdapter(new AppDataStore(_directory));
