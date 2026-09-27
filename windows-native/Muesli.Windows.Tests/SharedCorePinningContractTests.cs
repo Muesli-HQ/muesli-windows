@@ -6,8 +6,10 @@ using Xunit;
 namespace Muesli.Windows.Tests;
 
 /// <summary>
-/// Priority 2: Windows release CI must build the shared Swift bridge from an immutable revision.
-/// These contracts fail if CI can silently drift back to a moving branch.
+/// Priority 2: when the shared Swift bridge is required, Windows release CI must build it from an
+/// immutable revision; these contracts fail if CI drifts back to a moving branch. When no approved
+/// upstream ABI exists the lock records the managed-fallback shipping decision and CI must not
+/// require the bridge.
 /// </summary>
 public sealed class SharedCorePinningContractTests
 {
@@ -25,6 +27,7 @@ public sealed class SharedCorePinningContractTests
         Assert.Equal("Muesli-HQ/muesli", root.GetProperty("repository").GetString());
         Assert.Equal("native/MuesliNative", root.GetProperty("packagePath").GetString());
         Assert.True(root.TryGetProperty("revision", out _));
+        Assert.True(root.TryGetProperty("bridgeRequired", out _));
     }
 
     [Fact]
@@ -45,6 +48,11 @@ public sealed class SharedCorePinningContractTests
         Assert.Contains("ref: ${{ steps.shared_core_lock.outputs.revision }}", workflow, StringComparison.Ordinal);
         Assert.Contains("has no pinned revision", workflow, StringComparison.Ordinal);
         Assert.Contains("moving branch", workflow, StringComparison.Ordinal);
+        // bridgeRequired=false must skip the Swift/vcpkg provisioning and stage nothing, instead of
+        // silently resolving a branch or the withdrawn PR.
+        Assert.Contains("bridge_required", workflow, StringComparison.Ordinal);
+        Assert.Contains("MUESLI_SHARED_CORE_MODE", workflow, StringComparison.Ordinal);
+        Assert.Contains("steps.shared_core_lock.outputs.bridge_required == 'true'", workflow, StringComparison.Ordinal);
     }
 
     [Fact]

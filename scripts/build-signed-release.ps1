@@ -40,7 +40,12 @@ if ($mode -eq "production") {
 $tree = Assert-MuesliCleanReleaseInputs -Root $root -AllowDirty:$AllowDirty
 $sdk = Assert-MuesliPinnedSdk -Root $root
 Assert-MuesliModelSourcesPresent -Root $root | Out-Null
-$null = Assert-MuesliSharedCoreRevision -Root $root -AllowUnpinnedDevOverride
+$sharedCore = Assert-MuesliSharedCoreRevision -Root $root -AllowUnpinnedDevOverride
+$env:MUESLI_SHARED_CORE_MODE = if ($sharedCore.BridgeRequired) { 'shared-core' } else { 'managed-fallback' }
+if (-not $sharedCore.BridgeRequired) {
+    # Ships the managed-fallback text processor; the Swift bridge is optional and stale staging is removed.
+    Write-Host "Shared core mode: $($sharedCore.Mode). Swift bridge is optional."
+}
 
 Write-Host "Building unsigned WinUI MSIX (mode=$mode)..."
 & (Join-Path $PSScriptRoot "package-winui-msix.ps1") -Configuration $Configuration -OutputDirectory (Join-Path $artifactsDir "msix") | Out-Null

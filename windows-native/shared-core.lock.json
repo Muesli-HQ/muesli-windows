@@ -4,5 +4,7 @@
   "packagePath": "native/MuesliNative",
   "revision": "",
   "requiredAbiCapabilities": 3,
-  "note": "The proposed macOS bridge PR was withdrawn. Release CI intentionally fails until an approved, upstream shared-core ABI revision is pinned here. Do not replace this with a moving branch. See docs/SHARED_CORE_PINNING.md."
+  "bridgeRequired": false,
+  "shippingMode": "managed-fallback",
+  "note": "No approved Muesli-HQ/muesli commit contains the MuesliCoreABI (capabilities 0x3): the proposed macOS bridge PR was withdrawn. Windows therefore ships the parity-tested managed text processor and does not require the Swift bridge. Set bridgeRequired=true and pin an immutable 40-character revision here only after an approved upstream ABI commit exists. Do not use a moving branch. See docs/SHARED_CORE_PINNING.md."
 }
