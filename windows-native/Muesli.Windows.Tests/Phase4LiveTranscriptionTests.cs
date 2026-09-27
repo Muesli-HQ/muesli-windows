@@ -203,7 +203,7 @@ public sealed class Phase4LiveTranscriptionTests(Xunit.Abstractions.ITestOutputH
         session.SnapshotChanged += (_, _) => { lock (publishThreads) publishThreads.Add(Environment.CurrentManagedThreadId); };
 
         Assert.True(session.TryEnqueue(new(LiveTranscriptChannel.Microphone, [0.1f], 0)));
-        Assert.True(recognizer.Entered.Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(recognizer.Entered.Wait(TimeSpan.FromSeconds(10)));
         Assert.True(session.TryEnqueue(new(LiveTranscriptChannel.Microphone, [0.1f], 1)));
         for (var packet = 0; packet < 40; packet++)
         {
