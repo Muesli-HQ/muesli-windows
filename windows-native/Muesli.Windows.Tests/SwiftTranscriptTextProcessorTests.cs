@@ -45,7 +45,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         string.Concat(Enumerable.Repeat("word  \n", 5000)),
     };
 
-    [Fact]
+    [BridgeFact]
     public void NativeProcessorIsActiveWhenStaged()
     {
         using var processor = new SwiftTranscriptTextProcessor(BridgePath(), new ManagedTranscriptTextProcessor());
@@ -54,7 +54,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         Assert.NotEqual(0u, processor.Capabilities & SwiftTextProcessingNative.CapabilityTextProcessing);
     }
 
-    [Fact]
+    [BridgeFact]
     public void SwiftMatchesManagedAcrossCorpus()
     {
         using var swift = new SwiftTranscriptTextProcessor(BridgePath(), new ManagedTranscriptTextProcessor());
@@ -66,7 +66,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         }
     }
 
-    [Fact]
+    [BridgeFact]
     public void NormalizationContractExamples()
     {
         using var processor = new SwiftTranscriptTextProcessor(BridgePath(), new ManagedTranscriptTextProcessor());
@@ -77,7 +77,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         Assert.Equal(4, processor.CountWords("one two   three\nfour"));
     }
 
-    [Fact]
+    [BridgeFact]
     public void ConcurrentNormalizationIsSafeAndDeterministic()
     {
         using var processor = new SwiftTranscriptTextProcessor(BridgePath(), new ManagedTranscriptTextProcessor());
@@ -89,7 +89,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         Assert.Equal(Enumerable.Range(0, results.Length).Select(i => $"thread {i} text"), results);
     }
 
-    [Fact]
+    [BridgeFact]
     public void NativeWorkDoesNotDependOnPathVariable()
     {
         var original = Environment.GetEnvironmentVariable("PATH");
@@ -105,7 +105,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         }
     }
 
-    [Fact]
+    [BridgeFact]
     public void CapabilityGateDistinguishesPersistenceFromTextProcessing()
     {
         Assert.False(SwiftTextProcessingNative.CapabilitiesIncludeTextProcessing(1u)); // persistence only
@@ -113,7 +113,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         Assert.True(SwiftTextProcessingNative.CapabilitiesIncludeTextProcessing(3u));  // both
     }
 
-    [Fact]
+    [BridgeFact]
     public void MissingBridgeFallsBackToManagedWithDiagnostic()
     {
         using var directory = new TempDirectory();
@@ -131,7 +131,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         }
     }
 
-    [Fact]
+    [BridgeFact]
     public void UnloadableBridgeFallsBackToManaged()
     {
         using var directory = new TempDirectory();
@@ -148,7 +148,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         }
     }
 
-    [Fact]
+    [BridgeFact]
     public void BootstrapActivatesNativeWhenBridgeIsValid()
     {
         var active = TranscriptTextProcessingBootstrap.Initialize(
@@ -167,7 +167,7 @@ public sealed class SwiftTranscriptTextProcessorTests
         }
     }
 
-    [Fact]
+    [BridgeFact]
     public void LibraryMetricsUsesActiveProcessor()
     {
         TranscriptTextProcessing.Initialize(new ManagedTranscriptTextProcessor());

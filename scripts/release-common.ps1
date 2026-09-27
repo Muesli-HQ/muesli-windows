@@ -127,13 +127,29 @@ function Assert-MuesliSharedCoreRevision {
     if ($lock.repository -ne "Muesli-HQ/muesli") {
         throw "shared-core.lock.json points at unexpected repository '$($lock.repository)'."
     }
+    # Absent means "required" so an older lock can never silently downgrade to the fallback.
+    $bridgeRequired = if ($null -eq $lock.PSObject.Properties['bridgeRequired']) {
+        $true
+    } else {
+        [bool]$lock.bridgeRequired
+    }
     $revision = [string]$lock.revision
+    if (-not $bridgeRequired -and -not [string]::IsNullOrWhiteSpace($revision)) {
+        throw "shared-core.lock.json sets bridgeRequired=false but still pins revision '$revision'; choose a single shipping mode."
+    }
     if (-not [string]::IsNullOrWhiteSpace($revision)) {
         if ($revision -notmatch '^[0-9a-fA-F]{40}$') {
             throw "shared-core.lock.json revision '$revision' is not a full 40-character commit SHA."
         }
         Write-Host "Shared core pinned at revision $revision."
-        return [pscustomobject]@{ Revision = $revision.ToLowerInvariant(); Pinned = $true; DevOverride = "" }
+        return [pscustomobject]@{ Revision = $revision.ToLowerInvariant(); Pinned = $true; DevOverride = ""; Mode = "Pinned"; BridgeRequired = $true }
+    }
+
+    if (-not $bridgeRequired) {
+        # Deliberate shipping decision: no approved upstream ABI exists, so the release ships the
+        # parity-tested managed text processor instead of the optional Swift bridge.
+        Write-Host "Shared core not pinned and bridgeRequired=false: release ships the managed-fallback text processor."
+        return [pscustomobject]@{ Revision = ""; Pinned = $false; DevOverride = ""; Mode = "ManagedFallback"; BridgeRequired = $false }
     }
 
     $package = $env:MUESLI_SHARED_CORE_PACKAGE
@@ -144,7 +160,7 @@ from MUESLI_SHARED_CORE_PACKAGE ('$package') and is NOT reproducible release evi
 Commit the shared Swift changes in the shared repository and set revision to the committed SHA
 before producing a release. See docs/SHARED_CORE_PINNING.md.
 "@
-        return [pscustomobject]@{ Revision = ""; Pinned = $false; DevOverride = $package }
+        return [pscustomobject]@{ Revision = ""; Pinned = $false; DevOverride = $package; Mode = "DevOverride"; BridgeRequired = $true }
     }
 
     throw @"
