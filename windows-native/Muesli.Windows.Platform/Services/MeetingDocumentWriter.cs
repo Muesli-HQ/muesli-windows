@@ -96,7 +96,7 @@ public static class MeetingDocumentWriter
     /// (for example the automatic exporter). Honors the same EXP-01 release gate as
     /// <see cref="Write"/>.
     /// </summary>
-    public static byte[] GeneratePdfBytes(string markdown)
+    public static byte[] GeneratePdfBytes(string markdown, DateTimeOffset createdAt)
     {
         if (!PdfExportApproved)
         {
@@ -105,13 +105,17 @@ public static class MeetingDocumentWriter
                 "Markdown export remains available.");
         }
 
-        return CreatePdfDocument(markdown).GeneratePdf();
+        return CreatePdfDocument(markdown).WithMetadata(new DocumentMetadata
+        {
+            CreationDate = createdAt,
+            ModifiedDate = createdAt
+        }).GeneratePdf();
     }
 
     private static void GeneratePdf(string markdown, string outputPath)
         => CreatePdfDocument(markdown).GeneratePdf(outputPath);
 
-    private static IDocument CreatePdfDocument(string markdown)
+    private static Document CreatePdfDocument(string markdown)
     {
         // This build selects QuestPDF's Community license. The distributing legal
         // entity must confirm that it satisfies QuestPDF's current eligibility terms.
