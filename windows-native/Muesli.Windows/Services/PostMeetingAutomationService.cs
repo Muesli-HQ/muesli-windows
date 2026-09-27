@@ -591,20 +591,21 @@ internal static class PostMeetingMarkdownAutoExporter
                     try
                     {
                         File.Move(exportTemporaryPath!, destination, overwrite: false);
-                        exportTemporaryOwned = false;
-                        exportTemporaryPath = null;
-                        PublishManifest(paths.ManifestPath, new ExportManifest(
-                            ManifestVersion,
-                            filename,
-                            contentHash,
-                            DateTimeOffset.UtcNow));
-                        return Success(destination, attempt);
                     }
                     catch (IOException) when (File.Exists(destination))
                     {
                         // Never overwrite a user-owned collision. The next candidate is recorded in
                         // the service-owned claim before it can be atomically published.
+                        continue;
                     }
+                    exportTemporaryOwned = false;
+                    exportTemporaryPath = null;
+                    PublishManifest(paths.ManifestPath, new ExportManifest(
+                        ManifestVersion,
+                        filename,
+                        contentHash,
+                        DateTimeOffset.UtcNow));
+                    return Success(destination, attempt);
                 }
 
                 lastError = "No collision-free auto-export filename was available.";
