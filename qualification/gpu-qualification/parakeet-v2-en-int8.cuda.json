@@ -1,0 +1,90 @@
+{
+  "SchemaVersion": 1,
+  "CreatedAtUtc": "2026-09-20T15:34:56.5069835+00:00",
+  "AudioPath": "C:\\Users\\USER\\.cache\\muesli\\native-asr\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8\\test_wavs\\0.wav",
+  "AudioSha256": "5fceacff0315d49cb59fcc505bcecf1ed5f2f35c2897b1e65a59f30e5d922150",
+  "ReferencePath": null,
+  "Engine": "native-sherpa-onnx/parakeettransducer",
+  "Model": "parakeet-v2-en-int8",
+  "Runs": 2,
+  "Provider": {
+    "Requested": "cuda",
+    "LoadedRuntime": "cuda",
+    "CudaPackInstalled": true,
+    "CudaPackVerified": true,
+    "NvidiaRuntimeComplete": true,
+    "DirectMlAvailable": false,
+    "Telemetry": {
+      "LastActiveProvider": "cuda",
+      "LastFallbackReason": null,
+      "LastModelLoadMs": 2507,
+      "LastWarmInferenceMs": null,
+      "LastWarmAudioMs": null,
+      "LastGpuEvidence": null,
+      "RecentAttempts": [
+        {
+          "Role": "OfflineTranscription",
+          "Provider": "cuda",
+          "ModelId": "parakeet-v2-en-int8",
+          "Succeeded": true,
+          "ElapsedMs": 2507,
+          "Detail": "Active provider: cuda."
+        }
+      ]
+    }
+  },
+  "SherpaOnnxRuntime": {
+    "IsAvailable": true,
+    "IsCudaCapable": true,
+    "SelectedRuntime": "cuda",
+    "RuntimeDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda\\sherpa-onnx-1.13.4-cuda12-cudnn9-win-x64",
+    "GpuDependencyCacheDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9",
+    "Diagnostic": "CUDA-capable Sherpa runtime 1.13.4 loaded from C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda\\sherpa-onnx-1.13.4-cuda12-cudnn9-win-x64.\r\nNVIDIA dependency directories: C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9; C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda\\sherpa-onnx-1.13.4-cuda12-cudnn9-win-x64.\r\nCUDA 12.x and cuDNN 9.x dependency checks passed.\r\nGPU inference is only claimed after a real model warm-up inference confirms the execution provider."
+  },
+  "Report": {
+    "Summary": "Parakeet v2 English INT8 \u00B7  \u00B7 382 ms warm wall \u00B7 RTF 0.051 \u00B7 deterministic yes",
+    "LaunchRecommendation": "Audio: 0.wav\r\nBackend: native-sherpa-onnx/parakeettransducer\r\nModel: parakeet-v2-en-int8\r\nProvider: cuda; device: ; compute: ; model reused: True",
+    "Results": [
+      {
+        "EngineId": "native-sherpa-onnx/parakeettransducer",
+        "ModelName": "parakeet-v2-en-int8",
+        "AudioDurationMs": 7435,
+        "FirstRunWallMs": 3097,
+        "FirstRunModelInitMs": 2507,
+        "WarmInferenceMs": 380,
+        "WarmWallMs": 382,
+        "RealtimeFactor": 0.051378614660390044,
+        "TranscriptCharacterCount": 121,
+        "SegmentCount": 2,
+        "HasUsefulTimestamps": true,
+        "TimestampRange": "400-7120 ms",
+        "FirstRunBackend": "cuda",
+        "WarmBackend": "cuda",
+        "ThreadCount": 4,
+        "AudioPreprocessing": "in-memory 16 kHz mono conversion (1 ms)",
+        "AudioPreprocessingMs": 0,
+        "Success": true,
+        "ErrorMessage": "",
+        "RunCount": 2,
+        "TranscriptSha256": "2694e4b1f9cc793d2ac72357e9f74f8e33d109268e00371cb8ce6fa8d8f66502",
+        "DistinctTranscriptCount": 1,
+        "DeterministicOutput": true,
+        "SegmentLayoutSha256": "95926b2ff3e35901c119a4cf84c0cfabf2724e312bcda1ba75700d78b1e75fec",
+        "DistinctSegmentLayoutCount": 1,
+        "DeterministicSegments": true,
+        "SegmentsChronological": true,
+        "SegmentTextMatchesTranscript": true,
+        "MaximumSegmentDurationMs": 4560,
+        "Device": "",
+        "ComputeType": "",
+        "ModelInstanceReused": true,
+        "ReportedTranscriptionWallMs": 0,
+        "WordErrorRate": null,
+        "CharacterErrorRate": null,
+        "InitializationWallMs": 2567,
+        "ModelVerificationMs": 0,
+        "ModelVerificationSource": ""
+      }
+    ]
+  }
+}

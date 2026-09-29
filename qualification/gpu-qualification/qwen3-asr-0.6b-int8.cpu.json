@@ -1,0 +1,90 @@
+{
+  "SchemaVersion": 1,
+  "CreatedAtUtc": "2026-09-20T15:36:50.4330789+00:00",
+  "AudioPath": "C:\\Users\\USER\\.cache\\muesli\\native-asr\\sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25\\test_wavs\\noise1-en.wav",
+  "AudioSha256": "3664ef02fa664da93d94a1afc271bda31c0f8d07a9f3c74ac6cd1e5aabe8572c",
+  "ReferencePath": null,
+  "Engine": "native-sherpa-onnx/qwen3asr",
+  "Model": "qwen3-asr-0.6b-int8",
+  "Runs": 2,
+  "Provider": {
+    "Requested": "cpu",
+    "LoadedRuntime": "cpu",
+    "CudaPackInstalled": true,
+    "CudaPackVerified": true,
+    "NvidiaRuntimeComplete": true,
+    "DirectMlAvailable": false,
+    "Telemetry": {
+      "LastActiveProvider": "cpu",
+      "LastFallbackReason": null,
+      "LastModelLoadMs": 3323,
+      "LastWarmInferenceMs": null,
+      "LastWarmAudioMs": null,
+      "LastGpuEvidence": null,
+      "RecentAttempts": [
+        {
+          "Role": "OfflineTranscription",
+          "Provider": "cpu",
+          "ModelId": "qwen3-asr-0.6b-int8",
+          "Succeeded": true,
+          "ElapsedMs": 3323,
+          "Detail": "Active provider: cpu."
+        }
+      ]
+    }
+  },
+  "SherpaOnnxRuntime": {
+    "IsAvailable": true,
+    "IsCudaCapable": false,
+    "SelectedRuntime": "cpu",
+    "RuntimeDirectory": null,
+    "GpuDependencyCacheDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9",
+    "Diagnostic": "CPU only was requested, so the CUDA bundle was not considered.\r\nCPU Sherpa runtime loaded from C:\\Users\\USER\\projects\\muesli\\windows-native\\Muesli.Windows.CommandHost\\bin\\Debug\\net10.0-windows\\runtimes\\win-x64\\native."
+  },
+  "Report": {
+    "Summary": "Qwen3-ASR 0.6B INT8 \u00B7  \u00B7 28442 ms warm wall \u00B7 RTF 0.322 \u00B7 deterministic yes",
+    "LaunchRecommendation": "Audio: noise1-en.wav\r\nBackend: native-sherpa-onnx/qwen3asr\r\nModel: qwen3-asr-0.6b-int8\r\nProvider: cpu; device: ; compute: ; model reused: True",
+    "Results": [
+      {
+        "EngineId": "native-sherpa-onnx/qwen3asr",
+        "ModelName": "qwen3-asr-0.6b-int8",
+        "AudioDurationMs": 88193,
+        "FirstRunWallMs": 32537,
+        "FirstRunModelInitMs": 3323,
+        "WarmInferenceMs": 28428,
+        "WarmWallMs": 28442,
+        "RealtimeFactor": 0.3224972503486671,
+        "TranscriptCharacterCount": 1819,
+        "SegmentCount": 77,
+        "HasUsefulTimestamps": true,
+        "TimestampRange": "0-88193 ms",
+        "FirstRunBackend": "cpu",
+        "WarmBackend": "cpu",
+        "ThreadCount": 8,
+        "AudioPreprocessing": "in-memory 16 kHz mono conversion (12 ms)",
+        "AudioPreprocessingMs": 0,
+        "Success": true,
+        "ErrorMessage": "",
+        "RunCount": 2,
+        "TranscriptSha256": "d90e48f7b0b327e15645175d0be4d0a32de87ebc8f63c9e7da87096f0755b40d",
+        "DistinctTranscriptCount": 1,
+        "DeterministicOutput": true,
+        "SegmentLayoutSha256": "5d9afa74b5eb47cc5a95de6faf5b73feb66716b5f8e5dd16c11ee68207cdffcb",
+        "DistinctSegmentLayoutCount": 1,
+        "DeterministicSegments": true,
+        "SegmentsChronological": true,
+        "SegmentTextMatchesTranscript": true,
+        "MaximumSegmentDurationMs": 3760,
+        "Device": "",
+        "ComputeType": "",
+        "ModelInstanceReused": true,
+        "ReportedTranscriptionWallMs": 0,
+        "WordErrorRate": null,
+        "CharacterErrorRate": null,
+        "InitializationWallMs": 3331,
+        "ModelVerificationMs": 0,
+        "ModelVerificationSource": ""
+      }
+    ]
+  }
+}

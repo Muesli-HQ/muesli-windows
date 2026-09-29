@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Muesli.Windows.WinUI.MeetingNotificationWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:media="using:Microsoft.UI.Xaml.Media"
+    Title="Muesli meeting notification">
+
+    <Canvas x:Name="Root" Background="Transparent">
+        <Canvas.Resources>
+            <!--
+              Narrowly scoped notification tokens. These mirror the shipping macOS
+              MeetingNotificationController and deliberately do NOT retune the global Muesli* brushes.
+              The HTML design system disagrees on several of these values; see
+              docs/WINDOWS_UI_QUALIFICATION.md for the recorded discrepancies.
+            -->
+            <SolidColorBrush x:Key="MeetingNotificationCardBrush" Color="#F71A1A1F" />
+            <SolidColorBrush x:Key="MeetingNotificationBorderBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="MeetingNotificationTitleBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="MeetingNotificationSubtitleBrush" Color="#8CFFFFFF" />
+            <SolidColorBrush x:Key="MeetingNotificationCountdownBrush" Color="#CC4D99FF" />
+            <SolidColorBrush x:Key="MeetingNotificationPrimaryBrush" Color="#FF3380FF" />
+            <SolidColorBrush x:Key="MeetingNotificationJoinBrush" Color="#FF33B887" />
+            <SolidColorBrush x:Key="MeetingNotificationChevronBrush" Color="#FF26946B" />
+            <SolidColorBrush x:Key="MeetingNotificationCloseBrush" Color="#B3000000" />
+            <SolidColorBrush x:Key="MeetingNotificationCloseBorderBrush" Color="#8CFFFFFF" />
+            <SolidColorBrush x:Key="MeetingNotificationCloseGlyphBrush" Color="#DBFFFFFF" />
+            <SolidColorBrush x:Key="MeetingNotificationActionTextBrush" Color="#FFFFFFFF" />
+        </Canvas.Resources>
+        <Border
+            x:Name="Card"
+            Width="344"
+            Height="60"
+            Canvas.Left="12"
+            Canvas.Top="0"
+            Background="{StaticResource MeetingNotificationCardBrush}"
+            BorderBrush="{StaticResource MeetingNotificationBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="10">
+            <Canvas x:Name="CardContent">
+                <!-- Bottom countdown; drains full width to zero, anchored at the left edge. -->
+                <Border
+                    x:Name="CountdownBar"
+                    Width="344"
+                    Height="3"
+                    Canvas.Left="0"
+                    Canvas.Top="57"
+                    Background="{StaticResource MeetingNotificationCountdownBrush}"
+                    RenderTransformOrigin="0,0.5">
+                    <Border.RenderTransform>
+                        <ScaleTransform x:Name="CountdownScale" ScaleX="1" ScaleY="1" />
+                    </Border.RenderTransform>
+                </Border>
+
+                <Border
+                    x:Name="PlatformBadge"
+                    Width="26"
+                    Height="26"
+                    Canvas.Left="14"
+                    Canvas.Top="18"
+                    CornerRadius="7">
+                    <Grid>
+                        <TextBlock
+                            x:Name="PlatformGlyph"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontFamily="{StaticResource MuesliFontFamily}"
+                            FontSize="14"
+                            Foreground="{StaticResource MeetingNotificationActionTextBrush}" />
+                        <TextBlock
+                            x:Name="PlatformShortLabel"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,0,1"
+                            FontFamily="{StaticResource MuesliFontFamilySemiBold}"
+                            FontSize="6"
+                            Foreground="{StaticResource MeetingNotificationActionTextBrush}" />
+                    </Grid>
+                </Border>
+
+                <TextBlock
+                    x:Name="TitleText"
+                    Canvas.Left="49"
+                    Canvas.Top="10"
+                    Width="150"
+                    FontFamily="{StaticResource MuesliFontFamilySemiBold}"
+                    FontSize="13"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap"
+                    Foreground="{StaticResource MeetingNotificationTitleBrush}" />
+
+                <TextBlock
+                    x:Name="SubtitleText"
+                    Canvas.Left="49"
+                    Canvas.Top="30"
+                    Width="150"
+                    FontFamily="{StaticResource MuesliFontFamily}"
+                    FontSize="11"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap"
+                    Foreground="{StaticResource MeetingNotificationSubtitleBrush}" />
+
+                <Button
+                    x:Name="SingleActionButton"
+                    Height="30"
+                    Width="126"
+                    Canvas.Top="15"
+                    Padding="0"
+                    BorderThickness="0"
+                    CornerRadius="6"
+                    Background="{StaticResource MeetingNotificationPrimaryBrush}"
+                    Foreground="{StaticResource MeetingNotificationActionTextBrush}"
+                    FontFamily="{StaticResource MuesliFontFamilyMedium}"
+                    FontSize="12">
+                    <TextBlock
+                        x:Name="SingleActionText"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="NoWrap"
+                        FontFamily="{StaticResource MuesliFontFamilyMedium}"
+                        FontSize="12"
+                        Foreground="{StaticResource MeetingNotificationActionTextBrush}" />
+                </Button>
+
+                <StackPanel
+                    x:Name="SplitHost"
+                    Orientation="Horizontal"
+                    Canvas.Top="15"
+                    Visibility="Collapsed">
+                    <Button
+                        x:Name="PrimaryJoinButton"
+                        Width="126"
+                        Height="30"
+                        Padding="0"
+                        BorderThickness="0"
+                        CornerRadius="6,0,0,6"
+                        Background="{StaticResource MeetingNotificationJoinBrush}"
+                        Foreground="{StaticResource MeetingNotificationActionTextBrush}">
+                        <TextBlock
+                            x:Name="PrimaryJoinText"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="NoWrap"
+                            FontFamily="{StaticResource MuesliFontFamilyMedium}"
+                            FontSize="11"
+                            Foreground="{StaticResource MeetingNotificationActionTextBrush}" />
+                    </Button>
+                    <Button
+                        x:Name="ChevronButton"
+                        Width="24"
+                        Height="30"
+                        Padding="0"
+                        BorderThickness="0"
+                        CornerRadius="0,6,6,0"
+                        Background="{StaticResource MeetingNotificationChevronBrush}"
+                        Foreground="{StaticResource MeetingNotificationActionTextBrush}">
+                        <FontIcon
+                            x:Name="ChevronGlyph"
+                            FontSize="9"
+                            Glyph="&#xE70D;"
+                            Foreground="{StaticResource MeetingNotificationActionTextBrush}" />
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="AlternativesFlyout" Placement="Bottom" />
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Canvas>
+        </Border>
+
+        <!--
+            The close button's visual is 22x22 (overlapping the card's upper-left corner) but its hit
+            target is 34x34 so it stays easy to click without changing the macOS diameter.
+        -->
+        <Button
+            x:Name="DismissButton"
+            Width="34"
+            Height="34"
+            Canvas.Left="-5"
+            Canvas.Top="-6"
+            Padding="0"
+            Background="Transparent"
+            BorderThickness="0"
+            CornerRadius="17">
+            <Border
+                x:Name="DismissVisual"
+                Width="22"
+                Height="22"
+                Background="{StaticResource MeetingNotificationCloseBrush}"
+                BorderBrush="{StaticResource MeetingNotificationCloseBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="11">
+                <TextBlock
+                    x:Name="DismissGlyph"
+                    Text="&#x2715;"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    FontFamily="{StaticResource MuesliFontFamilyMedium}"
+                    FontSize="11"
+                    Foreground="{StaticResource MeetingNotificationCloseGlyphBrush}" />
+            </Border>
+        </Button>
+    </Canvas>
+</Window>

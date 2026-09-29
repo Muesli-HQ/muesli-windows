@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="Muesli.Windows.WinUI.MeetingLiveTranscriptWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Live meeting transcript">
+    <Window.SystemBackdrop>
+        <DesktopAcrylicBackdrop />
+    </Window.SystemBackdrop>
+    <Border
+        x:Name="RootBorder"
+        Background="{ThemeResource LayerFillColorDefaultBrush}"
+        BorderBrush="{ThemeResource MuesliBorderBrush}"
+        BorderThickness="1"
+        CornerRadius="12"
+        Padding="14"
+        PointerPressed="RootBorder_PointerPressed"
+        PointerMoved="RootBorder_PointerMoved"
+        PointerReleased="RootBorder_PointerReleased"
+        KeyDown="RootBorder_KeyDown"
+        IsTabStop="True"
+        KeyboardAcceleratorPlacementMode="Hidden">
+        <!-- P8-06: suppress the accelerator tooltip; a non-Control owner strands its popup host. -->
+        <Border.KeyboardAccelerators>
+            <KeyboardAccelerator Key="Escape" Invoked="DismissAccelerator_Invoked" />
+        </Border.KeyboardAccelerators>
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="10">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                <Border
+                    Width="28"
+                    Height="28"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource MuesliAccentMutedBrush}"
+                    CornerRadius="14">
+                    <FontIcon
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                        FontSize="14"
+                        Foreground="{ThemeResource MuesliAccentBrush}"
+                        Glyph="&#xE720;" />
+                </Border>
+                <StackPanel Grid.Column="1" Spacing="2">
+                    <TextBlock
+                        x:Name="TitleText"
+                        Style="{StaticResource MuesliRowTitleStyle}"
+                        Text="Live transcript" />
+                    <Border x:Name="StateBadge" HorizontalAlignment="Left" Style="{StaticResource MuesliBadgeStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Ellipse
+                                x:Name="StateDot"
+                                Width="6"
+                                Height="6"
+                                Fill="{ThemeResource MuesliTextTertiaryBrush}" />
+                            <TextBlock
+                                x:Name="StateLabel"
+                                Style="{StaticResource MuesliBadgeTextStyle}"
+                                Text="IDLE" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                <StackPanel
+                    Grid.Column="2"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    VerticalAlignment="Top">
+                    <Button
+                        x:Name="CopyButton"
+                        Style="{StaticResource MuesliSecondaryButtonStyle}"
+                        AutomationProperties.AutomationId="LiveTranscriptCopy"
+                        AutomationProperties.Name="Copy live transcript"
+                        Click="Copy_Click"
+                        Content="Copy"
+                        ToolTipService.ToolTip="Copy transcript" />
+                    <Button
+                        Style="{StaticResource MuesliGhostButtonStyle}"
+                        Width="32"
+                        Height="32"
+                        MinWidth="32"
+                        Padding="0"
+                        AutomationProperties.AutomationId="LiveTranscriptDismiss"
+                        AutomationProperties.Name="Hide live transcript"
+                        Click="Dismiss_Click"
+                        ToolTipService.ToolTip="Hide live transcript">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="12" Glyph="&#xE711;" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock
+                x:Name="StatusText"
+                Grid.Row="1"
+                MaxHeight="40"
+                Style="{StaticResource MuesliRowSecondaryStyle}"
+                AutomationProperties.LiveSetting="Polite"
+                FontSize="12"
+                MaxLines="2"
+                Text="Waiting for speech…"
+                TextTrimming="CharacterEllipsis"
+                TextWrapping="Wrap" />
+
+            <InfoBar
+                x:Name="SessionInfoBar"
+                Grid.Row="2"
+                IsClosable="False"
+                IsOpen="False"
+                Severity="Warning" />
+
+            <Grid
+                x:Name="WaveformPanel"
+                Grid.Row="3"
+                ColumnDefinitions="48,*"
+                RowDefinitions="Auto,Auto">
+                <TextBlock
+                    Style="{StaticResource MuesliTimestampStyle}"
+                    FontSize="10"
+                    Text="You" />
+                <ProgressBar
+                    x:Name="MicLevel"
+                    Grid.Column="1"
+                    Height="5"
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="Microphone level"
+                    Maximum="1" />
+                <TextBlock
+                    Grid.Row="1"
+                    Margin="0,6,0,0"
+                    Style="{StaticResource MuesliTimestampStyle}"
+                    FontSize="10"
+                    Text="Others" />
+                <ProgressBar
+                    x:Name="SystemLevel"
+                    Grid.Row="1"
+                    Grid.Column="1"
+                    Height="5"
+                    Margin="0,6,0,0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="System audio level"
+                    Maximum="1" />
+            </Grid>
+
+            <Grid Grid.Row="4">
+                <ScrollViewer
+                    x:Name="TranscriptScroll"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="0">
+                        <StackPanel x:Name="CommittedHost" Spacing="0" />
+                        <Border
+                            x:Name="OthersPartialBorder"
+                            Margin="0,8,42,0"
+                            Padding="10,8"
+                            HorizontalAlignment="Left"
+                            Background="{ThemeResource MuesliHoverBrush}"
+                            BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Visibility="Collapsed">
+                            <StackPanel Spacing="3">
+                                <TextBlock Style="{StaticResource MuesliTimestampStyle}" FontSize="10" Text="Others" />
+                                <TextBlock
+                                    x:Name="OthersPartialText"
+                                    FontSize="12"
+                                    FontStyle="Italic"
+                                    Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border
+                            x:Name="YouPartialBorder"
+                            Margin="42,8,0,0"
+                            Padding="10,8"
+                            HorizontalAlignment="Right"
+                            Background="{ThemeResource MuesliAccentMutedBrush}"
+                            BorderBrush="{ThemeResource MuesliAccentBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Visibility="Collapsed">
+                            <StackPanel Spacing="3">
+                                <TextBlock
+                                    HorizontalAlignment="Right"
+                                    Style="{StaticResource MuesliTimestampStyle}"
+                                    FontSize="10"
+                                    Text="You" />
+                                <TextBlock
+                                    x:Name="YouPartialText"
+                                    FontSize="12"
+                                    FontStyle="Italic"
+                                    Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock
+                            x:Name="TranscriptText"
+                            Margin="0,4,0,0"
+                            FontSize="14"
+                            IsTextSelectionEnabled="True"
+                            LineHeight="22"
+                            TextWrapping="Wrap"
+                            AutomationProperties.AutomationId="LiveTranscriptText"
+                            AutomationProperties.Name="Live transcript text"
+                            Visibility="Collapsed" />
+                    </StackPanel>
+                </ScrollViewer>
+                <Border
+                    x:Name="EmptyState"
+                    Padding="18"
+                    Background="{ThemeResource MuesliSurfaceBrush}"
+                    BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Visibility="Collapsed">
+                    <StackPanel
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="8">
+                        <FontIcon
+                            HorizontalAlignment="Center"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            FontSize="24"
+                            Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                            Glyph="&#xE8BD;" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            FontSize="15"
+                            FontWeight="SemiBold"
+                            Text="Waiting for committed speech" />
+                        <TextBlock
+                            Style="{StaticResource MuesliBodyStyle}"
+                            Text="Live text appears here as words are recognized."
+                            TextAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

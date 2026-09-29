@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 2,
+  "name": "windows-dictation-human-qualification",
+  "defaultMaxWordErrorRate": 0.15,
+  "defaultMaxCharacterErrorRate": 0.08,
+  "defaultMaxRealtimeFactor": 0.20,
+  "status": "placeholder-not-qualified",
+  "notes": "This template is not a reviewed corpus. ValidateOnly must fail until every placeholder flag is removed, real WAVs exist, and a human has listened and written each reference. Do not copy model output into references.",
+  "cases": [
+    {
+      "id": "short-command",
+      "audio": "audio/short-command.wav",
+      "reference": "references/short-command.txt",
+      "expectedOutcome": "transcript",
+      "categories": ["short-command"],
+      "referenceProvenance": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "placeholder": true,
+      "recordingPrompt": "Record a short command you actually speak. Listen to the complete take before writing the reference."
+    },
+    {
+      "id": "paragraph",
+      "audio": "audio/paragraph.wav",
+      "reference": "references/paragraph.txt",
+      "expectedOutcome": "transcript",
+      "categories": ["paragraph"],
+      "referenceProvenance": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "placeholder": true,
+      "recordingPrompt": "Record a multi-sentence paragraph. Listen to the complete take before writing the reference."
+    },
+    {
+      "id": "dictionary-name",
+      "audio": "audio/dictionary-name.wav",
+      "reference": "references/dictionary-name.txt",
+      "expectedOutcome": "transcript",
+      "categories": ["dictionary"],
+      "referenceProvenance": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "placeholder": true,
+      "recordingPrompt": "Record a personal name that also exists in the Windows dictionary. Add the dictionary entry first. Listen before writing the reference."
+    },
+    {
+      "id": "dictionary-multiword",
+      "audio": "audio/dictionary-multiword.wav",
+      "reference": "references/dictionary-multiword.txt",
+      "expectedOutcome": "transcript",
+      "categories": ["dictionary"],
+      "referenceProvenance": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "placeholder": true,
+      "recordingPrompt": "Record a multi-word dictionary phrase. Add the phrase first. Listen before writing the reference."
+    },
+    {
+      "id": "dictionary-replacement",
+      "audio": "audio/dictionary-replacement.wav",
+      "reference": "references/dictionary-replacement.txt",
+      "expectedOutcome": "transcript",
+      "categories": ["dictionary"],
+      "referenceProvenance": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "placeholder": true,
+      "recordingPrompt": "Record a word or phrase that should be replaced by a dictionary entry. Add the replacement first. Listen before writing the reference."
+    },
+    {
+      "id": "numbers-punctuation",
+      "audio": "audio/numbers-punctuation.wav",
+      "reference": "references/numbers-punctuation.txt",
+      "expectedOutcome": "transcript",
+      "categories": ["numbers-punctuation"],
+      "referenceProvenance": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "placeholder": true,
+      "recordingPrompt": "Record digits, dates or amounts with spoken punctuation. Listen before writing the reference, including punctuation."
+    },
+    {
+      "id": "accent-european",
+      "audio": "audio/accent-european.wav",
+      "reference": "references/accent-european.txt",
+      "expectedOutcome": "transcript",
+      "categories": ["accent"],
+      "referenceProvenance": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "placeholder": true,
+      "recordingPrompt": "Record a short sentence in an accent or language advertised by the selected model. Parakeet v3 advertises 25 European languages with automatic detection. Do not add unadvertised languages. Listen before writing the reference."
+    },
+    {
+      "id": "silence",
+      "audio": "audio/silence.wav",
+      "expectedOutcome": "no-speech",
+      "categories": ["silence"],
+      "referenceProvenance": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "placeholder": true,
+      "recordingPrompt": "Record several seconds of near silence. Listen and confirm there is no speech. Do not write a text reference."
+    },
+    {
+      "id": "background-noise",
+      "audio": "audio/background-noise.wav",
+      "expectedOutcome": "no-speech",
+      "categories": ["background-noise"],
+      "referenceProvenance": "",
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "placeholder": true,
+      "recordingPrompt": "Record background noise without speech. Listen and confirm there is no speech. Do not write a text reference."
+    }
+  ]
+}

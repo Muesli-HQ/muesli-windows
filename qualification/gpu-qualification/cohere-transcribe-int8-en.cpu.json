@@ -1,0 +1,90 @@
+{
+  "SchemaVersion": 1,
+  "CreatedAtUtc": "2026-09-20T15:36:58.1118154+00:00",
+  "AudioPath": "C:\\Users\\USER\\.cache\\muesli\\native-asr\\sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01\\test_wavs\\en.wav",
+  "AudioSha256": "ccba9dbcd0a62a1e3e72ae6bf86eb4371dc80a1652f95c2b23553c9992cc252d",
+  "ReferencePath": null,
+  "Engine": "native-sherpa-onnx/coheretranscribe",
+  "Model": "cohere-transcribe-int8-en",
+  "Runs": 2,
+  "Provider": {
+    "Requested": "cpu",
+    "LoadedRuntime": "cpu",
+    "CudaPackInstalled": true,
+    "CudaPackVerified": true,
+    "NvidiaRuntimeComplete": true,
+    "DirectMlAvailable": false,
+    "Telemetry": {
+      "LastActiveProvider": "cpu",
+      "LastFallbackReason": null,
+      "LastModelLoadMs": 5150,
+      "LastWarmInferenceMs": null,
+      "LastWarmAudioMs": null,
+      "LastGpuEvidence": null,
+      "RecentAttempts": [
+        {
+          "Role": "OfflineTranscription",
+          "Provider": "cpu",
+          "ModelId": "cohere-transcribe-int8-en",
+          "Succeeded": true,
+          "ElapsedMs": 5150,
+          "Detail": "Active provider: cpu."
+        }
+      ]
+    }
+  },
+  "SherpaOnnxRuntime": {
+    "IsAvailable": true,
+    "IsCudaCapable": false,
+    "SelectedRuntime": "cpu",
+    "RuntimeDirectory": null,
+    "GpuDependencyCacheDirectory": "C:\\Users\\USER\\AppData\\Local\\muesli\\native-sherpa-cuda-dependencies\\cuda12-cudnn9",
+    "Diagnostic": "CPU only was requested, so the CUDA bundle was not considered.\r\nCPU Sherpa runtime loaded from C:\\Users\\USER\\projects\\muesli\\windows-native\\Muesli.Windows.CommandHost\\bin\\Debug\\net10.0-windows\\runtimes\\win-x64\\native."
+  },
+  "Report": {
+    "Summary": "Cohere Transcribe INT8 \u00B7  \u00B7 1030 ms warm wall \u00B7 RTF 0.179 \u00B7 deterministic yes",
+    "LaunchRecommendation": "Audio: en.wav\r\nBackend: native-sherpa-onnx/coheretranscribe\r\nModel: cohere-transcribe-int8-en\r\nProvider: cpu; device: ; compute: ; model reused: True",
+    "Results": [
+      {
+        "EngineId": "native-sherpa-onnx/coheretranscribe",
+        "ModelName": "cohere-transcribe-int8-en",
+        "AudioDurationMs": 5768,
+        "FirstRunWallMs": 6214,
+        "FirstRunModelInitMs": 5150,
+        "WarmInferenceMs": 1027,
+        "WarmWallMs": 1030,
+        "RealtimeFactor": 0.17857142857142858,
+        "TranscriptCharacterCount": 79,
+        "SegmentCount": 1,
+        "HasUsefulTimestamps": true,
+        "TimestampRange": "0-5768 ms",
+        "FirstRunBackend": "cpu",
+        "WarmBackend": "cpu",
+        "ThreadCount": 8,
+        "AudioPreprocessing": "in-memory 16 kHz mono conversion (1 ms)",
+        "AudioPreprocessingMs": 0,
+        "Success": true,
+        "ErrorMessage": "",
+        "RunCount": 2,
+        "TranscriptSha256": "3fa72ab6d2d58f4dcd6490f0fc221963f5b90f70cf983fa9776d698855cbe897",
+        "DistinctTranscriptCount": 1,
+        "DeterministicOutput": true,
+        "SegmentLayoutSha256": "297435902943135cdd723719ee0f39d97cd85aa7a22e385852fee62bf0445536",
+        "DistinctSegmentLayoutCount": 1,
+        "DeterministicSegments": true,
+        "SegmentsChronological": true,
+        "SegmentTextMatchesTranscript": true,
+        "MaximumSegmentDurationMs": 5768,
+        "Device": "",
+        "ComputeType": "",
+        "ModelInstanceReused": true,
+        "ReportedTranscriptionWallMs": 0,
+        "WordErrorRate": null,
+        "CharacterErrorRate": null,
+        "InitializationWallMs": 5158,
+        "ModelVerificationMs": 0,
+        "ModelVerificationSource": ""
+      }
+    ]
+  }
+}

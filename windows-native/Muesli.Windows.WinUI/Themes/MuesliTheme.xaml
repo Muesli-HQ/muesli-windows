@@ -1,0 +1,461 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Product palette and platform brush overrides.
+
+    SHARED RESOURCE CONTRACT — FROZEN.
+    Light, Dark, and HighContrast dictionaries below are the semantic color contract for every
+    WinUI page. Do not add, rename, or retune keys here from a page change. Request a new token
+    from the shell owner if a surface has no existing brush.
+
+    This dictionary is merged AFTER XamlControlsResources. Merged dictionaries resolve
+    last-wins, which is what actually lets these keys override WinUI's own control chrome —
+    declaring the same keys in Application.Resources.ThemeDictionaries does not, and the
+    controls silently keep their stock brushes.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        <ResourceDictionary.ThemeDictionaries>
+
+            <ResourceDictionary x:Key="Default">
+                <!-- product palette -->
+                <SolidColorBrush x:Key="MuesliBackgroundBrush" Color="#161719" />
+                <SolidColorBrush x:Key="MuesliBackgroundDeepBrush" Color="#111214" />
+                <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#111214" />
+                <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliHoverBrush" Color="#232528" />
+                <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#2E3340" />
+                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
+                <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#34D399" />
+                <SolidColorBrush x:Key="MuesliSuccessMutedBrush" Color="#2234D399" />
+                <SolidColorBrush x:Key="MuesliWarningBrush" Color="#FF9F43" />
+                <SolidColorBrush x:Key="MuesliErrorBrush" Color="#EF4444" />
+                <SolidColorBrush x:Key="MuesliErrorMutedBrush" Color="#33EF4444" />
+                <SolidColorBrush x:Key="MuesliTextDisabledBrush" Color="#40FFFFFF" />
+                <SolidColorBrush x:Key="MuesliControlFillBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliControlHoverBrush" Color="#2E3340" />
+                <SolidColorBrush x:Key="MuesliControlPressedBrush" Color="#232528" />
+                <SolidColorBrush x:Key="MuesliControlDisabledBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="MuesliFocusOuterBrush" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="MuesliOverlayBrush" Color="#99000000" />
+
+                <!-- platform text -->
+                <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#40FFFFFF" />
+                <SolidColorBrush x:Key="TextControlForeground" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#8FBAFA" />
+                <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#B4D0FC" />
+
+                <!-- platform control fills -->
+                <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#262830" />
+                <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#2E3340" />
+                <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#232528" />
+                <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="ControlFillColorTransparentBrush" Color="Transparent" />
+                <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="ControlSolidFillColorDefaultBrush" Color="#262830" />
+                <SolidColorBrush x:Key="ControlStrongFillColorDefaultBrush" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="ControlAltFillColorSecondaryBrush" Color="#232528" />
+                <SolidColorBrush x:Key="ControlAltFillColorTertiaryBrush" Color="#2E3340" />
+                <SolidColorBrush x:Key="ControlAltFillColorQuarternaryBrush" Color="#2E3340" />
+
+                <!-- platform strokes -->
+                <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#26FFFFFF" />
+                <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#2B2D33" />
+                <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="#1CFFFFFF" />
+
+                <!-- platform surfaces -->
+                <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#161719" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#111214" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#262830" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#262830" />
+                <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#161719" />
+                <SolidColorBrush x:Key="SubtleFillColorTransparentBrush" Color="Transparent" />
+                <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#232528" />
+                <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#2E3340" />
+
+                <!--
+                    platform accent.
+
+                    Overriding SystemAccentColor alone is NOT enough. WinUI derives its accent
+                    chrome from the *ramp* colours, not from SystemAccentColor: in a dark
+                    dictionary generic.xaml declares
+                        AccentFillColorDefaultBrush   Color="{ThemeResource SystemAccentColorLight2}"
+                        AccentTextFillColorPrimary…   Color="{ThemeResource SystemAccentColorLight3}"
+                        TextControlElevationBorderFocusedBrush  stop Color="{ThemeResource SystemAccentColorLight2}"
+                    and then aliases every control leaf with *StaticResource*, e.g.
+                        <StaticResource x:Key="ToggleSwitchFillOn"   ResourceKey="AccentFillColorDefaultBrush" />
+                        <StaticResource x:Key="ProgressBarForeground" ResourceKey="AccentFillColorDefaultBrush" />
+                    A StaticResource alias binds to generic.xaml's own brush instance, so an app
+                    override of AccentFillColorDefaultBrush never reaches the ToggleSwitch, the
+                    ProgressBar or the TextBox focus underline — which is why those rendered in the
+                    OS accent while buttons rendered Muesli blue. Overriding the ramp colours fixes
+                    the whole derived family in one place, so no page needs a local palette.
+                    Contrast themes are untouched: generic.xaml maps the same leaves to
+                    SystemColor* brushes there and Windows owns that pairing.
+                -->
+                <Color x:Key="SystemAccentColor">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorLight1">#4A85EC</Color>
+                <Color x:Key="SystemAccentColorLight2">#2F6FE0</Color>
+                <Color x:Key="SystemAccentColorLight3">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorDark1">#2A63C8</Color>
+                <Color x:Key="SystemAccentColorDark2">#24559F</Color>
+                <Color x:Key="SystemAccentColorDark3">#1D4680</Color>
+                <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3F7BE6" />
+                <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#2A63C8" />
+                <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#262830" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#C8FFFFFF" />
+
+                <!-- navigation: macOS-style filled pill, no left indicator bar -->
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#2E3340" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#2E3340" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#2E3340" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#232528" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#2E3340" />
+                <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="Transparent" />
+
+                <!-- segmented control: filled selected segment, no underline pill -->
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundSelected" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundSelected" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="SelectorBarItemForeground" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundPointerOver" Color="#232528" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundPointerOver" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundPressed" Color="#2E3340" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundPressed" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemPillFill" Color="Transparent" />
+                <SolidColorBrush x:Key="SelectorBarItemDisabledPillFill" Color="Transparent" />
+            </ResourceDictionary>
+
+            <ResourceDictionary x:Key="Dark">
+                <SolidColorBrush x:Key="MuesliBackgroundBrush" Color="#161719" />
+                <SolidColorBrush x:Key="MuesliBackgroundDeepBrush" Color="#111214" />
+                <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#111214" />
+                <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliHoverBrush" Color="#232528" />
+                <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#2E3340" />
+                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
+                <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#34D399" />
+                <SolidColorBrush x:Key="MuesliSuccessMutedBrush" Color="#2234D399" />
+                <SolidColorBrush x:Key="MuesliWarningBrush" Color="#FF9F43" />
+                <SolidColorBrush x:Key="MuesliErrorBrush" Color="#EF4444" />
+                <SolidColorBrush x:Key="MuesliErrorMutedBrush" Color="#33EF4444" />
+                <SolidColorBrush x:Key="MuesliTextDisabledBrush" Color="#40FFFFFF" />
+                <SolidColorBrush x:Key="MuesliControlFillBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliControlHoverBrush" Color="#2E3340" />
+                <SolidColorBrush x:Key="MuesliControlPressedBrush" Color="#232528" />
+                <SolidColorBrush x:Key="MuesliControlDisabledBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="MuesliFocusOuterBrush" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="MuesliOverlayBrush" Color="#99000000" />
+
+                <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#40FFFFFF" />
+                <SolidColorBrush x:Key="TextControlForeground" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#8FBAFA" />
+                <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#B4D0FC" />
+
+                <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#262830" />
+                <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#2E3340" />
+                <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#232528" />
+                <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="ControlFillColorTransparentBrush" Color="Transparent" />
+                <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="ControlSolidFillColorDefaultBrush" Color="#262830" />
+                <SolidColorBrush x:Key="ControlStrongFillColorDefaultBrush" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="ControlAltFillColorSecondaryBrush" Color="#232528" />
+                <SolidColorBrush x:Key="ControlAltFillColorTertiaryBrush" Color="#2E3340" />
+                <SolidColorBrush x:Key="ControlAltFillColorQuarternaryBrush" Color="#2E3340" />
+
+                <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#26FFFFFF" />
+                <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#2B2D33" />
+                <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="#1CFFFFFF" />
+
+                <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#161719" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#111214" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#262830" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#262830" />
+                <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#161719" />
+                <SolidColorBrush x:Key="SubtleFillColorTransparentBrush" Color="Transparent" />
+                <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#232528" />
+                <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#2E3340" />
+
+                <!-- Accent ramp: see the note in the Default dictionary above. -->
+                <Color x:Key="SystemAccentColor">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorLight1">#4A85EC</Color>
+                <Color x:Key="SystemAccentColorLight2">#2F6FE0</Color>
+                <Color x:Key="SystemAccentColorLight3">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorDark1">#2A63C8</Color>
+                <Color x:Key="SystemAccentColorDark2">#24559F</Color>
+                <Color x:Key="SystemAccentColorDark3">#1D4680</Color>
+                <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3F7BE6" />
+                <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#2A63C8" />
+                <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#262830" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#C8FFFFFF" />
+
+                <!-- navigation: macOS-style filled pill, no left indicator bar -->
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#2E3340" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#2E3340" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#2E3340" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#232528" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#2E3340" />
+                <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="Transparent" />
+
+                <!-- segmented control: filled selected segment, no underline pill -->
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundSelected" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundSelected" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="SelectorBarItemForeground" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundPointerOver" Color="#232528" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundPointerOver" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundPressed" Color="#2E3340" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundPressed" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemPillFill" Color="Transparent" />
+                <SolidColorBrush x:Key="SelectorBarItemDisabledPillFill" Color="Transparent" />
+            </ResourceDictionary>
+
+            <ResourceDictionary x:Key="Light">
+                <SolidColorBrush x:Key="MuesliBackgroundBrush" Color="#F6F7F9" />
+                <SolidColorBrush x:Key="MuesliBackgroundDeepBrush" Color="#EEF0F4" />
+                <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#F0F2F5" />
+                <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#F0F2F5" />
+                <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#F0F2F5" />
+                <SolidColorBrush x:Key="MuesliHoverBrush" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#1A000000" />
+                <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#0F000000" />
+                <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#E6000000" />
+                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#99000000" />
+                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#61000000" />
+                <SolidColorBrush x:Key="MuesliAccentBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#1F2364C9" />
+                <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#1F62D6" />
+                <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#0F9F6E" />
+                <SolidColorBrush x:Key="MuesliSuccessMutedBrush" Color="#1F0F9F6E" />
+                <SolidColorBrush x:Key="MuesliWarningBrush" Color="#B4620A" />
+                <SolidColorBrush x:Key="MuesliErrorBrush" Color="#C2352F" />
+                <SolidColorBrush x:Key="MuesliErrorMutedBrush" Color="#22C2352F" />
+                <SolidColorBrush x:Key="MuesliTextDisabledBrush" Color="#3B000000" />
+                <SolidColorBrush x:Key="MuesliControlFillBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="MuesliControlHoverBrush" Color="#F3F5F8" />
+                <SolidColorBrush x:Key="MuesliControlPressedBrush" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="MuesliControlDisabledBrush" Color="#F6F7F9" />
+                <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="MuesliFocusOuterBrush" Color="#000000" />
+                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="MuesliOverlayBrush" Color="#66000000" />
+
+                <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E6000000" />
+                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#99000000" />
+                <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#61000000" />
+                <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#3B000000" />
+                <SolidColorBrush x:Key="TextControlForeground" Color="#E6000000" />
+                <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#E6000000" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#61000000" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#61000000" />
+                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#1D55AD" />
+                <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#174892" />
+
+                <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#F3F5F8" />
+                <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#F6F7F9" />
+                <SolidColorBrush x:Key="ControlFillColorTransparentBrush" Color="Transparent" />
+                <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ControlSolidFillColorDefaultBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ControlStrongFillColorDefaultBrush" Color="#99000000" />
+                <SolidColorBrush x:Key="ControlAltFillColorSecondaryBrush" Color="#F3F5F8" />
+                <SolidColorBrush x:Key="ControlAltFillColorTertiaryBrush" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="ControlAltFillColorQuarternaryBrush" Color="#DEE8F8" />
+
+                <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#1A000000" />
+                <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#24000000" />
+                <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="#000000" />
+                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#14000000" />
+                <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#DDE1E8" />
+                <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#0F000000" />
+                <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="#1A000000" />
+
+                <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#F6F7F9" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#EEF0F4" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#F0F2F5" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#F0F2F5" />
+                <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#F6F7F9" />
+                <SolidColorBrush x:Key="SubtleFillColorTransparentBrush" Color="Transparent" />
+                <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#DEE8F8" />
+
+                <!--
+                    Accent ramp — Light. A light dictionary derives from the Dark* ramp:
+                    generic.xaml uses SystemAccentColorDark1 for AccentFillColorDefaultBrush and
+                    the TextBox focus underline, and SystemAccentColorDark2/3 for accent text.
+                    See the note in the Default dictionary for why the ramp, not the brushes,
+                    is the override point.
+                -->
+                <Color x:Key="SystemAccentColor">#2364C9</Color>
+                <Color x:Key="SystemAccentColorLight1">#4C86DE</Color>
+                <Color x:Key="SystemAccentColorLight2">#7BA9EC</Color>
+                <Color x:Key="SystemAccentColorLight3">#A9C8F4</Color>
+                <Color x:Key="SystemAccentColorDark1">#1F62D6</Color>
+                <Color x:Key="SystemAccentColorDark2">#2364C9</Color>
+                <Color x:Key="SystemAccentColorDark3">#1D55AD</Color>
+                <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#1F62D6" />
+                <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#1B58C0" />
+                <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#174CA6" />
+                <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#C8FFFFFF" />
+
+                <!-- navigation: macOS-style filled pill, no left indicator bar -->
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#E6000000" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#E6000000" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#E6000000" />
+                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#99000000" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#E6000000" />
+                <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#E6000000" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="Transparent" />
+
+                <!-- segmented control: filled selected segment, no underline pill -->
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundSelected" Color="#1F62D6" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundSelected" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="SelectorBarItemForeground" Color="#99000000" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundPointerOver" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundPointerOver" Color="#E6000000" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundPressed" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundPressed" Color="#E6000000" />
+                <SolidColorBrush x:Key="SelectorBarItemPillFill" Color="Transparent" />
+                <SolidColorBrush x:Key="SelectorBarItemDisabledPillFill" Color="Transparent" />
+            </ResourceDictionary>
+
+            <!--
+                High Contrast maps the product names onto system colours only. The platform
+                brushes already behave correctly in Contrast themes, so nothing else is
+                redefined here; overriding them would break the system's own adjustment.
+            -->
+            <ResourceDictionary x:Key="HighContrast">
+                <!-- Contrast dictionaries use system brush resources directly so Windows owns
+                     the foreground/background pairing and no product colour is baked in. -->
+                <StaticResource x:Key="MuesliBackgroundBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliBackgroundDeepBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliSidebarBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliSurfaceBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliSurfaceRaisedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliRaisedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliRaisedSurfaceBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliHoverBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliSelectedBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliBorderBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliBorderSoftBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliTextPrimaryBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliTextSecondaryBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliTextTertiaryBrush" ResourceKey="SystemColorGrayTextColorBrush" />
+                <StaticResource x:Key="MuesliAccentBrush" ResourceKey="SystemColorHotlightColorBrush" />
+                <StaticResource x:Key="MuesliAccentMutedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliAccentStrongBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliSuccessBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliSuccessMutedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliWarningBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliErrorBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliErrorMutedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliTextDisabledBrush" ResourceKey="SystemColorGrayTextColorBrush" />
+                <StaticResource x:Key="MuesliControlFillBrush" ResourceKey="SystemColorButtonFaceColorBrush" />
+                <StaticResource x:Key="MuesliControlHoverBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliControlPressedBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliControlDisabledBrush" ResourceKey="SystemColorButtonFaceColorBrush" />
+                <StaticResource x:Key="MuesliBorderStrongBrush" ResourceKey="SystemColorButtonTextColorBrush" />
+                <StaticResource x:Key="MuesliFocusOuterBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliFocusInnerBrush" ResourceKey="SystemColorHighlightTextColorBrush" />
+                <!--
+                    High Contrast may only alias SystemColor* and cannot set Opacity. A full-window
+                    text-colored overlay would hide the page, so the feature-tour scrim is cleared
+                    to transparent in MainPage when Contrast themes are active.
+                -->
+                <StaticResource x:Key="MuesliOverlayBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="FocusStrokeColorOuterBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="FocusStrokeColorInnerBrush" ResourceKey="SystemColorHighlightTextColorBrush" />
+            </ResourceDictionary>
+        </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>
