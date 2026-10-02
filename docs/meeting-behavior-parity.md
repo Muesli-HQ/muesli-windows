@@ -112,3 +112,11 @@ The first repair attempt was redirected by Windows into the command process's pr
 The packaged application then saved notes successfully, retained a **Notes only** meeting after discarding audio, and reopened that entry with the exact written text after a restart. SQLite confirmed no transcript or audio references on that entry. The smoke entry was deleted through the UI after verification, and the identified test recordings were archived outside the profile. The library again contains the original 217 dictations and 7 meetings.
 
 The publication checkpoint also includes the accumulated dictation work: rolling capture transcription, model warm-up and idle release, low-memory fallback, RMS-driven indicator animation, and the single WPF indicator renderer. Calendar integration remains excluded.
+
+## Publication checkpoint — 2 October 2026
+
+- Reviewed and committed the accumulated meeting, dictation, and indicator changes as `d1b187b` on `codex/meeting-dictation-parity`, based on the current `main`. The earlier WinUI migration is already merged and is not repeated in this PR.
+- Pushed the branch and opened [PR #39](https://github.com/Muesli-HQ/muesli-windows/pull/39). Next action: review the PR and its CI results before merging. No merge was performed.
+- Full Windows test suite: **1,095 passed, 30 skipped, 0 failed**. Optional native Swift/streaming, real-media, and operator qualification fixtures were unavailable. The shared Swift bridge remains unqualified; the existing managed fallback is active.
+- WinUI x64 build and Debug MSIX build passed with zero compiler warnings/errors. MSIX payload smoke passed with `-SkipLaunch`; signed installation was not tested.
+- Separately relaunched the packaged development app in the production profile. Verified the visible dashboard, standalone white indicator mark, compact 44 × 28 and hover 220 × 36 DIP bounds, and zero fresh startup errors. Existing recordings, screenshots, private profile data, and local test outputs remain excluded from Git.
