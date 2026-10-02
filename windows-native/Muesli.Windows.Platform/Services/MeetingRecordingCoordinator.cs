@@ -35,7 +35,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             transcriptionClient,
             _persistence,
             logService: logService);
-        _capture = new MeetingCaptureSession(_persistence, logService);
+        _capture = new MeetingCaptureSession(_persistence, transcriptionClient, logService);
         _recovery = new MeetingRecoveryWorkflow(_persistence, logService);
         _capture.BindRepairHost(new MeetingCaptureRepairHost(
             IsRecording: () => IsRecording,
@@ -64,6 +64,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     public MeetingSessionState State => _stateMachine.State;
     public bool IsRecording => State is MeetingSessionState.Recording or MeetingSessionState.DegradedRecording;
     public bool IsBusy => State is MeetingSessionState.Preparing or MeetingSessionState.Stopping or MeetingSessionState.Finalizing;
+    public PersistedMeeting? ResumedMeeting => _journal?.ResumedMeeting;
 
     public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverableSessions() =>
         _recovery.Discover();
@@ -92,12 +93,15 @@ public sealed class MeetingRecordingCoordinator : IDisposable
         bool retainRecording = true,
         int? targetProcessId = null,
         CancellationToken cancellationToken = default,
-        LiveTranscriptionConfiguration? liveConfiguration = null)
+        LiveTranscriptionConfiguration? liveConfiguration = null,
+        PersistedMeeting? resumedMeeting = null)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ThrowIfDisposed();
+            if (resumedMeeting is not null && !MeetingContinuation.CanContinue(resumedMeeting))
+                throw new InvalidOperationException("Only completed meetings can be resumed.");
             if (IsRecording || IsBusy)
             {
                 throw new InvalidOperationException("A meeting session is already active.");
@@ -127,6 +131,8 @@ public sealed class MeetingRecordingCoordinator : IDisposable
                 _targetProcessId,
                 liveConfiguration?.ModelId,
                 liveConfiguration?.OwnershipMode);
+            _journal = _journal with { ResumedMeeting = resumedMeeting };
+            _persistence.Save(_journal);
             _lifecycleCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _capture.Prepare(_startedAt, resolvedMicrophone, _targetProcessId, _liveConfiguration, resetLiveResult: true);
 
@@ -186,7 +192,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
         try
         {
             ThrowIfDisposed();
-            if (!IsRecording)
+            if (!IsRecording && State != MeetingSessionState.RecoverableInterruption)
             {
                 throw new InvalidOperationException("Meeting recording is not running.");
             }
@@ -195,7 +201,8 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             {
                 _journal = _journal with { RetainRecording = retainRecording };
             }
-            Transition(MeetingSessionTrigger.Stop, "user or qualified auto-stop requested");
+            Transition(State == MeetingSessionState.RecoverableInterruption
+                ? MeetingSessionTrigger.FinalizeInterrupted : MeetingSessionTrigger.Stop, "user requested stop");
             StopHealthLoop();
             SaveJournalState(MeetingSessionState.Stopping);
             await _capture.CheckpointAllAsync().ConfigureAwait(false);
@@ -571,7 +578,9 @@ public sealed class MeetingRecordingCoordinator : IDisposable
         LogSessionDiagnostic(outcome.TerminalState == MeetingSessionState.Completed
             ? "finalized-awaiting-persistence"
             : "failed-no-transcript");
-        return outcome.Result;
+        // Combine retained playback only after ASR has consumed the new capture; prior speech is appended by the document workflow.
+        var playback = _persistence.Store.BuildResumedPlaybackTracks(_journal, outcome.Result.MicAudioPath, outcome.Result.SystemAudioPath);
+        return outcome.Result with { MicAudioPath = playback.MicrophonePath, SystemAudioPath = playback.SystemPath };
     }
 
     private async Task CheckpointForInterruptionUnderGateAsync(

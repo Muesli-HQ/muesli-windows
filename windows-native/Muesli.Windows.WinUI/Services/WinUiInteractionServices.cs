@@ -141,6 +141,23 @@ public sealed class WinUiDialogService(Func<FrameworkElement?> xamlRootOwner) : 
         await dialog.ShowAsync();
     }
 
+    public async Task<AppDialogChoice> ChooseAsync(string message, string title, string primaryLabel,
+        string secondaryLabel, string cancelLabel, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var dialog = CreateDialog(message, title);
+        dialog.PrimaryButtonText = primaryLabel;
+        dialog.SecondaryButtonText = secondaryLabel;
+        dialog.CloseButtonText = cancelLabel;
+        dialog.DefaultButton = ContentDialogButton.Close;
+        return await dialog.ShowAsync() switch
+        {
+            ContentDialogResult.Primary => AppDialogChoice.Primary,
+            ContentDialogResult.Secondary => AppDialogChoice.Secondary,
+            _ => AppDialogChoice.Cancel
+        };
+    }
+
     private ContentDialog CreateDialog(string message, string title)
     {
         var owner = xamlRootOwner()

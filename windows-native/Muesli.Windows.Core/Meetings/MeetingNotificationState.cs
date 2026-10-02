@@ -105,13 +105,13 @@ public sealed class MeetingNotificationSuppressionState
         bool isRecording,
         bool isBusy)
     {
-        if (!detectionEnabled)
+        if (!detectionEnabled && request.Kind != MeetingNotificationKind.SignalLost)
         {
             return MeetingNotificationDecision.Suppress(
                 MeetingNotificationOutcome.SuppressedDisabled, "meeting detection is disabled", request.PromptId);
         }
 
-        if (isRecording)
+        if (isRecording && request.Kind != MeetingNotificationKind.SignalLost)
         {
             return MeetingNotificationDecision.Suppress(
                 MeetingNotificationOutcome.RecordingAlreadyActive, "a meeting is already recording", request.PromptId);
@@ -122,6 +122,10 @@ public sealed class MeetingNotificationSuppressionState
             return MeetingNotificationDecision.Suppress(
                 MeetingNotificationOutcome.SuppressedBusy, "another meeting operation is busy", request.PromptId);
         }
+
+        if (request.Kind == MeetingNotificationKind.SignalLost && !isRecording)
+            return MeetingNotificationDecision.Suppress(
+                MeetingNotificationOutcome.SuppressedBusy, "no active recording", request.PromptId);
 
         if (IsVisible && string.Equals(VisiblePromptId, request.PromptId, StringComparison.OrdinalIgnoreCase))
         {
@@ -141,7 +145,8 @@ public sealed class MeetingNotificationSuppressionState
                 MeetingNotificationOutcome.SuppressedDuplicate, "this meeting episode was already dismissed", request.PromptId);
         }
 
-        return new MeetingNotificationDecision(true, request.IsScheduled
+        return new MeetingNotificationDecision(true, request.Kind == MeetingNotificationKind.SignalLost
+            ? MeetingNotificationOutcome.MeetingSignalLost : request.IsScheduled
             ? MeetingNotificationOutcome.UpcomingScheduledMeeting
             : MeetingNotificationOutcome.ActiveMeetingDetected,
             "prompt allowed", request.PromptId);

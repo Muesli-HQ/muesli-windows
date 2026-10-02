@@ -524,7 +524,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Saves the chosen anchor. It does not open a mock indicator: the real
-    /// <c>DictationIndicatorWindow</c> is driven by dictation state and by the "Show floating
+    /// indicator is driven by dictation state and by the "Show floating
     /// indicator" setting, and setup must not stage a window that is not the live one.
     /// </summary>
     /// <remarks>

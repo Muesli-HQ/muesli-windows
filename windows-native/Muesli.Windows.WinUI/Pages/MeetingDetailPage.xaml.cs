@@ -10,6 +10,7 @@ public sealed partial class MeetingDetailPage : Page
     public MeetingDetailViewModel ViewModel { get; } = new(
         App.Library,
         App.Settings,
+        App.Meetings,
         App.Clipboard,
         App.FilePickers,
         App.Dialogs,
@@ -29,6 +30,8 @@ public sealed partial class MeetingDetailPage : Page
                 UpdateStatusSeverity();
             }
 
+            if (args.PropertyName == nameof(ViewModel.Transcript)) SavedTranscriptFeed.Update(null, ViewModel.Transcript);
+
             if (args.PropertyName is nameof(ViewModel.ShowNotesTab) or null or "")
             {
                 SyncTabBar();
@@ -41,6 +44,7 @@ public sealed partial class MeetingDetailPage : Page
         // WinUI fell back to the first focusable element in the window — the sidebar's collapse
         // toggle. Put focus on the one action the page still offers instead.
         ViewModel.MeetingRemoved += OnMeetingRemoved;
+        ViewModel.RecordingStarted += OnRecordingStarted;
         Loaded += (_, _) =>
         {
             ApplyResponsiveLayout(ActualWidth);
@@ -52,6 +56,7 @@ public sealed partial class MeetingDetailPage : Page
         {
             ViewModel.LibraryChanged -= OnLibraryChanged;
             ViewModel.MeetingRemoved -= OnMeetingRemoved;
+            ViewModel.RecordingStarted -= OnRecordingStarted;
             ViewModel.Dispose();
         };
     }
@@ -69,6 +74,11 @@ public sealed partial class MeetingDetailPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        if (e.Parameter is string id && id == App.Meetings.ActiveMeetingId)
+        {
+            DispatcherQueue.TryEnqueue(() => Frame.Navigate(typeof(MeetingsPage)));
+            return;
+        }
         ViewModel.Load(e.Parameter as string ?? "");
         SyncTabBar();
         UpdateStatusSeverity();
@@ -77,6 +87,12 @@ public sealed partial class MeetingDetailPage : Page
     private void Back_Click(object sender, RoutedEventArgs e)
     {
         if (Frame.CanGoBack) Frame.GoBack();
+    }
+
+    private void OnRecordingStarted(object? sender, EventArgs e) => Frame.Navigate(typeof(MeetingsPage));
+    private void RelatedMeeting_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string id }) Frame.Navigate(typeof(MeetingDetailPage), id);
     }
 
     private void OnLibraryChanged(object? sender, EventArgs e) =>

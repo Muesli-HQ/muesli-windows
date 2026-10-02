@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Muesli.Windows.Core.Services;
 using MediaColor = System.Windows.Media.Color;
@@ -42,7 +43,7 @@ public partial class IndicatorWindow : Window
     private double _cornerRadiusDip = FloatingIndicatorLayout.CompactIdleRadius;
     private double _windowOpacity = 1.0;
 
-    private double _targetPeak;
+    private double _targetLevel;
     private DateTime _waveStart = DateTime.UtcNow;
 
     /// <summary>The last snapshot applied, used to detect amplitude-only frames that must not render.</summary>
@@ -155,7 +156,7 @@ public partial class IndicatorWindow : Window
         _sessionId = snapshot.SessionId;
         if (snapshot.Amplitude >= 0)
         {
-            _targetPeak = Math.Clamp(snapshot.Amplitude, 0f, 1f);
+            _targetLevel = Math.Clamp(snapshot.Amplitude, 0f, 1f);
         }
 
         // Amplitude-only frames arrive at up to 30 fps while recording. They only move the live
@@ -279,7 +280,7 @@ public partial class IndicatorWindow : Window
                 BuildIdle(hovered, brush);
                 break;
             case FloatingIndicatorState.Preparing:
-                BuildWaveform(IndicatorWaveform.BarCountFor(state), brush);
+                BuildWaveform(IndicatorWaveform.BarCount, brush);
                 break;
             case FloatingIndicatorState.Recording:
                 BuildRecording(brush);
@@ -320,7 +321,7 @@ public partial class IndicatorWindow : Window
                 ? $"Hold {_hotkeyLabel} to dictate, or double-tap for hands-free"
                 : $"Hold {_hotkeyLabel} to dictate",
             FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
+            FontWeight = FontWeights.Normal,
             Foreground = new SolidColorBrush(MediaColor.FromArgb(0xBF, 0xFF, 0xFF, 0xFF)),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(7, 0, 0, 0)
@@ -356,16 +357,13 @@ public partial class IndicatorWindow : Window
 
     private void BuildRecording(Brush brush)
     {
+        // macOS layout: the left control sits in a 10-point box at x=7, the five bars are centred
+        // on the whole 76-point pill, and the stop square is 8 points from the right edge. Columns
+        // here clipped the 27-point waveform down to three visible bars.
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
-
-        // Symmetric 16/…/16 columns keep the waveform centred on the pill exactly as the macOS
-        // reference centres it across the full width.
         var isMeeting = _owner == IndicatorOwnerKind.Meeting;
         var leftGlyph = isMeeting
-            ? (_meetingPaused ? "▶" : "❚❚")
+            ? (_meetingPaused ? "▶" : "⏸")
             : FloatingIndicatorLayout.RecordingCancelGlyph;
         var left = new TextBlock
         {
@@ -377,10 +375,12 @@ public partial class IndicatorWindow : Window
             Foreground = new SolidColorBrush(MediaColor.FromArgb(
                 isMeeting ? FloatingIndicatorLayout.MeetingControlAlpha : FloatingIndicatorLayout.RecordingCancelAlpha,
                 0xFF, 0xFF, 0xFF)),
-            HorizontalAlignment = HorizontalAlignment.Center,
+            Width = 10,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(7, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center
         };
-        Grid.SetColumn(left, 0);
         grid.Children.Add(left);
 
         var wave = new StackPanel
@@ -389,7 +389,7 @@ public partial class IndicatorWindow : Window
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
-        var barCount = IndicatorWaveform.BarCountFor(FloatingIndicatorState.Recording);
+        var barCount = IndicatorWaveform.BarCount;
         for (var index = 0; index < barCount; index++)
         {
             var bar = new Border
@@ -405,7 +405,6 @@ public partial class IndicatorWindow : Window
             _waveBars.Add(bar);
             wave.Children.Add(bar);
         }
-        Grid.SetColumn(wave, 1);
         grid.Children.Add(wave);
 
         var stop = new Border
@@ -418,7 +417,6 @@ public partial class IndicatorWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, FloatingIndicatorLayout.StopSquareRightMargin, 0)
         };
-        Grid.SetColumn(stop, 2);
         grid.Children.Add(stop);
 
         ContentHost.Children.Add(grid);
@@ -426,6 +424,53 @@ public partial class IndicatorWindow : Window
 
     private void BuildTranscribing(Brush brush)
     {
+        // macOS: an 18-point icon and "Transcribing" in 11pt regular at 82% white, 6 points apart,
+        // centred. No cancel glyph; Esc and right-click still cancel.
+        var stack = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        stack.Children.Add(TranscribingIcon(brush));
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Transcribing",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(MediaColor.FromArgb(0xD1, 0xFF, 0xFF, 0xFF)),
+            Margin = new Thickness(6, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        ContentHost.Children.Add(stack);
+    }
+
+    private static FrameworkElement TranscribingIcon(Brush brush)
+    {
+        var rotation = new RotateTransform();
+        var icon = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse(FloatingIndicatorLayout.TranscribingIconPathData),
+            Fill = brush,
+            Width = 18,
+            Height = 18,
+            RenderTransformOrigin = new Point(0.5, 0.5),
+            RenderTransform = rotation,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var wiggle = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever };
+        foreach (var (seconds, degrees) in FloatingIndicatorLayout.TranscribingWiggleKeys)
+        {
+            wiggle.KeyFrames.Add(new EasingDoubleKeyFrame(degrees, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(seconds))));
+        }
+        rotation.BeginAnimation(RotateTransform.AngleProperty, wiggle);
+        return icon;
+    }
+
+    private void BuildStatus(bool isError, Brush brush)
+    {
+        // macOS showNotice: a solid status pill with a bold glyph and 11pt medium text in dark ink,
+        // centred as one group.
+        var ink = _highContrast ? brush : new SolidColorBrush(MediaColor.FromArgb(0xF2, 0x1A, 0x14, 0x0D));
         var stack = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -434,67 +479,23 @@ public partial class IndicatorWindow : Window
         };
         stack.Children.Add(new TextBlock
         {
-            Text = "✎",
-            FontSize = 11,
-            Foreground = brush,
+            Text = isError ? "!" : "✓",
+            FontSize = 14,
+            FontWeight = FontWeights.Bold,
+            Foreground = ink,
             VerticalAlignment = VerticalAlignment.Center
         });
         stack.Children.Add(new TextBlock
         {
-            Text = "Transcribing",
-            FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(MediaColor.FromArgb(0xD1, 0xFF, 0xFF, 0xFF)),
-            Margin = new Thickness(5, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        if (_owner != IndicatorOwnerKind.Meeting)
-        {
-            stack.Children.Add(new TextBlock
-            {
-                Text = "×",
-                FontSize = 10,
-                Foreground = new SolidColorBrush(MediaColor.FromArgb(0x99, 0xFF, 0xFF, 0xFF)),
-                Margin = new Thickness(8, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center
-            });
-        }
-        ContentHost.Children.Add(stack);
-    }
-
-    private void BuildStatus(bool isError, Brush brush)
-    {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        var dot = new Border
-        {
-            Width = 7,
-            Height = 7,
-            CornerRadius = new CornerRadius(99),
-            Background = new SolidColorBrush(isError
-                ? MediaColor.FromRgb(0xF8, 0x71, 0x71)
-                : MediaColor.FromRgb(0x34, 0xD3, 0x99)),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        Grid.SetColumn(dot, 0);
-        grid.Children.Add(dot);
-
-        var label = new TextBlock
-        {
             Text = string.IsNullOrWhiteSpace(_message) ? (isError ? "Error" : "Done") : _message,
             FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(MediaColor.FromArgb(0xD1, 0xFF, 0xFF, 0xFF)),
-            Margin = new Thickness(8, 0, 0, 0),
+            FontWeight = FontWeights.Medium,
+            Foreground = ink,
+            Margin = new Thickness(6, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis
-        };
-        Grid.SetColumn(label, 1);
-        grid.Children.Add(label);
-
-        ContentHost.Children.Add(grid);
+        });
+        ContentHost.Children.Add(stack);
     }
 
     // ─── Waveform animation ───────────────────────────────────────────────────────────────────
@@ -505,10 +506,11 @@ public partial class IndicatorWindow : Window
 
         if (_state == FloatingIndicatorState.Recording)
         {
-            var smoothed = _smoother.Next(_targetPeak);
+            var smoothed = _smoother.Next(IndicatorWaveform.AmplitudeFromRms(_targetLevel));
             for (var index = 0; index < _waveBars.Count; index++)
             {
-                _waveBars[index].Height = FloatingIndicatorLayout.RecordingBarHeight((float)smoothed, index);
+                _waveBars[index].Height = IndicatorWaveform.LevelBarHeight(smoothed, index);
+                _waveBars[index].Opacity = IndicatorWaveform.LevelOpacity;
             }
             return;
         }
@@ -518,11 +520,9 @@ public partial class IndicatorWindow : Window
             var elapsed = (DateTime.UtcNow - _waveStart).TotalSeconds;
             for (var index = 0; index < _waveBars.Count; index++)
             {
-                var scale = IndicatorWaveform.PreparingPulseScale(elapsed, index);
-                var multiplier = FloatingIndicatorLayout.PreparingBarMultipliers[index];
-                var span = (FloatingIndicatorLayout.WaveformMaxHeightFor(FloatingIndicatorState.Preparing)
-                            - FloatingIndicatorLayout.WaveformMinHeight) * multiplier;
-                _waveBars[index].Height = FloatingIndicatorLayout.WaveformMinHeight + scale * span;
+                var (height, opacity) = IndicatorWaveform.WaitingBar(elapsed, index);
+                _waveBars[index].Height = height;
+                _waveBars[index].Opacity = opacity;
             }
         }
     }
@@ -540,7 +540,7 @@ public partial class IndicatorWindow : Window
         {
             FloatingIndicatorState.Idle => hovered ? 0.14 : 0.22,
             FloatingIndicatorState.Preparing or FloatingIndicatorState.Recording or FloatingIndicatorState.Transcribing => 0.16,
-            FloatingIndicatorState.Success or FloatingIndicatorState.Error => 0.14,
+            FloatingIndicatorState.Success or FloatingIndicatorState.Error => 0.24,
             _ => 0.22
         };
         return _highContrast
@@ -552,19 +552,26 @@ public partial class IndicatorWindow : Window
     {
         if (_highContrast) return SystemColors.ControlBrush;
 
-        var accent = ParseAccent(_recordingAccentHex);
-        var isRecording = state == FloatingIndicatorState.Recording;
-        var baseColor = isRecording ? accent : MediaColor.FromRgb(0x1E, 0x1E, 0x2E);
+        // macOS: recording is the solid accent (its blur is hidden); notices are solid green or
+        // amber; every other state is the dark tint over the blur, emulated by GlassFill.
+        switch (state)
+        {
+            case FloatingIndicatorState.Recording:
+                var accent = ParseAccent(_recordingAccentHex);
+                return new SolidColorBrush(MediaColor.FromArgb((byte)(255 * 0.85), accent.R, accent.G, accent.B));
+            case FloatingIndicatorState.Success:
+                return new SolidColorBrush(MediaColor.FromArgb((byte)(255 * 0.92), 0x34, 0xC7, 0x59));
+            case FloatingIndicatorState.Error:
+                return new SolidColorBrush(MediaColor.FromArgb((byte)(255 * 0.92), 0xD9, 0x9A, 0x11));
+        }
+
         var alpha = state switch
         {
             FloatingIndicatorState.Idle => hovered ? 0.72 : 0.44,
-            FloatingIndicatorState.Preparing => 0.62,
-            FloatingIndicatorState.Recording => 0.85,
-            FloatingIndicatorState.Transcribing => 0.62,
-            FloatingIndicatorState.Success or FloatingIndicatorState.Error => 0.72,
-            _ => 0.44
+            _ => 0.62
         };
-        return new SolidColorBrush(MediaColor.FromArgb((byte)(255 * alpha), baseColor.R, baseColor.G, baseColor.B));
+        var (a, r, g, b) = FloatingIndicatorLayout.GlassFill(FloatingIndicatorLayout.GlassTintRgb, alpha);
+        return new SolidColorBrush(MediaColor.FromArgb(a, r, g, b));
     }
 
     private static MediaColor ParseAccent(string? hex)
@@ -590,15 +597,15 @@ public partial class IndicatorWindow : Window
         state switch
         {
             FloatingIndicatorState.Idle => hovered ? new Thickness(12, 0, 12, 0) : new Thickness(0),
-            FloatingIndicatorState.Preparing or FloatingIndicatorState.Recording => new Thickness(10, 0, 10, 0),
-            _ => new Thickness(12, 0, 12, 0)
+            FloatingIndicatorState.Preparing or FloatingIndicatorState.Recording => new Thickness(0),
+            FloatingIndicatorState.Transcribing => new Thickness(14, 0, 14, 0),
+            _ => new Thickness(18, 0, 18, 0)
         };
 
-    private static FrameworkElement MuesliGlyph(double size, Thickness margin)
+    private FrameworkElement MuesliGlyph(double size, Thickness margin)
     {
-        var bars = new[] { 0.45, 0.65, 0.90, 1.0, 0.45, 1.0, 0.90, 0.65, 0.45 };
-        var barWidth = size / 13;
-        var spacing = size / 30;
+        // The app icon's 13-bar "M" brand mark, pixel-snapped so the bars stay separate.
+        var (barWidth, gap, heights) = FloatingIndicatorLayout.BrandMarkGeometry(size, DpiScale());
         var stack = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -606,13 +613,13 @@ public partial class IndicatorWindow : Window
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
-        foreach (var multiplier in bars)
+        for (var index = 0; index < heights.Length; index++)
         {
             stack.Children.Add(new Border
             {
                 Width = barWidth,
-                Height = Math.Max(barWidth, multiplier * size),
-                Margin = new Thickness(spacing / 2, 0, spacing / 2, 0),
+                Height = heights[index],
+                Margin = new Thickness(0, 0, index < heights.Length - 1 ? gap : 0, 0),
                 CornerRadius = new CornerRadius(barWidth / 2),
                 Background = new SolidColorBrush(MediaColor.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)),
                 VerticalAlignment = VerticalAlignment.Center
@@ -695,6 +702,15 @@ public partial class IndicatorWindow : Window
 
     private void Pill_MouseEnter(object sender, MouseEventArgs e)
     {
+        if (_visible && _state == FloatingIndicatorState.Recording && _owner == IndicatorOwnerKind.Meeting)
+        {
+            var origin = PointToScreen(new Point(0, 0));
+            var corner = PointToScreen(new Point(ActualWidth, ActualHeight));
+            _sendCommand(new IndicatorCommand { SessionId = _sessionId, Type = IndicatorCommandType.HoverEnter,
+                IndicatorX = (int)origin.X, IndicatorY = (int)origin.Y,
+                IndicatorWidth = (int)(corner.X - origin.X), IndicatorHeight = (int)(corner.Y - origin.Y) });
+            return;
+        }
         if (_state != FloatingIndicatorState.Idle || !_visible || _suppressHoverUntilMouseLeaves) return;
         if (_hovered) return;
         _hovered = true;
@@ -704,6 +720,11 @@ public partial class IndicatorWindow : Window
 
     private void Pill_MouseLeave(object sender, MouseEventArgs e)
     {
+        if (_state == FloatingIndicatorState.Recording && _owner == IndicatorOwnerKind.Meeting)
+        {
+            _sendCommand(new IndicatorCommand { SessionId = _sessionId, Type = IndicatorCommandType.HoverExit });
+            return;
+        }
         if (_state != FloatingIndicatorState.Idle) return;
         _suppressHoverUntilMouseLeaves = false;
         _sendCommand(new IndicatorCommand { SessionId = _sessionId, Type = IndicatorCommandType.HoverExit });
@@ -774,7 +795,7 @@ public partial class IndicatorWindow : Window
 
         var x = e.GetPosition(this).X;
         var action = FloatingIndicatorLayout.ActionForClick(_state, x);
-        if (_state is FloatingIndicatorState.Preparing or FloatingIndicatorState.Recording)
+        if (_state == FloatingIndicatorState.Recording)
         {
             if (_owner == IndicatorOwnerKind.Meeting)
             {
@@ -800,11 +821,6 @@ public partial class IndicatorWindow : Window
                 });
             }
             return;
-        }
-
-        if (_state == FloatingIndicatorState.Transcribing)
-        {
-            _sendCommand(new IndicatorCommand { SessionId = _sessionId, Type = IndicatorCommandType.Cancel });
         }
     }
 

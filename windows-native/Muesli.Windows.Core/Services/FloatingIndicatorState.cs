@@ -30,7 +30,11 @@ public static class FloatingIndicatorStateClassifier
 
     private static readonly string[] ErrorMarkers = ["failed", "error", "unavailable", "no speech", "no text remained"];
 
-    private static readonly string[] SuccessMarkers = ["saved", "inserted", "captured", "pasted", "copied"];
+    /// <summary>
+    /// A dictation that landed in the focused app is the normal outcome: macOS returns straight to
+    /// idle (its floating pill has no completion toast), so "inserted" is deliberately absent.
+    /// </summary>
+    private static readonly string[] SuccessMarkers = ["saved", "captured", "pasted", "copied"];
 
     private static readonly string[] PreparingMarkers = ["preparing", "hold to dictate", "listening", "arming", "shortcut"];
 

@@ -9,12 +9,12 @@ public sealed class FloatingIndicatorLayoutTests
     [Theory]
     [InlineData(FloatingIndicatorState.Idle, false, 44, 28, 14)]
     [InlineData(FloatingIndicatorState.Idle, true, 220, 36, 18)]
-    // Preparing is the compact pill in the macOS design system's state table, not the live one.
-    [InlineData(FloatingIndicatorState.Preparing, false, 44, 28, 14)]
+    // Preparing shares the live 76x22 pill, per the current macOS frameForState.
+    [InlineData(FloatingIndicatorState.Preparing, false, 76, 22, 11)]
     [InlineData(FloatingIndicatorState.Recording, false, 76, 22, 11)]
-    [InlineData(FloatingIndicatorState.Transcribing, false, 120, 32, 16)]
-    [InlineData(FloatingIndicatorState.Success, false, 220, 36, 18)]
-    [InlineData(FloatingIndicatorState.Error, false, 220, 36, 18)]
+    [InlineData(FloatingIndicatorState.Transcribing, false, 190, 32, 16)]
+    [InlineData(FloatingIndicatorState.Success, false, 180, 36, 18)]
+    [InlineData(FloatingIndicatorState.Error, false, 180, 36, 18)]
     public void SizeFor_maps_every_state(FloatingIndicatorState state, bool hovered, double width, double height, double radius)
     {
         var size = FloatingIndicatorLayout.SizeFor(state, hovered);
@@ -28,11 +28,13 @@ public sealed class FloatingIndicatorLayoutTests
     [InlineData("Saved", false)]
     public void SizeFor_widens_status_pill_for_long_messages(string message, bool expectedLong)
     {
+        // macOS warningPillSize: fits the text, never narrower than 180.
         var size = FloatingIndicatorLayout.SizeFor(FloatingIndicatorState.Success, false, message);
-        Assert.Equal(expectedLong ? 260 : 220, size.Width);
+        Assert.Equal(expectedLong, size.Width > 180);
+        Assert.InRange(size.Width, 180, 420);
 
         var error = FloatingIndicatorLayout.SizeFor(FloatingIndicatorState.Error, false, message);
-        Assert.Equal(expectedLong ? 260 : 220, error.Width);
+        Assert.Equal(size.Width, error.Width);
     }
 
     // ─── State transitions ───────────────────────────────────────────────────────────────────
@@ -61,6 +63,22 @@ public sealed class FloatingIndicatorLayoutTests
         Assert.Equal(
             FloatingIndicatorState.Error,
             FloatingIndicatorStateClassifier.Classify("Paste failed; transcript saved and copied", false, false));
+        // A normal insertion returns straight to idle, as macOS does: no completion toast.
+        Assert.Equal(
+            FloatingIndicatorState.Idle,
+            FloatingIndicatorStateClassifier.Classify("Dictation inserted", false, false));
+    }
+
+    [Fact]
+    public void GlassFill_darkens_the_tint_over_a_neutral_base()
+    {
+        // Without the base, the bluish #1E1E2E tint shows the desktop through it and reads blue.
+        var (a, r, g, b) = FloatingIndicatorLayout.GlassFill(FloatingIndicatorLayout.GlassTintRgb, 0.62);
+        Assert.True(a > (byte)(0.62 * 255));
+        Assert.InRange(r, 0x1C, 0x1E);
+        Assert.InRange(b, 0x1E, 0x2E);
+        Assert.True(b - r < 16);
+        Assert.Equal((byte)255, FloatingIndicatorLayout.GlassFill(0x34C759, 1).A);
     }
 
     [Fact]
@@ -96,10 +114,10 @@ public sealed class FloatingIndicatorLayoutTests
     // ─── Action routing ──────────────────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(FloatingIndicatorState.Preparing, 10, FloatingIndicatorAction.Cancel)]
+    [InlineData(FloatingIndicatorState.Preparing, 10, FloatingIndicatorAction.None)]
     [InlineData(FloatingIndicatorState.Recording, 10, FloatingIndicatorAction.Cancel)]
     [InlineData(FloatingIndicatorState.Recording, 40, FloatingIndicatorAction.Stop)]
-    [InlineData(FloatingIndicatorState.Transcribing, 60, FloatingIndicatorAction.Cancel)]
+    [InlineData(FloatingIndicatorState.Transcribing, 60, FloatingIndicatorAction.None)]
     [InlineData(FloatingIndicatorState.Idle, 60, FloatingIndicatorAction.None)]
     [InlineData(FloatingIndicatorState.Success, 60, FloatingIndicatorAction.None)]
     public void ActionForClick_routes_by_state_and_x(FloatingIndicatorState state, double x, FloatingIndicatorAction expected)
@@ -220,41 +238,26 @@ public sealed class FloatingIndicatorLayoutTests
         Assert.Equal(dip, FloatingIndicatorLayout.ToDips(pixels, scale), 3);
     }
 
-    // ─── Live waveform math ──────────────────────────────────────────────────────────────────
+    // ─── Brand mark ──────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void RecordingBarHeight_rises_with_peak_and_stays_in_bounds()
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    [InlineData(2.0)]
+    public void BrandMarkGeometry_snaps_every_bar_and_gap_to_whole_pixels(double scale)
     {
-        // Bounds come from the macOS design system's waveform specification (min 5pt, max 26pt),
-        // not from the retired WPF port's narrower 3–12pt range.
-        var baseline = FloatingIndicatorLayout.RecordingBarHeight(0, 1);
-        var loud = FloatingIndicatorLayout.RecordingBarHeight(1, 1);
-        Assert.True(loud > baseline);
-        Assert.InRange(
-            loud,
-            FloatingIndicatorLayout.WaveformMinHeight,
-            FloatingIndicatorLayout.WaveformMaxHeight);
-        Assert.InRange(
-            baseline,
-            FloatingIndicatorLayout.WaveformMinHeight,
-            FloatingIndicatorLayout.WaveformMaxHeight);
-
-        // The five-bar envelope is symmetric: the inner bars reach higher than the outer ones, and
-        // the two outermost bars match.
-        Assert.True(FloatingIndicatorLayout.RecordingBarHeight(1, 1) >
-                    FloatingIndicatorLayout.RecordingBarHeight(1, 0));
-        Assert.Equal(
-            FloatingIndicatorLayout.RecordingBarHeight(1, 0),
-            FloatingIndicatorLayout.RecordingBarHeight(1, 4),
-            3);
-    }
-
-    [Fact]
-    public void RecordingBarHeight_clamps_negative_peak_to_quiet()
-    {
-        // Negative peaks (rare but possible from float noise) must not produce a grotesque height.
-        var height = FloatingIndicatorLayout.RecordingBarHeight(-1, 0);
-        Assert.InRange(height, 3, 12);
+        // Fractional 13-bar gaps antialias away at pill size and the logo smears into a blob.
+        var (bar, gap, heights) = FloatingIndicatorLayout.BrandMarkGeometry(18, scale);
+        static bool Whole(double pixels) => Math.Abs(pixels - Math.Round(pixels)) < 1e-9;
+        Assert.True(Whole(bar * scale) && bar * scale >= 1);
+        Assert.True(Whole(gap * scale) && gap * scale >= 1);
+        Assert.Equal(13, heights.Length);
+        var tallest = Math.Round(18 * scale);
+        Assert.All(heights, h => Assert.True(Whole(h * scale) && (tallest - h * scale) % 2 == 0));
+        Assert.Equal(heights, heights.Reverse());
+        Assert.Equal(tallest / scale, heights.Max(), 6);
+        Assert.True(heights[3] > heights[0] && heights[3] > heights[6]);
     }
 
     // ─── Status return durations ─────────────────────────────────────────────────────────────

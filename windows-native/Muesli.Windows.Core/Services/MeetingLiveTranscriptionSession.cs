@@ -68,6 +68,7 @@ internal interface ILiveRecognizer : IDisposable
 
 internal interface ILiveVad : IDisposable
 {
+    void Reset(LiveTranscriptChannel channel) { }
     IReadOnlyList<(long StartSample, long EndSample)> Feed(LiveTranscriptChannel channel, float[] samples);
     IReadOnlyList<(long StartSample, long EndSample)> Finish(LiveTranscriptChannel channel);
 }
@@ -254,19 +255,21 @@ internal sealed class NativeSileroVad : ILiveVad
     private readonly Dictionary<LiveTranscriptChannel, State> _states;
     private bool _disposed;
 
-    public NativeSileroVad(StreamingModelDefinition model)
+    public NativeSileroVad(StreamingModelDefinition model) : this(model.VadPath) { }
+
+    public NativeSileroVad(string modelPath, float maxSpeechDuration = 0)
     {
         _states = Enum.GetValues<LiveTranscriptChannel>().ToDictionary(channel => channel, _ =>
         {
             var config = new VadModelConfig { SampleRate = 16000, NumThreads = 1, Provider = "cpu", Debug = 0 };
-            config.SileroVad.Model = model.VadPath;
+            config.SileroVad.Model = modelPath;
             config.SileroVad.Threshold = 0.25f;
             config.SileroVad.MinSilenceDuration = 0.5f;
             config.SileroVad.MinSpeechDuration = 0.25f;
             config.SileroVad.WindowSize = 512;
             // Zero disables arbitrary duration rotation. Boundaries are emitted only
             // after Silero observes trailing silence or the session is finalized.
-            config.SileroVad.MaxSpeechDuration = 0;
+            config.SileroVad.MaxSpeechDuration = maxSpeechDuration;
             return new State(new VoiceActivityDetector(config, 30));
         });
     }
@@ -285,6 +288,13 @@ internal sealed class NativeSileroVad : ILiveVad
         var state = _states[channel];
         state.Detector.Flush();
         return Drain(state);
+    }
+
+    public void Reset(LiveTranscriptChannel channel)
+    {
+        var state = _states[channel];
+        state.Detector.Reset();
+        state.AcceptedSamples = 0;
     }
 
     private static IReadOnlyList<(long, long)> Drain(State state)

@@ -200,24 +200,30 @@ public static class MeetingSummaryService
         string meetingTitle,
         MuesliSettings settings,
         CancellationToken cancellationToken = default,
-        HttpClient? httpClient = null)
+        HttpClient? httpClient = null,
+        string? manualNotes = null,
+        string? previousMeetingNotes = null)
     {
         if (string.IsNullOrWhiteSpace(transcript))
         {
             return new SummaryGenerationResult("", "local", false, null);
         }
 
+        var localInput = string.IsNullOrWhiteSpace(manualNotes) ? transcript : $"{transcript}\n{manualNotes}";
+        if (!string.IsNullOrWhiteSpace(previousMeetingNotes))
+            settings = settings with { MeetingSummaryPromptOverride = EffectiveSystemPrompt(settings) +
+                "\n\nPrevious meeting notes (background context only). Track progress on prior actions when supported by the current meeting; do not report prior events as current decisions:\n" + previousMeetingNotes };
         var provider = settings.MeetingSummaryProvider.Trim().ToLowerInvariant();
         try
         {
             var summary = provider switch
             {
-                "openai" => await SummarizeWithOpenAIAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
-                "openrouter" => await SummarizeWithOpenRouterAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
-                "ollama" => await SummarizeWithOllamaAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
-                "lmstudio" => await SummarizeWithLmStudioAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
-                "custom" => await SummarizeWithCustomLlmAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken),
-                _ => CreateLocalSummary(transcript, meetingTitle, settings)
+                "openai" => await SummarizeWithOpenAIAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
+                "openrouter" => await SummarizeWithOpenRouterAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
+                "ollama" => await SummarizeWithOllamaAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
+                "lmstudio" => await SummarizeWithLmStudioAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
+                "custom" => await SummarizeWithCustomLlmAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
+                _ => CreateLocalSummary(localInput, meetingTitle, settings)
             };
             return new SummaryGenerationResult(
                 summary,
@@ -231,7 +237,7 @@ public static class MeetingSummaryService
         }
         catch (Exception exception)
         {
-            var fallback = CreateLocalSummary(transcript, meetingTitle, settings);
+            var fallback = CreateLocalSummary(localInput, meetingTitle, settings);
             var reason = exception is SummaryProviderException providerException
                 ? providerException.SafeReason
                 : exception is TaskCanceledException ? "timeout"
@@ -272,7 +278,8 @@ public static class MeetingSummaryService
         string meetingTitle,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? manualNotes)
     {
         var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -292,7 +299,7 @@ public static class MeetingSummaryService
             input = new object[]
             {
                 new { role = "system", content = EffectiveSystemPrompt(settings) },
-                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle) }
+                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle, manualNotes) }
             },
             reasoning = new { effort = "low" },
             text = new { verbosity = "low" },
@@ -326,7 +333,8 @@ public static class MeetingSummaryService
         string meetingTitle,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? manualNotes)
     {
         var endpoint = string.IsNullOrWhiteSpace(settings.OllamaEndpoint)
             ? "http://localhost:11434"
@@ -345,7 +353,7 @@ public static class MeetingSummaryService
             messages = new object[]
             {
                 new { role = "system", content = EffectiveSystemPrompt(settings) },
-                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle) }
+                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle, manualNotes) }
             }
         };
 
@@ -382,7 +390,8 @@ public static class MeetingSummaryService
         string meetingTitle,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? manualNotes)
     {
         var endpoint = string.IsNullOrWhiteSpace(settings.LmStudioEndpoint)
             ? "http://localhost:1234"
@@ -406,7 +415,8 @@ public static class MeetingSummaryService
             model,
             apiKey: "",
             httpClient,
-            cancellationToken);
+            cancellationToken,
+            manualNotes);
     }
 
     /// <summary>
@@ -420,7 +430,8 @@ public static class MeetingSummaryService
         string meetingTitle,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? manualNotes)
     {
         if (!TryResolveCustomLlmUri(settings.CustomLlmEndpoint, out var uri))
         {
@@ -447,7 +458,8 @@ public static class MeetingSummaryService
             model,
             apiKey ?? "",
             httpClient,
-            cancellationToken);
+            cancellationToken,
+            manualNotes);
     }
 
     private static async Task<string> SummarizeWithChatCompletionsAsync(
@@ -458,7 +470,8 @@ public static class MeetingSummaryService
         string model,
         string apiKey,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? manualNotes)
     {
         var body = new
         {
@@ -467,7 +480,7 @@ public static class MeetingSummaryService
             messages = new object[]
             {
                 new { role = "system", content = EffectiveSystemPrompt(settings) },
-                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle) }
+                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle, manualNotes) }
             },
             max_tokens = 2500
         };
@@ -529,7 +542,8 @@ public static class MeetingSummaryService
         string meetingTitle,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? manualNotes)
     {
         var apiKey = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -551,7 +565,7 @@ public static class MeetingSummaryService
             messages = new object[]
             {
                 new { role = "system", content = EffectiveSystemPrompt(settings) },
-                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle) }
+                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle, manualNotes) }
             },
             max_tokens = 2500
         };
@@ -1250,9 +1264,26 @@ public static class MeetingSummaryService
         }
     }
 
-    private static string SummaryUserPrompt(string transcript, string meetingTitle)
+    private static string SummaryUserPrompt(string transcript, string meetingTitle, string? manualNotes)
     {
-        return $"Meeting title: {meetingTitle}{Environment.NewLine}{Environment.NewLine}Raw transcript:{Environment.NewLine}{transcript}";
+        var prompt = $"Meeting title: {meetingTitle}{Environment.NewLine}{Environment.NewLine}Raw transcript:{Environment.NewLine}{transcript}";
+        return string.IsNullOrWhiteSpace(manualNotes) ? prompt :
+            $"{prompt}\n\nWritten notes typed by the user during the meeting. Treat these as high-priority context for the topic, decisions, action items and outcomes. Include their concrete details even when absent from the transcript, and preserve the user's wording verbatim in the relevant summary sections:\n{manualNotes}";
+    }
+
+    public static async Task<string> CreateTitleAsync(PersistedMeeting meeting, MuesliSettings settings,
+        CancellationToken cancellationToken = default, HttpClient? httpClient = null)
+    {
+        if (meeting.TitleIsManual) return meeting.Title;
+        var fallback = MeetingTitleService.Generate(meeting.Transcript, meeting.CreatedAt, meeting.Title, meeting.ManualNotes);
+        if (settings.MeetingSummaryProvider.Trim().ToLowerInvariant() is not ("openai" or "openrouter" or "ollama" or "lmstudio" or "custom")) return fallback;
+        var result = await CreateSummaryResultAsync(meeting.Transcript, meeting.Title, settings with
+        {
+            MeetingSummaryPromptOverride = "Write a concise 3–7 word meeting title. Prioritize the user's written notes when choosing the topic. Return only the title, without quotes, Markdown, or explanation."
+        }, cancellationToken, httpClient, meeting.ManualNotes);
+        var title = result.Summary.Trim().Trim('"', '\'');
+        return result.UsedLocalFallback || title.Length is 0 or > MeetingTitleService.MaxTitleLength || title.Contains('\n') || title.Contains('\r')
+            ? fallback : title;
     }
 
     private static string ExtractOpenAIText(JsonElement root)

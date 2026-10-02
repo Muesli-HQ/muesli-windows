@@ -20,7 +20,8 @@ public sealed partial class MeetingsPage : Page
         App.FilePickers,
         App.Dialogs,
         App.UiDispatcher,
-        App.ShowLiveTranscript);
+        App.ShowLiveTranscript,
+        App.Clipboard);
 
     public MeetingsPage()
     {
@@ -29,6 +30,9 @@ public sealed partial class MeetingsPage : Page
         ViewModel.PropertyChanged += (_, args) =>
         {
             UpdateEmptyState();
+            if (args.PropertyName is nameof(ViewModel.LiveTranscript) or nameof(ViewModel.PartialYou) or nameof(ViewModel.PartialOthers)) UpdateLiveFeed();
+            if (args.PropertyName == nameof(ViewModel.ShowLiveTab))
+                RecordingModeBar.SelectedItem = ViewModel.ShowLiveTab ? RecordingLiveTab : RecordingNotesTab;
 
             // A reload republishes the folder list, which drops the ListView's SelectedItem because
             // it is a different instance. Without this, refreshing or saving a folder silently
@@ -58,8 +62,28 @@ public sealed partial class MeetingsPage : Page
     public static Visibility BoolToVisibility(bool value) =>
         value ? Visibility.Visible : Visibility.Collapsed;
 
+    public static Visibility NotToVisibility(bool value) => BoolToVisibility(!value);
+
+    private void RecordingMode_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        ViewModel.ShowLiveTab = sender.SelectedItem == RecordingLiveTab;
+        if (ViewModel.ShowLiveTab) UpdateLiveFeed();
+    }
+
+    private void UpdateLiveFeed()
+    {
+        LiveFeed.Update(App.Meetings.LatestLiveSnapshot, ViewModel.LiveTranscript, App.Meetings.LiveTranscriptPrefix);
+        PreviousNotes.Markdown = App.Meetings.PreviousMeetingNotes;
+        PreviousNotes.Visibility = string.IsNullOrWhiteSpace(PreviousNotes.Markdown) ? Visibility.Collapsed : Visibility.Visible;
+        LiveCopyButton.IsEnabled = LiveFeed.CopyText.Length > 0;
+    }
+
+    private async void CopyLive_Click(object sender, RoutedEventArgs e) =>
+        await Controls.LiveTranscriptFeed.CopyAsync(LiveCopyButton, LiveFeed.CopyText);
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        UpdateLiveFeed();
         UpdateEmptyState();
         UpdateSortPill();
         UpdateTimeRangePill();
@@ -83,6 +107,7 @@ public sealed partial class MeetingsPage : Page
         ContentStack.Padding = MuesliPageMetrics.ContentPadding(width);
 
         HeaderActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        ActiveMeetingActions.Orientation = MuesliPageMetrics.IsCompact(width) ? Orientation.Vertical : Orientation.Horizontal;
 
         if (compact)
         {
@@ -105,6 +130,7 @@ public sealed partial class MeetingsPage : Page
             Grid.SetColumnSpan(ActiveMeetingActions, 2);
             ActiveMeetingActions.HorizontalAlignment = HorizontalAlignment.Left;
             Grid.SetRow(ActiveMeetingDetails, 2);
+            Grid.SetRow(RecordingWorkspace, 3);
         }
         else
         {
@@ -126,6 +152,7 @@ public sealed partial class MeetingsPage : Page
             Grid.SetColumnSpan(ActiveMeetingActions, 1);
             ActiveMeetingActions.HorizontalAlignment = HorizontalAlignment.Right;
             Grid.SetRow(ActiveMeetingDetails, 1);
+            Grid.SetRow(RecordingWorkspace, 2);
         }
     }
 
@@ -336,6 +363,11 @@ public sealed partial class MeetingsPage : Page
     {
         if (e.ClickedItem is MeetingListItem meeting)
         {
+            if (meeting.Id == App.Meetings.ActiveMeetingId)
+            {
+                RecordingNotesEditor.Focus(FocusState.Programmatic);
+                return;
+            }
             Frame.Navigate(typeof(MeetingDetailPage), meeting.Id);
         }
     }

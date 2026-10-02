@@ -66,6 +66,9 @@ public sealed class MeetingAutoStopTracker
     private bool _observedDuringRecording;
     private DateTimeOffset? _missingSince;
     private int _missingObservations;
+    private DateTimeOffset? _lastTranscriptActivity;
+    private bool _warningSuppressed;
+    private bool _dismissed;
 
     public MeetingAutoStopTracker(
         MeetingRecordingStartOrigin origin,
@@ -81,6 +84,10 @@ public sealed class MeetingAutoStopTracker
 
     public bool IsArmed => _origin == MeetingRecordingStartOrigin.DetectedMeeting && _sourceKey is not null;
 
+    public void NoteTranscriptActivity(DateTimeOffset now) => _lastTranscriptActivity = now;
+    public void SuppressWarning() => _warningSuppressed = true;
+    public void DismissWarning() => _dismissed = true;
+
     public bool Observe(string? visibleSourceKey, DateTimeOffset now)
     {
         if (!IsArmed)
@@ -93,6 +100,7 @@ public sealed class MeetingAutoStopTracker
             _observedDuringRecording = true;
             _missingSince = null;
             _missingObservations = 0;
+            _warningSuppressed = false;
             return false;
         }
 
@@ -103,7 +111,11 @@ public sealed class MeetingAutoStopTracker
 
         _missingSince ??= now;
         _missingObservations++;
-        return _missingObservations >= _minimumMissingObservations &&
+        // Losing the source is a warning, never authorization to stop capture. Match macOS's
+        // 45-second speech quiet period and dismissal for the rest of this recording.
+        return !_dismissed && !_warningSuppressed &&
+               (_lastTranscriptActivity is null || now - _lastTranscriptActivity >= TimeSpan.FromSeconds(45)) &&
+               _missingObservations >= _minimumMissingObservations &&
                now - _missingSince >= _gracePeriod;
     }
 }

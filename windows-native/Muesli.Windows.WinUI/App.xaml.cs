@@ -60,12 +60,7 @@ public partial class App : Application
 
     public static WindowsTrayIconService Tray { get; private set; } = null!;
 
-    public static DictationIndicatorWindow? DictationIndicator { get; private set; }
-
-    /// <summary>
-    /// Hosts the WPF indicator companion when the WPF renderer is active. Null when the WinUI
-    /// indicator is rendering in-process (the diagnostic fallback).
-    /// </summary>
+    /// <summary>Hosts the WPF indicator companion, the floating pill's only renderer.</summary>
     public static WinUiIndicatorHost? IndicatorHost { get; private set; }
 
     public static MeetingLiveTranscriptWindow LiveTranscript { get; private set; } = null!;
@@ -73,6 +68,8 @@ public partial class App : Application
     private AppInstance? _mainInstance;
     private SingleInstanceCoordinator? _desktopInstance;
     private MeetingAutoStopTracker? _autoStop;
+    private string _lastMeetingTranscript = "";
+    private string? _signalLossPromptId;
     private bool _exiting;
     private readonly AppLogService _log = new();
     private UiExceptionPolicy _uiExceptionPolicy = null!;
@@ -204,20 +201,9 @@ public partial class App : Application
         Clipboard = new WinUiClipboardService();
         FilePickers = new WinUiFilePickerService(() => WindowHandle);
         Share = new WinUiShareService(() => WindowHandle);
-        var renderer = IndicatorRendererKind.For(Environment.GetCommandLineArgs());
-        if (renderer == IndicatorRendererKind.WinUi)
-        {
-            DictationIndicator = new DictationIndicatorWindow(Dictation, UiDispatcher);
-            TrackTheme(DictationIndicator);
-        }
-        else
-        {
-            // WPF is the production-default renderer. The host launches the companion, and falls
-            // back to the in-process WinUI pill (creating it on demand) if the companion can't run.
-            IndicatorHost = new WinUiIndicatorHost(Dictation, Meetings, ComputerUse, UiDispatcher);
-            IndicatorHost.Start();
-            _meetingNotifications.UseWpfHost(IndicatorHost);
-        }
+        IndicatorHost = new WinUiIndicatorHost(Dictation, Meetings, ComputerUse, UiDispatcher);
+        IndicatorHost.Start();
+        _meetingNotifications.UseWpfHost(IndicatorHost);
         LiveTranscript = new MeetingLiveTranscriptWindow(Meetings, UiDispatcher, Clipboard);
         TrackTheme(LiveTranscript);
         var mainWindow = (MainWindow)Window;
@@ -229,7 +215,11 @@ public partial class App : Application
             async () =>
             {
                 if (Meetings.IsRecording || Meetings.IsPaused) await Meetings.StopAndSaveAsync();
-                else await Meetings.StartQuickNoteAsync();
+                else
+                {
+                    await Meetings.StartQuickNoteAsync();
+                    mainWindow.ShowDashboard("meetings");
+                }
             },
             mainWindow.ShowDashboard,
             () => _ = RequestExitAsync(),
@@ -243,7 +233,36 @@ public partial class App : Application
         Meetings.Changed += (_, _) =>
         {
             Tray.Refresh();
-            if (Meetings.IsRecording || Meetings.IsPaused) LiveTranscript.ShowForActiveMeeting();
+            if (Meetings.ActiveMeetingId is null && _signalLossPromptId is not null)
+            {
+                _meetingNotifications?.Close();
+                _signalLossPromptId = null;
+            }
+            if (!string.Equals(_lastMeetingTranscript, Meetings.LiveTranscript, StringComparison.Ordinal))
+            {
+                _lastMeetingTranscript = Meetings.LiveTranscript;
+                if (!string.IsNullOrWhiteSpace(_lastMeetingTranscript))
+                {
+                    _autoStop?.NoteTranscriptActivity(DateTimeOffset.UtcNow);
+                    if (Meetings.IsSourceMissing)
+                    {
+                        _autoStop?.SuppressWarning();
+                        _meetingNotifications?.Close();
+                        Meetings.SetSourceMissing(false);
+                    }
+                }
+            }
+            if (!Meetings.IsRecording && !Meetings.IsPaused && !Meetings.IsBusy)
+            {
+                _autoStop = null;
+                if (Meetings.IsSourceMissing) _meetingNotifications?.Close();
+                Meetings.SetSourceMissing(false);
+            }
+        };
+        Meetings.SourceWarningDismissed += (_, _) =>
+        {
+            _autoStop?.DismissWarning();
+            _meetingNotifications?.Close();
         };
         ComputerUse.Changed += (_, _) => Tray.Refresh();
         ComputerUse.ConfirmationRequested += (_, request) => UiDispatcher.TryEnqueue(() =>
@@ -254,11 +273,15 @@ public partial class App : Application
             UiDispatcher.TryEnqueue(() => _meetingNotifications?.Forget(key));
         MeetingDetection.ScanCompleted += (_, scan) => UiDispatcher.TryEnqueue(() =>
         {
-            if (Meetings.IsRecording && !Meetings.IsBusy &&
-                _autoStop?.Observe(scan.DetectedMeeting?.Key, DateTimeOffset.UtcNow) == true)
+            if (Meetings.IsRecording && !Meetings.IsBusy && _autoStop is { } tracker)
             {
-                _autoStop = null;
-                _ = StopDetectedMeetingAsync();
+                var missing = tracker.Observe(scan.DetectedMeeting?.Key, DateTimeOffset.UtcNow);
+                if (missing && !Meetings.IsSourceMissing) PresentMeetingSignalLost();
+                else if (!missing && Meetings.IsSourceMissing)
+                {
+                    _meetingNotifications?.Close();
+                    Meetings.SetSourceMissing(false);
+                }
             }
         });
         Window.Closed += (_, _) =>
@@ -267,7 +290,6 @@ public partial class App : Application
                 _computerUseConfirmation?.Close();
                 _meetingNotifications?.Dispose();
                 Tray.Dispose();
-                DictationIndicator?.Dispose();
                 IndicatorHost?.Dispose();
                 LiveTranscript.Dispose();
                 MeetingDetection.Dispose();
@@ -301,6 +323,33 @@ public partial class App : Application
     {
         try { await Meetings.StopAndSaveAsync(); }
         catch (Exception exception) { _log.Error("Detected meeting finalization failed; captured audio remains recoverable.", exception); }
+    }
+
+    private void PresentMeetingSignalLost()
+    {
+        if (Meetings.ActiveMeetingId is not { } id || _meetingNotifications is null) return;
+        Meetings.SetSourceMissing(true);
+        var promptId = $"meeting-signal-lost:{id}";
+        _signalLossPromptId = promptId;
+        _meetingNotifications.Forget(promptId);
+        _meetingNotifications.Present(new MeetingNotificationRequest(promptId, MeetingNotificationKind.SignalLost,
+            "Meeting signal lost", "Recording continues. Stop if the meeting ended.", "Meeting", "\uE7BA",
+            "#3380FF", "M", "Stop Transcribing", null, DismissAfterSeconds: 30), new MeetingNotificationCallbacks(
+            OnAction: action =>
+            {
+                if (Meetings.ActiveMeetingId == id && action == MeetingNotificationAction.StopTranscribing)
+                {
+                    Meetings.KeepRecording();
+                    _ = StopDetectedMeetingAsync();
+                }
+            },
+            OnDismiss: () => { if (Meetings.ActiveMeetingId == id) Meetings.KeepRecording(); },
+            OnAutoDismiss: () =>
+            {
+                if (Meetings.ActiveMeetingId != id) return;
+                _autoStop?.SuppressWarning();
+                Meetings.SetSourceMissing(false);
+            }));
     }
 
     private async Task RequestExitAsync()

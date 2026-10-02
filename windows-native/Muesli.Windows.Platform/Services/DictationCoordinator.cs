@@ -4,15 +4,21 @@ namespace Muesli.Windows.Services;
 
 public sealed class DictationCoordinator : IDisposable
 {
+    // Cohere peaked at 3.4 GiB in the local rolling benchmark; leave room for the shell and capture.
+    private const ulong CohereMinimumFreeMemoryBytes = 4UL * 1024 * 1024 * 1024;
     private readonly NativeTranscriptionClient _transcriptionClient;
     private readonly AudioCaptureService _audioCaptureService = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _idleReleaseGate = new();
+    private CancellationTokenSource? _idleReleaseCancellation;
+    private Task? _idleReleaseTask;
     private int _disposed;
     private int _cancelRequested;
     private DictationSessionKind _sessionKind;
     private Task<TranscriptionResult>? _activeTranscriptionTask;
     private Task<ModelOperationResult>? _modelWarmupTask;
     private CancellationTokenSource? _sessionCancellation;
+    private DictationRollingTranscriber? _rollingTranscriber;
 
     public bool IsRecording { get; private set; }
     public bool IsBusy { get; private set; }
@@ -47,6 +53,7 @@ public sealed class DictationCoordinator : IDisposable
 
     public async Task StartAsync(string? microphoneName, DictationSessionKind sessionKind)
     {
+        CancelIdleRelease();
         // The global hotkey outlives this coordinator during shutdown. Without this guard every
         // keypress awaits a disposed semaphore and logs an ObjectDisposedException.
         if (Volatile.Read(ref _disposed) != 0)
@@ -71,11 +78,32 @@ public sealed class DictationCoordinator : IDisposable
                 return;
             }
 
+            var freeMemory = AvailablePhysicalMemory();
+            if (ShouldUseParakeetFallback(_transcriptionClient.SelectedModel.Kind,
+                TranscriptionLanguageSelection.Resolve(_transcriptionClient.SelectedModel), freeMemory,
+                TranscriptionModelReadiness.IsVerified(TranscriptionModelCatalog.GetRequired("parakeet-v3"))))
+            {
+                await _transcriptionClient.SwitchModelAsync("parakeet-v3");
+                new AppLogService().Info(
+                    $"Dictation used Parakeet fallback for low memory. availableMiB={freeMemory / 1048576}; requested=cohere-transcribe-int8-en");
+            }
+
             SoundFeedback.PlayDictationStart(sessionKind);
-            await _audioCaptureService.StartAsync(microphoneName);
+            _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient);
+            _audioCaptureService.PcmSamplesAvailable += _rollingTranscriber.Feed;
+            try
+            {
+                await _audioCaptureService.StartAsync(microphoneName);
+            }
+            catch
+            {
+                DetachRollingTranscriber();
+                throw;
+            }
             if (Volatile.Read(ref _cancelRequested) != 0 || _sessionCancellation.IsCancellationRequested)
             {
                 await _audioCaptureService.CancelAsync();
+                DetachRollingTranscriber();
                 return;
             }
 
@@ -132,6 +160,7 @@ public sealed class DictationCoordinator : IDisposable
             {
                 IsRecording = false;
                 await _audioCaptureService.CancelAsync();
+                if (DetachRollingTranscriber() is { } cancelledRolling) await cancelledRolling.DrainAsync();
                 return new DictationStopResult(
                     new TranscriptionResult("", "Dictation cancelled."),
                     new DictationLatencyMetrics(traceId, 0, 0, 0, 0, "cancelled", 0, 0));
@@ -143,11 +172,13 @@ public sealed class DictationCoordinator : IDisposable
             var coordinatorStarted = Stopwatch.StartNew();
             var stopStarted = Stopwatch.StartNew();
             capturedAudio = await _audioCaptureService.StopAsync(keepLatestDictationAlias);
+            var rolling = DetachRollingTranscriber();
             stopStarted.Stop();
             try
             {
                 if (DictationAudioQualityPolicy.IsShortDiscard(capturedAudio))
                 {
+                    if (rolling is not null) await rolling.DrainAsync();
                     coordinatorStarted.Stop();
                     return new DictationStopResult(
                         new TranscriptionResult(
@@ -167,6 +198,7 @@ public sealed class DictationCoordinator : IDisposable
 
                 if (DictationAudioQualityPolicy.IsNoSpeech(capturedAudio))
                 {
+                    if (rolling is not null) await rolling.DrainAsync();
                     coordinatorStarted.Stop();
                     return new DictationStopResult(
                         new TranscriptionResult(
@@ -186,7 +218,9 @@ public sealed class DictationCoordinator : IDisposable
 
                 var transcriptionStarted = Stopwatch.StartNew();
                 IsTranscribing = true;
-                transcriptionTask = _transcriptionClient.TranscribeFileAsync("Dictation", capturedAudio.TranscriptionPath);
+                transcriptionTask = rolling is null
+                    ? _transcriptionClient.TranscribeFileAsync("Dictation", capturedAudio.TranscriptionPath)
+                    : rolling.FinishAsync(capturedAudio.TranscriptionPath);
                 _activeTranscriptionTask = transcriptionTask;
                 TranscriptionResult result;
                 using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
@@ -263,7 +297,9 @@ public sealed class DictationCoordinator : IDisposable
         }
         finally
         {
+            if (DetachRollingTranscriber() is { } abandonedRolling) await abandonedRolling.DrainAsync();
             IsBusy = false;
+            ScheduleIdleRelease();
             _gate.Release();
         }
     }
@@ -287,16 +323,21 @@ public sealed class DictationCoordinator : IDisposable
             IsBusy = true;
             IsRecording = false;
             await _audioCaptureService.CancelAsync();
+            if (DetachRollingTranscriber() is { } rolling) await rolling.DrainAsync();
         }
         finally
         {
             IsBusy = false;
+            ScheduleIdleRelease();
             _gate.Release();
         }
     }
 
-    public Task SwitchModelAsync(string modelId, CancellationToken cancellationToken = default) =>
-        _transcriptionClient.SwitchModelAsync(modelId, cancellationToken);
+    public Task SwitchModelAsync(string modelId, CancellationToken cancellationToken = default)
+    {
+        CancelIdleRelease();
+        return _transcriptionClient.SwitchModelAsync(modelId, cancellationToken);
+    }
 
     public async Task<ModelOperationResult> InitializeModelAsync()
     {
@@ -325,6 +366,17 @@ public sealed class DictationCoordinator : IDisposable
         _ = ObserveWarmupAsync(_modelWarmupTask);
     }
 
+    private DictationRollingTranscriber? DetachRollingTranscriber()
+    {
+        var rolling = _rollingTranscriber;
+        if (rolling is not null)
+        {
+            _audioCaptureService.PcmSamplesAvailable -= rolling.Feed;
+            _rollingTranscriber = null;
+        }
+        return rolling;
+    }
+
     private static async Task ObserveWarmupAsync(Task<ModelOperationResult> warmup)
     {
         try
@@ -337,15 +389,87 @@ public sealed class DictationCoordinator : IDisposable
         }
     }
 
+    private void CancelIdleRelease()
+    {
+        lock (_idleReleaseGate)
+        {
+            _idleReleaseCancellation?.Cancel();
+            _idleReleaseCancellation = null;
+        }
+    }
+
+    private static ulong AvailablePhysicalMemory()
+    {
+        try { return new Microsoft.VisualBasic.Devices.ComputerInfo().AvailablePhysicalMemory; }
+        catch { return ulong.MaxValue; }
+    }
+
+    // ponytail: English Cohere only; qualify other languages/models before extending this fallback.
+    internal static bool ShouldUseParakeetFallback(
+        NativeAsrModelKind kind, string language, ulong freeMemoryBytes, bool parakeetReady) =>
+        kind == NativeAsrModelKind.CohereTranscribe && language.Equals("en", StringComparison.OrdinalIgnoreCase) &&
+        freeMemoryBytes < CohereMinimumFreeMemoryBytes && parakeetReady;
+
+    private void ScheduleIdleRelease()
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+        lock (_idleReleaseGate)
+        {
+            _idleReleaseCancellation?.Cancel();
+            var cancellation = new CancellationTokenSource();
+            _idleReleaseCancellation = cancellation;
+            _idleReleaseTask = ReleaseModelWhenIdleAsync(cancellation);
+        }
+    }
+
+    private async Task ReleaseModelWhenIdleAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1), cancellation.Token).ConfigureAwait(false);
+            await _gate.WaitAsync(cancellation.Token).ConfigureAwait(false);
+            try
+            {
+                if (IsRecording || IsBusy || IsTranscribing || Volatile.Read(ref _disposed) != 0) return;
+                var before = Process.GetCurrentProcess().PrivateMemorySize64 / 1048576;
+                await _transcriptionClient.ReleaseModelAsync(_transcriptionClient.ModelId, cancellation.Token)
+                    .ConfigureAwait(false);
+                var after = Process.GetCurrentProcess().PrivateMemorySize64 / 1048576;
+                new AppLogService().Info($"Idle dictation model released. privateMiB={before}->{after}; model={_transcriptionClient.ModelId}");
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _disposed) != 0) { }
+        catch (Exception exception)
+        {
+            new AppLogService().Error("Idle dictation model release failed.", exception);
+        }
+        finally
+        {
+            lock (_idleReleaseGate)
+            {
+                if (ReferenceEquals(_idleReleaseCancellation, cancellation)) _idleReleaseCancellation = null;
+            }
+            cancellation.Dispose();
+        }
+    }
+
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
+        CancelIdleRelease();
+        _idleReleaseTask?.GetAwaiter().GetResult();
         _audioCaptureService.DeviceListChanged -= OnDeviceListChanged;
         _audioCaptureService.RouteChanged -= OnRouteChanged;
         _audioCaptureService.LevelChanged -= OnLevelChanged;
+        DetachRollingTranscriber()?.DrainAsync().GetAwaiter().GetResult();
         _audioCaptureService.Dispose();
         try
         {

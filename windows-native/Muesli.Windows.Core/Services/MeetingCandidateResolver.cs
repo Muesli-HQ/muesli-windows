@@ -17,7 +17,12 @@ public sealed record MeetingPresenceSnapshot(
     MeetingEvidenceStrength Evidence,
     bool MicrophoneInUse,
     bool CameraInUse,
-    string? CandidateKey);
+    string? CandidateKey,
+    bool RequiresMediaActivity = false,
+    bool CandidateMicrophoneInUse = false,
+    bool IsForeground = false,
+    bool RequiresDuplexAudio = false,
+    bool CandidateOutputInUse = false);
 
 public enum MeetingCandidateAction
 {
@@ -74,9 +79,12 @@ public sealed class MeetingCandidateResolver
         if (string.IsNullOrWhiteSpace(snapshot.CandidateKey)) return false;
         return snapshot.Evidence switch
         {
-            MeetingEvidenceStrength.Strong => true,
+            MeetingEvidenceStrength.Strong => !snapshot.RequiresMediaActivity ||
+                (snapshot.CandidateMicrophoneInUse && (!snapshot.RequiresDuplexAudio || snapshot.CandidateOutputInUse)) ||
+                (snapshot.IsForeground && snapshot.MicrophoneInUse && snapshot.CameraInUse),
             // A title-only match needs a real sensor in use to corroborate it.
-            MeetingEvidenceStrength.Weak => snapshot.MicrophoneInUse,
+            MeetingEvidenceStrength.Weak => snapshot.RequiresMediaActivity
+                ? snapshot.CandidateMicrophoneInUse && (!snapshot.RequiresDuplexAudio || snapshot.CandidateOutputInUse) : snapshot.MicrophoneInUse,
             _ => false
         };
     }

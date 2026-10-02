@@ -23,6 +23,52 @@ public sealed class Phase7NotesTests
     // ---- Ollama contract ---------------------------------------------------------
 
     [Fact]
+    public async Task ProviderTitlesPrioritizeWritingAndManualTitlesNeverCallTheProvider()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"message\":{\"content\":\"Release Launch Decision\"}}");
+        using var client = new HttpClient(handler);
+        var meeting = new PersistedMeeting { Title = "Meeting", Transcript = Transcript, ManualNotes = "Release launch is the priority." };
+        Assert.Equal("Release Launch Decision", await MeetingSummaryService.CreateTitleAsync(meeting, Settings("ollama"), httpClient: client));
+        using var titleBody = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!);
+        Assert.Contains("3–7 word", titleBody.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+        Assert.Contains(meeting.ManualNotes, handler.LastRequestBody);
+        using var failed = new HttpClient(new StubHandler(HttpStatusCode.InternalServerError, "{}"));
+        Assert.Equal("My title", await MeetingSummaryService.CreateTitleAsync(meeting with { Title = "My title", TitleIsManual = true }, Settings("ollama"), httpClient: failed));
+        Assert.Equal(MeetingTitleService.Generate(Transcript, meeting.CreatedAt, meeting.Title, meeting.ManualNotes),
+            await MeetingSummaryService.CreateTitleAsync(meeting, Settings("ollama"), httpClient: failed));
+    }
+
+    [Fact]
+    public async Task FollowUpSummaryDistinguishesPreviousNotesFromCurrentSpeech()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"message\":{\"content\":\"## Summary\\nRelease now ready\"}}");
+        using var client = new HttpClient(handler);
+        await MeetingSummaryService.CreateSummaryResultAsync(Transcript, "Follow-up", Settings("ollama"), httpClient: client,
+            previousMeetingNotes: "Previously: Priya needed to prepare release notes.");
+        using var body = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!);
+        var messages = body.RootElement.GetProperty("messages");
+        Assert.Contains("Previously:", messages[0].GetProperty("content").GetString());
+        Assert.Contains("do not report prior events as current decisions", messages[0].GetProperty("content").GetString());
+        Assert.DoesNotContain("Previously:", messages[1].GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task WrittenMeetingNotesAreContextForSummaryProvidersAndRemainSeparateFromTranscript()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"message\":{\"content\":\"## Summary\\nRelease moved to Monday\"}}");
+        using var client = new HttpClient(handler);
+        var written = "Release moved to Monday. Priya owns the revised announcement.";
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(
+            Transcript, "Release sync", Settings("ollama"), CancellationToken.None, client, manualNotes: written);
+        using var body = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!);
+        var prompt = body.RootElement.GetProperty("messages")[1].GetProperty("content").GetString()!;
+        Assert.Contains(Transcript, prompt, StringComparison.Ordinal);
+        Assert.Contains(written, prompt, StringComparison.Ordinal);
+        Assert.Contains("high-priority context", prompt, StringComparison.Ordinal);
+        Assert.Contains("Monday", result.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task OllamaSuccessUsesTheModelResponseAndReportsNoFallback()
     {
         var handler = new StubHandler(HttpStatusCode.OK,

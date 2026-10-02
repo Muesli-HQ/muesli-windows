@@ -62,9 +62,13 @@ public sealed class CaptureStorageService
 
         var meetingDirectory = EnsureTrailingSeparator(Path.GetFullPath(Path.Combine(_recordingsDirectory, meetingId)));
         var fullPath = Path.GetFullPath(path);
+        var name = Path.GetFileName(fullPath);
+        var resumed = name.StartsWith("microphone-resume-", StringComparison.OrdinalIgnoreCase)
+            ? name[18..] : name.StartsWith("system-resume-", StringComparison.OrdinalIgnoreCase) ? name[14..] : "";
         return fullPath.StartsWith(meetingDirectory, StringComparison.OrdinalIgnoreCase) &&
-               (Path.GetFileName(fullPath).Equals("microphone.wav", StringComparison.OrdinalIgnoreCase) ||
-                Path.GetFileName(fullPath).Equals("system.wav", StringComparison.OrdinalIgnoreCase));
+               (name.Equals("microphone.wav", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("system.wav", StringComparison.OrdinalIgnoreCase) ||
+                resumed.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) && IsValidMeetingId(resumed[..^4]));
     }
 
     public CaptureCleanupResult DeleteOwnedMeetingAudio(string meetingId, IEnumerable<string> paths)
