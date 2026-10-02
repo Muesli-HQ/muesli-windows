@@ -101,10 +101,10 @@ public sealed class FloatingIndicatorProbeAndPersistenceTests
     public void A_different_outcome_still_shows_after_an_earlier_one_was_dismissed()
     {
         var dismissed = "Dictation failed: Access is denied. (0x80070005)";
-        var next = FloatingIndicatorStateClassifier.Classify("Dictation inserted", false, false);
+        var next = FloatingIndicatorStateClassifier.Classify("Dictation saved", false, false);
 
         Assert.Equal(FloatingIndicatorState.Success, next);
-        Assert.False(FloatingIndicatorStateClassifier.IsAlreadyDismissed(next, "Dictation inserted", dismissed));
+        Assert.False(FloatingIndicatorStateClassifier.IsAlreadyDismissed(next, "Dictation saved", dismissed));
     }
 
     [Theory]
@@ -163,7 +163,7 @@ public sealed class FloatingIndicatorProbeAndPersistenceTests
                      FloatingIndicatorLayout.SizeFor(FloatingIndicatorState.Idle, false),
                      FloatingIndicatorLayout.SizeFor(FloatingIndicatorState.Idle, true),
                      FloatingIndicatorLayout.SizeFor(FloatingIndicatorState.Recording, false),
-                     FloatingIndicatorLayout.SizeFor(FloatingIndicatorState.Success, false, "Dictation inserted")
+                     FloatingIndicatorLayout.SizeFor(FloatingIndicatorState.Success, false, "Dictation saved")
                  })
         {
             var topLeft = FloatingIndicatorLayout.Clamp(

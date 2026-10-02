@@ -78,8 +78,10 @@ public sealed class WinUiMeetingDetailContext : IDisposable
             meeting.Transcript,
             meeting.Title,
             settings,
-            cancellationToken);
-        var generatedTitle = MeetingTitleService.Generate(meeting.Transcript, meeting.CreatedAt, meeting.Title);
+            cancellationToken,
+            manualNotes: meeting.ManualNotes,
+            previousMeetingNotes: _library.Predecessor(meeting.Id) is { } predecessor ? MeetingContinuation.CarriedNotes(predecessor) : null);
+        var generatedTitle = await MeetingSummaryService.CreateTitleAsync(meeting, settings, cancellationToken);
         var updated = MeetingNotesComposer.ApplyResummarization(
             meeting,
             result.Summary,

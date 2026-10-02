@@ -6,6 +6,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Muesli.Windows.WinUI.Pages"
+    xmlns:controls="using:Muesli.Windows.WinUI.Controls"
     xmlns:vm="using:Muesli.Windows.WinUI.ViewModels"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -136,7 +137,7 @@
                          AutomationProperties.AutomationId="MeetingsIdleNotice" />
 
                 <Border x:Name="ActiveMeetingPanel" Style="{StaticResource MuesliCardStyle}" BorderBrush="{ThemeResource MuesliAccentBrush}" AutomationProperties.AutomationId="ActiveMeetingPanel">
-                    <Grid x:Name="ActiveMeetingGrid" RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="12" ColumnSpacing="12">
+                    <Grid x:Name="ActiveMeetingGrid" RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="12" ColumnSpacing="12">
                         <StackPanel Spacing="5" MinWidth="0">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <ProgressRing Width="18" Height="18"
@@ -144,7 +145,6 @@
                                               Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ViewModel.IsBusy), Mode=OneWay}" />
                                 <TextBlock Text="{x:Bind ViewModel.MeetingStatus, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap" />
                             </StackPanel>
-                            <TextBlock Text="{x:Bind ViewModel.LiveTranscript, Mode=OneWay}" TextWrapping="Wrap" MaxLines="5" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
                             <ProgressBar Value="{x:Bind ViewModel.ImportProgress, Mode=OneWay}" Maximum="100" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ViewModel.IsImporting), Mode=OneWay}" />
                         </StackPanel>
                         <StackPanel x:Name="ActiveMeetingActions"
@@ -171,7 +171,49 @@
                         </StackPanel>
                         <StackPanel x:Name="ActiveMeetingDetails" Grid.Row="1" Grid.ColumnSpan="2" Spacing="4">
                             <TextBlock Text="{x:Bind ViewModel.CaptureStatus, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource MuesliTextSecondaryBrush}" AutomationProperties.AutomationId="MeetingCaptureStatusLabel" />
-                            <TextBlock Text="{x:Bind ViewModel.DetectionStatus, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource MuesliTextTertiaryBrush}" AutomationProperties.AutomationId="MeetingDetectionStatusLabel" />
+                        </StackPanel>
+                        <StackPanel x:Name="RecordingWorkspace" Grid.Row="2" Grid.ColumnSpan="2" Spacing="12"
+                                    Visibility="{x:Bind local:MeetingsPage.NotToVisibility(ViewModel.IsImporting), Mode=OneWay}">
+                            <InfoBar IsOpen="{x:Bind ViewModel.IsSourceMissing, Mode=OneWay}" IsClosable="False" Severity="Warning"
+                                     Title="Meeting signal lost" Message="Recording continues. Stop if the meeting ended."
+                                     AutomationProperties.AutomationId="MeetingSignalLostNotice">
+                                <InfoBar.ActionButton>
+                                    <Button Content="Keep recording" Command="{x:Bind ViewModel.KeepRecordingCommand}"
+                                            AutomationProperties.AutomationId="KeepMeetingRecordingButton" />
+                                </InfoBar.ActionButton>
+                            </InfoBar>
+                            <SelectorBar x:Name="RecordingModeBar" SelectionChanged="RecordingMode_SelectionChanged"
+                                         SelectedItem="{x:Bind RecordingNotesTab}" AutomationProperties.AutomationId="MeetingRecordingTabs"
+                                         AutomationProperties.Name="Meeting recording content">
+                                <SelectorBarItem x:Name="RecordingNotesTab" Text="Notes" AutomationProperties.AutomationId="MeetingRecordingNotesTab" />
+                                <SelectorBarItem x:Name="RecordingLiveTab" Text="Live" AutomationProperties.AutomationId="MeetingRecordingLiveTab" />
+                            </SelectorBar>
+                            <StackPanel Spacing="8" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ViewModel.ShowRecordingNotes), Mode=OneWay}">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="My notes" Style="{StaticResource MuesliSectionLabelStyle}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.NotesSaveStatus, Mode=OneWay}"
+                                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" MaxWidth="320"
+                                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="MeetingNotesSaveStatus" />
+                                </Grid>
+                                <controls:MarkdownNotesEditor x:Name="PreviousNotes" IsReadOnly="True" MaxHeight="200" Padding="16"
+                                                              Visibility="Collapsed" BorderThickness="1" AutomationProperties.Name="Previous meeting notes" />
+                                <controls:NotesFormattingBar Editor="{x:Bind RecordingNotesEditor}" />
+                                <controls:MarkdownNotesEditor x:Name="RecordingNotesEditor" Markdown="{x:Bind ViewModel.ManualNotes, Mode=TwoWay}"
+                                         IsEnabled="{x:Bind ViewModel.CanEditRecordingNotes, Mode=OneWay}" AcceptsReturn="True" TextWrapping="Wrap"
+                                         Height="260" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         PlaceholderText="Write notes here…"
+                                         AutomationProperties.Name="My meeting notes" AutomationProperties.AutomationId="MeetingRecordingNotesEditor" />
+                                <Button Content="Save notes" HorizontalAlignment="Left" Style="{StaticResource MuesliGhostButtonStyle}"
+                                        Command="{x:Bind ViewModel.SaveRecordingNotesCommand}" AutomationProperties.AutomationId="SaveRecordingNotesButton" />
+                            </StackPanel>
+                            <Grid Height="320" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ViewModel.ShowLiveTab), Mode=OneWay}">
+                                <controls:LiveTranscriptFeed x:Name="LiveFeed" Margin="0,36,0,0"
+                                                             AutomationProperties.AutomationId="MeetingLiveCaptionList" AutomationProperties.Name="Live meeting captions" />
+                                <Button x:Name="LiveCopyButton" Content="Copy" Click="CopyLive_Click"
+                                        Style="{StaticResource MuesliSecondaryButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Height="30" MinHeight="30" Padding="12,0" Margin="0,0,16,0"
+                                        AutomationProperties.Name="Copy live transcript" AutomationProperties.AutomationId="MeetingLiveCopyButton" />
+                            </Grid>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -193,7 +235,10 @@
                                             <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
                                             <TextBlock Text="{Binding Detail}" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" />
                                         </StackPanel>
-                                        <Button Grid.Column="1" Style="{StaticResource MuesliSecondaryButtonStyle}" Content="Finalize" Command="{Binding ViewModel.FinalizeRecoveryCommand, ElementName=RootPage}" CommandParameter="{Binding}" AutomationProperties.Name="Finalize recovered meeting" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                            <Button Style="{StaticResource MuesliSecondaryButtonStyle}" Content="Finalize" Command="{Binding ViewModel.FinalizeRecoveryCommand, ElementName=RootPage}" CommandParameter="{Binding}" AutomationProperties.Name="Finalize recovered meeting" AutomationProperties.AutomationId="FinalizeRecoveryButton" />
+                                            <Button Style="{StaticResource MuesliGhostButtonStyle}" Content="Discard" Command="{Binding ViewModel.DiscardRecoveryCommand, ElementName=RootPage}" CommandParameter="{Binding}" AutomationProperties.Name="Discard recovered audio" AutomationProperties.AutomationId="DiscardRecoveryButton" />
+                                        </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>

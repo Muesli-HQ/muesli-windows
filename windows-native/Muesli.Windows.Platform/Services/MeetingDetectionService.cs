@@ -274,14 +274,15 @@ public sealed class MeetingDetectionService : IDisposable
     private bool TryDetectMeeting(WindowObservation observation, bool isForeground, out DetectedMeeting meeting)
     {
         meeting = default!;
-        if (!IsPlausibleForUiAutomation(observation, isForeground))
+        var plausibleUrl = IsPlausibleForUiAutomation(observation, isForeground);
+        if (!plausibleUrl && !observation.IsBrowser)
         {
             return false;
         }
 
         var browserUrl = "";
         MeetingUrlMatch? urlMatch = null;
-        if (observation.IsBrowser)
+        if (observation.IsBrowser && plausibleUrl)
         {
             browserUrl = TryGetBrowserUrl(observation) ?? "";
             urlMatch = MeetingUrlParser.TryParse(browserUrl);
@@ -290,6 +291,19 @@ public sealed class MeetingDetectionService : IDisposable
         var evidence = MeetingEvidenceClassifier.Classify(observation.Title, observation.ProcessName, browserUrl);
         if (evidence == MeetingEvidenceStrength.None)
         {
+            if (observation.IsBrowser)
+            {
+                var browserKey = $"meeting|{observation.ProcessName}|{observation.ProcessId}".ToLowerInvariant();
+                var browserPresence = _signals.Capture(MeetingEvidenceStrength.Strong, browserKey, observation.ProcessId,
+                    isForeground, requiresMediaActivity: true);
+                // macOS can recognize an unknown browser meeting from attributed input, including a renderer process.
+                if (browserPresence.CandidateMicrophoneInUse)
+                {
+                    meeting = new DetectedMeeting("Meeting", observation.Title, observation.Title, observation.ProcessName,
+                        "", browserKey, observation.ProcessId, MeetingEvidenceStrength.Strong, observation.Handle, browserPresence);
+                    return true;
+                }
+            }
             return false;
         }
 
@@ -303,10 +317,15 @@ public sealed class MeetingDetectionService : IDisposable
 
         var meetingTitle = urlMatch?.DisplayName ?? CleanMeetingTitle(observation.Title, platform, browserUrl);
         var joinUrl = urlMatch?.JoinUrl ?? "";
-        var key = $"{platform}|{observation.ProcessName}|{meetingTitle}|{joinUrl}".ToLowerInvariant();
+        var identity = urlMatch is null ? observation.ProcessId.ToString() : joinUrl;
+        var key = $"{platform}|{observation.ProcessName}|{identity}".ToLowerInvariant();
+        var presence = _signals.Capture(evidence, key, observation.ProcessId, isForeground,
+            requiresMediaActivity: urlMatch is null || !isForeground,
+            requiresDuplexAudio: urlMatch is null && !observation.IsBrowser);
+        if (!MeetingCandidateResolver.QualifiesAsMeeting(presence)) return false;
         meeting = new DetectedMeeting(
             platform, meetingTitle, observation.Title, observation.ProcessName, joinUrl, key,
-            observation.ProcessId, evidence, observation.Handle);
+            observation.ProcessId, evidence, observation.Handle, presence);
         return true;
     }
 
@@ -327,7 +346,7 @@ public sealed class MeetingDetectionService : IDisposable
     {
         // Sensor state corroborates the window evidence; the resolver owns the decision so the
         // conservative policy and its hysteresis live in one tested place.
-        var snapshot = _signals.Capture(meeting.Evidence, meeting.Key);
+        var snapshot = meeting.Presence ?? _signals.Capture(meeting.Evidence, meeting.Key);
         var decision = _resolver.Observe(snapshot);
         if (decision.Action == MeetingCandidateAction.Ended)
         {
@@ -381,6 +400,11 @@ public sealed class MeetingDetectionService : IDisposable
         {
             return "Webex";
         }
+
+        if (processName.Equals("slack", StringComparison.OrdinalIgnoreCase)) return "Slack";
+        if (processName.Equals("WhatsApp", StringComparison.OrdinalIgnoreCase)) return "WhatsApp";
+        if (processName.Contains("chime", StringComparison.OrdinalIgnoreCase)) return "Amazon Chime";
+        if (processName.Equals("Discord", StringComparison.OrdinalIgnoreCase)) return "Discord";
 
         return null;
     }
@@ -587,7 +611,8 @@ public sealed record DetectedMeeting(
     string Key,
     int ProcessId,
     MeetingEvidenceStrength Evidence = MeetingEvidenceStrength.Weak,
-    nint WindowHandle = 0);
+    nint WindowHandle = 0,
+    MeetingPresenceSnapshot? Presence = null);
 
 public sealed record MeetingDetectionScan(
     bool Found,

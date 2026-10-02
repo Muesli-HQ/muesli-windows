@@ -178,7 +178,7 @@ public sealed class WinUiMeetingNotificationService : IDisposable
     private void Log(MeetingNotificationRequest request, MeetingNotificationDecision decision)
     {
         var promptHash = AppLogService.SensitiveTextFingerprint(request.PromptId);
-        var kind = request.IsScheduled ? "ScheduledUpcoming" : "ActiveDetected";
+        var kind = request.Kind.ToString();
         if (decision.Show)
         {
             _log.Info(

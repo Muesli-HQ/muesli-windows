@@ -115,7 +115,12 @@ $RECYCLE.BIN/
 *.swo
 *~
 
-# Legacy Electron/web stack (not used — WPF is the active app)
+# Local agent test results, recordings, and UI screenshots
+.codegraph-cache/
+/docs/ui-reference/
+/screenshot.png
+
+# Legacy Electron/web stack (not used — WinUI is the active app)
 shared/
 src/
 electron/

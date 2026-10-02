@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Muesli.Windows.Services;
 
 namespace Muesli.Windows.Core.Services;
 
@@ -175,7 +176,7 @@ public sealed record IndicatorSnapshot
     public string Theme { get; init; } = "dark";
     public bool HighContrast { get; init; }
 
-    /// <summary>Live microphone amplitude in [0,1]; the companion smooths it at 30 fps.</summary>
+    /// <summary>Live microphone RMS level in [0,1]; the companion maps it to dB and smooths it at 30 fps.</summary>
     public float Amplitude { get; init; }
 
     public IndicatorMeetingNotification? MeetingNotification { get; init; }
@@ -197,6 +198,11 @@ public sealed record IndicatorCommand
     /// <summary>Repaired custom centre after a drag completes, in DIPs.</summary>
     public double? DragLeft { get; init; }
     public double? DragTop { get; init; }
+    /// <summary>Screen-pixel bounds used to place the meeting transcript beside the companion.</summary>
+    public int? IndicatorX { get; init; }
+    public int? IndicatorY { get; init; }
+    public int? IndicatorWidth { get; init; }
+    public int? IndicatorHeight { get; init; }
 }
 
 public sealed record IndicatorMeetingNotification(
@@ -210,4 +216,5 @@ public sealed record IndicatorMeetingNotification(
     string ActionLabel,
     bool HasSplitAction,
     Muesli.Windows.Services.MeetingJoinDefaultAction DefaultAction,
-    double DismissAfterSeconds);
+    double DismissAfterSeconds,
+    MeetingNotificationAction SingleAction = MeetingNotificationAction.StartTranscribing);

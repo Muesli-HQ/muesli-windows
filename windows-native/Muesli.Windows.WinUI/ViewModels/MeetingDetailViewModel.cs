@@ -14,6 +14,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     private readonly IAppDialogService _dialogs;
     private readonly IUiDispatcher _dispatcher;
     private readonly WinUiMeetingDetailContext _runtime;
+    private readonly WinUiMeetingContext _meetings;
     private PersistedMeeting? _meeting;
     private RetranscriptionCandidate? _candidate;
     private int _disposed;
@@ -21,18 +22,21 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     public MeetingDetailViewModel(
         WinUiLibraryContext library,
         WinUiSettingsContext settings,
+        WinUiMeetingContext meetings,
         IClipboardService clipboard,
         IFilePickerService filePickers,
         IAppDialogService dialogs,
         IUiDispatcher dispatcher)
     {
         _library = library;
+        _meetings = meetings;
         _clipboard = clipboard;
         _filePickers = filePickers;
         _dialogs = dialogs;
         _dispatcher = dispatcher;
         _runtime = new WinUiMeetingDetailContext(library, settings);
         _runtime.PlaybackChanged += (_, args) => _dispatcher.TryEnqueue(() => UpdatePlayback(args));
+        _meetings.Changed += OnMeetingRuntimeChanged;
         TemplateNames = MeetingSummaryService.BuiltInTemplateNames
             .Concat(library.LoadMeetingTemplates().Select(template => template.Name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -89,6 +93,40 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     /// <summary>Raised when the meeting this page was showing no longer exists.</summary>
     public event EventHandler? MeetingRemoved;
+    public event EventHandler? RecordingStarted;
+    public string MeetingId => _meeting?.Id ?? "";
+    [ObservableProperty] public partial IReadOnlyList<PersistedMeeting> RelatedMeetings { get; private set; } = [];
+    public bool HasRelatedMeetings => RelatedMeetings.Count > 0;
+    public bool CanContinueMeeting => CanWork && _meeting is not null && MeetingContinuation.CanContinue(_meeting)
+        && !_meetings.IsRecording && !_meetings.IsPaused && !_meetings.IsBusy;
+    public bool CanFollowUp => CanContinueMeeting && _library.SupportsMeetingThreads;
+
+    [RelayCommand(CanExecute = nameof(CanContinueMeeting))]
+    private async Task ResumeFinishedAsync() => await ContinueMeetingAsync(false);
+
+    [RelayCommand(CanExecute = nameof(CanFollowUp))]
+    private async Task StartFollowUpAsync() => await ContinueMeetingAsync(true);
+
+    private async Task ContinueMeetingAsync(bool followUp)
+    {
+        if (_meeting is null) return;
+        Save();
+        _runtime.Stop();
+        SetWorking(true, followUp ? "Starting follow-up…" : "Resuming meeting…");
+        try
+        {
+            if (followUp) await _meetings.StartFollowUpAsync(_meeting.Id);
+            else await _meetings.ResumeFinishedAsync(_meeting.Id);
+            RecordingStarted?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception exception) { ShowStatus($"Could not start recording: {exception.Message}", true); }
+        finally { SetWorking(false); }
+    }
+
+    private void OnMeetingRuntimeChanged(object? sender, EventArgs args) => _dispatcher.TryEnqueue(() =>
+    {
+        if (Volatile.Read(ref _disposed) == 0) { NotifyCommands(); NotifyPresentation(); }
+    });
 
     public IReadOnlyList<string> TemplateNames { get; }
     public bool CanWork => HasMeeting && !IsWorking;
@@ -106,6 +144,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     public bool IsMissing => !HasMeeting;
     public bool ShowTranscriptTab => HasMeeting && !ShowNotesTab;
     public bool ShowNotesContent => HasMeeting && ShowNotesTab;
+    public bool ShowGeneratedNotes => HasMeeting && _meeting?.SessionState == MeetingSessionState.Completed;
     public bool HasWaveform => WaveformBars.Count > 0;
     public double PlaybackSliderMaximum => Math.Max(1d, PlaybackDurationSeconds);
     public string PlaybackTimeLabel =>
@@ -148,6 +187,18 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     partial void OnShowNotesTabChanged(bool value) => NotifyPresentation();
 
+    partial void OnManualNotesChanged(string value)
+    {
+        if (_meeting is null || value == _meeting.ManualNotes || Volatile.Read(ref _disposed) != 0) return;
+        try
+        {
+            var updated = MeetingNotesComposer.ApplyManualNotes(_meeting, value);
+            if (_library.UpdateMeeting(updated)) _meeting = updated;
+            else ShowStatus("The meeting no longer exists. Your writing has not been saved.", true);
+        }
+        catch (Exception exception) { ShowStatus($"Could not save notes: {exception.Message}", true); }
+    }
+
     partial void OnTranscriptChanged(string value) =>
         HasTranscriptText = !string.IsNullOrWhiteSpace(value);
 
@@ -172,7 +223,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         if (_meeting is null) return;
         var title = string.IsNullOrWhiteSpace(Title) ? "Untitled meeting" : Title.Trim();
         var updated = MeetingNotesComposer.ApplyManualNotes(
-            MeetingNotesComposer.ApplyManualTitle(_meeting, title), ManualNotes) with
+            title == _meeting.Title ? _meeting : MeetingNotesComposer.ApplyManualTitle(_meeting, title), ManualNotes) with
         {
             FolderId = string.IsNullOrWhiteSpace(SelectedFolder?.Id) ? null : SelectedFolder.Id
         };
@@ -395,6 +446,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     private void ApplyMeeting(PersistedMeeting meeting, bool keepTranscriptDraft = false)
     {
+        RelatedMeetings = _library.RelatedMeetings(meeting.Id);
+        OnPropertyChanged(nameof(HasRelatedMeetings));
         Title = meeting.Title;
         Metadata = $"{meeting.CreatedAt.ToLocalTime():MMM d, yyyy · h:mm tt} · {FormatDuration(meeting.DurationMs)} · {meeting.ModelProfile}";
         HasManualTitle = meeting.TitleIsManual;
@@ -517,15 +570,20 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         SaveTranscriptCommand.NotifyCanExecuteChanged();
         GenerateSummaryCommand.NotifyCanExecuteChanged();
         RetranscribeCommand.NotifyCanExecuteChanged();
+        ResumeFinishedCommand.NotifyCanExecuteChanged();
+        StartFollowUpCommand.NotifyCanExecuteChanged();
     }
 
     private void NotifyPresentation()
     {
+        OnPropertyChanged(nameof(ShowGeneratedNotes));
         OnPropertyChanged(nameof(IsMissing));
         OnPropertyChanged(nameof(ShowTranscriptTab));
         OnPropertyChanged(nameof(ShowNotesContent));
         OnPropertyChanged(nameof(CanWork));
         OnPropertyChanged(nameof(CanGenerateSummary));
+        OnPropertyChanged(nameof(CanContinueMeeting));
+        OnPropertyChanged(nameof(CanFollowUp));
     }
 
     private void ShowStatus(string message, bool isError = false)
@@ -538,6 +596,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _meetings.Changed -= OnMeetingRuntimeChanged;
         _runtime.Dispose();
     }
 

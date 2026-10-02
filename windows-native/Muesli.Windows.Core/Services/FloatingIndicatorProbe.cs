@@ -35,7 +35,7 @@ public static class FloatingIndicatorProbe
     /// The status text published for a probe-driven success pill. Deliberately self-identifying so
     /// a probe run can never be mistaken for a real dictation outcome in a screenshot.
     /// </summary>
-    public const string SuccessMessage = "Probe: dictation inserted";
+    public const string SuccessMessage = "Probe: dictation saved";
 
     /// <summary>The status text published for a probe-driven error pill.</summary>
     public const string ErrorMessage = "Probe: dictation failed";

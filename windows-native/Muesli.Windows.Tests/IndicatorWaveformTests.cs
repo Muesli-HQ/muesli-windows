@@ -5,98 +5,69 @@ namespace Muesli.Windows.Tests;
 public sealed class IndicatorWaveformTests
 {
     [Fact]
-    public void Preparing_uses_the_five_bar_symmetric_envelope()
+    public void Waveform_uses_the_five_bar_symmetric_envelope()
     {
-        Assert.Equal(5, IndicatorWaveform.BarCountFor(FloatingIndicatorState.Preparing));
-        Assert.Equal(FloatingIndicatorLayout.PreparingBarMultipliers, IndicatorWaveform.MultipliersFor(FloatingIndicatorState.Preparing));
-        // Symmetric about the centre bar.
-        Assert.Equal(0.6, FloatingIndicatorLayout.PreparingBarMultipliers[0]);
-        Assert.Equal(0.85, FloatingIndicatorLayout.PreparingBarMultipliers[1]);
-        Assert.Equal(1.0, FloatingIndicatorLayout.PreparingBarMultipliers[2]);
-        Assert.Equal(0.85, FloatingIndicatorLayout.PreparingBarMultipliers[3]);
-        Assert.Equal(0.6, FloatingIndicatorLayout.PreparingBarMultipliers[4]);
+        Assert.Equal(5, IndicatorWaveform.BarCount);
+        Assert.Equal([0.6, 0.85, 1.0, 0.85, 0.6], FloatingIndicatorLayout.WaveformBarMultipliers);
     }
 
     [Fact]
-    public void Recording_uses_the_five_bar_symmetric_envelope()
+    public void Amplitude_maps_minus_68_to_minus_30_dB_onto_unit_range()
     {
-        // The macOS reference animates the same five-bar envelope for recording and preparing;
-        // the retired Windows port's four-bar shape was the deviation.
-        Assert.Equal(5, IndicatorWaveform.BarCountFor(FloatingIndicatorState.Recording));
-        Assert.Equal(FloatingIndicatorLayout.RecordingBarMultipliers, IndicatorWaveform.MultipliersFor(FloatingIndicatorState.Recording));
-        Assert.Equal([0.6, 0.85, 1.0, 0.85, 0.6], FloatingIndicatorLayout.RecordingBarMultipliers);
+        // macOS IndicatorWaveformDynamics.amplitude: (dB + 68) / 38, clamped.
+        Assert.Equal(0, IndicatorWaveform.Amplitude(-68));
+        Assert.Equal(0.5, IndicatorWaveform.Amplitude(-49), 6);
+        Assert.Equal(1, IndicatorWaveform.Amplitude(-30));
+        Assert.Equal(1, IndicatorWaveform.Amplitude(0));
+        Assert.Equal(0, IndicatorWaveform.Amplitude(double.NegativeInfinity));
+        Assert.Equal(0, IndicatorWaveform.AmplitudeFromRms(0));
+        Assert.Equal(IndicatorWaveform.Amplitude(-40), IndicatorWaveform.AmplitudeFromRms(0.01), 6);
     }
 
     [Fact]
-    public void Recording_waveform_is_capped_inside_the_22_dip_pill()
+    public void Bar_height_spans_3_to_14_dips_inside_the_22_dip_pill()
     {
-        // The design-system 26-DIP envelope would overflow the 22-DIP recording pill, so the
-        // recording span is scaled to a 14-DIP ceiling while the square-waveform shape stays.
-        Assert.Equal(14, FloatingIndicatorLayout.WaveformMaxHeightFor(FloatingIndicatorState.Recording));
-        var loudest = IndicatorWaveform.LevelBarHeight(FloatingIndicatorState.Recording, 1.0, 1);
-        Assert.InRange(loudest, FloatingIndicatorLayout.WaveformMinHeight, FloatingIndicatorLayout.WaveformMaxHeightFor(FloatingIndicatorState.Recording));
+        Assert.Equal(3, IndicatorWaveform.BarHeight(0));
+        Assert.Equal(14, IndicatorWaveform.BarHeight(1));
+        Assert.Equal(3, IndicatorWaveform.BarHeight(-2));
+        Assert.Equal(14, IndicatorWaveform.BarHeight(5));
+        Assert.True(IndicatorWaveform.BarHeight(1) < FloatingIndicatorLayout.LiveHeight);
     }
 
     [Fact]
-    public void Preparing_waveform_can_use_the_full_envelope()
+    public void Level_bars_are_shaped_by_the_envelope()
     {
-        Assert.Equal(26, FloatingIndicatorLayout.WaveformMaxHeightFor(FloatingIndicatorState.Preparing));
-        var loudest = IndicatorWaveform.LevelBarHeight(FloatingIndicatorState.Preparing, 1.0, 2);
-        Assert.InRange(loudest, FloatingIndicatorLayout.WaveformMinHeight, FloatingIndicatorLayout.WaveformMaxHeight);
+        Assert.Equal(14, IndicatorWaveform.LevelBarHeight(1, 2));
+        Assert.True(IndicatorWaveform.LevelBarHeight(1, 1) > IndicatorWaveform.LevelBarHeight(1, 0));
+        Assert.Equal(IndicatorWaveform.LevelBarHeight(1, 0), IndicatorWaveform.LevelBarHeight(1, 4), 6);
+        Assert.Equal(3, IndicatorWaveform.LevelBarHeight(0, 2));
     }
 
     [Fact]
-    public void LevelBarHeight_is_monotonic_and_shaped_by_the_envelope()
-    {
-        var quiet = IndicatorWaveform.LevelBarHeight(FloatingIndicatorState.Recording, 0.0, 1);
-        var loud = IndicatorWaveform.LevelBarHeight(FloatingIndicatorState.Recording, 1.0, 1);
-        Assert.True(loud > quiet);
-        // Inner bars reach higher than outer bars at the same level.
-        Assert.True(
-            IndicatorWaveform.LevelBarHeight(FloatingIndicatorState.Recording, 1.0, 1) >
-            IndicatorWaveform.LevelBarHeight(FloatingIndicatorState.Recording, 1.0, 0));
-    }
-
-    [Fact]
-    public void LevelBarHeight_never_goes_below_minimum()
-    {
-        Assert.Equal(
-            FloatingIndicatorLayout.WaveformMinHeight,
-            IndicatorWaveform.LevelBarHeight(FloatingIndicatorState.Recording, -2.0, 1));
-    }
-
-    [Fact]
-    public void PreparingPulseScale_stays_in_unit_range()
+    public void Waiting_shimmer_stays_in_bounds_and_staggers_bars()
     {
         for (var index = 0; index < 5; index++)
         {
             for (var t = 0.0; t < 2.0; t += 0.05)
             {
-                var scale = IndicatorWaveform.PreparingPulseScale(t, index);
-                Assert.InRange(scale, 0.0, 1.0);
+                var (height, opacity) = IndicatorWaveform.WaitingBar(t, index);
+                Assert.InRange(height, 3, 14);
+                Assert.InRange(opacity, 0.38, 0.74 + 1e-9);
             }
         }
+        Assert.NotEqual(IndicatorWaveform.WaitingBar(0.1, 0), IndicatorWaveform.WaitingBar(0.1, 1));
     }
 
     [Fact]
-    public void PreparingPulseScale_staggers_neighbouring_bars()
-    {
-        // At a fixed time, adjacent bars are at different phases because of the 0.07s stagger.
-        var t = 0.123;
-        var leading = IndicatorWaveform.PreparingPulseScale(t, 0);
-        var trailing = IndicatorWaveform.PreparingPulseScale(t, 1);
-        Assert.NotEqual(leading, trailing);
-    }
-
-    [Fact]
-    public void Smoother_converges_toward_the_input_with_exponential_weight()
+    public void Smoother_uses_the_048_weight()
     {
         var smoother = new IndicatorAmplitudeSmoother();
-        Assert.Equal(0, smoother.Next(0.0f));
-        Assert.Equal(0.4, smoother.Next(0.8f), 6);    // 0.5*0.8 + 0.5*0.0
-        Assert.Equal(0.6, smoother.Next(0.8f), 6);    // 0.5*0.8 + 0.5*0.4
-        // Toward steady state.
-        for (var i = 0; i < 100; i++) smoother.Next(1.0f);
+        Assert.Equal(0, smoother.Next(0));
+        Assert.Equal(0.48, smoother.Next(1), 6);
+        Assert.Equal(0.48 + 0.52 * 0.48, smoother.Next(1), 6);
+        for (var i = 0; i < 100; i++) smoother.Next(1);
         Assert.InRange(smoother.Current, 0.99, 1.0);
+        smoother.Reset();
+        Assert.Equal(0, smoother.Current);
     }
 }

@@ -7,11 +7,13 @@ namespace Muesli.Windows.Services;
 
 public sealed record MeetingSessionJournal
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string SessionId { get; init; } = "";
     public string Title { get; init; } = "";
+    // The immutable baseline makes resume finalization/recovery idempotent, including after a crash during save.
+    public PersistedMeeting? ResumedMeeting { get; init; }
     public DateTimeOffset StartedAtUtc { get; init; }
     public DateTimeOffset UpdatedAtUtc { get; init; }
     public MeetingSessionState State { get; init; } = MeetingSessionState.Preparing;
@@ -292,20 +294,28 @@ public sealed class MeetingSessionJournalStore
         ValidateJournal(journal);
         lock (_gate)
         {
+            if (journal.ResumedMeeting is { } resumed) ValidateSessionId(resumed.Id);
             var destinationDirectory = journal.RetainRecording
-                ? Path.Combine(_recordingsRoot, journal.SessionId)
+                ? Path.Combine(_recordingsRoot, journal.ResumedMeeting?.Id ?? journal.SessionId)
                 : SessionDirectory(journal.SessionId);
             Directory.CreateDirectory(destinationDirectory);
+            var suffix = journal.ResumedMeeting is null ? "" : $"-resume-{journal.SessionId}";
             var micPath = CombineTrackUnderGate(
                 journal,
                 journal.MicrophoneParts,
-                Path.Combine(destinationDirectory, journal.RetainRecording ? "microphone.wav" : "microphone-final.wav"));
+                Path.Combine(destinationDirectory, journal.RetainRecording ? $"microphone{suffix}.wav" : "microphone-final.wav"));
             var systemPath = CombineTrackUnderGate(
                 journal,
                 journal.SystemParts,
-                Path.Combine(destinationDirectory, journal.RetainRecording ? "system.wav" : "system-final.wav"));
+                Path.Combine(destinationDirectory, journal.RetainRecording ? $"system{suffix}.wav" : "system-final.wav"));
             return new MeetingAudioPaths(micPath, systemPath);
         }
+    }
+
+    public MeetingAudioPaths BuildResumedPlaybackTracks(MeetingSessionJournal journal, string? microphone, string? system)
+    {
+        if (!journal.RetainRecording || journal.ResumedMeeting is not { } prior) return new(microphone, system);
+        lock (_gate) return new(AppendPriorTrack(prior.MicrophoneAudioPath, microphone), AppendPriorTrack(prior.SystemAudioPath, system));
     }
 
     public void DeleteSession(string sessionId)
@@ -393,6 +403,19 @@ public sealed class MeetingSessionJournalStore
             return null;
         }
 
+        return CombineAudioFiles(sources, destinationPath);
+    }
+
+    private static string? AppendPriorTrack(string? prior, string? current)
+    {
+        if (string.IsNullOrWhiteSpace(prior) || !File.Exists(prior)) return current;
+        if (current is null) return prior;
+        var combined = Path.Combine(Path.GetDirectoryName(current)!, Path.GetFileNameWithoutExtension(current) + "-combined.wav");
+        return CombineAudioFiles([prior, current], combined);
+    }
+
+    private static string CombineAudioFiles(IReadOnlyList<string> sources, string destinationPath)
+    {
         var temporaryPath = $"{destinationPath}.{Guid.NewGuid():N}.tmp";
         var readers = new List<AudioFileReader>();
         try
@@ -426,6 +449,9 @@ public sealed class MeetingSessionJournalStore
             {
                 stream.Flush(flushToDisk: true);
             }
+            // Release readers before replacing the newly assembled track, including on Windows.
+            foreach (var reader in readers) reader.Dispose();
+            readers.Clear();
             File.Move(temporaryPath, destinationPath, overwrite: true);
             return destinationPath;
         }

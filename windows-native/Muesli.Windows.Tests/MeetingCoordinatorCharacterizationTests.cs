@@ -142,9 +142,9 @@ public sealed class MeetingCoordinatorCharacterizationTests
     }
 
     [Fact]
-    public void JournalSchemaStaysAtVersion3()
+    public void JournalSchemaProtectsFinishedMeetingResumeBaselines()
     {
-        Assert.Equal(3, MeetingSessionJournal.CurrentSchemaVersion);
+        Assert.Equal(4, MeetingSessionJournal.CurrentSchemaVersion);
         using var directory = new TestDirectory();
         var store = new MeetingSessionJournalStore(directory.Path);
         var journal = store.Create("meet_schema", "Schema", DateTimeOffset.UnixEpoch, "mic", "parakeet-v3", true, null);

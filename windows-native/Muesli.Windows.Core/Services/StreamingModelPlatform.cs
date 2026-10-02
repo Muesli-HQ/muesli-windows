@@ -242,6 +242,26 @@ public sealed class StreamingModelInstaller
             new JsonSerializerOptions { WriteIndented = true }), cancellationToken).ConfigureAwait(false);
     }
 
+    public static async Task<string> PrepareMeetingVadAsync(CancellationToken token)
+    {
+        var model = StreamingModelCatalog.Models[0];
+        var path = Path.Combine(StreamingModelCatalog.ModelCacheDirectory, "silero_vad.onnx");
+        Directory.CreateDirectory(StreamingModelCatalog.ModelCacheDirectory);
+        if (File.Exists(path))
+        {
+            await using var existing = File.OpenRead(path);
+            if (Convert.ToHexString(await SHA256.HashDataAsync(existing, token)).Equals(model.VadSha256, StringComparison.OrdinalIgnoreCase)) return path;
+        }
+        var temporary = path + $".{Guid.NewGuid():N}.download";
+        try
+        {
+            await DownloadAsync(model.VadUrl, temporary, model.VadSha256, "Preparing meeting speech detection", null, token);
+            File.Move(temporary, path, overwrite: true);
+            return path;
+        }
+        finally { TryDeleteFile(temporary); }
+    }
+
     private static async Task DownloadAsync(string url, string destination, string expectedHash, string label, IProgress<ModelDownloadProgress>? progress, CancellationToken token)
     {
         var uri = new Uri(url);

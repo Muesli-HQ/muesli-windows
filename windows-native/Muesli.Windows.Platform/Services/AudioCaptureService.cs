@@ -355,7 +355,7 @@ public sealed class AudioCaptureService : IDisposable
         if (Stopwatch.GetElapsedTime(previous, now) >= TimeSpan.FromMilliseconds(50) &&
             Interlocked.CompareExchange(ref _lastLevelNotificationTicks, now, previous) == previous)
         {
-            LevelChanged?.Invoke(this, new AudioLevelEventArgs(metrics.Peak));
+            LevelChanged?.Invoke(this, new AudioLevelEventArgs(metrics.Peak, (float)metrics.Rms));
         }
     }
 
@@ -721,9 +721,12 @@ public sealed record AudioEndpointChange(
     DeviceState State = DeviceState.Active,
     Role? DefaultRole = null);
 public enum AudioRouteChangeKind { Recovered, Fallback, Failed }
-public sealed class AudioLevelEventArgs(float peak) : EventArgs
+public sealed class AudioLevelEventArgs(float peak, float rms = 0) : EventArgs
 {
     public float Peak { get; } = peak;
+
+    /// <summary>Linear RMS of the same buffer; the floating indicator meters average power.</summary>
+    public float Rms { get; } = rms;
 }
 
 public sealed class AudioRouteChangedEventArgs(

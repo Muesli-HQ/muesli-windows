@@ -11,7 +11,8 @@ public enum MeetingSessionState
     Completed,
     Failed,
     Cancelled,
-    RecoverableInterruption
+    RecoverableInterruption,
+    NoteOnly
 }
 
 public enum MeetingSessionTrigger

@@ -1,5 +1,6 @@
 using Muesli.Windows.Services;
 using Muesli.Windows.Core.Contracts;
+using Muesli.Windows.Core.Insights;
 
 namespace Muesli.Windows.WinUI.Services;
 
@@ -19,6 +20,7 @@ public sealed class WinUiMeetingContext : IDisposable
     private readonly TranscriptionPipelineService _pipeline;
     private MuesliSettings _settings;
     private string _title = "";
+    private DateTime _startedAt;
     private int _operationBusy;
     private int _disposed;
 
@@ -53,6 +55,7 @@ public sealed class WinUiMeetingContext : IDisposable
     }
 
     public event EventHandler? Changed;
+    public event EventHandler? SourceWarningDismissed;
 
     public MeetingSessionState State => _coordinator.State;
 
@@ -61,6 +64,59 @@ public sealed class WinUiMeetingContext : IDisposable
     public bool IsBusy => _coordinator.IsBusy || Volatile.Read(ref _operationBusy) != 0;
 
     public bool IsPaused => _coordinator.State == MeetingSessionState.RecoverableInterruption;
+
+    public string? ActiveMeetingId { get; private set; }
+    public string ActiveTitle => _title;
+    public string ManualNotes { get; private set; } = "";
+    public bool AreNotesSaved { get; private set; } = true;
+    public bool IsSourceMissing { get; private set; }
+    public bool IsRollingPreview => string.IsNullOrWhiteSpace(_settings.LiveMeetingModelId);
+    public bool IsResumingFinishedMeeting => _coordinator.ResumedMeeting is not null;
+    public string LiveTranscriptPrefix => _coordinator.ResumedMeeting?.Transcript ?? "";
+    public string PreviousMeetingNotes => _coordinator.ResumedMeeting is { } prior
+        ? string.IsNullOrWhiteSpace(prior.Summary) ? prior.Transcript : prior.Summary : "";
+
+    public void SetSourceMissing(bool missing)
+    {
+        if (IsSourceMissing == missing) return;
+        IsSourceMissing = missing;
+        RaiseChanged();
+    }
+
+    public void KeepRecording()
+    {
+        SourceWarningDismissed?.Invoke(this, EventArgs.Empty);
+        SetSourceMissing(false);
+    }
+
+    public void SaveManualNotes(string notes)
+    {
+        ThrowIfDisposed();
+        if (ActiveMeetingId is null || (!IsRecording && !IsPaused) || IsBusy)
+            throw new InvalidOperationException("Notes can be edited while a meeting is recording or paused.");
+        ManualNotes = notes;
+        AreNotesSaved = false;
+        SaveManualNotesCore();
+    }
+
+    private void SaveManualNotesCore()
+    {
+        if (ActiveMeetingId is null) return;
+        var meeting = _library.FindMeeting(ActiveMeetingId) ?? new PersistedMeeting
+        {
+            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            Id = ActiveMeetingId, Title = _title, CreatedAt = _startedAt,
+            ModelProfile = _settings.FinalMeetingModelId, SessionState = State
+        };
+        try { SaveMeeting(MeetingNotesComposer.ApplyManualNotes(meeting, ManualNotes)); }
+        catch (Exception exception)
+        {
+            _log.Error("Meeting written notes could not be saved; the draft remains in memory.", exception);
+            throw;
+        }
+        AreNotesSaved = true;
+    }
+
 
     public string LiveTranscript { get; private set; } = "";
 
@@ -90,10 +146,54 @@ public sealed class WinUiMeetingContext : IDisposable
             return true;
         });
 
-    private async Task StartCoreAsync(int? processId, CancellationToken cancellationToken)
+    public Task ResumeFinishedAsync(string meetingId, CancellationToken cancellationToken = default) => RunOperationAsync(async () =>
+    {
+        if (IsRecording || IsPaused) throw new InvalidOperationException("Finish the active meeting first.");
+        var meeting = _library.FindMeeting(meetingId) ?? throw new InvalidOperationException("The meeting no longer exists.");
+        if (!MeetingContinuation.CanContinue(meeting)) throw new InvalidOperationException("Only completed meetings can be resumed.");
+        await RefreshSettingsAsync(cancellationToken);
+        _title = meeting.Title;
+        await StartCoreAsync(null, cancellationToken, meeting);
+        return true;
+    });
+
+    public Task StartFollowUpAsync(string meetingId, CancellationToken cancellationToken = default) => RunOperationAsync(async () =>
+    {
+        if (IsRecording || IsPaused) throw new InvalidOperationException("Finish the active meeting first.");
+        var predecessor = _library.FindMeeting(meetingId) ?? throw new InvalidOperationException("The meeting no longer exists.");
+        if (!MeetingContinuation.CanContinue(predecessor)) throw new InvalidOperationException("Only completed meetings can have follow-ups.");
+        if (!_library.SupportsMeetingThreads) throw new InvalidOperationException("Meeting threads require the SQLite library.");
+        await RefreshSettingsAsync(cancellationToken);
+        _title = MeetingContinuation.FollowUpTitle(predecessor.Title);
+        await StartCoreAsync(null, cancellationToken);
+        try
+        {
+            SaveManualNotesCore();
+            var draft = _library.FindMeeting(ActiveMeetingId!)! with { FolderId = predecessor.FolderId };
+            SaveMeeting(draft);
+            _library.LinkFollowUp(predecessor, draft);
+        }
+        catch
+        {
+            await _coordinator.CancelAsync();
+            if (ActiveMeetingId is { } id) _library.DeleteMeeting(id);
+            ActiveMeetingId = null;
+            throw;
+        }
+        return true;
+    });
+
+    private async Task StartCoreAsync(int? processId, CancellationToken cancellationToken, PersistedMeeting? resumedMeeting = null)
     {
         ThrowIfDisposed();
         LiveTranscript = "";
+        LatestLiveSnapshot = null;
+        ManualNotes = "";
+        AreNotesSaved = true;
+        ActiveMeetingId = null;
+        IsSourceMissing = false;
+        MicrophoneLevel = SystemLevel = 0;
+        _startedAt = DateTime.Now;
         LiveTranscriptionConfiguration? liveConfiguration = null;
         if (!string.IsNullOrWhiteSpace(_settings.LiveMeetingModelId))
         {
@@ -103,13 +203,16 @@ public sealed class WinUiMeetingContext : IDisposable
                 _settings.ShowLiveWaveformOnHover);
         }
 
-        await _coordinator.StartAsync(
+        var start = await _coordinator.StartAsync(
             microphoneName: _settings.MicrophoneName,
             title: _title,
             retainRecording: _settings.SaveMeetingRecordings,
             targetProcessId: processId,
             cancellationToken: cancellationToken,
-            liveConfiguration: liveConfiguration);
+            liveConfiguration: liveConfiguration,
+            resumedMeeting: resumedMeeting);
+        ActiveMeetingId = resumedMeeting?.Id ?? start.MeetingId;
+        if (resumedMeeting is not null) ManualNotes = resumedMeeting.ManualNotes;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
         RaiseChanged();
     }
@@ -120,13 +223,18 @@ public sealed class WinUiMeetingContext : IDisposable
     private async Task<PersistedMeeting> StopAndSaveCoreAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        // Retry a failed autosave before stopping capture. A storage error must not lose writing.
+        if (!AreNotesSaved) SaveManualNotesCore();
         var result = await _coordinator.StopAsync(
             _title,
             _settings.SaveMeetingRecordings,
             cancellationToken);
         var persisted = Persist(result);
+        var unchangedSpeech = IsResumingFinishedMeeting && string.IsNullOrWhiteSpace(result.Transcript);
         _coordinator.AcknowledgePersisted(result.MeetingId);
-        var meeting = await FinalizeMeetingAsync(persisted, cancellationToken);
+        ActiveMeetingId = null;
+        IsSourceMissing = false;
+        var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -134,10 +242,23 @@ public sealed class WinUiMeetingContext : IDisposable
         return meeting;
     }
 
-    public async Task CancelAsync()
+    public async Task CancelAsync(bool keepNotes = false)
     {
         ThrowIfDisposed();
+        if (IsBusy) throw new InvalidOperationException("Wait for the current meeting operation to finish.");
+        if (keepNotes) SaveManualNotesCore();
+        var resumed = IsResumingFinishedMeeting;
         await _coordinator.CancelAsync();
+        if (ActiveMeetingId is { } id)
+        {
+            if (resumed) { /* Discard only the appended capture; the existing meeting and writing survive. */ }
+            else if (keepNotes && _library.FindMeeting(id) is { } draft)
+                SaveMeeting(draft with { SessionState = MeetingSessionState.NoteOnly });
+            else _library.DeleteMeeting(id);
+        }
+        ActiveMeetingId = null;
+        ManualNotes = "";
+        IsSourceMissing = false;
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -168,6 +289,8 @@ public sealed class WinUiMeetingContext : IDisposable
         CancellationToken cancellationToken = default) => RunOperationAsync(async () =>
         {
             if (IsRecording || IsPaused) throw new InvalidOperationException("Finish the active meeting before recovering another.");
+            if (recovery.Journal.ResumedMeeting is { } original && _library.FindMeeting(original.Id) is null)
+                throw new InvalidOperationException("The original meeting was deleted. Discard this recovered capture to avoid restoring deleted content.");
             await RefreshSettingsAsync(cancellationToken);
             return await FinalizeRecoverableCoreAsync(recovery, cancellationToken);
         });
@@ -179,14 +302,29 @@ public sealed class WinUiMeetingContext : IDisposable
         ThrowIfDisposed();
         var result = await _coordinator.FinalizeRecoverableAsync(recovery, cancellationToken);
         var persisted = Persist(result);
+        var unchangedSpeech = IsResumingFinishedMeeting && string.IsNullOrWhiteSpace(result.Transcript);
         _coordinator.AcknowledgePersisted(result.MeetingId);
-        var meeting = await FinalizeMeetingAsync(persisted, cancellationToken);
+        var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
         RaiseChanged();
         return meeting;
     }
+
+    public Task DiscardRecoveryAsync(RecoverableMeetingSession recovery) => RunOperationAsync(() =>
+    {
+        if (IsRecording || IsPaused) throw new InvalidOperationException("Finish the active meeting before discarding recovered audio.");
+        var id = recovery.Journal.SessionId;
+        _coordinator.DiscardRecoverable(id);
+        if (recovery.Journal.ResumedMeeting is null && _library.FindMeeting(id) is { } draft && string.IsNullOrWhiteSpace(draft.Transcript))
+        {
+            if (string.IsNullOrWhiteSpace(draft.ManualNotes)) _library.DeleteMeeting(id);
+            else SaveMeeting(draft with { SessionState = MeetingSessionState.NoteOnly });
+        }
+        RaiseChanged();
+        return Task.FromResult(true);
+    });
 
     public Task<PersistedMeeting> ImportAsync(
         string sourcePath,
@@ -284,6 +422,8 @@ public sealed class WinUiMeetingContext : IDisposable
             FinalTranscriptOwnerModelId = result.FinalTranscriptOwnerModelId,
             GapRecoveryModelId = result.GapRecoveryModelId
         };
+        if (_coordinator.ResumedMeeting is { } prior) meeting = MeetingContinuation.AppendRecording(prior, meeting);
+        meeting = MeetingNotesComposer.ApplyRecordedMeeting(meeting, _library.FindMeeting(meeting.Id));
         SaveMeeting(meeting);
         return meeting;
     }
@@ -322,15 +462,14 @@ public sealed class WinUiMeetingContext : IDisposable
             string.Equals(item.Name, summarySettings.MeetingSummaryTemplate, StringComparison.OrdinalIgnoreCase));
         if (template is not null) summarySettings = summarySettings with { MeetingSummaryPromptOverride = template.Prompt };
 
-        var generatedTitle = MeetingTitleService.Generate(
-            meeting.Transcript,
-            meeting.CreatedAt,
-            meeting.Title);
+        var generatedTitle = await MeetingSummaryService.CreateTitleAsync(meeting, summarySettings, cancellationToken);
         var result = await MeetingSummaryService.CreateSummaryResultAsync(
             meeting.Transcript,
             generatedTitle,
             summarySettings,
-            cancellationToken);
+            cancellationToken,
+            manualNotes: meeting.ManualNotes,
+            previousMeetingNotes: _library.Predecessor(meeting.Id) is { } predecessor ? MeetingContinuation.CarriedNotes(predecessor) : null);
         var finalized = MeetingNotesComposer.ApplyResummarization(
             meeting,
             result.Summary,
@@ -370,9 +509,7 @@ public sealed class WinUiMeetingContext : IDisposable
             .Where(value => !string.IsNullOrWhiteSpace(value)));
     }
 
-    private static int CountWords(string text) => text.Split(
-        (char[]?)null,
-        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length;
+    private static int CountWords(string text) => LibraryMetrics.CountWords(text);
 
     private async Task RefreshSettingsAsync(CancellationToken cancellationToken)
     {

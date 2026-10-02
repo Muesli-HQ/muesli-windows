@@ -27,6 +27,9 @@ internal sealed class MeetingCaptureSession : IDisposable
 {
     private readonly MeetingPersistenceBoundary _persistence;
     private readonly AppLogService? _logService;
+    private readonly NativeTranscriptionClient _transcription;
+    private MeetingRollingTranscriber? _rollingPreview;
+    private IReadOnlyList<LiveTranscriptSegment> _rollingCommitted = [];
     private readonly object _liveCheckpointGate = new();
     private readonly SemaphoreSlim _repairGate = new(1, 1);
     private IReadOnlyList<LiveTranscriptSegment>? _pendingLiveCheckpoint;
@@ -48,9 +51,10 @@ internal sealed class MeetingCaptureSession : IDisposable
     private int _disposed;
     private MeetingCaptureRepairHost? _repairHost;
 
-    public MeetingCaptureSession(MeetingPersistenceBoundary persistence, AppLogService? logService = null)
+    public MeetingCaptureSession(MeetingPersistenceBoundary persistence, NativeTranscriptionClient transcription, AppLogService? logService = null)
     {
         _persistence = persistence;
+        _transcription = transcription;
         _logService = logService;
     }
 
@@ -82,6 +86,7 @@ internal sealed class MeetingCaptureSession : IDisposable
         if (resetLiveResult)
         {
             _liveResult = null;
+            _rollingCommitted = [];
         }
         _healthMonitor = new MeetingAudioHealthMonitor(healthAnchor ?? new DateTimeOffset(startedAt));
         _micAvailable = false;
@@ -94,8 +99,13 @@ internal sealed class MeetingCaptureSession : IDisposable
 
     public async Task StartLiveAsync(CancellationToken cancellationToken)
     {
-        if (_liveConfiguration is null || _liveSession is not null)
+        if (_liveSession is not null || _rollingPreview is not null)
         {
+            return;
+        }
+        if (_liveConfiguration is null)
+        {
+            await StartRollingPreviewAsync(cancellationToken).ConfigureAwait(false);
             return;
         }
         try
@@ -124,7 +134,37 @@ internal sealed class MeetingCaptureSession : IDisposable
             _repairHost?.AddWarning("Live transcription could not start; retained audio will still be finalized locally.");
             _logService?.Info($"Live transcription unavailable. model={_liveConfiguration.ModelId}; category={exception.GetType().Name}");
             LiveTranscriptionFailed?.Invoke(this, exception);
+            await StartRollingPreviewAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private async Task StartRollingPreviewAsync(CancellationToken cancellationToken)
+    {
+        ILiveVad? vad = null;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            var path = await StreamingModelInstaller.PrepareMeetingVadAsync(timeout.Token).ConfigureAwait(false);
+            vad = new NativeSileroVad(path, maxSpeechDuration: 15);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            _repairHost?.AddWarning("Speech detection is unavailable. Live captions will use timed audio chunks.");
+            _logService?.Info($"Meeting speech detection unavailable. category={exception.GetType().Name}");
+        }
+        _rollingPreview = new MeetingRollingTranscriber(_transcription.TranscribeAsync, _rollingCommitted, vad);
+        _rollingPreview.SnapshotChanged += OnRollingSnapshot;
+        _rollingPreview.Failed += OnLiveTranscriptionFailed;
+    }
+
+    private void OnRollingSnapshot(object? sender, LiveTranscriptSnapshot snapshot)
+    {
+        _rollingCommitted = snapshot.Committed;
+        if (_liveConfiguration?.OwnershipMode == LiveTranscriptOwnershipMode.UnifiedLiveAndFinal)
+            LiveTranscriptChanged?.Invoke(this, snapshot);
+        else OnLiveTranscriptSnapshot(sender, snapshot);
     }
 
     public async Task<CapturePairStartResult> StartPairAsync(
@@ -313,6 +353,13 @@ internal sealed class MeetingCaptureSession : IDisposable
 
     public async Task CancelLiveAsync()
     {
+        var rolling = Interlocked.Exchange(ref _rollingPreview, null);
+        if (rolling is not null)
+        {
+            rolling.SnapshotChanged -= OnRollingSnapshot;
+            rolling.Failed -= OnLiveTranscriptionFailed;
+            await rolling.FinishAsync(cancel: true).ConfigureAwait(false);
+        }
         var session = Interlocked.Exchange(ref _liveSession, null);
         if (session is null)
         {
@@ -503,6 +550,23 @@ internal sealed class MeetingCaptureSession : IDisposable
 
     private async Task FinishLiveAsync()
     {
+        var rolling = Interlocked.Exchange(ref _rollingPreview, null);
+        if (rolling is not null)
+        {
+            try { await rolling.FinishAsync().ConfigureAwait(false); }
+            finally
+            {
+                rolling.SnapshotChanged -= OnRollingSnapshot;
+                rolling.Failed -= OnLiveTranscriptionFailed;
+            }
+            var rollingJournal = _repairHost?.Journal();
+            if (rollingJournal is not null && _liveConfiguration?.OwnershipMode != LiveTranscriptOwnershipMode.UnifiedLiveAndFinal)
+            {
+                rollingJournal = rollingJournal with { LiveTranscriptSegments = _rollingCommitted.ToList() };
+                _persistence.Save(rollingJournal);
+                _repairHost?.SetJournal(rollingJournal);
+            }
+        }
         var session = Interlocked.Exchange(ref _liveSession, null);
         if (session is null)
         {
@@ -577,7 +641,13 @@ internal sealed class MeetingCaptureSession : IDisposable
     private void OnMicrophoneLevelChanged(object? sender, AudioLevelEventArgs e) =>
         LevelChanged?.Invoke(this, e);
 
-    private void OnLivePcmSamples(object? sender, LivePcmSamplesEventArgs e) => _liveSession?.TryEnqueue(e);
+    private void OnLivePcmSamples(object? sender, LivePcmSamplesEventArgs e)
+    {
+        _liveSession?.TryEnqueue(e);
+        var partOffsetMs = e.Channel == LiveTranscriptChannel.Microphone ? _micPartStartedAtMs : _systemPartStartedAtMs;
+        _rollingPreview?.Feed(new LivePcmSamplesEventArgs(e.Channel, e.Samples,
+            e.StartSample + (partOffsetMs ?? 0) * 16));
+    }
 
     private void OnLiveTranscriptSnapshot(object? sender, LiveTranscriptSnapshot snapshot)
     {
