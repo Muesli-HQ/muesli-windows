@@ -126,7 +126,7 @@ public sealed partial class MeetingNotificationWindow : Window
         DismissButton.PointerEntered += OnHoverEnter;
         DismissButton.PointerExited += OnHoverExit;
 
-        SingleActionButton.Click += (_, _) => PerformAction(MeetingNotificationAction.StartTranscribing);
+        SingleActionButton.Click += (_, _) => PerformAction(_request.SingleAction);
         PrimaryJoinButton.Click += (_, _) => PerformAction(ResolvedArmedAction());
         ChevronButton.Click += (_, _) => { /* Flyout opens automatically */ };
         DismissButton.Click += (_, _) => BeginClose(MeetingNotificationOutcome.Dismissed, invokeDismiss: true, invokeAutoDismiss: false);

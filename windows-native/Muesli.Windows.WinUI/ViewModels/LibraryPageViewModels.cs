@@ -387,6 +387,9 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     private readonly IAppDialogService _dialogs;
     private readonly IUiDispatcher _dispatcher;
     private readonly Action _showLiveTranscript;
+    private readonly IClipboardService _clipboard;
+    private string? _notesMeetingId;
+    private bool _loadingNotes;
     private IReadOnlyList<MeetingListItem> _allItems = [];
 
     public MeetingsPageViewModel(
@@ -396,7 +399,8 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         IFilePickerService filePickers,
         IAppDialogService dialogs,
         IUiDispatcher dispatcher,
-        Action showLiveTranscript)
+        Action showLiveTranscript,
+        IClipboardService clipboard)
     {
         _library = library;
         _meetingRuntime = meetingRuntime;
@@ -405,6 +409,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         _dialogs = dialogs;
         _dispatcher = dispatcher;
         _showLiveTranscript = showLiveTranscript;
+        _clipboard = clipboard;
         _meetingRuntime.Changed += OnMeetingChanged;
         Reload();
         UpdateRuntimeState();
@@ -474,6 +479,57 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial string LiveTranscript { get; private set; } = "";
+
+    [ObservableProperty] public partial string ManualNotes { get; set; } = "";
+    [ObservableProperty] public partial string NotesSaveStatus { get; private set; } = "Saved";
+    [ObservableProperty] public partial bool ShowLiveTab { get; set; }
+    [ObservableProperty] public partial bool IsSourceMissing { get; private set; }
+    [ObservableProperty] public partial IReadOnlyList<MeetingLiveCaption> LiveCaptions { get; private set; } = [];
+    [ObservableProperty] public partial string PartialYou { get; private set; } = "";
+    [ObservableProperty] public partial string PartialOthers { get; private set; } = "";
+
+    public bool ShowRecordingNotes => !ShowLiveTab;
+    public bool CanEditRecordingNotes => _meetingRuntime.ActiveMeetingId is not null && CanStop;
+    public bool HasLiveCaptions => LiveCaptions.Count > 0;
+    public bool HasPartialYou => !string.IsNullOrWhiteSpace(PartialYou);
+    public bool HasPartialOthers => !string.IsNullOrWhiteSpace(PartialOthers);
+    public string LiveCaptionHint => _meetingRuntime.IsRollingPreview
+        ? "Captions appear as the meeting model finishes each audio chunk."
+        : "Captions appear as speech is recognized.";
+
+    partial void OnShowLiveTabChanged(bool value) => OnPropertyChanged(nameof(ShowRecordingNotes));
+    partial void OnManualNotesChanged(string value)
+    {
+        if (!_loadingNotes && CanEditRecordingNotes) SaveRecordingNotes();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanEditRecordingNotes))]
+    private void SaveRecordingNotes()
+    {
+        try
+        {
+            _meetingRuntime.SaveManualNotes(ManualNotes);
+            NotesSaveStatus = "Saved";
+        }
+        catch (Exception exception) { NotesSaveStatus = $"Could not save notes: {exception.Message}"; }
+    }
+
+    [RelayCommand] private void KeepRecording() => _meetingRuntime.KeepRecording();
+
+    [RelayCommand]
+    private async Task CopyLiveTranscriptAsync(CancellationToken cancellationToken)
+    {
+        try { await _clipboard.SetTextAsync(LiveTranscript, cancellationToken); }
+        catch (Exception exception) { MeetingStatus = $"Could not copy transcript: {WinUiClipboardService.DescribeFailure(exception)}"; }
+    }
+
+    [RelayCommand]
+    private async Task CopyLiveCaptionAsync(MeetingLiveCaption? caption, CancellationToken cancellationToken)
+    {
+        if (caption is null) return;
+        try { await _clipboard.SetTextAsync(caption.Text, cancellationToken); }
+        catch (Exception exception) { MeetingStatus = $"Could not copy caption: {WinUiClipboardService.DescribeFailure(exception)}"; }
+    }
 
     [ObservableProperty]
     public partial double ImportProgress { get; private set; }
@@ -632,13 +688,25 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanStop))]
     private async Task DiscardRecordingAsync()
     {
         try
         {
-            await _meetingRuntime.CancelAsync();
-            MeetingStatus = "Recording discarded";
+            var hasNotes = !string.IsNullOrWhiteSpace(ManualNotes);
+            var resumed = _meetingRuntime.IsResumingFinishedMeeting;
+            var choice = resumed
+                ? await _dialogs.ConfirmAsync("Discard only this resumed recording? The original meeting and your written notes will be kept.",
+                    "Discard resumed recording", "Discard new recording", "Cancel")
+                : hasNotes
+                ? await _dialogs.ChooseAsync("Discard the audio recording? You can keep your written notes as a note-only meeting.",
+                    "Discard recording", "Keep notes", "Delete draft", "Cancel")
+                : await _dialogs.ConfirmAsync("Discard this audio recording?", "Discard recording", "Discard", "Cancel");
+            if (choice is not (AppDialogChoice.Primary or AppDialogChoice.Secondary)) return;
+            var keepNotes = resumed || hasNotes && choice == AppDialogChoice.Primary;
+            await _meetingRuntime.CancelAsync(keepNotes);
+            Reload();
+            MeetingStatus = resumed ? "Resumed recording discarded. Original meeting kept." : keepNotes ? "Recording discarded. Written notes saved." : "Recording discarded";
         }
         catch (Exception exception)
         {
@@ -753,6 +821,23 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
             ImportProgress = 0;
             NotifyCommandState();
         }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private async Task DiscardRecoveryAsync(RecoverableMeetingListItem? item)
+    {
+        if (item is null) return;
+        var choice = await _dialogs.ConfirmAsync("Discard this recovered audio? Saved written notes and any original meeting will be kept.",
+            "Discard recovered recording", "Discard audio", "Cancel");
+        if (choice != AppDialogChoice.Primary) return;
+        try
+        {
+            await _meetingRuntime.DiscardRecoveryAsync(item.Session);
+            Reload();
+            MeetingStatus = "Recovered audio discarded. Saved writing kept.";
+        }
+        catch (Exception exception) { MeetingStatus = $"Could not discard recovered audio: {exception.Message}"; }
+        finally { UpdateRuntimeState(); }
     }
 
     partial void OnItemsChanged(IReadOnlyList<MeetingListItem> value)
@@ -1006,10 +1091,35 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
 
     private void UpdateRuntimeState()
     {
+        var wasActive = IsActive;
         IsRecording = _meetingRuntime.IsRecording;
         IsBusy = _meetingRuntime.IsBusy;
         IsPaused = _meetingRuntime.IsPaused;
         LiveTranscript = _meetingRuntime.LiveTranscript;
+        IsSourceMissing = _meetingRuntime.IsSourceMissing;
+        if (_meetingRuntime.ActiveMeetingId is { } id && id != _notesMeetingId)
+        {
+            _notesMeetingId = id;
+            _loadingNotes = true;
+            ManualNotes = _meetingRuntime.ManualNotes;
+            _loadingNotes = false;
+            NotesSaveStatus = _meetingRuntime.AreNotesSaved ? "Saved" : "Notes have not been saved. Retry saving.";
+            ShowLiveTab = false;
+            LiveCaptions = [];
+        }
+        var snapshot = _meetingRuntime.LatestLiveSnapshot;
+        if ((snapshot?.Committed.Count ?? 0) != LiveCaptions.Count)
+            LiveCaptions = snapshot?.Committed.OrderBy(segment => segment.StartSample)
+                .Select(segment => new MeetingLiveCaption(segment.Text, segment.Channel == LiveTranscriptChannel.Microphone))
+                .ToArray() ?? [];
+        PartialYou = snapshot?.PartialMicrophone ?? "";
+        PartialOthers = snapshot?.PartialSystem ?? "";
+        OnPropertyChanged(nameof(HasLiveCaptions));
+        OnPropertyChanged(nameof(HasPartialYou));
+        OnPropertyChanged(nameof(HasPartialOthers));
+        OnPropertyChanged(nameof(LiveCaptionHint));
+        OnPropertyChanged(nameof(CanEditRecordingNotes));
+        SaveRecordingNotesCommand.NotifyCanExecuteChanged();
         CaptureStatus = _meetingRuntime.CaptureStatus;
         DetectionStatus = _detection.Status;
         RecoverableSessions = _meetingRuntime.RecoverableSessions
@@ -1018,8 +1128,9 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
                 string.IsNullOrWhiteSpace(session.Journal.Title) ? "Recoverable recording" : session.Journal.Title,
                 $"{session.Journal.StartedAtUtc.ToLocalTime():g} · {session.MicrophonePartCount} mic part(s) · {session.SystemPartCount} system part(s)"))
             .ToList();
-        if (IsRecording) MeetingStatus = "Recording Quick Note";
+        if (IsRecording) MeetingStatus = $"Recording · {_meetingRuntime.ActiveTitle}";
         else if (IsPaused) MeetingStatus = "Paused · audio retained";
+        if (wasActive && !IsActive) Reload();
         NotifyCommandState();
         OnPropertyChanged(nameof(IsActive));
         OnPropertyChanged(nameof(CanStart));
@@ -1041,11 +1152,18 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     private void NotifyCommandState()
     {
         StartQuickNoteCommand.NotifyCanExecuteChanged();
+        DiscardRecoveryCommand.NotifyCanExecuteChanged();
         ImportAudioCommand.NotifyCanExecuteChanged();
         StopRecordingCommand.NotifyCanExecuteChanged();
+        DiscardRecordingCommand.NotifyCanExecuteChanged();
         PauseRecordingCommand.NotifyCanExecuteChanged();
         ResumeRecordingCommand.NotifyCanExecuteChanged();
     }
+}
+
+public sealed record MeetingLiveCaption(string Text, bool IsYou)
+{
+    public string Speaker => IsYou ? "You" : "Others";
 }
 
 public sealed record MeetingListItem(
@@ -1163,6 +1281,7 @@ public sealed record MeetingListItem(
     private static string SessionStateLabel(MeetingSessionState state, bool recovered) => state switch
     {
         MeetingSessionState.Completed => recovered ? "Recovered" : "Completed",
+        MeetingSessionState.NoteOnly => "Notes only",
         MeetingSessionState.Failed => "Needs attention",
         MeetingSessionState.RecoverableInterruption => "Recoverable",
         MeetingSessionState.Cancelled => "Cancelled",

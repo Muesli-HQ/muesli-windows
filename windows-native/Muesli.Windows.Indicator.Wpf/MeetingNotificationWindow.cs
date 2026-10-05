@@ -155,7 +155,7 @@ public sealed class MeetingNotificationWindow : Window
             var start = CreateButton(request.ActionLabel, 148, 36,
                 highContrast ? SystemColors.HighlightBrush : Brush(255, 51, 128, 255),
                 highContrast ? SystemColors.HighlightTextBrush : Brushes.White, 12, new CornerRadius(8));
-            start.Click += (_, _) => Finish(IndicatorCommandType.MeetingNotificationAction, MeetingNotificationAction.StartTranscribing);
+            start.Click += (_, _) => Finish(IndicatorCommandType.MeetingNotificationAction, request.SingleAction);
             AutomationProperties.SetAutomationId(start, "MeetingNotificationPrimaryAction");
             AutomationProperties.SetName(start, request.ActionLabel);
             return start;

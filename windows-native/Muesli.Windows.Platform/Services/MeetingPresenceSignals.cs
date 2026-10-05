@@ -28,13 +28,18 @@ public sealed class MeetingPresenceSignals : IDisposable
     private bool _disposed;
 
     /// <summary>True when a process other than Muesli is actively capturing audio input.</summary>
-    public bool IsMicrophoneInUseByAnotherProcess()
+    public bool IsMicrophoneInUseByAnotherProcess() => ActiveInputProcessIds().Count > 0;
+
+    private List<int> ActiveInputProcessIds() => ActiveAudioProcessIds(DataFlow.Capture);
+
+    private List<int> ActiveAudioProcessIds(DataFlow flow)
     {
-        if (_disposed) return false;
+        var active = new List<int>();
+        if (_disposed) return active;
         try
         {
             _enumerator ??= new MMDeviceEnumerator();
-            foreach (var device in _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
+            foreach (var device in _enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active))
             {
                 using (device)
                 {
@@ -46,7 +51,7 @@ public sealed class MeetingPresenceSignals : IDisposable
                         var processId = (int)session.GetProcessID;
                         // Muesli's own dictation or meeting capture must never corroborate itself.
                         if (processId == 0 || processId == _ownProcessId) continue;
-                        return true;
+                        active.Add(processId);
                     }
                 }
             }
@@ -56,7 +61,7 @@ public sealed class MeetingPresenceSignals : IDisposable
             // Endpoint enumeration fails on locked-down or driver-restricted machines; the signal is
             // advisory, so an unreadable state is reported as "not observed" rather than assumed.
         }
-        return false;
+        return active;
     }
 
     /// <summary>True when Windows reports the camera as currently in use by some application.</summary>
@@ -76,6 +81,28 @@ public sealed class MeetingPresenceSignals : IDisposable
 
     public MeetingPresenceSnapshot Capture(MeetingEvidenceStrength evidence, string? candidateKey) =>
         new(evidence, IsMicrophoneInUseByAnotherProcess(), IsCameraInUse(), candidateKey);
+
+    public MeetingPresenceSnapshot Capture(MeetingEvidenceStrength evidence, string candidateKey,
+        int candidateProcessId, bool isForeground, bool requiresMediaActivity, bool requiresDuplexAudio = false)
+    {
+        var active = ActiveInputProcessIds();
+        return new(evidence, active.Count > 0, IsCameraInUse(), candidateKey, requiresMediaActivity,
+            active.Any(processId => RefersToSameApp(processId, candidateProcessId)), isForeground, requiresDuplexAudio,
+            requiresDuplexAudio && ActiveAudioProcessIds(DataFlow.Render).Any(processId => RefersToSameApp(processId, candidateProcessId)));
+    }
+
+    private static bool RefersToSameApp(int inputProcessId, int candidateProcessId)
+    {
+        if (inputProcessId == candidateProcessId) return true;
+        try
+        {
+            using var input = Process.GetProcessById(inputProcessId);
+            using var candidate = Process.GetProcessById(candidateProcessId);
+            // Browser and Teams renderer processes use the same executable as their UI process.
+            return string.Equals(input.ProcessName, candidate.ProcessName, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
 
     private static bool HasOpenCameraHandle(RegistryKey key, int depth)
     {
@@ -117,6 +144,7 @@ public sealed class MeetingPresenceSignals : IDisposable
         "chime",
         "Amazon Chime",
         "slack",         // Slack huddles run in the desktop client
+        "WhatsApp",
         "Discord"
     };
 

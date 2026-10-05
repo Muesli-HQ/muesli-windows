@@ -6,6 +6,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:Muesli.Windows.WinUI.ViewModels"
     xmlns:local="using:Muesli.Windows.WinUI.Pages"
+    xmlns:services="using:Muesli.Windows.Services"
+    xmlns:controls="using:Muesli.Windows.WinUI.Controls"
     UseSystemFocusVisuals="True"
     XYFocusKeyboardNavigation="Enabled">
     <Page.Resources>
@@ -241,6 +243,11 @@
                                     ToolTipService.ToolTip="More actions">
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuFlyoutItem Text="Resume recording" Command="{x:Bind ViewModel.ResumeFinishedCommand}"
+                                                        AutomationProperties.AutomationId="MeetingResumeFinishedButton" />
+                                        <MenuFlyoutItem Text="Start follow-up" Command="{x:Bind ViewModel.StartFollowUpCommand}"
+                                                        AutomationProperties.AutomationId="MeetingStartFollowUpButton" />
+                                        <MenuFlyoutSeparator />
                                         <MenuFlyoutItem x:Name="DeleteMenuItem"
                                                         Text="Delete meeting"
                                                         Command="{x:Bind ViewModel.DeleteMeetingCommand}"
@@ -265,6 +272,19 @@
                         </StackPanel>
                     </StackPanel>
                 </Grid>
+
+                <StackPanel Spacing="8" Visibility="{x:Bind BoolToVisibility(ViewModel.HasRelatedMeetings), Mode=OneWay}">
+                    <TextBlock Text="Related meetings" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.RelatedMeetings, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="services:PersistedMeeting">
+                                <Button Content="{x:Bind Title}" Tag="{x:Bind Id}" Click="RelatedMeeting_Click"
+                                        HorizontalAlignment="Left" Margin="0,2" AutomationProperties.Name="{x:Bind Title}"
+                                        AutomationProperties.AutomationId="{x:Bind Id}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
 
                 <Border x:Name="WorkingBanner"
                         Style="{StaticResource MeetingSectionCardStyle}"
@@ -471,7 +491,8 @@
                 <StackPanel x:Name="NotesPanel"
                             Spacing="12"
                             Visibility="{x:Bind BoolToVisibility(ViewModel.ShowNotesContent), Mode=OneWay}">
-                    <Grid x:Name="NotesToolbar" ColumnSpacing="10" RowSpacing="8">
+                    <Grid x:Name="NotesToolbar" ColumnSpacing="10" RowSpacing="8"
+                          Visibility="{x:Bind BoolToVisibility(ViewModel.ShowGeneratedNotes), Mode=OneWay}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -511,11 +532,12 @@
 
                     <Border Style="{StaticResource MeetingSectionCardStyle}"
                             AutomationProperties.Name="Meeting summary"
+                            Visibility="{x:Bind BoolToVisibility(ViewModel.ShowGeneratedNotes), Mode=OneWay}"
                             AutomationProperties.AutomationId="MeetingSummaryCard">
                         <StackPanel Spacing="8">
-                            <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}"
-                                       TextWrapping="Wrap"
-                                       IsTextSelectionEnabled="True"
+                            <controls:MarkdownNotesEditor Markdown="{x:Bind ViewModel.Summary, Mode=OneWay}"
+                                       TextWrapping="Wrap" IsReadOnly="True" BorderThickness="0" Padding="0"
+                                       Background="Transparent" MinHeight="80" MaxHeight="560"
                                        Visibility="{x:Bind BoolToVisibility(ViewModel.HasGeneratedSummary), Mode=OneWay}"
                                        AutomationProperties.AutomationId="MeetingSummaryText" />
                             <StackPanel Spacing="6"
@@ -538,9 +560,10 @@
                                        Style="{StaticResource MuesliBodyStyle}"
                                        Foreground="{ThemeResource MuesliTextTertiaryBrush}"
                                        FontSize="11" />
-                            <TextBox Text="{x:Bind ViewModel.ManualNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource MeetingBodyEditorStyle}"
-                                     MinHeight="110"
+                            <controls:NotesFormattingBar Editor="{x:Bind ManualNotesEditor}" />
+                            <controls:MarkdownNotesEditor x:Name="ManualNotesEditor" Markdown="{x:Bind ViewModel.ManualNotes, Mode=TwoWay}"
+                                     FontSize="16" Padding="24,20" TextWrapping="Wrap" AcceptsReturn="True"
+                                     MinHeight="180"
                                      PlaceholderText="Add private notes…"
                                      AutomationProperties.Name="Manual meeting notes"
                                      AutomationProperties.AutomationId="MeetingManualNotesEditor" />
@@ -593,25 +616,15 @@
                                 <TextBlock Text="Re-transcribe Audio uses a retained recording when one exists. The editor stays empty until there is real transcript text."
                                            Style="{StaticResource MuesliBodyStyle}" />
                             </StackPanel>
-                            <!--
-                                P4-02. The transcript is prose, not code: it reads in the same
-                                proportional UI face as every other body surface in the app (the
-                                style already resolves Inter through ContentControlThemeFontFamily)
-                                rather than the monospace face it used to force. The old
-                                MinHeight="260" reserved roughly 340 px of empty editor for a
-                                two-line transcript; the box now starts at a usable six lines and
-                                grows with the text up to a ceiling, so a long transcript scrolls
-                                inside the card and the speaker-name editor below it stays
-                                reachable instead of being pushed thousands of pixels down.
-                            -->
-                            <TextBox x:Name="TranscriptEditor"
-                                     Text="{x:Bind ViewModel.Transcript, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource MeetingBodyEditorStyle}"
-                                     MinHeight="120"
-                                     MaxHeight="560"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     AutomationProperties.Name="Editable meeting transcript"
-                                     AutomationProperties.AutomationId="MeetingTranscriptEditor" />
+                            <controls:LiveTranscriptFeed x:Name="SavedTranscriptFeed" MinHeight="120" MaxHeight="560"
+                                                         AutomationProperties.AutomationId="MeetingTranscriptReadView" AutomationProperties.Name="Meeting transcript" />
+                            <Expander Header="Edit transcript" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                      AutomationProperties.AutomationId="MeetingTranscriptEditExpander">
+                                <TextBox x:Name="TranscriptEditor" Text="{x:Bind ViewModel.Transcript, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource MeetingBodyEditorStyle}" MinHeight="120" MaxHeight="560"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Editable meeting transcript"
+                                         AutomationProperties.AutomationId="MeetingTranscriptEditor" />
+                            </Expander>
                         </StackPanel>
                     </Border>
 

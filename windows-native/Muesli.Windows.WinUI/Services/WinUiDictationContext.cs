@@ -55,7 +55,7 @@ public sealed class WinUiDictationContext : IDisposable
     public event EventHandler? Changed;
 
     /// <summary>
-    /// Raised with the live microphone peak while a dictation is recording. Marshalled to the UI
+    /// Raised with the live microphone RMS level while a dictation is recording. Marshalled to the UI
     /// thread so the indicator can drive its waveform bars from real capture data.
     /// </summary>
     public event EventHandler<float>? RecordingLevelChanged;
@@ -333,7 +333,8 @@ public sealed class WinUiDictationContext : IDisposable
         }
 
         if (_coordinator.IsRecording) _sounds.PlayDictationStart();
-        Status = _coordinator.IsRecording ? "Listening" : "Ready";
+        Status = !_coordinator.IsRecording ? "Ready" :
+            _coordinator.ModelId == current.DictationModelId ? "Listening" : "Listening with Parakeet (low memory)";
         RaiseChanged();
     }
 
@@ -344,7 +345,11 @@ public sealed class WinUiDictationContext : IDisposable
         var pipelineMs = 0L;
         var persistenceMs = 0L;
         var deliveryMs = 0L;
+        var deliveryFocusMs = 0L;
+        var deliveryInputMs = 0L;
+        var deliveryClipboardMs = 0L;
         var persisted = false;
+        var asrPath = "unavailable";
         DictationLatencyMetrics? latency = null;
         _hotkeyState.Reset();
         _operationCancellation?.Dispose();
@@ -358,6 +363,10 @@ public sealed class WinUiDictationContext : IDisposable
                 _operationCancellation.Token);
             latency = stop.Latency;
             var result = stop.Transcription;
+            asrPath = result.Diagnostic?.Split('\n')[0].TrimEnd('\r') ?? "";
+            if (!asrPath.StartsWith("ASR during capture:", StringComparison.Ordinal) &&
+                !asrPath.StartsWith("Rolling fallback:", StringComparison.Ordinal))
+                asrPath = "whole-file";
             if (string.IsNullOrWhiteSpace(result.Text) ||
                 result.Text.Contains("[BLANK_AUDIO]", StringComparison.OrdinalIgnoreCase))
             {
@@ -400,8 +409,11 @@ public sealed class WinUiDictationContext : IDisposable
                 {
                     _operationCancellation.Token.ThrowIfCancellationRequested();
                     stageStarted.Restart();
-                    await _paste.PasteTextAsync(text, _pasteTarget, _operationCancellation.Token);
+                    var paste = await _paste.PasteTextAsync(text, _pasteTarget, _operationCancellation.Token);
                     deliveryMs = stageStarted.ElapsedMilliseconds;
+                    deliveryFocusMs = paste.FocusWaitMs;
+                    deliveryInputMs = paste.InputMs;
+                    deliveryClipboardMs = paste.ClipboardMs;
                     Status = "Dictation inserted";
                 }
                 catch (OperationCanceledException) when (_operationCancellation.IsCancellationRequested)
@@ -428,12 +440,15 @@ public sealed class WinUiDictationContext : IDisposable
         finally
         {
             _log.Info(
-                $"Dictation delivery latency. trace={latency?.TraceId ?? "unavailable"}; " +
+                $"Dictation delivery latency. trace={latency?.TraceId ?? "unavailable"}; model={_coordinator.ModelId}; " +
                 $"captureStopMs={latency?.CaptureTotalMs ?? 0}; " +
                 $"capturePreparationMs={latency?.CapturePreparationMs ?? 0}; " +
                 $"asrWallMs={latency?.TranscriptionWallMs ?? 0}; " +
+                $"asrPath={asrPath}; " +
                 $"textPipelineMs={pipelineMs}; persistenceMs={persistenceMs}; " +
-                $"deliveryMs={deliveryMs}; totalMs={totalStarted.ElapsedMilliseconds}; " +
+                $"deliveryMs={deliveryMs}; deliveryFocusMs={deliveryFocusMs}; " +
+                $"deliveryInputMs={deliveryInputMs}; deliveryClipboardMs={deliveryClipboardMs}; " +
+                $"totalMs={totalStarted.ElapsedMilliseconds}; " +
                 $"outcome={Status}");
             _pasteTarget = IntPtr.Zero;
             RaiseChanged();
@@ -494,7 +509,7 @@ public sealed class WinUiDictationContext : IDisposable
     private void RaiseChanged() => _dispatcher.TryEnqueue(() => Changed?.Invoke(this, EventArgs.Empty));
 
     private void OnRecordingLevelChanged(object? sender, AudioLevelEventArgs e) =>
-        _dispatcher.TryEnqueue(() => RecordingLevelChanged?.Invoke(this, e.Peak));
+        _dispatcher.TryEnqueue(() => RecordingLevelChanged?.Invoke(this, e.Rms));
 
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);

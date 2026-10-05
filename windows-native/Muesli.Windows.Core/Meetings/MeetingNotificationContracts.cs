@@ -9,7 +9,8 @@ namespace Muesli.Windows.Services;
 public enum MeetingNotificationKind
 {
     ActiveDetected,
-    ScheduledUpcoming
+    ScheduledUpcoming,
+    SignalLost
 }
 
 /// <summary>The three configurable scheduled-meeting actions, mirroring the macOS default action.</summary>
@@ -74,7 +75,8 @@ public enum MeetingNotificationAction
     JoinAndRecord,
     JoinOnly,
     TranscribeOnly,
-    Dismiss
+    Dismiss,
+    StopTranscribing
 }
 
 /// <summary>
@@ -92,7 +94,8 @@ public enum MeetingNotificationOutcome
     AutoDismissed,
     SuppressedDuplicate,
     SuppressedBusy,
-    SuppressedDisabled
+    SuppressedDisabled,
+    MeetingSignalLost
 }
 
 /// <summary>Everything the notification window needs to render one prompt.</summary>
@@ -112,6 +115,8 @@ public sealed record MeetingNotificationRequest(
     nint WindowHandle = 0)
 {
     public bool IsScheduled => Kind == MeetingNotificationKind.ScheduledUpcoming;
+    public MeetingNotificationAction SingleAction => Kind == MeetingNotificationKind.SignalLost
+        ? MeetingNotificationAction.StopTranscribing : MeetingNotificationAction.StartTranscribing;
 
     public bool HasJoinActions =>
         IsScheduled && !string.IsNullOrWhiteSpace(MeetingUrl);

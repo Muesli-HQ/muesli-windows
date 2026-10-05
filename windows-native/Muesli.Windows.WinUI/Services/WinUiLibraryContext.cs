@@ -86,10 +86,40 @@ public sealed class WinUiLibraryContext : IDisposable
     public bool DeleteMeeting(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        if (History is SqliteLibraryHistoryAdapter sqlite)
+            foreach (var link in sqlite.Store.Meetings.ListFollowUpsLinkedTo(id).Where(link => link.Id == $"meeting_thread_{id}"))
+                sqlite.Store.Meetings.DeleteFollowUp(link.Id);
         var meetings = History.LoadMeetings().ToList();
         var removed = meetings.RemoveAll(item => string.Equals(item.Id, id, StringComparison.Ordinal)) > 0;
         if (removed) History.SaveMeetings(meetings, afterExplicitDeletion: true);
         return removed;
+    }
+
+    public bool SupportsMeetingThreads => History is SqliteLibraryHistoryAdapter;
+
+    public void LinkFollowUp(PersistedMeeting predecessor, PersistedMeeting successor)
+    {
+        if (History is not SqliteLibraryHistoryAdapter sqlite) throw new InvalidOperationException("Meeting threads require the SQLite library.");
+        sqlite.Store.Meetings.UpsertFollowUp(new FollowUpRecord
+        {
+            Id = $"meeting_thread_{successor.Id}", MeetingId = predecessor.Id, LinkedMeetingId = successor.Id,
+            Text = successor.Title, CreatedAtUtc = new DateTimeOffset(successor.CreatedAt).ToUniversalTime(),
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+    }
+
+    public PersistedMeeting? Predecessor(string id) => History is SqliteLibraryHistoryAdapter sqlite
+        ? sqlite.Store.Meetings.ListFollowUpsLinkedTo(id).Where(link => link.Id == $"meeting_thread_{id}")
+            .Select(link => FindMeeting(link.MeetingId)).FirstOrDefault() : null;
+
+    public IReadOnlyList<PersistedMeeting> RelatedMeetings(string id)
+    {
+        if (History is not SqliteLibraryHistoryAdapter sqlite) return [];
+        var parent = Predecessor(id);
+        var children = sqlite.Store.Meetings.ListFollowUps(id)
+            .Where(link => link.LinkedMeetingId is { } childId && link.Id == $"meeting_thread_{childId}")
+            .Select(link => FindMeeting(link.LinkedMeetingId!)).OfType<PersistedMeeting>();
+        return (parent is null ? children : new[] { parent }.Concat(children)).OrderBy(meeting => meeting.CreatedAt).ToList();
     }
 
     public int ClearDictations()

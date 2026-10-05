@@ -13,7 +13,8 @@ namespace Muesli.Windows.WinUI.Services;
 /// the WinUI process (dictation, meeting and computer-use contexts), renders only idempotent
 /// <see cref="IndicatorSnapshot"/> frames down a current-user-only named pipe, and marshals every
 /// product command the companion sends back into the owning context. If the companion cannot start
-/// or restarts without success, it falls back to the in-process <see cref="DictationIndicatorWindow"/>.
+/// or restarts without success, Muesli carries on without a floating pill (it is optional, like
+/// turning "Show floating indicator" off).
 /// </summary>
 public sealed class WinUiIndicatorHost : IDisposable
 {
@@ -25,7 +26,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private IndicatorPipeServer? _server;
     private Process? _companion;
-    private DictationIndicatorWindow? _fallback;
+    private bool _companionLost;
     private CancellationTokenSource? _lifetime;
     private CancellationTokenSource? _dwell;
     private FileSystemWatcher? _probeWatcher;
@@ -67,8 +68,7 @@ public sealed class WinUiIndicatorHost : IDisposable
         App.Settings.Changed += OnSettingsChanged;
     }
 
-    public bool IsFallbackActive => _fallback is not null;
-    public bool CanPresentMeetingNotification => _fallback is null && _server is not null && Volatile.Read(ref _disposed) == 0;
+    public bool CanPresentMeetingNotification => !_companionLost && _server is not null && Volatile.Read(ref _disposed) == 0;
     public bool IsMeetingNotificationVisible => _meetingNotification is not null;
 
     public void PresentMeetingNotification(MeetingNotificationRequest request, MeetingNotificationCallbacks callbacks)
@@ -76,7 +76,7 @@ public sealed class WinUiIndicatorHost : IDisposable
         _meetingNotification = new IndicatorMeetingNotification(
             request.PromptId, request.Title, request.Subtitle, request.Platform, request.Glyph,
             request.AccentHex, request.ShortLabel, request.ActionLabel, request.HasSplitAction,
-            request.DefaultAction, request.DismissAfterSeconds);
+            request.DefaultAction, request.DismissAfterSeconds, request.SingleAction);
         _meetingNotificationCallbacks = callbacks;
         Publish();
     }
@@ -119,7 +119,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void UpdateState()
     {
-        if (Volatile.Read(ref _disposed) != 0 || _fallback is not null) return;
+        if (Volatile.Read(ref _disposed) != 0 || _companionLost) return;
 
         var settings = App.Settings.Load();
         var status = _dictation.Status ?? "";
@@ -234,7 +234,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void Publish()
     {
-        if (Volatile.Read(ref _disposed) != 0 || _fallback is not null || _server is null) return;
+        if (Volatile.Read(ref _disposed) != 0 || _companionLost || _server is null) return;
         var snapshot = BuildSnapshot();
         _latest = snapshot;
         _server.Publish(snapshot);
@@ -242,7 +242,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void PublishAmplitude()
     {
-        if (_state != FloatingIndicatorState.Recording || _fallback is not null || _latest is null) return;
+        if (_state != FloatingIndicatorState.Recording || _companionLost || _latest is null) return;
         var now = Stopwatch.GetTimestamp();
         if (Stopwatch.GetElapsedTime(_lastAmplitudePublishTicks, now).TotalMilliseconds < 1000.0 / FloatingIndicatorLayout.WaveformUpdateFramesPerSecond)
         {
@@ -277,7 +277,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void OnCommand(IndicatorCommand command)
     {
-        if (Volatile.Read(ref _disposed) != 0 || _fallback is not null) return;
+        if (Volatile.Read(ref _disposed) != 0 || _companionLost) return;
         if (command.Type is IndicatorCommandType.MeetingNotificationAction or
             IndicatorCommandType.MeetingNotificationDismiss or
             IndicatorCommandType.MeetingNotificationAutoDismiss)
@@ -321,9 +321,19 @@ public sealed class WinUiIndicatorHost : IDisposable
                 _dispatcher.TryEnqueue(() => ApplyCustomPosition(command.DragLeft, command.DragTop));
                 break;
 
-            case IndicatorCommandType.Heartbeat:
             case IndicatorCommandType.HoverEnter:
+                _dispatcher.TryEnqueue(() =>
+                {
+                    if (_owner == IndicatorOwnerKind.Meeting && App.Settings.Load().ShowLiveWaveformOnHover &&
+                        command.IndicatorX is { } x && command.IndicatorY is { } y &&
+                        command.IndicatorWidth is > 0 and < 2000 && command.IndicatorHeight is > 0 and < 2000)
+                        App.LiveTranscript.ShowOnIndicatorHover(new global::Windows.Graphics.RectInt32(x, y, command.IndicatorWidth.Value, command.IndicatorHeight.Value));
+                });
+                break;
             case IndicatorCommandType.HoverExit:
+                _dispatcher.TryEnqueue(() => App.LiveTranscript.ScheduleHoverExit());
+                break;
+            case IndicatorCommandType.Heartbeat:
             case IndicatorCommandType.Exit:
             default:
                 // Hover is rendered locally by the companion; heartbeat/exit only inform lifecycle.
@@ -398,8 +408,8 @@ public sealed class WinUiIndicatorHost : IDisposable
             var exe = CompanionExecutablePath();
             if (exe is null || !File.Exists(exe))
             {
-                _log.Error("WPF indicator companion is missing from the layout; using the WinUI indicator.", null);
-                ActivateFallback();
+                _log.Error("WPF indicator companion is missing from the layout; continuing without the floating pill.", null);
+                _companionLost = true;
                 return;
             }
 
@@ -413,14 +423,14 @@ public sealed class WinUiIndicatorHost : IDisposable
         }
         catch (Exception exception)
         {
-            _log.Error("WPF indicator companion failed to start; using the WinUI indicator.", exception);
-            ActivateFallback();
+            _log.Error("WPF indicator companion failed to start; continuing without the floating pill.", exception);
+            _companionLost = true;
         }
     }
 
     private void HandleCompanionGone()
     {
-        if (Volatile.Read(ref _disposed) != 0 || _fallback is not null) return;
+        if (Volatile.Read(ref _disposed) != 0 || _companionLost) return;
         if (_restarts < 1)
         {
             _restarts++;
@@ -433,8 +443,8 @@ public sealed class WinUiIndicatorHost : IDisposable
         }
         else
         {
-            _log.Info("WPF indicator companion disconnected again; falling back to the WinUI indicator.");
-            _dispatcher.TryEnqueue(ActivateFallback);
+            _log.Info("WPF indicator companion disconnected again; continuing without the floating pill.");
+            _companionLost = true;
         }
     }
 
@@ -445,13 +455,6 @@ public sealed class WinUiIndicatorHost : IDisposable
         _server.Connected += (_, _) => Publish();
         _server.Disconnected += (_, _) => HandleCompanionGone();
         _server.Start();
-    }
-
-    private void ActivateFallback()
-    {
-        if (_fallback is not null || Volatile.Read(ref _disposed) != 0) return;
-        _fallback = new DictationIndicatorWindow(_dictation, _dispatcher);
-        App.TrackTheme(_fallback);
     }
 
     private static string? CompanionExecutablePath()
@@ -532,35 +535,5 @@ public sealed class WinUiIndicatorHost : IDisposable
         _companion?.Dispose();
 
         _server?.Dispose();
-        _fallback?.Dispose();
-    }
-}
-
-/// <summary>Internal renderer selection: WPF companion by default, WinUI fallback as a diagnostic override.</summary>
-public static class IndicatorRendererKind
-{
-    public const string Wpf = "wpf";
-    public const string WinUi = "winui";
-    private const string Flag = "--indicator-renderer";
-
-    public static string For(IReadOnlyList<string>? args)
-    {
-        if (args is null) return Wpf;
-        for (var index = 0; index < args.Count; index++)
-        {
-            var arg = args[index]?.Trim();
-            if (arg == null) continue;
-            if (arg.Equals(Flag, StringComparison.OrdinalIgnoreCase) && index + 1 < args.Count)
-            {
-                var value = args[index + 1].Trim().ToLowerInvariant();
-                return value == WinUi ? WinUi : Wpf;
-            }
-            if (arg.StartsWith(Flag + "=", StringComparison.OrdinalIgnoreCase))
-            {
-                var value = arg[(Flag.Length + 1)..].Trim().ToLowerInvariant();
-                return value == WinUi ? WinUi : Wpf;
-            }
-        }
-        return Wpf;
     }
 }

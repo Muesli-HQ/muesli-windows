@@ -22,6 +22,10 @@ public interface IAppDialogService
         CancellationToken cancellationToken = default) =>
         ConfirmAsync(message, title, cancellationToken);
 
+    Task<AppDialogChoice> ChooseAsync(string message, string title, string primaryLabel,
+        string secondaryLabel, string cancelLabel, CancellationToken cancellationToken = default) =>
+        ConfirmAsync(message, title, primaryLabel, cancelLabel, cancellationToken);
+
     /// <summary>
     /// Shows a potentially long body (for example a support-bundle preview) before the user commits
     /// to an action. Implementations should make the body scrollable; the default falls back to a

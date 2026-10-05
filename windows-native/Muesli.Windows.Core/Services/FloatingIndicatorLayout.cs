@@ -30,32 +30,79 @@ public static class FloatingIndicatorLayout
     public const double ExpandedIdleRadius = 18;
 
     /// <summary>
-    /// Preparing is the compact pill, not the live one. The macOS design system's state table
-    /// gives Preparing 44x28 at #1e1e2e 62%; the retired WPF port used the 76x22 recording size
-    /// for it, which is a deviation from the original.
+    /// Preparing shares the 76x22 live pill, per the current macOS <c>frameForState</c>, so the
+    /// waiting waveform hands off to the live one without a resize.
     /// </summary>
-    public const double PreparingWidth = 44;
-    public const double PreparingHeight = 28;
-    public const double PreparingRadius = 14;
+    public const double PreparingWidth = 76;
+    public const double PreparingHeight = 22;
+    public const double PreparingRadius = 11;
 
     public const double LiveWidth = 76;
     public const double LiveHeight = 22;
     public const double LiveRadius = 11;
 
     /// <summary>
-    /// Window-level opacity per the design system's "Alpha" column. Only the compact idle pill is
-    /// translucent as a whole (0.85); every other state is fully opaque at the window level and
-    /// gets its translucency from the fill's own alpha over the frost.
+    /// Window-level opacity, per macOS <c>styleForState</c>. Only the compact idle pill is
+    /// translucent as a whole (0.90); every other state is fully opaque at the window level and
+    /// gets its translucency from the fill's own alpha.
     /// </summary>
     public static double WindowAlpha(FloatingIndicatorState state, bool hovered) =>
-        state == FloatingIndicatorState.Idle && !hovered ? 0.85 : 1.0;
+        state == FloatingIndicatorState.Idle && !hovered ? 0.90 : 1.0;
 
-    public const double TranscribingWidth = 120;
+    /// <summary>The macOS glass tint, Catppuccin Mocha base, used by every non-recording state.</summary>
+    public const uint GlassTintRgb = 0x1E1E2E;
+
+    /// <summary>
+    /// macOS lays the tint over a dark <c>.hudWindow</c> blur, which greys out whatever is behind
+    /// the pill first. The WPF pill has no blur, so without a stand-in the bluish tint sits
+    /// directly over the desktop and reads light blue over bright windows. This neutral layer
+    /// replaces the blur's darkening.
+    /// </summary>
+    public const uint GlassBaseRgb = 0x1C1C1E;
+    public const double GlassBaseAlpha = 0.5; // ponytail: hand-tuned stand-in for the HUD blur; tune by eye
+
+    /// <summary>
+    /// The pill fill as one ARGB colour: <paramref name="rgb"/> at <paramref name="alpha"/>
+    /// composited over the neutral glass base (source-over).
+    /// </summary>
+    public static (byte A, byte R, byte G, byte B) GlassFill(uint rgb, double alpha)
+    {
+        var top = Math.Clamp(alpha, 0, 1);
+        var outAlpha = top + GlassBaseAlpha * (1 - top);
+        byte Channel(int shift)
+        {
+            var tint = (rgb >> shift) & 0xFF;
+            var baseValue = (GlassBaseRgb >> shift) & 0xFF;
+            return (byte)Math.Round((tint * top + baseValue * GlassBaseAlpha * (1 - top)) / outAlpha);
+        }
+        return ((byte)Math.Round(outAlpha * 255), Channel(16), Channel(8), Channel(0));
+    }
+
+    /// <summary>
+    /// The transcribing icon, an 18x18 vector stand-in for the SF Symbol <c>wand.and.sparkles</c>
+    /// the macOS pill shows (Windows ships no equivalent glyph): a diagonal wand with a tip and
+    /// three four-point sparkles.
+    /// </summary>
+    public const string TranscribingIconPathData =
+        "M2.2,14.4 L3.6,15.8 L11.6,7.8 L10.2,6.4 Z M10.9,5.7 L12.3,7.1 L13.3,6.1 L11.9,4.7 Z " +
+        "M14.6,0.6 Q14.6,3.2 17.2,3.2 Q14.6,3.2 14.6,5.8 Q14.6,3.2 12,3.2 Q14.6,3.2 14.6,0.6 Z " +
+        "M15.6,8.9 Q15.6,10.6 17.3,10.6 Q15.6,10.6 15.6,12.3 Q15.6,10.6 13.9,10.6 Q15.6,10.6 15.6,8.9 Z " +
+        "M7.4,1.5 Q7.4,3 8.9,3 Q7.4,3 7.4,4.5 Q7.4,3 5.9,3 Q7.4,3 7.4,1.5 Z";
+
+    /// <summary>
+    /// The icon's repeating wiggle, after macOS's <c>.wiggle</c> symbol effect: a short
+    /// rotation shake (degrees at each key time, seconds) and then a rest until the cycle ends.
+    /// </summary>
+    public static readonly (double Seconds, double Degrees)[] TranscribingWiggleKeys =
+        [(0, 0), (0.12, -12), (0.26, 10), (0.4, -6), (0.52, 0), (1.6, 0)];
+
+    /// <summary>Transcribing: macOS <c>transcribingPillSize</c>'s 190-point minimum at 32 tall.</summary>
+    public const double TranscribingWidth = 190;
     public const double TranscribingHeight = 32;
     public const double TranscribingRadius = 16;
 
-    public const double StatusWidth = 220;
-    public const double StatusWidthLong = 260;
+    public const double StatusWidth = 180;
+    public const double StatusWidthMax = 420;
     public const double StatusHeight = 36;
     public const double StatusRadius = 18;
 
@@ -64,51 +111,49 @@ public static class FloatingIndicatorLayout
     public const double AnchorEdgeMargin = 18;
     public const double CancelRegionWidthDip = 30;
 
-    public const long SuccessReturnMs = 2200;
-    public const long ErrorReturnMs = 3600;
+    /// <summary>macOS shows success notices for 3s and dictation warnings for 3s.</summary>
+    public const long SuccessReturnMs = 3000;
+    public const long ErrorReturnMs = 3000;
 
-    /// <summary>Message lengths beyond this widen the status pill from 220 to 260 DIPs.</summary>
-    public const int LongStatusMessageChars = 24;
+    // ─── Waveform, per macOS IndicatorWaveformDynamics.standingBarFrame ──────────────────────
 
-    // ─── Waveform, per the macOS design system's "Waveform Specifications" ───────────────────
-    // (design-system/muesli-design-system.html). The retired WPF port drifted from these: it used
-    // 2.5pt bars at 3pt spacing with hand-picked heights, and per-bar weights of
-    // [0.62, 1.0, 0.84, 0.52] that are not symmetric. These are the reference values.
-
-    /// <summary>Bar width in DIPs.</summary>
+    /// <summary>Bar width and gap in DIPs.</summary>
     public const double WaveformBarWidth = 3;
-
-    /// <summary>
-    /// Gap between bars in DIPs. The macOS reference's <c>setupWaveformBars</c> uses 3pt (not the
-    /// design-system table's 4pt); the live renderer is the behaviour we clone.
-    /// </summary>
     public const double WaveformBarSpacing = 3;
 
-    /// <summary>Quietest and loudest bar heights in DIPs.</summary>
-    public const double WaveformMinHeight = 5;
-    public const double WaveformMaxHeight = 26;
-
-    /// <summary>
-    /// The tallest bar the live recording waveform may draw, in DIPs. The design system's 26-DIP
-    /// maximum is the envelope for the 28-DIP Preparing surface; the Recording pill is only
-    /// 22 DIPs tall, so the full envelope would clip. The macOS reference caps live bars below
-    /// the pill height (it drives a 14-DIP ceiling inside the recording pill's interior), and the
-    /// envelope shape — <see cref="RecordingBarMultipliers"/> — is preserved; only the span is
-    /// scaled to fit. See <see cref="WaveformMaxHeightFor"/>.
-    /// </summary>
-    public const double RecordingWaveformMaxHeight = 14;
-
-    /// <summary>
-    /// The effective loudest bar height for a state's pill. Preparing keeps the full 26-DIP
-    /// design envelope (its 28-DIP compact pill leaves 1 DIP of breathing room top and bottom);
-    /// Recording scales the span down to a 14-DIP ceiling so the five bars stay inside the
-    /// 22-DIP capsule without visual overflow.
-    /// </summary>
-    public static double WaveformMaxHeightFor(FloatingIndicatorState state) =>
-        state == FloatingIndicatorState.Recording ? RecordingWaveformMaxHeight : WaveformMaxHeight;
+    /// <summary>Bar height is <c>3 + 11 x amplitude</c>: 3 DIPs silent, 14 DIPs at full level.</summary>
+    public const double WaveformMinHeight = 3;
+    public const double WaveformAmplitudeSpan = 11;
 
     /// <summary>Bar and stop-square fill opacity.</summary>
     public const double WaveformOpacity = 0.85;
+
+    /// <summary>
+    /// The Muesli brand mark: the 13 bar heights measured from the canonical 1024px app icon
+    /// (macOS <c>assets/muesli.icns</c>), normalized to the tallest bar. Same profile as
+    /// <c>scripts/generate-winui-assets.ps1</c>.
+    /// </summary>
+    public static readonly double[] BrandMarkBars =
+        [0.302, 0.579, 0.852, 1.000, 0.899, 0.602, 0.302, 0.602, 0.899, 1.000, 0.852, 0.579, 0.302];
+
+    /// <summary>
+    /// Pixel-snapped brand-mark geometry, in DIPs, for a mark <paramref name="size"/> DIPs tall at
+    /// display <paramref name="scale"/>. Like <c>scripts/generate-winui-assets.ps1</c>'s small icon
+    /// frames, every bar and gap is a whole number of physical pixels (at least one), because at
+    /// pill size fractional 13-bar gaps antialias away and the mark smears into a blob. Bar heights
+    /// share the tallest bar's pixel parity so centring never puts a bar half a pixel off.
+    /// </summary>
+    public static (double BarWidth, double Gap, double[] Heights) BrandMarkGeometry(double size, double scale)
+    {
+        scale = scale > 0 ? scale : 1;
+        var bar = Math.Max(1, Math.Round(size / 13 * scale));
+        var gap = Math.Max(1, Math.Round(size / 30 * scale));
+        var tallest = Math.Round(size * scale);
+        var heights = BrandMarkBars
+            .Select(m => Math.Max(bar, tallest - 2 * Math.Round((tallest - m * size * scale) / 2)) / scale)
+            .ToArray();
+        return (bar / scale, gap / scale, heights);
+    }
 
     /// <summary>Stop square size in DIPs (6×6) and its corner radius (1 DIP).</summary>
     public const double StopSquareSize = 6;
@@ -130,36 +175,16 @@ public static class FloatingIndicatorLayout
     public const double MeetingControlFontSize = 8;
     public const byte MeetingControlAlpha = 0xDB;
 
-    // ─── Waveform animation, per "Waveform Specifications" and "Animation & Interaction" ─────
-    /// <summary>Full pulse period (one scale-Y cycle) in seconds.</summary>
-    public const double WaveformPulsePeriodSeconds = 0.6;
+    // ─── Waveform animation, per macOS waveformTimerFired ─────────────────────────────────────
 
-    /// <summary>Per-bar phase offset, in seconds, from leading to trailing bar.</summary>
-    public const double WaveformPulseStaggerSeconds = 0.07;
-
-    /// <summary>Maximum waveform/amplitude refresh rate.</summary>
+    /// <summary>Waveform refresh rate.</summary>
     public const int WaveformUpdateFramesPerSecond = 30;
 
     /// <summary>Live amplitude smoothing: exponential-average weight for each new sample.</summary>
-    public const double WaveformAmplitudeSmoothingWeight = 0.5;
+    public const double WaveformAmplitudeSmoothingWeight = 0.48;
 
-    /// <summary>The five-bar preparing envelope, symmetric about the centre.</summary>
-    public static readonly double[] PreparingBarMultipliers = [0.6, 0.85, 1.0, 0.85, 0.6];
-
-    /// <summary>
-    /// The recording envelope. The macOS reference animates the same five-bar symmetric envelope
-    /// for both preparing and recording (its <c>waveformTimerFired</c> multipliers); the retired
-    /// Windows port's four-bar shape and 4-DIP spacing were the deviation.
-    /// </summary>
-    public static readonly double[] RecordingBarMultipliers = [0.6, 0.85, 1.0, 0.85, 0.6];
-
-    /// <summary>Resting preparing heights: the envelope at its quiet baseline.</summary>
-    public static readonly double[] PreparingBarHeights =
-        [.. PreparingBarMultipliers.Select(m => WaveformMinHeight + m * 6)];
-
-    /// <summary>Resting recording heights, used before the first microphone peak arrives.</summary>
-    public static readonly double[] RecordingBarHeights =
-        [.. RecordingBarMultipliers.Select(m => WaveformMinHeight + m * 5)];
+    /// <summary>The five-bar standing envelope, symmetric about the centre.</summary>
+    public static readonly double[] WaveformBarMultipliers = [0.6, 0.85, 1.0, 0.85, 0.6];
 
     public static DipSize SizeFor(FloatingIndicatorState state, bool hovered, string? message = "")
     {
@@ -184,7 +209,9 @@ public static class FloatingIndicatorLayout
     /// The width of a status pill: compact by default, widening for long status text.
     /// </summary>
     public static double StatusWidthFor(string? message) =>
-        (message?.Length ?? 0) > LongStatusMessageChars ? StatusWidthLong : StatusWidth;
+        // macOS warningPillSize: 18 + 24 icon + 4 + text + 2 + 18, 180 minimum. ~6.2 DIPs per
+        // character approximates 11pt medium Segoe UI.
+        Math.Clamp(66 + (message?.Length ?? 0) * 6.2, StatusWidth, StatusWidthMax);
 
     /// <summary>How long a status pill stays visible before returning to idle.</summary>
     public static long ReturnMilliseconds(FloatingIndicatorState state) =>
@@ -193,7 +220,7 @@ public static class FloatingIndicatorLayout
     /// <summary>
     /// Decides which dictation action a click inside the pill at <paramref name="xDip"/> should
     /// trigger for a given state. The leftmost region cancels; the rest of a live pill stops and
-    /// transcribes; a transcribing pill's body also cancels.
+    /// transcribes. A transcribing pill ignores clicks, as on macOS (Esc and right-click still cancel).
     /// </summary>
     public static FloatingIndicatorAction ActionForClick(
         FloatingIndicatorState state,
@@ -201,9 +228,9 @@ public static class FloatingIndicatorLayout
         double cancelRegion = CancelRegionWidthDip) =>
         state switch
         {
-            FloatingIndicatorState.Preparing or FloatingIndicatorState.Recording =>
+            // macOS handleClick acts only while recording; a preparing pill ignores clicks.
+            FloatingIndicatorState.Recording =>
                 xDip < cancelRegion ? FloatingIndicatorAction.Cancel : FloatingIndicatorAction.Stop,
-            FloatingIndicatorState.Transcribing => FloatingIndicatorAction.Cancel,
             _ => FloatingIndicatorAction.None
         };
 
@@ -302,26 +329,6 @@ public static class FloatingIndicatorLayout
 
     /// <summary>A safe scale factor from a monitor DPI value (96 = 100%).</summary>
     public static double DpiScaleFor(uint dpi) => Math.Max(1d, dpi / 96d);
-
-    /// <summary>
-    /// The height of one of the four live recording bars for a raw microphone peak. This is the
-    /// WPF reference's <c>UpdateRecordingLevel</c>: a wide-topped (square-root) response, small
-    /// baseline so silence still reads, and per-bar weights so the centre bars grow taller.
-    /// </summary>
-    public static double RecordingBarHeight(float peak, int index)
-    {
-        if (index < 0 || index >= RecordingBarMultipliers.Length)
-        {
-            return RecordingBarHeights[index >= 0 ? index % RecordingBarHeights.Length : 0];
-        }
-
-        // Wide-topped (square-root) response so quiet speech still moves the bars, held between
-        // the design system's 5-DIP minimum and the Recording pill's 14-DIP ceiling and shaped by
-        // the symmetric four-bar envelope.
-        var normalized = Math.Clamp(Math.Sqrt(Math.Max(0, peak) * 8), 0.12, 1.0);
-        var span = (WaveformMaxHeightFor(FloatingIndicatorState.Recording) - WaveformMinHeight) * RecordingBarMultipliers[index];
-        return WaveformMinHeight + normalized * span;
-    }
 
     private static bool Different(DipPoint first, DipPoint second) =>
         Math.Abs(first.X - second.X) > 0.5 || Math.Abs(first.Y - second.Y) > 0.5;

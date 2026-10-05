@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace Muesli.Windows.Services;
 
 /// <summary>
-/// Deterministic meeting titles derived from the transcript, with manual titles held sacred.
+/// Deterministic meeting titles derived from written notes or speech, preserving manual titles.
 /// </summary>
 public static class MeetingTitleService
 {
@@ -18,12 +18,12 @@ public static class MeetingTitleService
         ["um", "uh", "okay", "ok", "so", "yeah", "right", "hello", "hi", "hey"];
 
     /// <summary>
-    /// Builds a title from the first substantive sentence of the transcript. Deterministic, local,
+    /// Builds a title from written notes first, then the transcript. Deterministic, local,
     /// and never a network call, so a meeting always gets a usable title even with no provider.
     /// </summary>
-    public static string Generate(string? transcript, DateTime recordedAt, string? fallback = null)
+    public static string Generate(string? transcript, DateTime recordedAt, string? fallback = null, string? manualNotes = null)
     {
-        var candidate = FirstSubstantiveSentence(transcript);
+        var candidate = FirstSubstantiveSentence(manualNotes) ?? FirstSubstantiveSentence(transcript);
         if (!string.IsNullOrWhiteSpace(candidate)) return Trim(candidate);
         if (!string.IsNullOrWhiteSpace(fallback)) return Trim(fallback!);
         return $"Meeting {recordedAt:yyyy-MM-dd HH:mm}";
@@ -101,6 +101,22 @@ public sealed record MeetingNotesDocument(string GeneratedNotes, string ManualNo
 /// </summary>
 public static class MeetingNotesComposer
 {
+    /// <summary>Replace captured content without losing writing saved while capture was running.</summary>
+    public static PersistedMeeting ApplyRecordedMeeting(PersistedMeeting recorded, PersistedMeeting? existing)
+    {
+        if (existing is null) return recorded;
+        if (!string.Equals(recorded.Id, existing.Id, StringComparison.Ordinal))
+            throw new ArgumentException("The recording must belong to the same meeting.", nameof(existing));
+        return recorded with
+        {
+            ManualNotes = existing.ManualNotes,
+            Title = existing.TitleIsManual ? existing.Title : recorded.Title,
+            TitleIsManual = existing.TitleIsManual,
+            FolderId = existing.FolderId,
+            SpeakerAliases = existing.SpeakerAliases
+        };
+    }
+
     public static PersistedMeeting ApplyResummarization(
         PersistedMeeting meeting,
         string regeneratedNotes,
@@ -138,7 +154,7 @@ public static class MeetingNotesComposer
         meeting with
         {
             SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
-            ManualNotes = notes?.Trim() ?? ""
+            ManualNotes = notes ?? ""
         };
 
     public static MeetingNotesDocument Document(PersistedMeeting meeting) =>

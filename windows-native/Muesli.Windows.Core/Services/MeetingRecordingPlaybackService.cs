@@ -76,13 +76,14 @@ public sealed class MeetingRecordingPlaybackService : IDisposable
         var tracks = new List<MeetingPlaybackTrack>();
         AddIfPlayable(tracks, "Microphone (You)", microphonePath);
         AddIfPlayable(tracks, "Meeting audio (Others)", systemPath);
-        if (tracks.Count == 0 && !string.IsNullOrWhiteSpace(legacySourcePath))
+        if (!string.IsNullOrWhiteSpace(legacySourcePath))
         {
             var sources = legacySourcePath.Split(
                 ';',
                 StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             for (var index = 0; index < sources.Length; index++)
             {
+                if (tracks.Any(track => string.Equals(track.Path, sources[index], StringComparison.OrdinalIgnoreCase))) continue;
                 AddIfPlayable(tracks, index == 0 ? "Recording" : $"Recording {index + 1}", sources[index]);
             }
         }
