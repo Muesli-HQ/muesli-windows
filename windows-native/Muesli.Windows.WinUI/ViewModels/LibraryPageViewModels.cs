@@ -599,7 +599,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         !string.Equals(MeetingStatus, "Ready", StringComparison.Ordinal);
 
     public string ResultCountHint =>
-        $"{(Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings")} · Open a meeting to review notes, transcript, and template-driven summaries";
+        $"{(Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings")}  •  Open a meeting to review notes, transcript, and template-driven summaries";
 
     /// <summary>Current sort, shown on the compact sort pill (MeetingsView.swift parity).</summary>
     public string SortLabel => SortIndex == 1 ? "Oldest first" : "Newest first";
@@ -1180,6 +1180,9 @@ public sealed record MeetingListItem(
 
     public bool HasDuration => !string.IsNullOrEmpty(DurationLabel);
 
+    /// <summary>macOS formatMeta: "time  •  duration".</summary>
+    public string MetaLabel => HasDuration ? $"{TimestampLabel}  •  {DurationLabel}" : TimestampLabel;
+
     /// <summary>
     /// P3-01: what a screen reader announces for this row. Without it the ListView container peer
     /// falls back to the record's generated <c>ToString()</c> and reads the whole debug dump
@@ -1209,7 +1212,10 @@ public sealed record MeetingListItem(
             item.Id,
             item.FolderId,
             string.IsNullOrWhiteSpace(item.Title) ? "Untitled meeting" : item.Title,
-            string.IsNullOrWhiteSpace(item.Summary) ? "No summary saved" : SingleLine(item.Summary),
+            // macOS previewText: written notes for an unfinished meeting, else notes, else transcript.
+            MeetingPreviewText.Snippet(
+                !string.IsNullOrWhiteSpace(item.ManualNotes) && item.SessionState != MeetingSessionState.Completed ? item.ManualNotes
+                : string.IsNullOrWhiteSpace(item.Summary) ? item.Transcript : item.Summary),
             item.CreatedAt.ToLocalTime().ToString("d MMM yyyy 'at' h:mm:ss tt"),
             FormatDuration(item.DurationMs),
             SessionStateLabel(item.SessionState, item.RecoveredFromInterruption),
@@ -1260,7 +1266,7 @@ public sealed record MeetingListItem(
             return null;
         }
 
-        return ("Recording", "\uE983");
+        return ("Recording", "\uE8D6"); // Audio, standing in for the macOS waveform symbol
     }
 
     /// <summary>
@@ -1277,8 +1283,6 @@ public sealed record MeetingListItem(
         MeetingSessionState.Cancelled => "Cancelled",
         _ => state.ToString()
     };
-
-    private static string SingleLine(string text) => text.Trim().Replace('\r', ' ').Replace('\n', ' ');
 }
 
 public sealed record RecoverableMeetingListItem(RecoverableMeetingSession Session, string Title, string Detail);
