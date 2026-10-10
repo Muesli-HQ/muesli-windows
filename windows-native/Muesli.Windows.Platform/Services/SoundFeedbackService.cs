@@ -265,7 +265,7 @@ public static class DefaultRenderRouteInspector
         }
     }
 
-    private static int ReadFormFactor(MMDevice device)
+    internal static int ReadFormFactor(MMDevice device)
     {
         try
         {

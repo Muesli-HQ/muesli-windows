@@ -282,6 +282,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             MeetingSummaryProvider = SelectedSummaryProvider?.Id ?? _draft.MeetingSummaryProvider
         };
         _settings.Save(current);
+        _dictation.PrepareMicrophone();
         if (IsStartupAvailable)
         {
             try { await _startup.SetEnabledAsync(StartAtLogin); }

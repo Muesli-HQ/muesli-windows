@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
@@ -20,6 +21,7 @@ public sealed class AudioCaptureService : IDisposable
     private readonly string _segmentPrefix;
     private readonly string _mergedPrefix;
     private CaptureSession? _session;
+    private PreparedCapture? _prepared;
     private string? _preferredDeviceName;
     private bool _usingFallback;
     private long _sampleCount;
@@ -76,17 +78,103 @@ public sealed class AudioCaptureService : IDisposable
 
     public string PickPreferredDeviceName() => SystemDefaultMicrophone;
 
-    public async Task StartAsync(string? preferredDeviceName)
+    /// <summary>Per-step timing of the most recent <see cref="StartAsync"/>, for latency logs.</summary>
+    public string LastStartTiming { get; private set; } = "";
+
+    // NAudio initializes the WASAPI client inside StartRecording; on Realtek arrays that alone took
+    // ~650 ms. Calling its idempotent private initializer early leaves StartRecording at ~10 ms.
+    // ponytail: reflection into NAudio 2.2.1; on a missing member we fall back to opening on demand.
+    private static readonly MethodInfo? InitializeCaptureDevice =
+        typeof(WasapiCapture).GetMethod("InitializeCaptureDevice", BindingFlags.NonPublic | BindingFlags.Instance);
+    private const int HeadsetFormFactor = 5;
+    private const int HandsetFormFactor = 6;
+
+    /// <summary>
+    /// Initializes, but does not start, the shared-mode client for the next capture. No audio is
+    /// read until <see cref="StartAsync"/>. Headset endpoints are skipped because initializing a
+    /// Bluetooth hands-free endpoint can switch the headset into call mode.
+    /// </summary>
+    public async Task PrepareAsync(string? preferredDeviceName)
     {
-        await Task.Yield();
+        if (InitializeCaptureDevice is null) return;
         await _operationGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (Volatile.Read(ref _disposed) != 0 || _session is not null) return;
+            var key = NormalizeDeviceKey(preferredDeviceName);
+            if (Volatile.Read(ref _prepared)?.Key == key) return;
+            DisposePrepared();
+            var device = PickDevice(key);
+            var formFactor = DefaultRenderRouteInspector.ReadFormFactor(device);
+            if (formFactor is HeadsetFormFactor or HandsetFormFactor) return;
+            var capture = new WasapiCapture(device) { ShareMode = AudioClientShareMode.Shared };
+            try
+            {
+                InitializeCaptureDevice.Invoke(capture, null);
+            }
+            catch
+            {
+                capture.Dispose();
+                throw;
+            }
+            Volatile.Write(ref _prepared, new PreparedCapture(key, device, capture));
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    private static string NormalizeDeviceKey(string? preferredDeviceName) =>
+        string.IsNullOrWhiteSpace(preferredDeviceName) ? SystemDefaultMicrophone : preferredDeviceName.Trim();
+
+    private void DisposePrepared() => Interlocked.Exchange(ref _prepared, null)?.Capture.Dispose();
+
+    private void StartPreferredSegment(string key)
+    {
+        if (Interlocked.Exchange(ref _prepared, null) is { } prepared)
+        {
+            if (prepared.Key == key)
+            {
+                try
+                {
+                    StartSegment(prepared.Device, prepared.Capture);
+                    LastStartTiming = $"prepared=True; {LastStartTiming}";
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    // A long-idle client can be invalidated by sleep or a driver reset; reopen once.
+                    new AppLogService().Error("Prepared microphone failed to start; reopening.", exception);
+                }
+            }
+            else
+            {
+                prepared.Capture.Dispose();
+            }
+        }
+
+        var pickTimer = Stopwatch.StartNew();
+        var device = PickDevice(key);
+        var pickMs = pickTimer.ElapsedMilliseconds;
+        StartSegment(device);
+        LastStartTiming = $"prepared=False; pickDeviceMs={pickMs}; {LastStartTiming}";
+    }
+
+    public async Task StartAsync(string? preferredDeviceName)
+    {
+        var entryTimer = Stopwatch.StartNew();
+        await Task.Yield();
+        var yieldMs = entryTimer.ElapsedMilliseconds;
+        await _operationGate.WaitAsync().ConfigureAwait(false);
+        var gateMs = entryTimer.ElapsedMilliseconds - yieldMs;
+        try
+        {
             ThrowIfDisposed();
+            var staleSegments = _segments.Count;
             StopAndCleanupUnderGate(deleteFiles: true);
-            _preferredDeviceName = string.IsNullOrWhiteSpace(preferredDeviceName)
-                ? SystemDefaultMicrophone
-                : preferredDeviceName.Trim();
+            var cleanupMs = entryTimer.ElapsedMilliseconds - yieldMs - gateMs;
+            _preferredDeviceName = NormalizeDeviceKey(preferredDeviceName);
             _usingFallback = false;
             _sampleCount = 0;
             _sumSquares = 0;
@@ -96,7 +184,8 @@ public sealed class AudioCaptureService : IDisposable
 
             try
             {
-                StartSegment(PickDevice(_preferredDeviceName));
+                StartPreferredSegment(_preferredDeviceName);
+                LastStartTiming = $"yieldMs={yieldMs}; captureGateMs={gateMs}; cleanupMs={cleanupMs}; staleSegments={staleSegments}; {LastStartTiming}";
             }
             catch (Exception preferredException) when (!IsSystemDefault(_preferredDeviceName))
             {
@@ -248,6 +337,7 @@ public sealed class AudioCaptureService : IDisposable
         _operationGate.Wait();
         try
         {
+            DisposePrepared();
             StopAndCleanupUnderGate(deleteFiles: true);
         }
         finally
@@ -286,14 +376,17 @@ public sealed class AudioCaptureService : IDisposable
 
     private MMDevice PickDefaultCaptureDevice() => DefaultCaptureEndpointPolicy.Resolve(_deviceEnumerator);
 
-    private void StartSegment(MMDevice device)
+    private void StartSegment(MMDevice device, WasapiCapture? prepared = null)
     {
         var path = Path.Combine(_captureDirectory, $"{_segmentPrefix}{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Guid.NewGuid():N}.wav");
-        var capture = new WasapiCapture(device) { ShareMode = AudioClientShareMode.Shared };
+        var stepTimer = Stopwatch.StartNew();
+        var capture = prepared ?? new WasapiCapture(device) { ShareMode = AudioClientShareMode.Shared };
+        var clientMs = stepTimer.ElapsedMilliseconds;
         CaptureSession? createdSession = null;
         try
         {
             var writer = new WaveFileWriter(path, capture.WaveFormat);
+            var writerMs = stepTimer.ElapsedMilliseconds - clientMs;
             createdSession = new CaptureSession(
                 capture,
                 writer,
@@ -306,7 +399,10 @@ public sealed class AudioCaptureService : IDisposable
                     new CaptureFaultedEventArgs(MeetingAudioChannel.Microphone, exception)));
             _segments.Add(new CaptureSegment(path, device.ID, device.FriendlyName));
             _session = createdSession;
+            var beforeStartMs = stepTimer.ElapsedMilliseconds;
             capture.StartRecording();
+            LastStartTiming = $"wasapiClientMs={clientMs}; writerMs={writerMs}; " +
+                $"startRecordingMs={stepTimer.ElapsedMilliseconds - beforeStartMs}; device={device.FriendlyName}";
         }
         catch
         {
@@ -375,6 +471,10 @@ public sealed class AudioCaptureService : IDisposable
         await _operationGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            // The prepared client may now point at a removed or no-longer-default endpoint. Released
+            // here, not in the notification callback (where releasing MMDevice objects is unsupported),
+            // and under the gate so an in-flight PrepareAsync cannot publish a stale client afterwards.
+            DisposePrepared();
             var current = _session;
             if (change.Kind == AudioEndpointChangeKind.Added && _usingFallback &&
                 !AddedDeviceMatchesPreference(change.DeviceId))
@@ -878,3 +978,5 @@ internal sealed class CaptureFinalizationCleanup : IDisposable
         }
     }
 }
+
+internal sealed record PreparedCapture(string Key, MMDevice Device, WasapiCapture Capture);
