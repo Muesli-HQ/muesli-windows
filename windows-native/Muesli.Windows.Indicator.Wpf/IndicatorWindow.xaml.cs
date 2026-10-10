@@ -304,7 +304,7 @@ public partial class IndicatorWindow : Window
     {
         if (!hovered)
         {
-            ContentHost.Children.Add(MuesliGlyph(18, new Thickness()));
+            ContentHost.Children.Add(MuesliGlyph(FloatingIndicatorLayout.IdleBrandMarkSize, new Thickness()));
             return;
         }
 
@@ -314,7 +314,7 @@ public partial class IndicatorWindow : Window
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
-        stack.Children.Add(MuesliGlyph(15, new Thickness()));
+        stack.Children.Add(MuesliGlyph(FloatingIndicatorLayout.HoverBrandMarkSize, new Thickness()));
         stack.Children.Add(new TextBlock
         {
             Text = _handsFree

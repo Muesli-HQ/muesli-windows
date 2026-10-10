@@ -248,12 +248,12 @@ public sealed class FloatingIndicatorLayoutTests
     public void BrandMarkGeometry_snaps_every_bar_and_gap_to_whole_pixels(double scale)
     {
         // Fractional 13-bar gaps antialias away at pill size and the logo smears into a blob.
-        var (bar, gap, heights) = FloatingIndicatorLayout.BrandMarkGeometry(18, scale);
+        var (bar, gap, heights) = FloatingIndicatorLayout.BrandMarkGeometry(FloatingIndicatorLayout.IdleBrandMarkSize, scale);
         static bool Whole(double pixels) => Math.Abs(pixels - Math.Round(pixels)) < 1e-9;
         Assert.True(Whole(bar * scale) && bar * scale >= 1);
         Assert.True(Whole(gap * scale) && gap * scale >= 1);
         Assert.Equal(13, heights.Length);
-        var tallest = Math.Round(18 * scale);
+        var tallest = Math.Round(FloatingIndicatorLayout.IdleBrandMarkSize * scale);
         Assert.All(heights, h => Assert.True(Whole(h * scale) && (tallest - h * scale) % 2 == 0));
         Assert.Equal(heights, heights.Reverse());
         Assert.Equal(tallest / scale, heights.Max(), 6);
