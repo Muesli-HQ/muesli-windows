@@ -79,7 +79,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool HasCandidate { get; private set; }
     [ObservableProperty] public partial IReadOnlyList<MeetingFolderOption> FolderOptions { get; private set; } = [];
     [ObservableProperty] public partial MeetingFolderOption? SelectedFolder { get; set; }
-    [ObservableProperty] public partial IReadOnlyList<WaveformBar> WaveformBars { get; private set; } = [];
+    [ObservableProperty] public partial IReadOnlyList<double> WaveformPeaks { get; private set; } = [];
+    [ObservableProperty] public partial bool IsPlaying { get; private set; }
     [ObservableProperty] public partial double PlaybackSeconds { get; set; }
     [ObservableProperty] public partial double PlaybackDurationSeconds { get; private set; }
 
@@ -145,8 +146,10 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     public bool ShowTranscriptTab => HasMeeting && !ShowNotesTab;
     public bool ShowNotesContent => HasMeeting && ShowNotesTab;
     public bool ShowGeneratedNotes => HasMeeting && _meeting?.SessionState == MeetingSessionState.Completed;
-    public bool HasWaveform => WaveformBars.Count > 0;
-    public double PlaybackSliderMaximum => Math.Max(1d, PlaybackDurationSeconds);
+    public bool HasWaveform => WaveformPeaks.Count > 0;
+    public double PlaybackProgress => PlaybackDurationSeconds > 0 ? PlaybackSeconds / PlaybackDurationSeconds : 0;
+    public string PlayPauseGlyph => IsPlaying ? "\uE769" : "\uE768";
+    public string PlayPauseLabel => IsPlaying ? "Pause recording" : "Play recording";
     public string PlaybackTimeLabel =>
         $"{FormatTime(TimeSpan.FromSeconds(PlaybackSeconds))} / {FormatTime(TimeSpan.FromSeconds(PlaybackDurationSeconds))}";
 
@@ -209,12 +212,22 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         GenerateSummaryCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnPlaybackSecondsChanged(double value) => OnPropertyChanged(nameof(PlaybackTimeLabel));
+    partial void OnPlaybackSecondsChanged(double value)
+    {
+        OnPropertyChanged(nameof(PlaybackTimeLabel));
+        OnPropertyChanged(nameof(PlaybackProgress));
+    }
 
     partial void OnPlaybackDurationSecondsChanged(double value)
     {
-        OnPropertyChanged(nameof(PlaybackSliderMaximum));
         OnPropertyChanged(nameof(PlaybackTimeLabel));
+        OnPropertyChanged(nameof(PlaybackProgress));
+    }
+
+    partial void OnIsPlayingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PlayPauseGlyph));
+        OnPropertyChanged(nameof(PlayPauseLabel));
     }
 
     [RelayCommand(CanExecute = nameof(CanWork))]
@@ -401,6 +414,9 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     [RelayCommand] private void Pause() => _runtime.Pause();
     [RelayCommand] private void StopPlayback() => _runtime.Stop();
 
+    /// <summary>macOS player: one play/pause toggle.</summary>
+    [RelayCommand] private void TogglePlayback() { if (IsPlaying) Pause(); else Play(); }
+
     public void SeekTo(double seconds)
     {
         if (PlaybackDurationSeconds <= 0) return;
@@ -517,14 +533,17 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             : $"{args.State} · {FormatTime(args.Position)} / {FormatTime(args.Duration)}";
         PlaybackSeconds = args.Position.TotalSeconds;
         PlaybackDurationSeconds = Math.Max(args.Duration.TotalSeconds, 0);
+        IsPlaying = args.State == MeetingPlaybackState.Playing;
         RefreshWaveform();
     }
 
     private void RefreshWaveform()
     {
-        WaveformBars = _runtime.WaveformPeaks
-            .Select(peak => new WaveformBar(Math.Max(2, peak * 46)))
-            .ToList();
+        // The peak cache stores bar heights (4 + 20 x amplitude); recover amplitudes, then normalise to the
+        // loudest bucket with a 10/255 floor, as macOS RecordingWaveformData does.
+        var amplitudes = _runtime.WaveformPeaks.Select(height => Math.Clamp((height - 4) / 20, 0, 1)).ToList();
+        var loudest = Math.Max(amplitudes.DefaultIfEmpty(0).Max(), 0.01);
+        WaveformPeaks = amplitudes.Select(amplitude => Math.Max(10 / 255d, amplitude / loudest)).ToList();
         OnPropertyChanged(nameof(HasWaveform));
     }
 
@@ -632,4 +651,3 @@ public sealed record MeetingFolderOption(string Id, string DisplayName, string P
 {
     public bool HasParent => ParentSuffix.Length > 0;
 }
-public sealed record WaveformBar(double Height);
