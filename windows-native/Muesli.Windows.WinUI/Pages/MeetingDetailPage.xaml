@@ -126,60 +126,23 @@
                                    TextWrapping="Wrap"
                                    Visibility="{x:Bind BoolToVisibility(ViewModel.HasManualTitle), Mode=OneWay}"
                                    AutomationProperties.Name="Your title · kept when notes are regenerated" />
-                        <!--
-                            A horizontal StackPanel measures its children with infinite width, so
-                            TextWrapping on the metadata never fired and the "Auto Notes" badge was
-                            pushed under the action column and clipped at 1008x800. A two-column
-                            Grid lets the metadata wrap and keeps the badge on screen.
-                        -->
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBlock Text="{x:Bind ViewModel.Metadata, Mode=OneWay}"
-                                       Style="{StaticResource MuesliRowSecondaryStyle}"
-                                       TextWrapping="Wrap"
-                                       TextTrimming="None"
-                                       VerticalAlignment="Center"
-                                       AutomationProperties.Name="Meeting metadata" />
-                            <Border Grid.Column="1"
-                                    VerticalAlignment="Center"
-                                    Style="{StaticResource MuesliAccentBadgeStyle}"
-                                    Visibility="{x:Bind BoolToVisibility(ViewModel.HasGeneratedSummary), Mode=OneWay}">
-                                <TextBlock Text="Auto Notes" Style="{StaticResource MuesliAccentBadgeTextStyle}" />
-                            </Border>
-                        </Grid>
-                        <!--
-                            Nesting is shown the way the shell rail and the Meetings page show it,
-                            because the list comes from the same MeetingFolderListItem.BuildTree.
-                            UIA trims the leading spaces, so each option announces its parent
-                            instead — a "Notes" under Archive and a "Notes" under Research are
-                            both legal and are otherwise identical to a screen reader.
-                        -->
-                        <ComboBox x:Name="FolderPicker"
-                                  Header="Folder"
-                                  ItemsSource="{x:Bind ViewModel.FolderOptions, Mode=OneWay}"
-                                  SelectedItem="{x:Bind ViewModel.SelectedFolder, Mode=TwoWay}"
-                                  MinWidth="180"
-                                  MaxWidth="280"
-                                  HorizontalAlignment="Left"
-                                  Margin="0,6,0,0"
-                                  AutomationProperties.Name="Folder"
-                                  AutomationProperties.AutomationId="MeetingFolderPicker">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:MeetingFolderOption">
-                                    <StackPanel Orientation="Horizontal"
-                                                Spacing="8"
-                                                AutomationProperties.Name="{x:Bind AccessibleName}">
-                                        <TextBlock Text="{x:Bind DisplayName}"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   MaxLines="1" />
-                                        <TextBlock Text="{x:Bind ParentSuffix}"
-                                                   Style="{StaticResource MuesliRowSecondaryStyle}"
-                                                   Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                                   MaxLines="1"
-                                                   Visibility="{x:Bind local:MeetingDetailPage.StaticBoolToVisibility(HasParent)}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
+                        <!-- macOS meetingIdentity metadata: 10pt icons, callout text, tertiary "·" dividers. -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" AutomationProperties.Name="Meeting metadata">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <FontIcon Glyph="&#xE787;" FontSize="10" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{x:Bind ViewModel.MetadataDate, Mode=OneWay}" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Text="·" FontSize="13" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <FontIcon Glyph="&#xE823;" FontSize="10" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{x:Bind ViewModel.MetadataDuration, Mode=OneWay}" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Text="·" FontSize="13" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <FontIcon Glyph="&#xE8A5;" FontSize="10" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{x:Bind ViewModel.MetadataWords, Mode=OneWay}" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
                     </StackPanel>
 
                     <StackPanel x:Name="ChromeActions"
@@ -187,21 +150,6 @@
                                 Spacing="10"
                                 VerticalAlignment="Top"
                                 HorizontalAlignment="Right">
-                        <Border x:Name="DetailTabWell" Style="{StaticResource MuesliSegmentedContainerStyle}">
-                            <SelectorBar x:Name="DetailTabBar"
-                                         SelectionChanged="DetailTabBar_SelectionChanged"
-                                         AutomationProperties.Name="Meeting notes or transcript">
-                                <SelectorBarItem x:Name="NotesTabItem"
-                                                 Text="Notes"
-                                                 IsSelected="True"
-                                                 AutomationProperties.Name="Notes tab"
-                                                 AutomationProperties.AutomationId="MeetingNotesTab" />
-                                <SelectorBarItem x:Name="TranscriptTabItem"
-                                                 Text="Transcript"
-                                                 AutomationProperties.Name="Transcript tab"
-                                                 AutomationProperties.AutomationId="MeetingTranscriptTab" />
-                            </SelectorBar>
-                        </Border>
                         <StackPanel x:Name="HeaderCommands" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                             <Button x:Name="SaveButton"
                                     Style="{StaticResource MuesliPrimaryButtonStyle}"
@@ -271,6 +219,67 @@
                             </Button>
                         </StackPanel>
                     </StackPanel>
+                    <!-- macOS responsiveContextControls: surfacePrimary strip, 8pt padding, 10pt corners. -->
+                    <Border x:Name="ContextStrip"
+                            Grid.Row="2"
+                            Grid.ColumnSpan="2"
+                            Background="{ThemeResource MuesliSurfacePrimaryBrush}"
+                            BorderBrush="{ThemeResource MuesliBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="8">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                            <!--
+                                Nesting is shown the way the shell rail and the Meetings page show it,
+                                because the list comes from the same MeetingFolderListItem.BuildTree.
+                                UIA trims the leading spaces, so each option announces its parent
+                                instead — a "Notes" under Archive and a "Notes" under Research are
+                                both legal and are otherwise identical to a screen reader.
+                            -->
+                            <ComboBox x:Name="FolderPicker"
+                                      PlaceholderText="Add to folder"
+                                      ItemsSource="{x:Bind ViewModel.FolderOptions, Mode=OneWay}"
+                                      SelectedItem="{x:Bind ViewModel.SelectedFolder, Mode=TwoWay}"
+                                      MinWidth="160"
+                                      MaxWidth="280"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Center"
+                                      AutomationProperties.Name="Folder"
+                                      AutomationProperties.AutomationId="MeetingFolderPicker">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:MeetingFolderOption">
+                                        <StackPanel Orientation="Horizontal"
+                                                    Spacing="8"
+                                                    AutomationProperties.Name="{x:Bind AccessibleName}">
+                                            <TextBlock Text="{x:Bind DisplayName}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       MaxLines="1" />
+                                            <TextBlock Text="{x:Bind ParentSuffix}"
+                                                       Style="{StaticResource MuesliRowSecondaryStyle}"
+                                                       Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                                       MaxLines="1"
+                                                       Visibility="{x:Bind local:MeetingDetailPage.StaticBoolToVisibility(HasParent)}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Border x:Name="DetailTabWell" Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource MuesliSegmentedContainerStyle}">
+                                <SelectorBar x:Name="DetailTabBar"
+                                             SelectionChanged="DetailTabBar_SelectionChanged"
+                                             AutomationProperties.Name="Meeting notes or transcript">
+                                    <SelectorBarItem x:Name="NotesTabItem"
+                                                     Text="Notes"
+                                                     IsSelected="True"
+                                                     AutomationProperties.Name="Notes tab"
+                                                     AutomationProperties.AutomationId="MeetingNotesTab" />
+                                    <SelectorBarItem x:Name="TranscriptTabItem"
+                                                     Text="Transcript"
+                                                     AutomationProperties.Name="Transcript tab"
+                                                     AutomationProperties.AutomationId="MeetingTranscriptTab" />
+                                </SelectorBar>
+                            </Border>
+                        </Grid>
+                    </Border>
                 </Grid>
 
                 <StackPanel Spacing="8" Visibility="{x:Bind BoolToVisibility(ViewModel.HasRelatedMeetings), Mode=OneWay}">

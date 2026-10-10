@@ -45,6 +45,10 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] public partial string Title { get; set; } = "Meeting";
     [ObservableProperty] public partial string Metadata { get; private set; } = "";
+    // macOS meetingIdentity: calendar date · clock duration · word count, each with its icon.
+    [ObservableProperty] public partial string MetadataDate { get; private set; } = "";
+    [ObservableProperty] public partial string MetadataDuration { get; private set; } = "";
+    [ObservableProperty] public partial string MetadataWords { get; private set; } = "";
     [ObservableProperty] public partial string TitleOwnershipLabel { get; private set; } = "";
     [ObservableProperty] public partial string Summary { get; private set; } = "";
     [ObservableProperty] public partial string Transcript { get; set; } = "";
@@ -468,6 +472,9 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasRelatedMeetings));
         Title = meeting.Title;
         Metadata = $"{meeting.CreatedAt.ToLocalTime():MMM d, yyyy · h:mm tt} · {FormatDuration(meeting.DurationMs)} · {meeting.ModelProfile}";
+        MetadataDate = meeting.CreatedAt.ToLocalTime().ToString("d MMM yyyy 'at' h:mm:ss tt");
+        MetadataDuration = FormatHeaderDuration(meeting.DurationMs);
+        MetadataWords = $"{meeting.WordCount} words";
         HasManualTitle = meeting.TitleIsManual;
         TitleOwnershipLabel = meeting.TitleIsManual
             ? "Your title · kept when notes are regenerated"
@@ -635,6 +642,15 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         : TimeSpan.FromMilliseconds(durationMs).TotalHours >= 1
             ? TimeSpan.FromMilliseconds(durationMs).ToString(@"h\:mm\:ss")
             : TimeSpan.FromMilliseconds(durationMs).ToString(@"m\:ss");
+
+    /// <summary>macOS MeetingDetailView.formatDuration: "1h 5m", "1m 2s", "45s".</summary>
+    private static string FormatHeaderDuration(int durationMs)
+    {
+        var seconds = (int)Math.Round(Math.Max(durationMs, 0) / 1000d);
+        if (seconds >= 3600) return $"{seconds / 3600}h {seconds % 3600 / 60}m";
+        if (seconds >= 60) return seconds % 60 == 0 ? $"{seconds / 60}m" : $"{seconds / 60}m {seconds % 60}s";
+        return $"{seconds}s";
+    }
 
     private static string FormatTime(TimeSpan value) => value.TotalHours >= 1
         ? value.ToString(@"h\:mm\:ss")
