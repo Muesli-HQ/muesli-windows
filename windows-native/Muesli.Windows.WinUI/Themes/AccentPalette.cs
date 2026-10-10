@@ -11,17 +11,22 @@ namespace Muesli.Windows.WinUI.Themes;
 /// </summary>
 public static class AccentPalette
 {
-    // ponytail: only brushes are retinted; the SystemAccentColor* Color ramp keeps Muesli blue, which
-    // only shows in the few generic.xaml templates that read the ramp directly (e.g. TextBox focus underline).
+    // ponytail: brushes MuesliTheme.xaml declares are retinted; other generic.xaml brushes built from
+    // the SystemAccentColor* ramp (list selection, hyperlinks) stay Muesli blue. Redeclare one there to add it.
     private static readonly string[] BaseKeys =
     [
         "MuesliAccentBrush", "MuesliBorderStrongBrush", "MuesliFocusInnerBrush",
-        "AccentTextFillColorPrimaryBrush", "ControlStrongStrokeColorDefaultBrush", "FocusStrokeColorInnerBrush"
+        "AccentTextFillColorPrimaryBrush", "ControlStrongStrokeColorDefaultBrush", "FocusStrokeColorInnerBrush",
+        "AccentFillColorSelectedTextBackgroundBrush"
     ];
     private static readonly string[] StrongKeys =
-        ["MuesliAccentStrongBrush", "AccentFillColorDefaultBrush", "SelectorBarItemBackgroundSelected"];
+    [
+        "MuesliAccentStrongBrush", "AccentFillColorDefaultBrush", "SelectorBarItemBackgroundSelected",
+        "TextControlElevationBorderFocusedBrush"
+    ];
 
-    private static readonly Dictionary<SolidColorBrush, Color> Originals = [];
+    // Keyed by the brush, or by the accent stop of a gradient brush.
+    private static readonly Dictionary<DependencyObject, Color> Originals = [];
 
     public static void Apply(string? hex)
     {
@@ -47,9 +52,20 @@ public static class AccentPalette
 
     private static void Set(ResourceDictionary theme, string key, Color? accent, Func<Color, Color> derive)
     {
-        if (!theme.TryGetValue(key, out var value) || value is not SolidColorBrush brush) return;
-        if (!Originals.TryGetValue(brush, out var original)) Originals[brush] = original = brush.Color;
-        brush.Color = accent is { } color ? derive(color) : original;
+        if (!theme.TryGetValue(key, out var value)) return;
+        // A gradient's first stop is the accent; the second is the neutral control stroke.
+        DependencyObject? target = value switch
+        {
+            SolidColorBrush brush => brush,
+            LinearGradientBrush gradient when gradient.GradientStops.Count > 0 => gradient.GradientStops[0],
+            _ => null
+        };
+        if (target is null) return;
+        var current = target is SolidColorBrush solid ? solid.Color : ((GradientStop)target).Color;
+        if (!Originals.TryGetValue(target, out var original)) Originals[target] = original = current;
+        var next = accent is { } color ? derive(color) : original;
+        if (target is SolidColorBrush b) b.Color = next;
+        else ((GradientStop)target).Color = next;
     }
 
     private static Color? Parse(string? hex)

@@ -129,6 +129,23 @@
                 <Color x:Key="SystemAccentColorDark2">#24559F</Color>
                 <Color x:Key="SystemAccentColorDark3">#1D4680</Color>
                 <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#2F6FE0" />
+                <!--
+                    TextBox focus underline and text selection. generic.xaml builds these from the
+                    accent Color ramp and aliases them with StaticResource, so they are redeclared
+                    here as brushes AccentPalette can retint (same geometry as generic.xaml).
+                -->
+                <LinearGradientBrush x:Key="TextControlElevationBorderFocusedBrush" MappingMode="Absolute" StartPoint="0,0" EndPoint="0,2">
+                    <LinearGradientBrush.RelativeTransform>
+                        <ScaleTransform ScaleY="-1" CenterY="0.5" />
+                    </LinearGradientBrush.RelativeTransform>
+                    <LinearGradientBrush.GradientStops>
+                        <GradientStop Offset="1.0" Color="#2F6FE0" />
+                        <GradientStop Offset="1.0" Color="#12FFFFFF" />
+                    </LinearGradientBrush.GradientStops>
+                </LinearGradientBrush>
+                <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
+                <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#6BA3F7" />
+                <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3F7BE6" />
                 <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#2A63C8" />
                 <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#262830" />
@@ -250,6 +267,23 @@
                 <Color x:Key="SystemAccentColorDark2">#24559F</Color>
                 <Color x:Key="SystemAccentColorDark3">#1D4680</Color>
                 <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#2F6FE0" />
+                <!--
+                    TextBox focus underline and text selection. generic.xaml builds these from the
+                    accent Color ramp and aliases them with StaticResource, so they are redeclared
+                    here as brushes AccentPalette can retint (same geometry as generic.xaml).
+                -->
+                <LinearGradientBrush x:Key="TextControlElevationBorderFocusedBrush" MappingMode="Absolute" StartPoint="0,0" EndPoint="0,2">
+                    <LinearGradientBrush.RelativeTransform>
+                        <ScaleTransform ScaleY="-1" CenterY="0.5" />
+                    </LinearGradientBrush.RelativeTransform>
+                    <LinearGradientBrush.GradientStops>
+                        <GradientStop Offset="1.0" Color="#2F6FE0" />
+                        <GradientStop Offset="1.0" Color="#12FFFFFF" />
+                    </LinearGradientBrush.GradientStops>
+                </LinearGradientBrush>
+                <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
+                <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#6BA3F7" />
+                <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3F7BE6" />
                 <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#2A63C8" />
                 <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#262830" />
@@ -377,6 +411,23 @@
                 <Color x:Key="SystemAccentColorDark2">#2364C9</Color>
                 <Color x:Key="SystemAccentColorDark3">#1D55AD</Color>
                 <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#1F62D6" />
+                <!--
+                    TextBox focus underline and text selection. generic.xaml builds these from the
+                    accent Color ramp and aliases them with StaticResource, so they are redeclared
+                    here as brushes AccentPalette can retint (same geometry as generic.xaml).
+                -->
+                <LinearGradientBrush x:Key="TextControlElevationBorderFocusedBrush" MappingMode="Absolute" StartPoint="0,0" EndPoint="0,2">
+                    <LinearGradientBrush.RelativeTransform>
+                        <ScaleTransform ScaleY="-1" CenterY="0.5" />
+                    </LinearGradientBrush.RelativeTransform>
+                    <LinearGradientBrush.GradientStops>
+                        <GradientStop Offset="1.0" Color="#1F62D6" />
+                        <GradientStop Offset="1.0" Color="#0F000000" />
+                    </LinearGradientBrush.GradientStops>
+                </LinearGradientBrush>
+                <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
+                <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#2364C9" />
+                <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#1B58C0" />
                 <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#174CA6" />
                 <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#E8EBF0" />
