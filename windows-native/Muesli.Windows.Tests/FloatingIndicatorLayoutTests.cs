@@ -271,6 +271,15 @@ public sealed class FloatingIndicatorLayoutTests
         Assert.Equal((width, height), (size.Width, size.Height));
     }
 
+    [Theory]
+    [InlineData(5, FloatingIndicatorAction.Cancel)]
+    [InlineData(38, FloatingIndicatorAction.None)]
+    [InlineData(70, FloatingIndicatorAction.Stop)]
+    public void MeetingActionForClick_never_stops_from_the_waveform_body(double x, FloatingIndicatorAction expected)
+    {
+        Assert.Equal(expected, FloatingIndicatorLayout.MeetingActionForClick(x, FloatingIndicatorLayout.LiveWidth));
+    }
+
     // ─── Status return durations ─────────────────────────────────────────────────────────────
 
     [Fact]

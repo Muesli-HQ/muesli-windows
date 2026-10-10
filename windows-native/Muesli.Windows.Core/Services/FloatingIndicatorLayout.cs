@@ -258,6 +258,18 @@ public static class FloatingIndicatorLayout
         };
 
     /// <summary>
+    /// macOS meeting pill: a 22-point Discard button at x=1 and a Stop button 23 points from the
+    /// right edge. The waveform body has no command so dragging can never end a meeting; pause and
+    /// resume live in the floating transcript header.
+    /// </summary>
+    public const double MeetingButtonRegionDip = 23;
+
+    public static FloatingIndicatorAction MeetingActionForClick(double xDip, double widthDip) =>
+        xDip < MeetingButtonRegionDip ? FloatingIndicatorAction.Cancel
+        : xDip >= widthDip - MeetingButtonRegionDip ? FloatingIndicatorAction.Stop
+        : FloatingIndicatorAction.None;
+
+    /// <summary>
     /// Top-left position for an anchored indicator, following the eight supported anchors inside
     /// <paramref name="workArea"/>. The default anchor is "Middle Right".
     /// </summary>

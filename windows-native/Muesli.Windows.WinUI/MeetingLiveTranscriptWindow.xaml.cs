@@ -18,7 +18,7 @@ public sealed partial class MeetingLiveTranscriptWindow : Window, IDisposable
     private readonly IntPtr _hwnd;
     private readonly DispatcherTimer _exit = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private RectInt32? _indicator;
-    private bool _visible, _hoverPresentation, _dismissed, _wasPaused;
+    private bool _visible, _hoverPresentation, _dismissed;
     private int _disposed;
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out PointInt32 point);
@@ -82,8 +82,13 @@ public sealed partial class MeetingLiveTranscriptWindow : Window, IDisposable
     {
         if (_disposed != 0) return;
         if (!IsActive) { HideIfIdle(); return; }
-        if (_hoverPresentation && (_wasPaused != _meetings.IsPaused || !App.Settings.Load().ShowLiveWaveformOnHover)) Hide();
-        _wasPaused = _meetings.IsPaused;
+        // Pausing from the header keeps the panel open so Resume stays under the pointer.
+        if (_hoverPresentation && !App.Settings.Load().ShowLiveWaveformOnHover) Hide();
+        var pauseLabel = _meetings.IsPaused ? "Resume meeting" : "Pause meeting";
+        PauseGlyph.Glyph = _meetings.IsPaused ? "" : "";
+        PauseButton.IsEnabled = _meetings.IsRecording || _meetings.IsPaused;
+        Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(PauseButton, pauseLabel);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PauseButton, pauseLabel);
         var capture = _meetings.CaptureSnapshot;
         StateLabel.Text = _meetings.IsPaused ? "Paused" : _meetings.IsRecording ? "Live" : "Saving";
         StateDot.Fill = (Brush)Application.Current.Resources[_meetings.IsPaused ? "MuesliTextTertiaryBrush" : "MuesliSuccessBrush"];
@@ -120,6 +125,8 @@ public sealed partial class MeetingLiveTranscriptWindow : Window, IDisposable
     private void Dismiss_Click(object sender, RoutedEventArgs e) { _dismissed = true; Hide(); ScheduleHoverExit(); }
     private void DismissAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     { args.Handled = true; _dismissed = true; Hide(); ScheduleHoverExit(); }
+    private void TogglePause_Click(object sender, RoutedEventArgs e) =>
+        _ = _meetings.IsPaused ? _meetings.ResumeAsync() : _meetings.PauseAsync();
     private void OpenNotes_Click(object sender, RoutedEventArgs e) => OpenNotes();
     private void OpenNotes() { Hide(); if (App.Window is MainWindow main) main.ShowDashboard("meetings"); }
     private async void Copy_Click(object sender, RoutedEventArgs e) => await LiveTranscriptFeed.CopyAsync(CopyButton, TranscriptFeed.CopyText);

@@ -385,12 +385,10 @@ public partial class IndicatorWindow : Window
         // here clipped the 27-point waveform down to three visible bars.
         var grid = new Grid();
         var isMeeting = _owner == IndicatorOwnerKind.Meeting;
-        var leftGlyph = isMeeting
-            ? (_meetingPaused ? "▶" : "⏸")
-            : FloatingIndicatorLayout.RecordingCancelGlyph;
+        // Both use the cross: dictation cancels, a meeting asks to discard (macOS meeting stop controls).
         var left = new TextBlock
         {
-            Text = leftGlyph,
+            Text = FloatingIndicatorLayout.RecordingCancelGlyph,
             FontSize = isMeeting
                 ? FloatingIndicatorLayout.MeetingControlFontSize
                 : FloatingIndicatorLayout.RecordingCancelFontSize,
@@ -826,17 +824,15 @@ public partial class IndicatorWindow : Window
         {
             if (_owner == IndicatorOwnerKind.Meeting)
             {
-                if (x < FloatingIndicatorLayout.CancelRegionWidthDip)
+                // Cancel asks the owner to confirm discarding; the body only drags.
+                var meetingAction = FloatingIndicatorLayout.MeetingActionForClick(x, _widthDip);
+                if (meetingAction != FloatingIndicatorAction.None)
                 {
                     _sendCommand(new IndicatorCommand
                     {
                         SessionId = _sessionId,
-                        Type = _meetingPaused ? IndicatorCommandType.Resume : IndicatorCommandType.Pause
+                        Type = meetingAction == FloatingIndicatorAction.Cancel ? IndicatorCommandType.Cancel : IndicatorCommandType.Stop
                     });
-                }
-                else
-                {
-                    _sendCommand(new IndicatorCommand { SessionId = _sessionId, Type = IndicatorCommandType.Stop });
                 }
             }
             else
