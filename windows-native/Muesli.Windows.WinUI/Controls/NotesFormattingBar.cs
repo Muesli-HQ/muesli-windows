@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.System;
 using Muesli.Windows.Services;
 
@@ -19,28 +20,47 @@ public sealed class NotesFormattingBar : UserControl
     {
         Content = _buttons;
         HorizontalAlignment = HorizontalAlignment.Left;
-        Add("Bold", "\uE8DD", "**", VirtualKey.B);
-        Add("Italic", "\uE8DB", "_", VirtualKey.I);
+        ActualThemeChanged += (_, _) => { foreach (var button in _buttons.Children.OfType<Button>()) Paint(button); };
+        // macOS compactFormattingToolbar: Heading, Bold, Bullet, Checkbox. Italic stays on Ctrl+I.
         Add("Heading", "\uE8D2", "# ");
+        var bold = Add("Bold", "\uE8DD", "**", VirtualKey.B);
+        AddShortcut(bold, VirtualKey.I, "_");
         Add("Bullets", "\uE8FD", "- ");
         Add("Checklist", "\uE73A", "- [ ] ");
     }
 
-    private void Add(string label, string glyph, string marker, VirtualKey? key = null)
+    private Button Add(string label, string glyph, string marker, VirtualKey? key = null)
     {
-        var button = new Button { Content = new FontIcon { Glyph = glyph, FontSize = 16 }, Height = 32, Width = 32,
-            MinHeight = 32, MinWidth = 32, Padding = new Thickness(0), Style = (Style)Application.Current.Resources["MuesliGhostButtonStyle"] };
+        // macOS markdownToolbarButton: 34x30, surfacePrimary fill, hairline border, 13pt secondary icon.
+        var button = new Button
+        {
+            Content = new FontIcon { Glyph = glyph, FontSize = 13 },
+            Width = 34, Height = 30, MinWidth = 34, MinHeight = 30, Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1),
+        };
+        Paint(button);
         AutomationProperties.SetAutomationId(button, $"NotesFormat{label}");
         AutomationProperties.SetName(button, label);
         ToolTipService.SetToolTip(button, label);
         button.Click += (_, _) => Format(marker);
-        if (key is { } shortcut)
-        {
-            var accelerator = new KeyboardAccelerator { Key = shortcut, Modifiers = VirtualKeyModifiers.Control };
-            accelerator.Invoked += (_, args) => { Format(marker); args.Handled = true; };
-            button.KeyboardAccelerators.Add(accelerator);
-        }
+        if (key is { } shortcut) AddShortcut(button, shortcut, marker);
         _buttons.Children.Add(button);
+        return button;
+    }
+
+    private static void Paint(Button button)
+    {
+        var resources = Application.Current.Resources;
+        button.Background = (Brush)resources["MuesliSurfacePrimaryBrush"];
+        button.BorderBrush = (Brush)resources["MuesliBorderBrush"];
+        ((FontIcon)button.Content).Foreground = (Brush)resources["MuesliTextSecondaryBrush"];
+    }
+
+    private void AddShortcut(Button button, VirtualKey key, string marker)
+    {
+        var accelerator = new KeyboardAccelerator { Key = key, Modifiers = VirtualKeyModifiers.Control };
+        accelerator.Invoked += (_, args) => { Format(marker); args.Handled = true; };
+        button.KeyboardAccelerators.Add(accelerator);
     }
 
     private static void EditorChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)

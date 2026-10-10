@@ -107,7 +107,6 @@ public sealed partial class MeetingsPage : Page
         ContentStack.Padding = MuesliPageMetrics.ContentPadding(width);
 
         HeaderActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
-        ActiveMeetingActions.Orientation = MuesliPageMetrics.IsCompact(width) ? Orientation.Vertical : Orientation.Horizontal;
 
         if (compact)
         {
