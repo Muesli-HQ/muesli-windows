@@ -1036,6 +1036,61 @@
                                               AutomationProperties.AutomationId="FloatingIndicatorToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Recording color" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="The floating indicator's color while you dictate." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.RecordingColorIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Recording color"
+                                          AutomationProperties.AutomationId="RecordingColorPicker">
+                                    <ComboBoxItem AutomationProperties.Name="Default">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Width="12" Height="12" Fill="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Default" />
+                                        </StackPanel>
+                                    </ComboBoxItem>
+                                    <ComboBoxItem AutomationProperties.Name="Blue">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Width="12" Height="12" Fill="#2563EB" VerticalAlignment="Center" />
+                                            <TextBlock Text="Blue" />
+                                        </StackPanel>
+                                    </ComboBoxItem>
+                                    <ComboBoxItem AutomationProperties.Name="Red">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Width="12" Height="12" Fill="#EF4444" VerticalAlignment="Center" />
+                                            <TextBlock Text="Red" />
+                                        </StackPanel>
+                                    </ComboBoxItem>
+                                    <ComboBoxItem AutomationProperties.Name="Amber">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Width="12" Height="12" Fill="#F59E0B" VerticalAlignment="Center" />
+                                            <TextBlock Text="Amber" />
+                                        </StackPanel>
+                                    </ComboBoxItem>
+                                    <ComboBoxItem AutomationProperties.Name="Green">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Width="12" Height="12" Fill="#10B981" VerticalAlignment="Center" />
+                                            <TextBlock Text="Green" />
+                                        </StackPanel>
+                                    </ComboBoxItem>
+                                    <ComboBoxItem AutomationProperties.Name="Purple">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Width="12" Height="12" Fill="#8B5CF6" VerticalAlignment="Center" />
+                                            <TextBlock Text="Purple" />
+                                        </StackPanel>
+                                    </ComboBoxItem>
+                                    <ComboBoxItem AutomationProperties.Name="Pink">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Width="12" Height="12" Fill="#EC4899" VerticalAlignment="Center" />
+                                            <TextBlock Text="Pink" />
+                                        </StackPanel>
+                                    </ComboBoxItem>
+                                </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="20,13">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Recording sounds" Style="{StaticResource RowTitleStyle}" />

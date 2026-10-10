@@ -105,6 +105,17 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial int HotkeyTriggerThresholdMs { get; set; }
     [ObservableProperty] public partial string Hotkey { get; set; } = "F8";
     [ObservableProperty] public partial int ThemeIndex { get; set; }
+    [ObservableProperty] public partial int RecordingColorIndex { get; set; }
+
+    /// <summary>
+    /// The recording pill's accent presets, in macOS order. "1e1e2e" is the shared stored value for
+    /// the default accent; a hex outside this list (index -1) is preserved on save.
+    /// </summary>
+    public static readonly (string Hex, string Name)[] RecordingColors =
+    [
+        ("1e1e2e", "Default"), ("2563eb", "Blue"), ("ef4444", "Red"), ("f59e0b", "Amber"),
+        ("10b981", "Green"), ("8b5cf6", "Purple"), ("ec4899", "Pink")
+    ];
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
     [ObservableProperty] public partial bool IsStatusOpen { get; set; }
     [ObservableProperty] public partial bool IsStatusError { get; private set; }
@@ -293,6 +304,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         HotkeyTriggerThresholdMs = _source.HotkeyTriggerThresholdMs;
         Hotkey = _source.Hotkey;
         ThemeIndex = _source.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
+        RecordingColorIndex = Array.FindIndex(RecordingColors, color => color.Hex == _source.RecordingColorHex);
         Microphones = new[] { "Automatic" }.Concat(_dictation.ListMicrophones()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         SelectedMicrophone = string.IsNullOrWhiteSpace(_source.MicrophoneName) ? "Automatic" : _source.MicrophoneName;
         DictationModels = TranscriptionModelCatalog.Models.Select(model => model.DisplayName).ToList();
@@ -379,6 +391,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             FinalMeetingModelId = meetingModel,
             LiveMeetingModelId = liveModel,
             LiveTranscriptOwnership = LiveTranscriptOwnershipDescriptor.SettingValueFor(
+            RecordingColorHex = RecordingColorIndex >= 0 ? RecordingColors[RecordingColorIndex].Hex : _source.RecordingColorHex,
                 LiveOwnershipIndex == 1
                     ? LiveTranscriptOwnershipMode.UnifiedLiveAndFinal
                     : LiveTranscriptOwnershipMode.PreviewOnly),
