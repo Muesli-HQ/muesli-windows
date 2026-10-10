@@ -24,15 +24,17 @@
                 <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#111214" />
                 <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#1C1D20" />
                 <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0202226" />
+                <SolidColorBrush x:Key="MuesliSurfacePrimaryBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliHoverBrush" Color="#232528" />
                 <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#2E3340" />
-                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#12FFFFFF" />
                 <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#12FFFFFF" />
                 <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#9EFFFFFF" />
-                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#BDFFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
@@ -185,15 +187,17 @@
                 <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#111214" />
                 <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#1C1D20" />
                 <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0202226" />
+                <SolidColorBrush x:Key="MuesliSurfacePrimaryBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliHoverBrush" Color="#232528" />
                 <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#2E3340" />
-                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#12FFFFFF" />
                 <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#12FFFFFF" />
                 <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#9EFFFFFF" />
-                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#BDFFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
@@ -323,15 +327,17 @@
                 <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#FFFFFF" />
                 <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#FFFFFF" />
                 <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#F0F2F5" />
+                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0F0F0F2" />
+                <SolidColorBrush x:Key="MuesliSurfacePrimaryBrush" Color="#E5E5EA" />
                 <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#F0F2F5" />
                 <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#F0F2F5" />
                 <SolidColorBrush x:Key="MuesliHoverBrush" Color="#E8EBF0" />
                 <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#DEE8F8" />
-                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#1A000000" />
+                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#14000000" />
                 <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#0F000000" />
-                <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#E6000000" />
-                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#99000000" />
-                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#61000000" />
+                <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#E0000000" />
+                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#A8000000" />
+                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8C000000" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#2364C9" />
                 <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#1F2364C9" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#1F62D6" />
@@ -474,6 +480,8 @@
                 <StaticResource x:Key="MuesliSidebarBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliSurfaceBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliSurfaceRaisedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliBackgroundRaisedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliSurfacePrimaryBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliRaisedBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliRaisedSurfaceBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliHoverBrush" ResourceKey="SystemColorHighlightColorBrush" />

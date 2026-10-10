@@ -15,7 +15,7 @@ public sealed class LiveTranscriptFeed : UserControl
     private readonly ListView _list = new() { SelectionMode = ListViewSelectionMode.None, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(12, 8, 12, 8), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
     private readonly StackPanel _feed = new() { Spacing = 6 };
     private readonly ObservableCollection<UIElement> _committed = [];
-    private readonly TextBlock _waiting = new() { Text = "Waiting for speech…", FontSize = 13 };
+    private readonly TextBlock _waiting = new() { Text = "Waiting for speech…", FontSize = 14, Margin = new Thickness(0, 8, 0, 0) };
     private readonly Grid _others;
     private readonly Grid _you;
     private TranscriptChatMessage[] _segments = [];
@@ -94,7 +94,7 @@ public sealed class LiveTranscriptFeed : UserControl
 
     private static void SetPartial(Grid row, string text)
     {
-        ((TextBlock)((StackPanel)((Border)row.Children[0]).Child).Children[1]).Text = text;
+        ((TextBlock)((StackPanel)row.Children.OfType<Border>().First().Child).Children[1]).Text = text;
         row.Visibility = text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -104,7 +104,9 @@ public sealed class LiveTranscriptFeed : UserControl
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = you ? new GridLength(1, GridUnitType.Star) : GridLength.Auto, MinWidth = you ? 40 : 0 });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = you ? GridLength.Auto : new GridLength(1, GridUnitType.Star), MinWidth = you ? 0 : 40 });
-        var label = new TextBlock { Text = string.Join(" · ", new[] { speaker ?? (partial ? you ? "You" : "Others" : null), timestamp }.Where(value => value is not null)), FontSize = 10 };
+        // macOS LiveTranscriptBubble: "Speaker  12:34" in 10-point medium.
+        var label = new TextBlock { Text = string.Join("  ", new[] { speaker ?? (partial ? you ? "You" : "Others" : null), timestamp }.Where(value => value is not null)),
+            FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.Medium };
         Theme(label, "Foreground", "MuesliTextTertiaryBrush");
         var body = new TextBlock { Text = text, FontSize = 13, FontStyle = partial ? global::Windows.UI.Text.FontStyle.Italic : global::Windows.UI.Text.FontStyle.Normal,
             TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
@@ -114,18 +116,32 @@ public sealed class LiveTranscriptFeed : UserControl
         label.Visibility = label.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         var bubble = new Border { Child = contents, CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6, 10, 6),
             BorderThickness = partial ? new Thickness(0) : new Thickness(1), HorizontalAlignment = you ? HorizontalAlignment.Right : HorizontalAlignment.Left };
-        Theme(bubble, "Background", you ? "MuesliAccentMutedBrush" : "MuesliSurfaceBrush", "BorderBrush", you ? "MuesliAccentMutedBrush" : "MuesliBorderBrush");
-        Grid.SetColumn(bubble, you ? 2 : 0); row.Children.Add(bubble);
-        row.SizeChanged += (_, args) => bubble.MaxWidth = Math.Max(1, args.NewSize.Width - 76);
         if (partial)
         {
+            // macOS partials: a fainter fill (accent 6% / surface 50%) under a dashed surfaceBorder outline.
+            // The fill is a separate layer so its opacity does not dim the text.
+            var fill = new Rectangle { RadiusX = 6, RadiusY = 6, IsHitTestVisible = false, Opacity = you ? 0.45 : 0.5,
+                HorizontalAlignment = you ? HorizontalAlignment.Right : HorizontalAlignment.Left };
+            Theme(fill, "Fill", you ? "MuesliAccentMutedBrush" : "MuesliSurfacePrimaryBrush");
             var outline = new Rectangle { RadiusX = 6, RadiusY = 6, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 4, 3 }, IsHitTestVisible = false,
                 HorizontalAlignment = you ? HorizontalAlignment.Right : HorizontalAlignment.Left };
-            Theme(outline, "Stroke", you ? "MuesliAccentMutedBrush" : "MuesliBorderBrush");
-            bubble.SizeChanged += (_, args) => { outline.Width = args.NewSize.Width; outline.Height = args.NewSize.Height; };
+            Theme(outline, "Stroke", "MuesliBorderBrush");
+            bubble.SizeChanged += (_, args) =>
+            {
+                fill.Width = outline.Width = args.NewSize.Width;
+                fill.Height = outline.Height = args.NewSize.Height;
+            };
+            Grid.SetColumn(fill, you ? 2 : 0); row.Children.Add(fill);
             Grid.SetColumn(outline, you ? 2 : 0); row.Children.Add(outline);
         }
-        var copy = new Button { Content = new FontIcon { Glyph = "\uE8C8", FontSize = 10 }, Width = 24, Height = 24, MinWidth = 24, MinHeight = 24,
+        else
+        {
+            Theme(bubble, "Background", you ? "MuesliAccentMutedBrush" : "MuesliSurfacePrimaryBrush", "BorderBrush", you ? "MuesliAccentMutedBrush" : "MuesliBorderBrush");
+        }
+        Grid.SetColumn(bubble, you ? 2 : 0); row.Children.Add(bubble);
+        // macOS: a 40-point spacer, 6-point gaps, and an 18-point copy button beside each bubble.
+        row.SizeChanged += (_, args) => bubble.MaxWidth = Math.Max(1, args.NewSize.Width - 70);
+        var copy = new Button { Content = new FontIcon { Glyph = "\uE8C8", FontSize = 9 }, Width = 18, Height = 18, MinWidth = 18, MinHeight = 18,
             Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Bottom, Opacity = 0,
             Style = (Style)Application.Current.Resources["MuesliGhostButtonStyle"] };
         AutomationProperties.SetAutomationId(copy, "LiveTranscriptMessageCopy");
@@ -156,7 +172,8 @@ public sealed class LiveTranscriptFeed : UserControl
         {
             await App.Clipboard.SetTextAsync(text.Trim());
             var previous = button.Content;
-            button.Content = new FontIcon { Glyph = "\uE73E", FontSize = 12 };
+            button.Content = new FontIcon { Glyph = "\uE73E", FontSize = previous is FontIcon icon ? icon.FontSize : 12,
+                Foreground = (Brush)Application.Current.Resources["MuesliSuccessBrush"] };
             await Task.Delay(1200);
             button.Content = previous;
         }
