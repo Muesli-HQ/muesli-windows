@@ -36,7 +36,8 @@ public interface IWaveformPeakCache
 public sealed class WaveformPeakCache : IWaveformPeakCache
 {
     public const int CurrentVersion = 1;
-    public const int BucketCount = 72;
+    /// <summary>macOS RecordingWaveformData.defaultBucketCount; part of the cache key, so a change re-samples.</summary>
+    public const int BucketCount = 512;
 
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 

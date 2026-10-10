@@ -539,9 +539,10 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     private void RefreshWaveform()
     {
-        // The peak cache stores bar heights (4 + 20 x amplitude); recover amplitudes, then normalise to the
-        // loudest bucket with a 10/255 floor, as macOS RecordingWaveformData does.
-        var amplitudes = _runtime.WaveformPeaks.Select(height => Math.Clamp((height - 4) / 20, 0, 1)).ToList();
+        // The peak cache stores bar heights (4 + 20 x amplitude, amplitude floored at 0.04); recover amplitudes
+        // with that floor as silence, then normalise to the loudest bucket with a 10/255 floor, as macOS
+        // RecordingWaveformData does. Without removing the floor a silent recording drew full-height bars.
+        var amplitudes = _runtime.WaveformPeaks.Select(height => Math.Clamp(((height - 4) / 20 - 0.04) / 0.96, 0, 1)).ToList();
         var loudest = Math.Max(amplitudes.DefaultIfEmpty(0).Max(), 0.01);
         WaveformPeaks = amplitudes.Select(amplitude => Math.Max(10 / 255d, amplitude / loudest)).ToList();
         OnPropertyChanged(nameof(HasWaveform));
