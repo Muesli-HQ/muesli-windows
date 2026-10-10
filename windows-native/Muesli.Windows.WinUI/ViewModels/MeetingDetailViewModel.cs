@@ -317,7 +317,9 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         if (_meeting is null) return;
         try
         {
-            await _clipboard.SetTextAsync(SpeakerAliasService.Apply(_meeting.Transcript, _meeting.SpeakerAliases), cancellationToken);
+            // macOS copies with the export metadata header (title, date, duration, words).
+            await _clipboard.SetTextAsync(MeetingExportFormatter.BuildMarkdown(
+                ToMeetingItem(_meeting), MeetingExportMode.Transcript, _meeting.SpeakerAliases), cancellationToken);
             ShowStatus("Transcript copied to the clipboard.");
         }
         catch (OperationCanceledException) { }

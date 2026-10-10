@@ -115,14 +115,25 @@ public sealed class MeetingNotificationWindow : Window
         Canvas.SetLeft(cardLayer, 12);
         Canvas.SetTop(cardLayer, 10);
 
-        var close = CreateButton("×", 28, 28, highContrast ? SystemColors.WindowBrush : Brush(180, 0, 0, 0),
-            white, 16, new CornerRadius(14));
+        // macOS NotificationDismissButton: a 22-point circle with a drawn cross, so the mark sits on the
+        // circle's centre instead of a text glyph's baseline.
+        var close = CreateButton("", 22, 22, highContrast ? SystemColors.WindowBrush : Brush(179, 0, 0, 0),
+            white, 10, new CornerRadius(11));
+        close.Content = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M0,0 L8,8 M8,0 L0,8"),
+            Stroke = highContrast ? SystemColors.WindowTextBrush : Brush(219, 255, 255, 255),
+            StrokeThickness = 1.4,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round
+        };
+        close.ToolTip = "Dismiss";
         close.BorderBrush = highContrast ? SystemColors.WindowTextBrush : Brush(140, 255, 255, 255);
         close.BorderThickness = new Thickness(1);
         close.Click += (_, _) => Finish(IndicatorCommandType.MeetingNotificationDismiss);
         AutomationProperties.SetAutomationId(close, "MeetingNotificationDismiss");
         AutomationProperties.SetName(close, "Dismiss meeting notification");
-        Canvas.SetLeft(close, 0);
+        Canvas.SetLeft(close, 1);
         Canvas.SetTop(close, 0);
 
         var root = new Canvas { Background = Brushes.Transparent };
