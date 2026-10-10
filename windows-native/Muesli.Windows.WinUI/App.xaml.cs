@@ -223,12 +223,13 @@ public partial class App : Application
             },
             mainWindow.ShowDashboard,
             () => _ = RequestExitAsync(),
-            Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"),
+            Path.Combine(AppContext.BaseDirectory, "Assets", "TrayIcon.ico"),
             () => Meetings.IsPaused,
             Meetings.PauseAsync,
             Meetings.ResumeAsync,
             () => ShowOnboarding(explicitResume: true),
-            ShowFeatureTour);
+            ShowFeatureTour,
+            Path.Combine(AppContext.BaseDirectory, "Assets", "TrayIconLightTaskbar.ico"));
         Dictation.Changed += (_, _) => Tray.Refresh();
         Meetings.Changed += (_, _) =>
         {

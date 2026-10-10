@@ -25,6 +25,7 @@
          icon onto a system-colored backplate when a target size or theme variant is missing. -->
     <Content Include="Assets\*.png" />
     <Content Include="Assets\AppIcon.ico" />
+    <Content Include="Assets\TrayIcon*.ico" />
     <!-- The floating indicator's Muesli mark, carried over from the retired WPF reference's
          Assets\menu_m_template@2x.png so the pill shows the real glyph, not a typographic "m". -->
     <!-- Inter is the product typeface for the shipping Windows app. -->
