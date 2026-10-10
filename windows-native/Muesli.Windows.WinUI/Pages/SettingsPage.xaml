@@ -1053,14 +1053,14 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Recording color" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="The floating indicator's color while you dictate." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Accent color" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Colors Muesli's highlights and the floating indicator while you dictate." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <ComboBox Grid.Column="1"
                                           Style="{StaticResource PickerStyle}"
                                           SelectedIndex="{x:Bind ViewModel.RecordingColorIndex, Mode=TwoWay}"
-                                          AutomationProperties.Name="Recording color"
-                                          AutomationProperties.AutomationId="RecordingColorPicker">
+                                          AutomationProperties.Name="Accent color"
+                                          AutomationProperties.AutomationId="AccentColorPicker">
                                     <ComboBoxItem AutomationProperties.Name="Default">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <Ellipse Width="12" Height="12" Fill="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Center" />

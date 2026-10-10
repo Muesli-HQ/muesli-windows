@@ -177,11 +177,13 @@ public partial class App : Application
         var startupSettings = Settings.Load();
         ExecutionProviderService.Configure(startupSettings.ExecutionProvider);
         NativeTextCleanupService.Configure(startupSettings.CleanupModelId);
+        Themes.AccentPalette.Apply(startupSettings.RecordingColorHex);
         Startup = new WinUiStartupRegistrationService();
         Window = new MainWindow();
         TrackTheme(Window);
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         UiDispatcher = new WinUiDispatcher(DispatcherQueue);
+        Settings.Changed += (_, settings) => DispatcherQueue.TryEnqueue(() => Themes.AccentPalette.Apply(settings.RecordingColorHex));
         _desktopInstance.StartListening(() => UiDispatcher.TryEnqueue(() => ((MainWindow)Window).ShowDashboard()));
         Meetings = new WinUiMeetingContext(Library, Settings, UiDispatcher);
         Models = new WinUiModelsContext(Library, Settings);
