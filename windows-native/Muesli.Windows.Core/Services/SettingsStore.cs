@@ -204,6 +204,7 @@ public sealed class SettingsStore
             FinalMeetingModelId = NormalizePersistedModelId(settings.FinalMeetingModelId),
             LiveTranscriptOwnership = NormalizeOwnership(settings.LiveTranscriptOwnership),
             RecordingColorHex = NormalizeColorHex(settings.RecordingColorHex),
+            IndicatorStyle = string.Equals(settings.IndicatorStyle?.Trim(), "minimal", StringComparison.OrdinalIgnoreCase) ? "minimal" : "classic",
             MeetingSummaryProvider = DefaultIfBlank(settings.MeetingSummaryProvider, "local").Trim(),
             MeetingSummaryTemplate = DefaultIfBlank(settings.MeetingSummaryTemplate, "standard").Trim(),
             MeetingSummaryPromptOverride = settings.MeetingSummaryPromptOverride ?? "",
@@ -457,6 +458,8 @@ public sealed record MuesliSettings
     public bool EnableDoubleTapDictation { get; init; }
     public int HotkeyTriggerThresholdMs { get; init; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
     public string RecordingColorHex { get; init; } = "1e1e2e";
+    /// <summary>Idle indicator style: <c>classic</c> pill or macOS-style <c>minimal</c> grip.</summary>
+    public string IndicatorStyle { get; init; } = "classic";
     public bool RemoveFillerWords { get; init; } = true;
     public bool EnableLocalCleanup { get; init; }
     public bool StartAtLogin { get; init; }

@@ -53,6 +53,7 @@ public partial class IndicatorWindow : Window
     private string _recordingAccentHex = "1e1e2e";
     private string _hotkeyLabel = "shortcut";
     private bool _handsFree;
+    private bool _minimalStyle;
     private string _message = "";
     private string _indicatorAnchor = "Middle Right";
     private double? _savedLeft;
@@ -180,6 +181,7 @@ public partial class IndicatorWindow : Window
         _visible = snapshot.Visible;
         _meetingPaused = snapshot.MeetingPaused;
         _handsFree = snapshot.HandsFree;
+        _minimalStyle = string.Equals(snapshot.IndicatorStyle, "minimal", StringComparison.OrdinalIgnoreCase);
         _hotkeyLabel = string.IsNullOrWhiteSpace(snapshot.HotkeyLabel) ? "shortcut" : snapshot.HotkeyLabel;
         _recordingAccentHex = string.IsNullOrWhiteSpace(snapshot.RecordingColorHex) ? "1e1e2e" : snapshot.RecordingColorHex;
         _message = snapshot.Message ?? "";
@@ -248,7 +250,9 @@ public partial class IndicatorWindow : Window
 
     private void Render()
     {
-        var size = FloatingIndicatorLayout.SizeFor(_state, _hovered);
+        var size = MinimalResting
+            ? FloatingIndicatorLayout.MinimalRestingSize(_indicatorAnchor)
+            : FloatingIndicatorLayout.SizeFor(_state, _hovered, _message);
         _widthDip = size.Width;
         _heightDip = size.Height;
         _cornerRadiusDip = size.CornerRadius;
@@ -300,8 +304,27 @@ public partial class IndicatorWindow : Window
         }
     }
 
+    private bool MinimalResting =>
+        _minimalStyle && !_highContrast && _state == FloatingIndicatorState.Idle && !_hovered;
+
     private void BuildIdle(bool hovered, Brush brush)
     {
+        if (MinimalResting)
+        {
+            // macOS Minimal: a quiet grey grip (0x696969 at 82%) until hovered.
+            var vertical = FloatingIndicatorLayout.MinimalGripIsVertical(_indicatorAnchor);
+            ContentHost.Children.Add(new Border
+            {
+                Width = vertical ? FloatingIndicatorLayout.MinimalGripThickness : FloatingIndicatorLayout.MinimalGripLength,
+                Height = vertical ? FloatingIndicatorLayout.MinimalGripLength : FloatingIndicatorLayout.MinimalGripThickness,
+                CornerRadius = new CornerRadius(FloatingIndicatorLayout.MinimalGripThickness / 2),
+                Background = new SolidColorBrush(MediaColor.FromArgb(0xD1, 0x69, 0x69, 0x69)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            return;
+        }
+
         if (!hovered)
         {
             ContentHost.Children.Add(MuesliGlyph(FloatingIndicatorLayout.IdleBrandMarkSize, new Thickness()));
@@ -536,6 +559,7 @@ public partial class IndicatorWindow : Window
 
     private Brush BorderBrushFor(FloatingIndicatorState state, bool hovered)
     {
+        if (MinimalResting) return MediaBrushes.Transparent;
         var opacity = state switch
         {
             FloatingIndicatorState.Idle => hovered ? 0.14 : 0.22,
@@ -551,6 +575,9 @@ public partial class IndicatorWindow : Window
     private Brush GlassBrush(FloatingIndicatorState state, bool hovered)
     {
         if (_highContrast) return SystemColors.ControlBrush;
+        // Alpha 1, not 0: a layered window passes clicks through fully transparent pixels, and the
+        // margin around the grip must still catch the pointer.
+        if (MinimalResting) return new SolidColorBrush(MediaColor.FromArgb(1, 0, 0, 0));
 
         // macOS: recording is the solid accent (its blur is hidden); notices are solid green or
         // amber; every other state is the dark tint over the blur, emulated by GlassFill.

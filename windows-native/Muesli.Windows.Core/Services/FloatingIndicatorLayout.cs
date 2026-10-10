@@ -194,6 +194,21 @@ public static class FloatingIndicatorLayout
     /// <summary>The five-bar standing envelope, symmetric about the centre.</summary>
     public static readonly double[] WaveformBarMultipliers = [0.6, 0.85, 1.0, 0.85, 0.6];
 
+    /// <summary>
+    /// macOS Minimal style rests as a 30×8 grip (8×30 beside a middle-left/right anchor). The window
+    /// keeps a 6 DIP margin around it, matching macOS's interactive inset, so the grip is hoverable.
+    /// </summary>
+    public const double MinimalGripLength = 30;
+    public const double MinimalGripThickness = 8;
+    public const double MinimalGripHitMargin = 6;
+
+    public static bool MinimalGripIsVertical(string? anchor) => anchor is "Middle Left" or "Middle Right";
+
+    public static DipSize MinimalRestingSize(string? anchor) =>
+        MinimalGripIsVertical(anchor)
+            ? new DipSize(MinimalGripThickness + 2 * MinimalGripHitMargin, MinimalGripLength + 2 * MinimalGripHitMargin, 0)
+            : new DipSize(MinimalGripLength + 2 * MinimalGripHitMargin, MinimalGripThickness + 2 * MinimalGripHitMargin, 0);
+
     public static DipSize SizeFor(FloatingIndicatorState state, bool hovered, string? message = "")
     {
         return state switch

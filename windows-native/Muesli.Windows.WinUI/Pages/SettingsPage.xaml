@@ -1038,6 +1038,21 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
+                                    <TextBlock Text="Indicator style" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Classic is a compact pill. Minimal is a quiet bar until you hover it." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.IndicatorStyleIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Indicator style"
+                                          AutomationProperties.AutomationId="IndicatorStylePicker">
+                                    <ComboBoxItem Content="Classic" />
+                                    <ComboBoxItem Content="Minimal" />
+                                </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
                                     <TextBlock Text="Recording color" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="The floating indicator's color while you dictate." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>

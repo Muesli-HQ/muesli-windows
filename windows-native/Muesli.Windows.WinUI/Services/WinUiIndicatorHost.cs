@@ -223,6 +223,7 @@ public sealed class WinUiIndicatorHost : IDisposable
             MeetingPaused = _meetingPaused,
             HandsFree = settings.EnableDoubleTapDictation,
             IndicatorAnchor = _indicatorAnchor,
+            IndicatorStyle = settings.IndicatorStyle,
             SavedLeft = _savedLeft,
             SavedTop = _savedTop,
             Theme = settings.Theme,

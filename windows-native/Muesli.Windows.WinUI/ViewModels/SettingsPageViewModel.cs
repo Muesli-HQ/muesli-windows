@@ -106,6 +106,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string Hotkey { get; set; } = "F8";
     [ObservableProperty] public partial int ThemeIndex { get; set; }
     [ObservableProperty] public partial int RecordingColorIndex { get; set; }
+    [ObservableProperty] public partial int IndicatorStyleIndex { get; set; }
 
     /// <summary>
     /// The recording pill's accent presets, in macOS order. "1e1e2e" is the shared stored value for
@@ -304,6 +305,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         HotkeyTriggerThresholdMs = _source.HotkeyTriggerThresholdMs;
         Hotkey = _source.Hotkey;
         ThemeIndex = _source.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
+        IndicatorStyleIndex = _source.IndicatorStyle == "minimal" ? 1 : 0;
         RecordingColorIndex = Array.FindIndex(RecordingColors, color => color.Hex == _source.RecordingColorHex);
         Microphones = new[] { "Automatic" }.Concat(_dictation.ListMicrophones()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         SelectedMicrophone = string.IsNullOrWhiteSpace(_source.MicrophoneName) ? "Automatic" : _source.MicrophoneName;
@@ -391,6 +393,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             FinalMeetingModelId = meetingModel,
             LiveMeetingModelId = liveModel,
             LiveTranscriptOwnership = LiveTranscriptOwnershipDescriptor.SettingValueFor(
+            IndicatorStyle = IndicatorStyleIndex == 1 ? "minimal" : "classic",
+            RecordingColorHex = RecordingColorIndex >= 0 ? RecordingColors[RecordingColorIndex].Hex : _source.RecordingColorHex,
             RecordingColorHex = RecordingColorIndex >= 0 ? RecordingColors[RecordingColorIndex].Hex : _source.RecordingColorHex,
                 LiveOwnershipIndex == 1
                     ? LiveTranscriptOwnershipMode.UnifiedLiveAndFinal
