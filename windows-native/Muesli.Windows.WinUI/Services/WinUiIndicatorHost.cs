@@ -275,6 +275,21 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     // ─── Command routing ──────────────────────────────────────────────────────────────────────
 
+    // A meeting discard deletes audio and can delete written notes, so the pill asks first (macOS
+    // discardMeetingWithConfirmation). The dashboard is raised so the dialog is actually visible.
+    private async Task DiscardMeetingWithConfirmationAsync()
+    {
+        try
+        {
+            if (App.Window is MainWindow main) main.ShowDashboard("meetings");
+            await _meetings.ConfirmAndDiscardAsync(App.Dialogs, !string.IsNullOrWhiteSpace(_meetings.ManualNotes));
+        }
+        catch (Exception exception)
+        {
+            _log.Error("Meeting discard from the floating indicator failed.", exception);
+        }
+    }
+
     private void OnCommand(IndicatorCommand command)
     {
         if (Volatile.Read(ref _disposed) != 0 || _companionLost) return;
@@ -304,7 +319,7 @@ public sealed class WinUiIndicatorHost : IDisposable
             case IndicatorCommandType.Cancel:
                 _dispatcher.TryEnqueue(() =>
                 {
-                    if (_owner == IndicatorOwnerKind.Meeting) _ = _meetings.CancelAsync();
+                    if (_owner == IndicatorOwnerKind.Meeting) _ = DiscardMeetingWithConfirmationAsync();
                     else _ = _dictation.CancelAsync();
                 });
                 break;

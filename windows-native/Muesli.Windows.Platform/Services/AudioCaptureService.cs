@@ -457,8 +457,6 @@ public sealed class AudioCaptureService : IDisposable
 
     private void OnDeviceTopologyChanged(AudioEndpointChange change)
     {
-        // The prepared client may now point at a removed or no-longer-default endpoint.
-        DisposePrepared();
         DeviceListChanged?.Invoke(this, EventArgs.Empty);
         if (Volatile.Read(ref _disposed) != 0)
         {
@@ -473,6 +471,10 @@ public sealed class AudioCaptureService : IDisposable
         await _operationGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            // The prepared client may now point at a removed or no-longer-default endpoint. Released
+            // here, not in the notification callback (where releasing MMDevice objects is unsupported),
+            // and under the gate so an in-flight PrepareAsync cannot publish a stale client afterwards.
+            DisposePrepared();
             var current = _session;
             if (change.Kind == AudioEndpointChangeKind.Added && _usingFallback &&
                 !AddedDeviceMatchesPreference(change.DeviceId))

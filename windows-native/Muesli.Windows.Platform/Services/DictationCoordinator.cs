@@ -21,6 +21,7 @@ public sealed class DictationCoordinator : IDisposable
     private CancellationTokenSource? _sessionCancellation;
     private DictationRollingTranscriber? _rollingTranscriber;
     private string? _microphoneName;
+    private volatile bool _prepareEnabled;
 
     public bool IsRecording { get; private set; }
     public bool IsBusy { get; private set; }
@@ -50,8 +51,23 @@ public sealed class DictationCoordinator : IDisposable
     public IReadOnlyList<string> ListMicrophones() => _audioCaptureService.ListCaptureDevices();
     public string PickPreferredMicrophone() => _audioCaptureService.PickPreferredDeviceName();
 
-    /// <summary>Readies the microphone client for the next dictation without starting capture.</summary>
+    /// <summary>
+    /// Readies the microphone client for the next dictation without starting capture, and keeps
+    /// re-preparing it after each dictation. Callers must only opt in once the user has finished
+    /// onboarding; until then the microphone is opened strictly on demand.
+    /// </summary>
     public void PrepareMicrophone(string? microphoneName)
+    {
+        _prepareEnabled = true;
+        PrepareInBackground(microphoneName);
+    }
+
+    private void RePrepareMicrophone()
+    {
+        if (_prepareEnabled) PrepareInBackground(_microphoneName);
+    }
+
+    private void PrepareInBackground(string? microphoneName)
     {
         _microphoneName = microphoneName;
         if (Volatile.Read(ref _disposed) != 0) return;
@@ -334,7 +350,7 @@ public sealed class DictationCoordinator : IDisposable
             IsBusy = false;
             ScheduleIdleRelease();
             _gate.Release();
-            PrepareMicrophone(_microphoneName);
+            RePrepareMicrophone();
         }
     }
 
@@ -364,7 +380,7 @@ public sealed class DictationCoordinator : IDisposable
             IsBusy = false;
             ScheduleIdleRelease();
             _gate.Release();
-            PrepareMicrophone(_microphoneName);
+            RePrepareMicrophone();
         }
     }
 

@@ -95,7 +95,7 @@ public sealed class WinUiDictationContext : IDisposable
                 },
                 () => EnqueueHotkeyWork(() => ExecuteActionAsync(_hotkeyState.OtherKeyWhileArmed()), "other-key"));
             IsHotkeyRegistered = true;
-            _coordinator.PrepareMicrophone(_settings.Load().MicrophoneName);
+            PrepareMicrophone();
             Status = $"Ready · {_settings.Load().Hotkey}";
             _log.Info($"Dictation shortcut registered. gesture={_settings.Load().Hotkey}");
         }
@@ -106,6 +106,16 @@ public sealed class WinUiDictationContext : IDisposable
             _log.Error("WinUI dictation hotkey registration failed.", exception);
         }
         RaiseChanged();
+    }
+
+    /// <summary>
+    /// Pre-initializes the microphone for low-latency starts, but only after onboarding has
+    /// explained capture. Before that the microphone opens strictly on demand.
+    /// </summary>
+    public void PrepareMicrophone()
+    {
+        var settings = _settings.Load();
+        if (settings.OnboardingCompleted) _coordinator.PrepareMicrophone(settings.MicrophoneName);
     }
 
     public IReadOnlyList<string> ListMicrophones() => _coordinator.ListMicrophones();
@@ -467,6 +477,11 @@ public sealed class WinUiDictationContext : IDisposable
                 $"totalMs={totalStarted.ElapsedMilliseconds}; " +
                 $"outcome={Status}");
             _pasteTarget = IntPtr.Zero;
+            // A live token makes the Escape hook swallow the key in every app, so it must not
+            // outlive the dictation it belongs to.
+            var finished = _operationCancellation;
+            _operationCancellation = null;
+            finished?.Dispose();
             RaiseChanged();
         }
     }

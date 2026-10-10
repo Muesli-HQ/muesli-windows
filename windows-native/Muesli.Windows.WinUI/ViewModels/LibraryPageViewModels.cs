@@ -693,20 +693,10 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var hasNotes = !string.IsNullOrWhiteSpace(ManualNotes);
-            var resumed = _meetingRuntime.IsResumingFinishedMeeting;
-            var choice = resumed
-                ? await _dialogs.ConfirmAsync("Discard only this resumed recording? The original meeting and your written notes will be kept.",
-                    "Discard resumed recording", "Discard new recording", "Cancel")
-                : hasNotes
-                ? await _dialogs.ChooseAsync("Discard the audio recording? You can keep your written notes as a note-only meeting.",
-                    "Discard recording", "Keep notes", "Delete draft", "Cancel")
-                : await _dialogs.ConfirmAsync("Discard this audio recording?", "Discard recording", "Discard", "Cancel");
-            if (choice is not (AppDialogChoice.Primary or AppDialogChoice.Secondary)) return;
-            var keepNotes = resumed || hasNotes && choice == AppDialogChoice.Primary;
-            await _meetingRuntime.CancelAsync(keepNotes);
+            var status = await _meetingRuntime.ConfirmAndDiscardAsync(_dialogs, !string.IsNullOrWhiteSpace(ManualNotes));
+            if (status is null) return;
             Reload();
-            MeetingStatus = resumed ? "Resumed recording discarded. Original meeting kept." : keepNotes ? "Recording discarded. Written notes saved." : "Recording discarded";
+            MeetingStatus = status;
         }
         catch (Exception exception)
         {
