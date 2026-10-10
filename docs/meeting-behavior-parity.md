@@ -120,3 +120,16 @@ The publication checkpoint also includes the accumulated dictation work: rolling
 - Full Windows test suite: **1,095 passed, 30 skipped, 0 failed**. Optional native Swift/streaming, real-media, and operator qualification fixtures were unavailable. The shared Swift bridge remains unqualified; the existing managed fallback is active.
 - WinUI x64 build and Debug MSIX build passed with zero compiler warnings/errors. MSIX payload smoke passed with `-SkipLaunch`; signed installation was not tested.
 - Separately relaunched the packaged development app in the production profile. Verified the visible dashboard, standalone white indicator mark, compact 44 × 28 and hover 220 × 36 DIP bounds, and zero fresh startup errors. Existing recordings, screenshots, private profile data, and local test outputs remain excluded from Git.
+
+## macOS 0.8.5 meeting re-audit — 11 October 2026
+
+Compared the current `Muesli-HQ/muesli` main (`cdcd9c6`, 0.8.5) with the 30 September reference snapshot. `MeetingDetector`, `MeetingCandidateResolver`, `LiveTranscriptView`, `MarkdownRichTextEditor`, and `MeetingStartPresentation` are unchanged, so detection, live captions, and recording notes keep the parity recorded above.
+
+| macOS change | Windows now |
+|---|---|
+| Meeting stop controls (#565): pill shows Discard (left) and Stop (right); the waveform body only drags | Same click map; Discard confirms through the existing keep-notes/delete flow |
+| Pause/resume moved into the floating transcript header and keeps the panel open | Pause/Resume button beside hide and copy; toggling no longer hides the hover panel |
+| Centered notification dismiss control | 22 DIP circle with a drawn cross |
+| Copy includes the export metadata header | Copy transcript uses the export Markdown header |
+
+Not ported: echo-cleaned retained microphone audio (Windows has no neural echo cancellation), "Configure provider" summary prompts (the Windows default local summarizer is always available), and calendar-scheduled meeting controls (calendar excluded).
