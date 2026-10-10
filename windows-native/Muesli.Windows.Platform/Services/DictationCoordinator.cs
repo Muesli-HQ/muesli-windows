@@ -7,6 +7,7 @@ public sealed class DictationCoordinator : IDisposable
     // Cohere peaked at 3.4 GiB in the local rolling benchmark; leave room for the shell and capture.
     private const ulong CohereMinimumFreeMemoryBytes = 4UL * 1024 * 1024 * 1024;
     private readonly NativeTranscriptionClient _transcriptionClient;
+    private readonly AppLogService _log = new();
     private readonly AudioCaptureService _audioCaptureService = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _idleReleaseGate = new();
@@ -19,6 +20,7 @@ public sealed class DictationCoordinator : IDisposable
     private Task<ModelOperationResult>? _modelWarmupTask;
     private CancellationTokenSource? _sessionCancellation;
     private DictationRollingTranscriber? _rollingTranscriber;
+    private string? _microphoneName;
 
     public bool IsRecording { get; private set; }
     public bool IsBusy { get; private set; }
@@ -48,19 +50,42 @@ public sealed class DictationCoordinator : IDisposable
     public IReadOnlyList<string> ListMicrophones() => _audioCaptureService.ListCaptureDevices();
     public string PickPreferredMicrophone() => _audioCaptureService.PickPreferredDeviceName();
 
+    /// <summary>Readies the microphone client for the next dictation without starting capture.</summary>
+    public void PrepareMicrophone(string? microphoneName)
+    {
+        _microphoneName = microphoneName;
+        if (Volatile.Read(ref _disposed) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _audioCaptureService.PrepareAsync(microphoneName).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (Volatile.Read(ref _disposed) == 0)
+            {
+                // Start opens the microphone on demand and owns user-visible errors.
+                _log.Error("Microphone prepare failed; dictation will open it on demand.", exception);
+            }
+            catch { }
+        });
+    }
+
     public Task StartAsync(string? microphoneName) =>
         StartAsync(microphoneName, DictationSessionKind.Interactive);
 
     public async Task StartAsync(string? microphoneName, DictationSessionKind sessionKind)
     {
         CancelIdleRelease();
+        _microphoneName = microphoneName;
         // The global hotkey outlives this coordinator during shutdown. Without this guard every
         // keypress awaits a disposed semaphore and logs an ObjectDisposedException.
         if (Volatile.Read(ref _disposed) != 0)
         {
             return;
         }
+        var startTimer = Stopwatch.StartNew();
         await _gate.WaitAsync();
+        var gateMs = startTimer.ElapsedMilliseconds;
         try
         {
             if (IsRecording)
@@ -88,12 +113,14 @@ public sealed class DictationCoordinator : IDisposable
                     $"Dictation used Parakeet fallback for low memory. availableMiB={freeMemory / 1048576}; requested=cohere-transcribe-int8-en");
             }
 
-            SoundFeedback.PlayDictationStart(sessionKind);
             _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient);
             _audioCaptureService.PcmSamplesAvailable += _rollingTranscriber.Feed;
+            var preCaptureMs = startTimer.ElapsedMilliseconds;
             try
             {
                 await _audioCaptureService.StartAsync(microphoneName);
+                _log.Info($"Dictation capture opened. gateMs={gateMs}; preCaptureMs={preCaptureMs - gateMs}; " +
+                    $"captureOpenMs={startTimer.ElapsedMilliseconds - preCaptureMs}; {_audioCaptureService.LastStartTiming}");
             }
             catch
             {
@@ -108,6 +135,8 @@ public sealed class DictationCoordinator : IDisposable
             }
 
             IsRecording = true;
+            // Only once the microphone is open, so the cue means "speak now".
+            SoundFeedback.PlayDictationStart(sessionKind);
             BeginModelWarmup();
         }
         finally
@@ -174,6 +203,8 @@ public sealed class DictationCoordinator : IDisposable
             capturedAudio = await _audioCaptureService.StopAsync(keepLatestDictationAlias);
             var rolling = DetachRollingTranscriber();
             stopStarted.Stop();
+            _log.Info($"Dictation audio finalized. trace={traceId}; heldMs={capturedAudio.HeldMs}; " +
+                $"bytes={capturedAudio.ByteLength}; audio={capturedAudio.TranscriptionPath}");
             try
             {
                 if (DictationAudioQualityPolicy.IsShortDiscard(capturedAudio))
@@ -218,6 +249,8 @@ public sealed class DictationCoordinator : IDisposable
 
                 var transcriptionStarted = Stopwatch.StartNew();
                 IsTranscribing = true;
+                _log.Info($"Dictation recognition started. trace={traceId}; model={ModelId}; " +
+                    $"warmupPending={_modelWarmupTask is { IsCompleted: false }}");
                 transcriptionTask = rolling is null
                     ? _transcriptionClient.TranscribeFileAsync("Dictation", capturedAudio.TranscriptionPath)
                     : rolling.FinishAsync(capturedAudio.TranscriptionPath);
@@ -301,6 +334,7 @@ public sealed class DictationCoordinator : IDisposable
             IsBusy = false;
             ScheduleIdleRelease();
             _gate.Release();
+            PrepareMicrophone(_microphoneName);
         }
     }
 
@@ -330,6 +364,7 @@ public sealed class DictationCoordinator : IDisposable
             IsBusy = false;
             ScheduleIdleRelease();
             _gate.Release();
+            PrepareMicrophone(_microphoneName);
         }
     }
 
@@ -362,7 +397,9 @@ public sealed class DictationCoordinator : IDisposable
 
         // Loading while the user is speaking hides native session construction without keeping
         // the ~950 MB Parakeet recognizer resident for an app session that never uses dictation.
-        _modelWarmupTask = _transcriptionClient.InitializeAsync();
+        // Task.Run: native session setup runs synchronously before its first await and measured
+        // ~800 ms on the start path, delaying "Listening" after the microphone was already open.
+        _modelWarmupTask = Task.Run(_transcriptionClient.InitializeAsync);
         _ = ObserveWarmupAsync(_modelWarmupTask);
     }
 

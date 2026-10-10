@@ -17,11 +17,11 @@ public sealed class WinUiDictationContext : IDisposable
     private readonly NativeTextCleanupService _cleanup;
     private readonly ActiveAppPasteService _paste;
     private readonly GlobalHotkeyService _hotkey = new();
-    private readonly SoundFeedbackService _sounds = new();
     private readonly DictationHotkeyStateMachine _hotkeyState = new();
     private CancellationTokenSource? _timerCancellation;
     private CancellationTokenSource? _operationCancellation;
     private IntPtr _pasteTarget;
+    private string? _captureTraceId;
     private int _disposed;
 
     // WPF dispatched every shortcut callback with DispatcherPriority.Send, so shortcut down, up,
@@ -74,9 +74,9 @@ public sealed class WinUiDictationContext : IDisposable
             _hotkey.Register(
                 _settings.Load().Hotkey,
                 () => EnqueueHotkeyWork(() => ExecuteActionAsync(
-                    _hotkeyState.KeyDown(_settings.Load().EnableDoubleTapDictation))),
+                    _hotkeyState.KeyDown(_settings.Load().EnableDoubleTapDictation)), "down"),
                 () => EnqueueHotkeyWork(() => ExecuteActionAsync(
-                    _hotkeyState.KeyUp(_settings.Load().EnableDoubleTapDictation))),
+                    _hotkeyState.KeyUp(_settings.Load().EnableDoubleTapDictation)), "up"),
                 // WPF's cancellation predicate. Escape must reach a dictation that is merely armed
                 // or preparing, one that is transcribing, and one whose operation token is still
                 // live — not only an actively recording one.
@@ -91,11 +91,13 @@ public sealed class WinUiDictationContext : IDisposable
                     // StopAsync can spend seconds in inference. Signal its token before the
                     // serialized shortcut chain reaches the rest of cancellation cleanup.
                     RequestCancellation();
-                    EnqueueHotkeyWork(CancelAsync);
+                    EnqueueHotkeyWork(CancelAsync, "escape");
                 },
-                () => EnqueueHotkeyWork(() => ExecuteActionAsync(_hotkeyState.OtherKeyWhileArmed())));
+                () => EnqueueHotkeyWork(() => ExecuteActionAsync(_hotkeyState.OtherKeyWhileArmed()), "other-key"));
             IsHotkeyRegistered = true;
+            _coordinator.PrepareMicrophone(_settings.Load().MicrophoneName);
             Status = $"Ready · {_settings.Load().Hotkey}";
+            _log.Info($"Dictation shortcut registered. gesture={_settings.Load().Hotkey}");
         }
         catch (Exception exception)
         {
@@ -147,6 +149,7 @@ public sealed class WinUiDictationContext : IDisposable
         _hotkeyState.Reset();
         _pasteTarget = IntPtr.Zero;
         Status = "Dictation cancelled";
+        _log.Info($"Dictation cancelled. trace={_captureTraceId ?? "not-started"}");
         RaiseChanged();
     }
 
@@ -179,18 +182,23 @@ public sealed class WinUiDictationContext : IDisposable
     /// item runs to completion before the next starts, so a key-up can never overtake the delay
     /// timer that is still deciding whether to start recording.
     /// </summary>
-    private void EnqueueHotkeyWork(Func<Task> work)
+    private void EnqueueHotkeyWork(Func<Task> work, string signal = "timer")
     {
         if (Volatile.Read(ref _disposed) != 0) return;
         lock (_hotkeyChainGate)
         {
             var previous = _hotkeyChain;
-            _hotkeyChain = RunChainedAsync(previous, work);
+            var receivedAt = Stopwatch.GetTimestamp();
+            // An async method runs inline until its first incomplete await. In particular,
+            // settings I/O and microphone setup must never execute inside the keyboard hook.
+            _hotkeyChain = Task.Run(() => RunChainedAsync(previous, work, signal, receivedAt));
         }
     }
 
-    private async Task RunChainedAsync(Task previous, Func<Task> work)
+    private async Task RunChainedAsync(Task previous, Func<Task> work, string signal, long receivedAt)
     {
+        if (signal != "timer")
+            _log.Info($"Dictation shortcut received. signal={signal}; recording={IsRecording}; busy={IsBusy}");
         try
         {
             await previous.ConfigureAwait(false);
@@ -204,6 +212,9 @@ public sealed class WinUiDictationContext : IDisposable
 
         try
         {
+            var queuedMs = Stopwatch.GetElapsedTime(receivedAt).TotalMilliseconds;
+            if (queuedMs >= 1000)
+                _log.Info($"Dictation shortcut delayed. signal={signal}; queuedMs={queuedMs:F0}");
             await work().ConfigureAwait(false);
         }
         catch (Exception exception)
@@ -292,7 +303,13 @@ public sealed class WinUiDictationContext : IDisposable
 
     private async Task StartAsync(bool shouldPasteToActiveApp)
     {
-        if (IsRecording || IsBusy) return;
+        if (IsRecording || IsBusy)
+        {
+            _log.Info($"Dictation start ignored. recording={IsRecording}; busy={IsBusy}; transcribing={IsTranscribing}");
+            return;
+        }
+        _captureTraceId = Guid.NewGuid().ToString("N")[..12];
+        _log.Info($"Dictation start requested. trace={_captureTraceId}; source={(shouldPasteToActiveApp ? "shortcut" : "dashboard")}");
         var current = _settings.Load();
         if (!string.Equals(_coordinator.ModelId, current.DictationModelId, StringComparison.OrdinalIgnoreCase))
         {
@@ -304,7 +321,7 @@ public sealed class WinUiDictationContext : IDisposable
         // Capture the paste target before any indicator work: the floating pill must never become
         // the foreground window that the transcript is pasted into.
         _pasteTarget = shouldPasteToActiveApp ? _paste.CaptureForegroundWindow() : IntPtr.Zero;
-        _sounds.Enabled = current.SoundEnabled;
+        _coordinator.SoundFeedback.Enabled = current.SoundEnabled;
         Status = "Listening";
         RaiseChanged();
         try
@@ -332,7 +349,7 @@ public sealed class WinUiDictationContext : IDisposable
             return;
         }
 
-        if (_coordinator.IsRecording) _sounds.PlayDictationStart();
+        _log.Info($"Dictation capture start result. trace={_captureTraceId}; recording={_coordinator.IsRecording}; model={_coordinator.ModelId}");
         Status = !_coordinator.IsRecording ? "Ready" :
             _coordinator.ModelId == current.DictationModelId ? "Listening" : "Listening with Parakeet (low memory)";
         RaiseChanged();
@@ -340,6 +357,7 @@ public sealed class WinUiDictationContext : IDisposable
 
     private async Task StopAsync()
     {
+        _log.Info($"Dictation stop requested. trace={_captureTraceId ?? "not-started"}; recording={IsRecording}; busy={IsBusy}");
         if (!_coordinator.IsRecording) return;
         var totalStarted = Stopwatch.StartNew();
         var pipelineMs = 0L;
@@ -359,7 +377,7 @@ public sealed class WinUiDictationContext : IDisposable
         try
         {
             var stop = await _coordinator.StopAsync(
-                Guid.NewGuid().ToString("N")[..12],
+                _captureTraceId ?? Guid.NewGuid().ToString("N")[..12],
                 _operationCancellation.Token);
             latency = stop.Latency;
             var result = stop.Transcription;
@@ -400,8 +418,6 @@ public sealed class WinUiDictationContext : IDisposable
                 _coordinator.ModelId));
             persisted = true;
             persistenceMs = stageStarted.ElapsedMilliseconds;
-            _sounds.Enabled = settings.SoundEnabled;
-            _sounds.PlayDictationInsert();
 
             if (_pasteTarget != IntPtr.Zero)
             {
