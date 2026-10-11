@@ -105,6 +105,21 @@ public sealed class CuaRuntimeTests
     }
 
     [Fact]
+    public void EnterInAChatComposerNeedsConfirmation()
+    {
+        var notepad = FakeDesktop.State(0);
+        var chat = notepad with { FocusedElement = new CuaFocusedElement("Edit", "Type a message", "", "", null, 1) };
+        var search = notepad with { FocusedElement = new CuaFocusedElement("Edit", "Search or start a new chat", "", "", null, 1) };
+        var enter = Call("press_key", new { key = "enter" });
+
+        Assert.NotNull(CuaRuntime.RiskReason(enter, chat));
+        Assert.Null(CuaRuntime.RiskReason(enter, notepad));
+        Assert.Null(CuaRuntime.RiskReason(enter, search));
+        Assert.NotNull(CuaRuntime.RiskReason(Call("type_text", new { text = "hi\n" }), chat));
+        Assert.Null(CuaRuntime.RiskReason(Call("type_text", new { text = "hi" }), chat));
+    }
+
+    [Fact]
     public async Task RepeatingAnActionThatChangesNothingStops()
     {
         var desktop = new FakeDesktop { Frozen = true };

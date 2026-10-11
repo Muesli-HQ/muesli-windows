@@ -23,6 +23,7 @@ public sealed class ResponsesPlanner : ICuaPlanner
     public const string DefaultModel = "gpt-6.1-sol";
     private const string CodexUrl = "https://chatgpt.com/backend-api/codex/responses";
     private const string ApiUrl = "https://api.openai.com/v1/responses";
+    private const int MaxOtherAppChars = 6000;
 
     private readonly HttpClient _http;
     private readonly Func<CancellationToken, Task<(string Token, string? AccountId)>> _credentials;
@@ -176,7 +177,14 @@ public sealed class ResponsesPlanner : ICuaPlanner
                 ["output"] = $"{outcome.Status.ToString().ToLowerInvariant()}: {outcome.Message}",
             });
         }
-        var content = new JsonArray { Text($"Step {request.Step} of at most {request.MaxSteps}.\n{CuaPrompt.Describe(request.State)}") };
+        var content = new JsonArray();
+        if (request.OtherApp is { } other)
+        {
+            var earlier = CuaPrompt.Describe(other);
+            if (earlier.Length > MaxOtherAppChars) earlier = earlier[..MaxOtherAppChars] + "\n…";
+            content.Add(Text($"Earlier you saw this other window (its element numbers are stale; use launch_app or activate_window to act there):\n{earlier}"));
+        }
+        content.Add(Text($"Step {request.Step} of at most {request.MaxSteps}.\n{CuaPrompt.Describe(request.State)}"));
         if (request.State.Screenshot?.ImageDataUrl is { } image)
             content.Add(new JsonObject { ["type"] = "input_image", ["image_url"] = image });
         input.Add(Message("user", content));

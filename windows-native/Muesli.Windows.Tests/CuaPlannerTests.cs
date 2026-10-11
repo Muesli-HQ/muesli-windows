@@ -81,6 +81,12 @@ public sealed class CuaPlannerTests
         Assert.Equal("data:image/jpeg;base64,AAAA", last[1]!["image_url"]!.GetValue<string>());
         Assert.Single(input, item => item?["content"] is JsonArray content && content.Any(part => part?["type"]?.GetValue<string>() == "input_image"));
         Assert.Equal(CuaCatalog.Tools.Count, body["tools"]!.AsArray().Count);
+
+        var chrome = state with { AppName = "Google Chrome", WindowTitle = "Hacker News", Screenshot = null };
+        var withOther = ResponsesPlanner.RequestBody(new CuaPlannerRequest("copy", 3, 50, state, history) { OtherApp = chrome }, "gpt-test", "low");
+        var parts = withOther["input"]!.AsArray()[5]!["content"]!.AsArray();
+        Assert.Contains("Hacker News", parts[0]!["text"]!.GetValue<string>());
+        Assert.Contains("Untitled - Notepad", parts[1]!["text"]!.GetValue<string>());
     }
 
     [Fact]

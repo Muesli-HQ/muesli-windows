@@ -5,7 +5,12 @@ namespace Muesli.Windows.ComputerUse;
 
 /// <summary>What the planner sees each step: the command, the latest window state and every
 /// earlier tool call with its result (the conversation so far).</summary>
-public sealed record CuaPlannerRequest(string Command, int Step, int MaxSteps, CuaWindowState State, IReadOnlyList<CuaToolOutcome> History);
+public sealed record CuaPlannerRequest(string Command, int Step, int MaxSteps, CuaWindowState State, IReadOnlyList<CuaToolOutcome> History)
+{
+    /// <summary>The last state seen of another app, so text read there (a title to copy) survives
+    /// switching to the app it goes into.</summary>
+    public CuaWindowState? OtherApp { get; init; }
+}
 
 /// <summary>The planner's answer: one or more tool calls, run in order.</summary>
 public sealed record CuaPlan(IReadOnlyList<CuaToolCall> Calls, string? Text = null);
@@ -69,6 +74,7 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
         _trace.Clear();
         Trace("command", "Command", command, null);
         var history = new List<CuaToolOutcome>();
+        var seen = new List<CuaWindowState>(); // Latest state per app, oldest first.
         var unchangedActions = new Dictionary<string, int>();
         var unchangedObservations = 0;
         var repairs = 0;
@@ -90,7 +96,10 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
             actionTime.Stop();
             try
             {
-                plan = await planner.PlanAsync(new CuaPlannerRequest(command, step, _options.MaxSteps, state, history.ToArray()), cancellationToken);
+                seen.RemoveAll(other => other.AppId == state.AppId);
+                var otherApp = seen.LastOrDefault();
+                if (state.Elements.Count > 0) seen.Add(state);
+                plan = await planner.PlanAsync(new CuaPlannerRequest(command, step, _options.MaxSteps, state, history.ToArray()) { OtherApp = otherApp }, cancellationToken);
                 if (plan.Calls.Count == 0) throw new CuaInvalidToolCallException("", "", "The planner returned no tool call.");
             }
             catch (CuaInvalidToolCallException exception)
@@ -261,10 +270,22 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
                 var modifiers = call.Strings("modifiers").Select(m => m.ToLowerInvariant()).ToArray();
                 var closes = (key == "f4" && modifiers.Contains("alt"))
                     || (key is "w" or "q" && modifiers.Any(m => m is "ctrl" or "control" or "cmd" or "command"));
-                return closes ? "it closes a window or app" : null;
+                if (closes) return "it closes a window or app";
+                var enter = key is "enter" or "return" && modifiers.All(m => m is "ctrl" or "control");
+                return enter && InMessageBox(element, state) ? "Enter may send the message" : null;
+            case "type_text" or "paste_text":
+                return (call.String("text") ?? "").Contains('\n') && InMessageBox(element, state) ? "a new line may send the message" : null;
             default:
                 return null;
         }
+    }
+
+    /// <summary>Chat composers ("Type a message", "Message #general", "Reply…") send on Enter.
+    /// macOS does not gate this; Windows does.</summary>
+    private static bool InMessageBox(CuaElement? element, CuaWindowState state)
+    {
+        var words = Words(element is not null ? $"{element.Title} {element.Label}" : $"{state.FocusedElement?.Title} {state.FocusedElement?.Label}").ToHashSet();
+        return !words.Contains("search") && words.Overlaps(["message", "reply", "comment", "chat"]);
     }
 
     private static IEnumerable<string> Words(string text) =>

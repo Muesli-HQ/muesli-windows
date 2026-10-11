@@ -121,6 +121,11 @@ public static class Win32Desktop
         GetAncestor(WindowFromPoint(new NativePoint { X = (int)Math.Round(x), Y = (int)Math.Round(y) }), GaRoot).ToInt64();
 
     private const uint GaRoot = 2;
+    /// <summary>True when the window hosts a WinUI 3 content island.</summary>
+    public static bool HostsContentIsland(IntPtr handle) =>
+        FindWindowEx(handle, IntPtr.Zero, "Microsoft.UI.Content.DesktopChildSiteBridge", null) != IntPtr.Zero;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string? className, string? title);
     [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr handle, uint flags);
 

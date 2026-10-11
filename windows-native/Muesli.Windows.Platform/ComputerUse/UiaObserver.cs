@@ -50,11 +50,22 @@ public sealed class UiaObserver : IDisposable
         var texts = new List<string>();
         var seenText = new HashSet<string>(StringComparer.Ordinal);
 
-        using (BuildCache().Activate())
+        // A cached fetch across a WinUI 3 content island that hosts another HWND (WhatsApp's WebView2)
+        // fails, and only after about 6 s, so island windows are fetched branch by branch.
+        AutomationElement? root = null;
+        if (!Win32Desktop.HostsContentIsland(handle))
         {
-            var root = _automation.FromHandle(handle);
-            Walk(root, "0", 0, frame, window.ProcessId, candidates, texts, seenText);
+            try
+            {
+                using (BuildCache().Activate()) root = _automation.FromHandle(handle);
+            }
+            catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException) { }
         }
+        if (root is null)
+            WalkBranches(_automation.FromHandle(handle), "0", 0, frame, window.ProcessId, candidates, texts, seenText);
+        if (root is not null)
+            using (BuildCache().Activate())
+                Walk(root, "0", 0, frame, window.ProcessId, candidates, texts, seenText);
         var elements = Number(candidates);
 
         var focused = FocusedElement(window.ProcessId, frame, out var selectedText, out var documentText);
@@ -136,6 +147,42 @@ public sealed class UiaObserver : IDisposable
         catch (Exception exception) when (IsElementGone(exception)) { return; }
         for (var index = 0; index < children.Length; index++)
             Walk(children[index], $"{path}.{index}", depth + 1, window, processId, candidates, texts, seenText);
+    }
+
+    private static readonly HashSet<string> IslandHostClasses = ["Microsoft.UI.Content.DesktopChildSiteBridge", "InputSiteWindowClass"];
+
+    private static string ClassName(AutomationElement element)
+    {
+        try { return element.ClassName ?? ""; }
+        catch (Exception exception) when (IsElementGone(exception) || exception is System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException) { return ""; }
+    }
+
+    /// <summary>Caches each child's subtree separately, splitting further where a branch still fails.</summary>
+    private void WalkBranches(AutomationElement live, string path, int depth, CuaRect window, int processId,
+        List<Candidate> candidates, List<string> texts, HashSet<string> seenText)
+    {
+        AutomationElement[] children;
+        try { children = live.FindAllChildren(); }
+        catch (Exception exception) when (IsElementGone(exception) || exception is System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException) { return; }
+        for (var index = 0; index < children.Length; index++)
+        {
+            var childPath = $"{path}.{index}";
+            AutomationElement? cached = null;
+            if (IslandHostClasses.Contains(ClassName(children[index])))
+            {
+                if (depth < MaxDepth) WalkBranches(children[index], childPath, depth + 1, window, processId, candidates, texts, seenText);
+                continue;
+            }
+            try { using (BuildCache().Activate()) cached = children[index].FindFirst(TreeScope.Element, FlaUI.Core.Conditions.TrueCondition.Default); }
+            catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException)
+            {
+                if (depth < MaxDepth) WalkBranches(children[index], childPath, depth + 1, window, processId, candidates, texts, seenText);
+            }
+            catch (Exception exception) when (IsElementGone(exception)) { }
+            if (cached is not null)
+                using (BuildCache().Activate())
+                    Walk(cached, childPath, depth + 1, window, processId, candidates, texts, seenText);
+        }
     }
 
     /// <summary>Adds an interactive element (returns true when it is a list/tree/data row) or a
