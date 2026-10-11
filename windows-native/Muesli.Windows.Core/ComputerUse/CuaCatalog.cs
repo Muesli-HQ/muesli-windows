@@ -57,7 +57,10 @@ public static class CuaCatalog
             ("to_x", Number("End x.")), ("to_y", Number("End y.")), ("label", Label)),
         Tool("wait_for", "Wait until text appears in the target window (title, element names, values or visible text), for example after a page or dialog starts loading.", false, ["text"],
             ("text", String("Text to wait for.")), ("app_name", App), ("timeout_seconds", Number("At most 15. Default 5."))),
-        Tool("finish", "The task is complete. reason is the short answer or result shown to the user.", false, ["reason"], ("reason", String("Final result for the user."))),
+        Tool("get_muesli_settings", "List Muesli's own settings that can be changed by voice, with current values and choices.", false, []),
+        Tool("set_muesli_setting", "Change one of Muesli's own settings. Call get_muesli_settings first and use a listed setting and choice id.", false, ["setting", "value"],
+            ("setting", String("Setting id from get_muesli_settings.")), ("value", String("Choice id from get_muesli_settings."))),
+        Tool("finish","The task is complete. reason is the short answer or result shown to the user.", false, ["reason"], ("reason", String("Final result for the user."))),
         Tool("fail", "Stop because the task is blocked, unsafe or impossible. reason explains why.", false, ["reason"], ("reason", String("Why the task cannot be done."))),
     ];
 

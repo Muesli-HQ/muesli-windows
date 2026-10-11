@@ -64,7 +64,13 @@ Each module ends with a test that proves the feature works on this PC before the
 - **Modifiers:** macOS `command` maps to `Ctrl` for shortcuts; `option` maps to `Alt`.
 - **Browser:** no AppleScript on Windows and no default-profile DevTools port in current Chrome, so
   browser tools use UI Automation plus the keyboard (Ctrl+L, Ctrl+T, Ctrl+Tab).
-- **Writing:** Windows has no Quill model, so `edit_text` uses the selected planner backend with a
-  writing-only prompt.
+- **Browser (M5, done):** no browser-specific tools were needed. The planner opens tabs and navigates
+  with ctrl+t / ctrl+l and reads pages through UI Automation (headings are marked). Verified live in
+  Chrome.
+- **Writing (M6, done):** no `edit_text` tool. The planner model composes the text itself and replaces
+  the selection (or ctrl+a) with `paste_text`. Verified live rewriting a Notepad list.
+- **Settings by voice (M7, done):** `get_muesli_settings` / `set_muesli_setting` over a fixed list of
+  choice settings (models, theme, indicator, sounds, filler words, double-tap, meeting detection).
+  Models that are not downloaded are refused. Clarifying questions arrive with the M8 UI.
 - **ChatGPT sign-in** uses the same sign-in flow and endpoint as macOS, with the same risk that
   OpenAI may change it.

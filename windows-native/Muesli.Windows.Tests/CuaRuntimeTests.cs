@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Muesli.Windows.ComputerUse;
+using Muesli.Windows.Services;
 
 namespace Muesli.Windows.Tests;
 
@@ -170,6 +171,40 @@ public sealed class CuaRuntimeTests
         var planner = new ScriptedPlanner([type]) { OnPlan = cancel.Cancel };
         var cancelled = await new CuaRuntime(new FakeDesktop(), planner, Fast).RunAsync("x", cancel.Token);
         Assert.Equal(CuaRunStatus.Cancelled, cancelled.Status);
+    }
+
+    [Fact]
+    public async Task VoiceCommandChangesAMuesliSetting()
+    {
+        var saved = new MuesliSettings { Theme = "dark", SoundEnabled = true };
+        var settings = new CuaMuesliSettings(() => saved, value => saved = value);
+        var planner = new ScriptedPlanner(
+            [Call("get_muesli_settings", new { })],
+            [Call("set_muesli_setting", new { setting = "theme", value = "Light" }), Call("set_muesli_setting", new { setting = "sounds", value = "off" })],
+            [Call("finish", new { reason = "Done." })]);
+
+        var result = await new CuaRuntime(new FakeDesktop(), planner, Fast with { Settings = settings }).RunAsync("light theme, no sounds", default);
+
+        Assert.Equal(CuaRunStatus.Done, result.Status);
+        Assert.Equal("light", saved.Theme);
+        Assert.False(saved.SoundEnabled);
+        Assert.Contains("theme (App theme): dark", planner.Requests[1].History[0].Message);
+    }
+
+    [Fact]
+    public void SettingsRefuseUnknownSettingsAndMissingModels()
+    {
+        var saved = new MuesliSettings();
+        var settings = new CuaMuesliSettings(() => saved, value => saved = value);
+        Assert.False(settings.Execute(Call("set_muesli_setting", new { setting = "openai_api_key", value = "x" })).Succeeded);
+        Assert.False(settings.Execute(Call("set_muesli_setting", new { setting = "theme", value = "purple" })).Succeeded);
+        var missing = TranscriptionModelCatalog.Models.FirstOrDefault(model => !model.IsCached);
+        if (missing is not null)
+        {
+            var result = settings.Execute(Call("set_muesli_setting", new { setting = "dictation_model", value = missing.Id }));
+            Assert.Contains("not downloaded", result.Message);
+            Assert.NotEqual(missing.Id, saved.DictationModelId);
+        }
     }
 
     [Fact]

@@ -34,6 +34,8 @@ public sealed record CuaRuntimeOptions
     public TimeSpan SettleDelay { get; init; } = TimeSpan.FromMilliseconds(400);
     /// <summary>Asks the user to approve a risky action. Without it, the run stops instead.</summary>
     public Func<string, CancellationToken, Task<bool>>? Confirm { get; init; }
+    /// <summary>Muesli's own settings, for "change my dictation model" commands.</summary>
+    public CuaMuesliSettings? Settings { get; init; }
     public Action<string>? OnStatus { get; init; }
     public Action<CuaTraceEvent>? OnEvent { get; init; }
 }
@@ -170,7 +172,12 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
 
                 Status(StatusFor(tool.Name));
                 CuaResult result;
-                try { result = desktop.Execute(call, cancellationToken); }
+                try
+                {
+                    result = tool.Name is "get_muesli_settings" or "set_muesli_setting"
+                        ? _options.Settings?.Execute(call) ?? new CuaResult(CuaResultStatus.Unsupported, "Muesli settings are not available here.")
+                        : desktop.Execute(call, cancellationToken);
+                }
                 catch (OperationCanceledException) { return End(CuaRunStatus.Cancelled, "Cancelled.", step); }
                 Trace("tool_result", result.Status.ToString(), result.Message, step);
                 history.Add(new CuaToolOutcome(step, call, result.Status, result.Message));
