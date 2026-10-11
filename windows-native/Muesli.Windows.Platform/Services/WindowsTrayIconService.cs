@@ -69,6 +69,7 @@ public sealed class WindowsTrayIconService : IDisposable
     public void Refresh() => _dispatcher.TryEnqueue(() =>
     {
         if (Volatile.Read(ref _disposed) != 0) return;
+        _icon.Text = StatusText();
         var replacement = BuildMenu();
         var prior = _icon.ContextMenuStrip;
         _icon.ContextMenuStrip = replacement;
@@ -78,8 +79,8 @@ public sealed class WindowsTrayIconService : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _icon.Visible = false;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        _icon.Visible = false;
         _icon.Dispose();
     }
 
@@ -126,16 +127,15 @@ public sealed class WindowsTrayIconService : IDisposable
         return menu;
     }
 
+    // Hovering the tray icon must disclose any active capture.
+    private string StatusText() =>
+        _meetingPaused?.Invoke() == true ? "Muesli · Meeting paused"
+        : _meetingRecording() ? "Muesli · Recording meeting"
+        : _dictationRecording() ? "Muesli · Dictating"
+        : "Muesli";
+
     private void Show(string destination) => _dispatcher.TryEnqueue(() => _show(destination));
 
-    private static Icon LoadIcon(string? iconPath)
-    {
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(iconPath) && File.Exists(iconPath)) return new Icon(iconPath);
-        }
-        catch { }
-        return SystemIcons.Application;
     // Like the macOS menu-bar template, the tray mark follows the taskbar's light or dark theme.
     private void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
     {
@@ -158,5 +158,13 @@ public sealed class WindowsTrayIconService : IDisposable
         return key?.GetValue("SystemUsesLightTheme") is int value && value != 0;
     }
 
+    private static Icon LoadIcon(string? iconPath)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(iconPath) && File.Exists(iconPath)) return new Icon(iconPath);
+        }
+        catch { }
+        return SystemIcons.Application;
     }
 }

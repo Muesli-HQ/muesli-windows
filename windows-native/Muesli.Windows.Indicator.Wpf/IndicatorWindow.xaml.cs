@@ -669,6 +669,14 @@ public partial class IndicatorWindow : Window
             _savedLeft is { } savedLeft &&
             _savedTop is { } savedTop)
         {
+            // A dragged position belongs to the monitor it was dropped on, not the cursor's monitor.
+            // ponytail: every screen is converted with this window's DPI; exact only when monitors share a scale.
+            workArea = System.Windows.Forms.Screen.AllScreens
+                .Select(screen => ToDipRect(screen.WorkingArea))
+                .Where(area => savedLeft >= area.Left && savedLeft < area.Left + area.Width &&
+                               savedTop >= area.Top && savedTop < area.Top + area.Height)
+                .Cast<DipRect?>()
+                .FirstOrDefault() ?? workArea;
             var repaired = FloatingIndicatorLayout.RepairSavedCenter(new DipPoint(savedLeft, savedTop), size, workArea);
             if (repaired is { } fixedCenter)
             {
