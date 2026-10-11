@@ -99,6 +99,9 @@ public sealed class CuaRuntimeTests
         Assert.NotNull(CuaRuntime.RiskReason(Call("click_element", new { element_index = 1, label = "blue button" }), state));
         Assert.Null(CuaRuntime.RiskReason(Call("click_element", new { element_index = 2 }), state));
         Assert.NotNull(CuaRuntime.RiskReason(Call("click_point", new { screenshot_id = "x", x = 1, y = 1, label = "Delete draft" }), state));
+        Assert.NotNull(CuaRuntime.RiskReason(Call("click_point", new { screenshot_id = "x", x = 1, y = 1, label = "Close Notepad window" }), state));
+        Assert.NotNull(CuaRuntime.RiskReason(Call("click_point", new { screenshot_id = "x", x = 1, y = 1, label = "Don't save" }), state));
+        Assert.Null(CuaRuntime.RiskReason(Call("click_point", new { screenshot_id = "x", x = 1, y = 1, label = "Save" }), state));
     }
 
     [Fact]

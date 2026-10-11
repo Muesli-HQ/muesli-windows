@@ -57,6 +57,8 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
         // macOS list, plus OpenAI's Windows confirmation categories (installing, publishing, money).
         "archive", "buy", "cancel", "checkout", "confirm", "delete", "discard", "pay", "purchase", "remove", "send", "submit", "unsubscribe",
         "install", "uninstall", "erase", "reset", "post", "publish", "transfer", "order",
+        // A window's Close button does what Alt+F4 does, and can drop unsaved work.
+        "close", "quit",
     ];
 
     private readonly CuaRuntimeOptions _options = options ?? new CuaRuntimeOptions();
@@ -250,7 +252,9 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
         switch (tool)
         {
             case "click_element" or "click_point" or "perform_secondary_action" or "drag" or "set_value":
-                var words = Words($"{element?.Title} {call.String("label")}");
+                var name = $"{element?.Title} {call.String("label")}";
+                if (Regex.IsMatch(name, @"\bdo(n['’]t| not) save\b", RegexOptions.IgnoreCase)) return "it throws away unsaved work";
+                var words = Words(name);
                 return words.FirstOrDefault(RiskyWords.Contains) is { } word ? $"it looks like \"{word}\"" : null;
             case "press_key":
                 var key = (call.String("key") ?? "").ToLowerInvariant();
