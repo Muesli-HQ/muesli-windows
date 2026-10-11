@@ -7,9 +7,24 @@
     xmlns:local="using:Muesli.Windows.WinUI.Pages"
     xmlns:vm="using:Muesli.Windows.WinUI.ViewModels">
     <Page.Resources>
-        <Style x:Key="SearchTimestampStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliTimestampStyle}">
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="VerticalAlignment" Value="Top" />
+        <!-- macOS SearchResultsView: caption-12 tertiary metadata above a callout-13 snippet. -->
+        <Style x:Key="SearchCaptionStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <!-- macOS tabButton: 12,8 padding, cornerSmall, hover fill when selected. -->
+        <Style x:Key="SearchTabStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style x:Key="SearchCountPillStyle" TargetType="Border">
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="MinWidth" Value="20" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <!--
             Dictation hits are a run of rows inside one rounded surface, exactly like a Timeline or
@@ -21,7 +36,7 @@
         <Style x:Key="SearchDictationRowStyle" TargetType="Border">
             <Setter Property="Background" Value="{ThemeResource MuesliSurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderSoftBrush}" />
-            <Setter Property="Padding" Value="18,14" />
+            <Setter Property="Padding" Value="16,12" />
         </Style>
         <!-- Same quiet treatment as the Dictations page rows (P2-08). -->
         <Style x:Key="SearchRowActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
@@ -55,63 +70,75 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel x:Name="HeaderStack" Spacing="14">
+        <StackPanel x:Name="HeaderStack" Spacing="12">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <StackPanel MinWidth="0" Spacing="4">
-                    <TextBlock Text="{x:Bind ViewModel.PageTitle, Mode=OneWay}"
-                               Style="{StaticResource MuesliPageTitleStyle}"
-                               TextWrapping="Wrap" />
-                    <TextBlock x:Name="ResultCountText"
-                               Text="{x:Bind ViewModel.PageSummary, Mode=OneWay}"
-                               Style="{StaticResource MuesliPageSubtitleStyle}" />
-                </StackPanel>
-                <Button x:Name="ClearButton"
-                        Grid.Column="1"
-                        Style="{StaticResource MuesliGhostButtonStyle}"
-                        Content="Clear"
-                        VerticalAlignment="Top"
-                        Margin="0,8,0,0"
-                        Click="Clear_Click"
-                        Visibility="{x:Bind local:SearchPage.BoolToVisibility(ViewModel.HasQuery), Mode=OneWay}"
-                        AutomationProperties.Name="Clear search"
-                        AutomationProperties.AutomationId="SearchClearButton" />
+                <TextBlock Text="{x:Bind ViewModel.PageTitle, Mode=OneWay}"
+                           Style="{StaticResource MuesliPageTitleStyle}"
+                           TextWrapping="Wrap" />
+                <HyperlinkButton x:Name="ClearButton"
+                                 Grid.Column="1"
+                                 Content="Clear"
+                                 FontSize="13"
+                                 Padding="6,2"
+                                 Foreground="{ThemeResource MuesliAccentBrush}"
+                                 VerticalAlignment="Center"
+                                 Click="Clear_Click"
+                                 Visibility="{x:Bind local:SearchPage.BoolToVisibility(ViewModel.HasQuery), Mode=OneWay}"
+                                 AutomationProperties.Name="Clear search"
+                                 AutomationProperties.AutomationId="SearchClearButton" />
             </Grid>
 
             <!--
-                P2-05: this page had a second search field showing the same query as the
-                always-visible sidebar field, so a search rendered two populated inputs at once.
-                The shell's field is the single entry point (macOS SearchResultsView has no field
-                of its own either) and this page renders only the query, the counts and the
-                results. "Clear" clears the shell field, which is what actually owns the query.
+                The shell's sidebar field owns the query (P2-05); this page renders only the counts
+                and the results. Tabs follow macOS: label plus a count capsule, the selected tab on
+                a hover fill. "All" is Windows-only and keeps both groups under section labels.
             -->
-            <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Disabled"
-                          HorizontalScrollMode="Enabled"
-                          VerticalScrollMode="Disabled"
-                          Padding="0">
-                <Border Style="{StaticResource MuesliSegmentedContainerStyle}" HorizontalAlignment="Left">
-                    <SelectorBar x:Name="KindFilterBar"
-                                 SelectionChanged="KindFilter_SelectionChanged"
-                                 AutomationProperties.Name="Search result kind">
-                        <SelectorBarItem x:Name="AllTab"
-                                         Text="All"
-                                         Tag="0"
-                                         IsSelected="True"
-                                         AutomationProperties.Name="Search all results"
-                                         AutomationProperties.AutomationId="SearchAllTab" />
-                        <SelectorBarItem x:Name="DictationsTab"
-                                         Text="Dictations"
-                                         Tag="1"
-                                         AutomationProperties.Name="Search dictations tab"
-                                         AutomationProperties.AutomationId="SearchDictationsTab" />
-                        <SelectorBarItem x:Name="MeetingsTab"
-                                         Text="Meetings"
-                                         Tag="2"
-                                         AutomationProperties.Name="Search meetings tab"
-                                         AutomationProperties.AutomationId="SearchMeetingsTab" />
-                    </SelectorBar>
-                </Border>
-            </ScrollViewer>
+            <StackPanel x:Name="KindTabs"
+                        Orientation="Horizontal"
+                        Spacing="2"
+                        Margin="-12,0,0,0"
+                        AutomationProperties.Name="Search result kind">
+                <Button x:Name="AllTab"
+                        Tag="0"
+                        Style="{StaticResource SearchTabStyle}"
+                        Click="KindTab_Click"
+                        AutomationProperties.Name="Search all results"
+                        AutomationProperties.AutomationId="SearchAllTab">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock x:Name="AllTabLabel" Text="All" FontSize="13" VerticalAlignment="Center" />
+                        <Border x:Name="AllTabPill" Style="{StaticResource SearchCountPillStyle}">
+                            <TextBlock x:Name="AllTabCount" FontSize="11" FontWeight="Medium" HorizontalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="DictationsTab"
+                        Tag="1"
+                        Style="{StaticResource SearchTabStyle}"
+                        Click="KindTab_Click"
+                        AutomationProperties.Name="Search dictations tab"
+                        AutomationProperties.AutomationId="SearchDictationsTab">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock x:Name="DictationsTabLabel" Text="Dictations" FontSize="13" VerticalAlignment="Center" />
+                        <Border x:Name="DictationsTabPill" Style="{StaticResource SearchCountPillStyle}">
+                            <TextBlock x:Name="DictationsTabCount" FontSize="11" FontWeight="Medium" HorizontalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="MeetingsTab"
+                        Tag="2"
+                        Style="{StaticResource SearchTabStyle}"
+                        Click="KindTab_Click"
+                        AutomationProperties.Name="Search meetings tab"
+                        AutomationProperties.AutomationId="SearchMeetingsTab">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock x:Name="MeetingsTabLabel" Text="Meetings" FontSize="13" VerticalAlignment="Center" />
+                        <Border x:Name="MeetingsTabPill" Style="{StaticResource SearchCountPillStyle}">
+                            <TextBlock x:Name="MeetingsTabCount" FontSize="11" FontWeight="Medium" HorizontalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+            <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" />
 
             <!--
                 Visibility as well as IsOpen: a closed InfoBar collapses its template root but
@@ -145,11 +172,6 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <TextBlock Text="{x:Bind ViewModel.SectionHeadline, Mode=OneWay}"
-                       Style="{StaticResource MuesliSectionLabelStyle}"
-                       Margin="4,0,0,10"
-                       Visibility="{x:Bind local:SearchPage.BoolToVisibility(ViewModel.ShowPageSectionLabel), Mode=OneWay}" />
-
             <ListView x:Name="ResultList"
                       Grid.Row="1"
                       ItemsSource="{x:Bind ViewModel.VisibleResults, Mode=OneWay}"
@@ -171,8 +193,11 @@
                     <DataTemplate x:DataType="vm:SearchResultItem">
                         <StackPanel Spacing="8">
                             <TextBlock Text="{x:Bind SectionLabel, Mode=OneTime}"
-                                       Style="{StaticResource MuesliSectionLabelStyle}"
-                                       Margin="4,4,0,2"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       CharacterSpacing="40"
+                                       Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                       Margin="2,4,0,0"
                                        Visibility="{x:Bind local:SearchPage.BoolToVisibility(ShowSectionHeader), Mode=OneTime}" />
 
                             <Border Style="{StaticResource SearchDictationRowStyle}"
@@ -180,19 +205,19 @@
                                     CornerRadius="{x:Bind local:SearchPage.GroupCorners(IsGroupStart, IsGroupEnd), Mode=OneTime}"
                                     Visibility="{x:Bind local:SearchPage.BoolToVisibility(IsDictation), Mode=OneTime}"
                                     AutomationProperties.Name="{x:Bind Title, Mode=OneTime}">
-                                <Grid ColumnDefinitions="80,*,Auto" ColumnSpacing="12">
-                                    <TextBlock Text="{x:Bind TimeLabel, Mode=OneTime}"
-                                               Style="{StaticResource SearchTimestampStyle}"
-                                               Margin="0,2,0,0" />
-                                    <local:SearchHighlightTextBlock Grid.Column="1"
-                                                                    SourceText="{x:Bind HighlightSource, Mode=OneTime}"
-                                                                    Query="{x:Bind Query, Mode=OneTime}"
-                                                                    FontSize="14"
-                                                                    MaxLines="3"
-                                                                    TextWrapping="Wrap"
-                                                                    Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <StackPanel Spacing="4" MinWidth="0">
+                                        <TextBlock Text="{x:Bind TimestampLabel, Mode=OneTime}"
+                                                   Style="{StaticResource SearchCaptionStyle}" />
+                                        <local:SearchHighlightTextBlock SourceText="{x:Bind HighlightSource, Mode=OneTime}"
+                                                                        Query="{x:Bind Query, Mode=OneTime}"
+                                                                        FontSize="13"
+                                                                        MaxLines="3"
+                                                                        TextWrapping="Wrap"
+                                                                        Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                    </StackPanel>
                                     <StackPanel x:Name="RowActions"
-                                                Grid.Column="2"
+                                                Grid.Column="1"
                                                 Orientation="Horizontal"
                                                 Margin="8,-4,-6,0"
                                                 Opacity="0"
@@ -215,7 +240,7 @@
                                     Visibility="{x:Bind local:SearchPage.BoolToVisibility(IsMeeting), Mode=OneTime}"
                                     AutomationProperties.Name="{x:Bind Title, Mode=OneTime}">
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                    <StackPanel MinWidth="0" Spacing="6">
+                                    <StackPanel MinWidth="0" Spacing="4">
                                         <local:SearchHighlightTextBlock SourceText="{x:Bind Title, Mode=OneTime}"
                                                                         Query="{x:Bind Query, Mode=OneTime}"
                                                                         FontSize="15"
@@ -224,7 +249,7 @@
                                                                         TextWrapping="NoWrap"
                                                                         Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
                                         <TextBlock Text="{x:Bind Metadata, Mode=OneTime}"
-                                                   Style="{StaticResource MuesliRowSecondaryStyle}" />
+                                                   Style="{StaticResource SearchCaptionStyle}" />
                                         <local:SearchHighlightTextBlock SourceText="{x:Bind HighlightSource, Mode=OneTime}"
                                                                         Query="{x:Bind Query, Mode=OneTime}"
                                                                         FontSize="13"
@@ -258,41 +283,35 @@
                 remaining height (about 560 DIP for two lines of copy), while the Timeline and
                 Dictations empty cards sit at their natural height at the top of the list area.
             -->
-            <Border x:Name="EmptyState"
-                    Grid.Row="1"
-                    Style="{StaticResource MuesliCardStyle}"
-                    MinHeight="210"
-                    VerticalAlignment="Top"
-                    Padding="28"
-                    Visibility="{x:Bind local:SearchPage.BoolToVisibility(ViewModel.ShowEmptyState), Mode=OneWay}"
-                    AutomationProperties.AutomationId="SearchEmptyState">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="9">
-                    <Border Width="44"
-                            Height="44"
-                            CornerRadius="22"
-                            Background="{ThemeResource MuesliSurfaceRaisedBrush}"
-                            HorizontalAlignment="Center">
-                        <FontIcon Glyph="&#xE721;"
-                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                  FontSize="20"
-                                  Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center" />
-                    </Border>
-                    <TextBlock x:Name="EmptyTitle"
-                               Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}"
-                               FontSize="18"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               TextAlignment="Center"
-                               TextWrapping="Wrap" />
-                    <TextBlock x:Name="EmptyDescription"
-                               Text="{x:Bind ViewModel.EmptyBody, Mode=OneWay}"
-                               Style="{StaticResource MuesliBodyStyle}"
-                               TextAlignment="Center"
-                               MaxWidth="420" />
-                </StackPanel>
-            </Border>
+            <!-- macOS emptyState: a 32-pt glyph and one line of body copy, no card. -->
+            <StackPanel x:Name="EmptyState"
+                        Grid.Row="1"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="12"
+                        Margin="0,0,0,80"
+                        Visibility="{x:Bind local:SearchPage.BoolToVisibility(ViewModel.ShowEmptyState), Mode=OneWay}"
+                        AutomationProperties.AutomationId="SearchEmptyState">
+                <FontIcon Glyph="&#xE721;"
+                          FontSize="32"
+                          Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                          HorizontalAlignment="Center" />
+                <TextBlock x:Name="EmptyTitle"
+                           Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}"
+                           FontSize="14"
+                           Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap" />
+                <TextBlock x:Name="EmptyDescription"
+                           Text="{x:Bind ViewModel.EmptyBody, Mode=OneWay}"
+                           FontSize="12"
+                           Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxWidth="420"
+                           Margin="0,-6,0,0" />
+            </StackPanel>
 
             <Border x:Name="ErrorState"
                     Grid.Row="1"

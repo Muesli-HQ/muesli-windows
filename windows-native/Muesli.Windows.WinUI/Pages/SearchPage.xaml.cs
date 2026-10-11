@@ -76,13 +76,44 @@ public sealed partial class SearchPage : Page
     private void Clear_Click(object sender, RoutedEventArgs e) =>
         (App.Window as MainWindow)?.ShellPage?.ClearSearch();
 
-    private void KindFilter_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    private void KindTab_Click(object sender, RoutedEventArgs e)
     {
-        if (sender.SelectedItem is { Tag: string tag } && int.TryParse(tag, out var index))
+        if (sender is FrameworkElement { Tag: string tag } && int.TryParse(tag, out var index))
         {
             ViewModel.FilterIndex = index;
+            UpdateTabs();
         }
     }
+
+    /// <summary>
+    /// macOS tabButton: the selected tab is semibold primary text on a hover fill with an accent
+    /// count capsule; the others are tertiary text with a raised capsule.
+    /// </summary>
+    private void UpdateTabs()
+    {
+        AllTabCount.Text = (ViewModel.DictationCount + ViewModel.MeetingCount).ToString("N0");
+        DictationsTabCount.Text = ViewModel.DictationCount.ToString("N0");
+        MeetingsTabCount.Text = ViewModel.MeetingCount.ToString("N0");
+
+        var tabs = new (Button Tab, TextBlock Label, Border Pill, TextBlock Count)[]
+        {
+            (AllTab, AllTabLabel, AllTabPill, AllTabCount),
+            (DictationsTab, DictationsTabLabel, DictationsTabPill, DictationsTabCount),
+            (MeetingsTab, MeetingsTabLabel, MeetingsTabPill, MeetingsTabCount),
+        };
+        for (var i = 0; i < tabs.Length; i++)
+        {
+            var (tab, label, pill, count) = tabs[i];
+            var selected = i == ViewModel.FilterIndex;
+            tab.Background = selected ? Brush("MuesliHoverBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            label.FontWeight = selected ? FontWeights.SemiBold : FontWeights.Normal;
+            label.Foreground = Brush(selected ? "MuesliTextPrimaryBrush" : "MuesliTextTertiaryBrush");
+            pill.Background = Brush(selected ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+            count.Foreground = Brush(selected ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush");
+        }
+    }
+
+    private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
 
     private async void CopyDictation_Click(object sender, RoutedEventArgs e)
     {
@@ -201,22 +232,10 @@ public sealed partial class SearchPage : Page
         actions.IsHitTestVisible = visible;
     }
 
-    /// <summary>
-    /// Page gutters follow the frozen shell tokens. At the compact 720-DIP window the kind
-    /// filter keeps short labels so All / Dictations / Meetings stay on one row; counts remain
-    /// in the page subtitle. Meeting timestamps stay on the metadata line.
-    /// </summary>
     private void ApplyResponsiveLayout()
     {
         PageRoot.Padding = MuesliPageMetrics.ContentPadding(ActualWidth);
-        var compact = MuesliPageMetrics.IsCompact(ActualWidth) || MuesliPageMetrics.IsMedium(ActualWidth);
-        var showCounts = ViewModel.HasQuery && !compact;
-        DictationsTab.Text = showCounts
-            ? "Dictations (" + ViewModel.DictationCount + ")"
-            : "Dictations";
-        MeetingsTab.Text = showCounts
-            ? "Meetings (" + ViewModel.MeetingCount + ")"
-            : "Meetings";
+        UpdateTabs();
     }
 }
 
