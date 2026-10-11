@@ -188,11 +188,10 @@ public partial class App : Application
         Meetings = new WinUiMeetingContext(Library, Settings, UiDispatcher);
         Models = new WinUiModelsContext(Library, Settings);
         Dictation = new WinUiDictationContext(Library, Settings, UiDispatcher);
-        ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation);
+        ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation, UiDispatcher);
         ComputerUse.ConfirmActionAsync = ConfirmComputerUseActionAsync;
         ComputerUse.CaptureStarted = () => ((MainWindow)Window).HideDashboard();
-        // Computer Use is hidden for v1, so Ctrl+Shift+F8 is left free:
-        // ComputerUse.RegisterVoiceShortcut(UiDispatcher);
+        ComputerUse.RegisterVoiceShortcut();
         MeetingDetection = new WinUiMeetingDetectionService();
         _meetingNotifications = new WinUiMeetingNotificationService(
             UiDispatcher,
@@ -288,8 +287,6 @@ public partial class App : Application
             _meetingNotifications?.Close();
         };
         ComputerUse.Changed += (_, _) => Tray.Refresh();
-        ComputerUse.ConfirmationRequested += (_, request) => UiDispatcher.TryEnqueue(() =>
-            ShowComputerUseConfirmation(request.Preview, request.Notice));
         MeetingDetection.MeetingDetected += (_, meeting) =>
             UiDispatcher.TryEnqueue(() => PresentDetectedMeeting(meeting));
         MeetingDetection.MeetingEnded += (_, key) =>
@@ -515,14 +512,13 @@ public partial class App : Application
         window.Activate();
     }
 
-    private async Task<bool> ConfirmComputerUseActionAsync(ComputerUseAction action, CancellationToken token)
+    private async Task<bool> ConfirmComputerUseActionAsync(string question, CancellationToken token)
     {
         var result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         await UiDispatcher.EnqueueAsync(() =>
         {
             _computerUseConfirmation?.Close();
-            var window = new ComputerUseConfirmationWindow(ComputerUseConfirmationPreview.Build(action),
-                "Only this action in the approved application will be allowed.", action.Risk);
+            var window = new ComputerUseConfirmationWindow(question, "Only this step is allowed. Muesli asks again before any other risky step.");
             TrackTheme(window);
             _computerUseConfirmation = window;
             window.Closed += (_, _) =>

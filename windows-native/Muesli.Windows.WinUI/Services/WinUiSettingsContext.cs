@@ -15,6 +15,9 @@ public sealed class WinUiSettingsContext
 
     public event EventHandler<MuesliSettings>? Changed;
 
+    /// <summary>The profile's protected credential store.</summary>
+    public ISecretStore Secrets => _secrets;
+
     public MuesliSettings Load()
     {
         var settings = _store.Load();

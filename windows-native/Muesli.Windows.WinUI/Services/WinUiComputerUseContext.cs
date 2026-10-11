@@ -1,104 +1,202 @@
+using Muesli.Windows.ComputerUse;
 using Muesli.Windows.Core.Contracts;
 using Muesli.Windows.Services;
 
 namespace Muesli.Windows.WinUI.Services;
 
 /// <summary>
-/// WinUI Computer Use host: settings validation, explicit voice capture, modeless confirmation,
-/// status, and redacted trace diagnostics. UI Automation execution adapters remain in the WPF host.
+/// WinUI Computer Use host: Ctrl+Shift+F8 starts voice capture, a second press transcribes the
+/// command locally and runs it with <see cref="CuaRuntime"/> on the desktop the user was working in.
 /// </summary>
 public sealed class WinUiComputerUseContext : IDisposable
 {
     private readonly WinUiLibraryContext _library;
     private readonly WinUiSettingsContext _settings;
     private readonly WinUiDictationContext _dictation;
-    private readonly ComputerUseTraceStore _trace = new();
+    private readonly IUiDispatcher _dispatcher;
     private readonly AppLogService _log = new();
-    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
-    private ComputerUseWindowTarget? _target;
-    private ComputerUsePlannerService? _planner;
-    private ComputerUseActivationToken? _activation;
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(3) };
     private readonly GlobalHotkeyService _voiceHotkey = new();
-    public Action? CaptureStarted { get; set; }
-    public Func<ComputerUseAction, CancellationToken, Task<bool>>? ConfirmActionAsync { get; set; }
-
-    public void RegisterVoiceShortcut(IUiDispatcher dispatcher)
-    {
-        _voiceHotkey.Register("Ctrl+Shift+F8", () => dispatcher.TryEnqueue(() => _ = ToggleVoiceAsync()),
-            () => { }, () => StopEnabled, () => dispatcher.TryEnqueue(() => _ = CancelAsync()));
-    }
     private CancellationTokenSource? _sessionCancellation;
     private bool _listening;
     private bool _running;
     private int _disposed;
 
-    public WinUiComputerUseContext(
-        WinUiLibraryContext library,
-        WinUiSettingsContext settings,
-        WinUiDictationContext dictation)
+    public WinUiComputerUseContext(WinUiLibraryContext library, WinUiSettingsContext settings, WinUiDictationContext dictation, IUiDispatcher dispatcher)
     {
+        _dispatcher = dispatcher;
         _library = library;
         _settings = settings;
         _dictation = dictation;
-        Status = "Computer Use is disabled by default.";
+        ChatGpt = new ChatGptAuth(settings.Secrets, _http);
+        Status = "Press Ctrl+Shift+F8, say what to do, then press it again.";
+        if (File.Exists(TraceFilePath)) Diagnostics = File.ReadAllText(TraceFilePath);
     }
 
+    public ChatGptAuth ChatGpt { get; }
+    public Action? CaptureStarted { get; set; }
+    /// <summary>Asks the user to approve a risky step; returns false when declined.</summary>
+    public Func<string, CancellationToken, Task<bool>>? ConfirmActionAsync { get; set; }
     public event EventHandler? Changed;
-
-    public event EventHandler<ComputerUseConfirmationRequest>? ConfirmationRequested;
-
     public string Status { get; private set; }
-
     public bool IsListening => _listening;
-
     public bool IsRunning => _running;
-
     public bool StopEnabled => _listening || _running;
-
-    public string VoiceButtonText => _listening ? "Stop listening" : "Speak planner command";
-
-    public string Diagnostics { get; private set; } = "No Computer Use runs are recorded.";
-
+    public string VoiceButtonText => _listening ? "Stop listening and run" : "Speak a command";
+    public string Diagnostics { get; private set; } = "No Computer Use runs yet.";
     public string TraceFilePath => ComputerUseConfiguration.TracePath(_library.Profile.RootDirectory);
 
-    public void RefreshDiagnostics()
+    public void RegisterVoiceShortcut() =>
+        _voiceHotkey.Register("Ctrl+Shift+F8", () => _dispatcher.TryEnqueue(() => _ = ToggleVoiceAsync()),
+            () => { }, () => StopEnabled, () => _dispatcher.TryEnqueue(() => _ = CancelAsync()));
+
+    public async Task SignInToChatGptAsync()
     {
-        Diagnostics = ComputerUseConfiguration.FormatDiagnostics(_trace.Load(TraceFilePath));
-        RaiseChanged();
+        try
+        {
+            Report("Finish signing in to ChatGPT in your browser.");
+            await ChatGpt.SignInAsync(CancellationToken.None);
+            Report("Signed in to ChatGPT.");
+        }
+        catch (Exception exception) when (exception is ChatGptAuthException or HttpRequestException)
+        {
+            Report(exception.Message);
+        }
     }
 
-    public void PreviewConfirmation(ComputerUseAction action)
+    public void SignOutOfChatGpt()
     {
-        ArgumentNullException.ThrowIfNull(action);
-        ConfirmationRequested?.Invoke(
-            this,
-            new ComputerUseConfirmationRequest(
-                ComputerUseConfirmationPreview.Build(action),
-                ComputerUseConfiguration.WinUiExecutionHostNotice));
+        ChatGpt.SignOut();
+        Report("Signed out of ChatGPT.");
     }
 
     public async Task ToggleVoiceAsync()
     {
-        ThrowIfDisposed();
-        if (_listening)
-        {
-            await StopListeningAsync();
-            return;
-        }
-
-        await StartListeningAsync();
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (_listening) await StopListeningAndRunAsync();
+        else await StartListeningAsync();
     }
 
     public async Task CancelAsync()
     {
         _sessionCancellation?.Cancel();
-        if (_listening && _dictation.IsRecording)
+        if (_listening && _dictation.IsRecording) await _dictation.CancelAsync();
+        _listening = false;
+        Report("Computer Use stopped.");
+    }
+
+    /// <summary>Runs a typed command (Settings page test box and automation).</summary>
+    public Task RunCommandAsync(string command) => _running ? Task.CompletedTask : RunAsync(command, _settings.Load());
+
+    private async Task StartListeningAsync()
+    {
+        var settings = _settings.Load();
+        if (!settings.ComputerUseEnabled) { Report("Turn on Computer Use in Settings first."); return; }
+        if (!ComputerUseConfiguration.TryValidate(settings, ChatGpt.IsSignedIn, out var error)) { Report(error); return; }
+        if (_running) return;
+        if (_dictation.IsRecording || _dictation.IsBusy) { Report("Finish the active dictation first."); return; }
+        try
         {
-            await _dictation.CancelAsync();
+            await _dictation.StartAuxiliaryAsync(settings.MicrophoneName);
+            _listening = _dictation.IsRecording;
+            if (!_listening) throw new InvalidOperationException("The microphone did not start.");
+            CaptureStarted?.Invoke();
+            Report("Listening. Press Ctrl+Shift+F8 again when you are done.");
         }
-        ResetSession();
-        Status = "Computer Use stopped; the planner session was discarded.";
-        RaiseChanged();
+        catch (Exception exception)
+        {
+            _listening = false;
+            Report($"Could not start the microphone ({exception.GetType().Name}).");
+        }
+    }
+
+    private async Task StopListeningAndRunAsync()
+    {
+        _listening = false;
+        _running = true;
+        Report("Transcribing your command…");
+        string? command;
+        try { command = await _dictation.StopWithoutPersistingAsync(CancellationToken.None); }
+        catch (Exception exception)
+        {
+            _running = false;
+            Report($"Could not transcribe the command ({exception.GetType().Name}).");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            _running = false;
+            Report("No command was heard; nothing was done.");
+            return;
+        }
+        await RunAsync(command.Trim(), _settings.Load());
+    }
+
+    private async Task RunAsync(string command, MuesliSettings settings)
+    {
+        if (!ComputerUseConfiguration.TryValidate(settings, ChatGpt.IsSignedIn, out var error)) { Report(error); return; }
+        _running = true;
+        _sessionCancellation?.Dispose();
+        var cancellation = _sessionCancellation = new CancellationTokenSource();
+        Report($"Working on: {command}");
+        var model = string.IsNullOrWhiteSpace(settings.ComputerUsePlannerModel) ? null : settings.ComputerUsePlannerModel;
+        ICuaPlanner planner = ComputerUseConfiguration.UsesApiKey(settings)
+            ? ResponsesPlanner.WithApiKey(_http, Environment.GetEnvironmentVariable("OPENAI_API_KEY") is { Length: > 0 } key ? key : settings.ResolvedOpenAIApiKey, model)
+            : ResponsesPlanner.WithChatGpt(_http, ChatGpt, model, appVersion: typeof(WinUiComputerUseContext).Assembly.GetName().Version?.ToString(3) ?? "1.0");
+        var options = new CuaRuntimeOptions
+        {
+            Confirm = ConfirmActionAsync,
+            Settings = new CuaMuesliSettings(_settings.Load, saved => _dispatcher.EnqueueAsync(() => _settings.Save(saved), CancellationToken.None).GetAwaiter().GetResult()),
+            OnStatus = status => Report(status),
+        };
+        try
+        {
+            // Desktop observation and input block, so the run stays off the UI thread.
+            var result = await Task.Run(async () =>
+            {
+                using var desktop = new WindowsDesktop();
+                return await new CuaRuntime(desktop, planner, options).RunAsync(command, cancellation.Token);
+            });
+            SaveTrace(result);
+            Report(result.Status switch
+            {
+                CuaRunStatus.Done => result.Message,
+                CuaRunStatus.Cancelled => result.Message,
+                CuaRunStatus.TimedOut => "Computer Use ran out of time.",
+                _ => $"Stopped: {result.Message}",
+            });
+        }
+        catch (Exception exception)
+        {
+            _log.Info($"Computer Use run failed: {exception.GetType().Name}.");
+            Report($"Computer Use failed: {exception.Message}");
+        }
+        finally
+        {
+            _running = false;
+            Report(Status);
+        }
+    }
+
+    /// <summary>Keeps the latest run's steps for the Settings diagnostics view (typed text included,
+    /// screenshots never).</summary>
+    private void SaveTrace(CuaRunResult result)
+    {
+        Diagnostics = $"{DateTime.Now:g}  {result.Status}\n" + string.Join("\n",
+            result.Trace.Select(item => $"{(item.Step is { } step ? $"[{step}] " : "")}{item.Title}: {item.Body}"));
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(TraceFilePath)!);
+            File.WriteAllText(TraceFilePath, Diagnostics);
+        }
+        catch (IOException) { }
+    }
+
+    /// <summary>Runs report status from a background thread; listeners update UI, so raise on the UI thread.</summary>
+    private void Report(string status)
+    {
+        Status = status;
+        _dispatcher.TryEnqueue(() => Changed?.Invoke(this, EventArgs.Empty));
     }
 
     public void Dispose()
@@ -109,174 +207,4 @@ public sealed class WinUiComputerUseContext : IDisposable
         _http.Dispose();
         _voiceHotkey.Dispose();
     }
-
-    private async Task StartListeningAsync()
-    {
-        var settings = _settings.Load();
-        if (!settings.ComputerUseEnabled)
-        {
-            Status = "Enable Computer Use before starting a planner session.";
-            RaiseChanged();
-            return;
-        }
-        if (!ComputerUseConfiguration.TryValidate(settings, settings.ResolvedOpenAIApiKey, out var error))
-        {
-            Status = error;
-            RaiseChanged();
-            return;
-        }
-        if (_dictation.IsRecording || _dictation.IsBusy)
-        {
-            Status = "Finish the active dictation first.";
-            RaiseChanged();
-            return;
-        }
-
-        if (_running) return;
-        _planner = CreatePlanner(settings);
-        _activation = _planner.BeginExplicitVoicePlannerActivation();
-
-        _sessionCancellation?.Dispose();
-        _sessionCancellation = new CancellationTokenSource();
-        try
-        {
-            await _dictation.StartAuxiliaryAsync(settings.MicrophoneName);
-            _listening = _dictation.IsRecording;
-            if (!_listening)
-            {
-                throw new InvalidOperationException("The microphone did not enter the recording state.");
-            }
-            Status = "Planner listening. Focus an allowed target app and press Ctrl+Shift+F8 to finish.";
-            CaptureStarted?.Invoke();
-        }
-        catch (Exception exception)
-        {
-            ResetSession();
-            Status = $"Could not start planner voice capture ({exception.GetType().Name}).";
-            _log.Info("Computer Use voice capture could not start; commandLogged=false.");
-        }
-        RaiseChanged();
-    }
-
-    private async Task StopListeningAsync()
-    {
-        if (!_listening) return;
-        var settings = _settings.Load();
-        _target = CaptureAllowedTarget(settings);
-        _listening = false;
-        _running = true;
-        RaiseChanged();
-        try
-        {
-            Status = "Transcribing the explicit planner command locally.";
-            var transcript = await _dictation.StopWithoutPersistingAsync(
-                _sessionCancellation?.Token ?? CancellationToken.None);
-            if (string.IsNullOrWhiteSpace(transcript))
-            {
-                Status = "No planner command was detected; nothing was executed.";
-                return;
-            }
-
-            if (_target is null || _planner is null || _activation is null ||
-                !_planner.TryCreateExplicitVoiceCommand(_activation, transcript, out var command) || command is null)
-            {
-                Status = "Focus an allowed application before stopping voice capture. Nothing was sent or executed.";
-                return;
-            }
-            var result = await _planner.RunAsync(command, ComputerUseConfiguration.BuildOptions(settings),
-                _sessionCancellation?.Token ?? CancellationToken.None);
-            _trace.Append(TraceFilePath, result);
-            Status = ComputerUseConfiguration.DescribeResult(result);
-        }
-        catch (OperationCanceledException)
-        {
-            Status = "Computer Use was stopped; no further actions were sent.";
-        }
-        catch (Exception)
-        {
-            Status = "Computer Use failed safely; no further actions were sent.";
-            _log.Info("Computer Use failed safely; commandLogged=false; valuesLogged=false.");
-        }
-        finally
-        {
-            ResetSession();
-            RaiseChanged();
-        }
-    }
-
-    private void ResetSession()
-    {
-        _listening = false;
-        _running = false;
-        _sessionCancellation?.Dispose();
-        _sessionCancellation = null;
-        _target = null;
-        _planner = null;
-        _activation = null;
-    }
-
-    private ComputerUsePlannerService CreatePlanner(MuesliSettings settings)
-    {
-        var sessions = new List<KeyValuePair<string, IExplicitBrowserSession>>();
-        var browserContexts = new List<LoopbackDevToolsBrowserSession>();
-        if (settings.ComputerUseBrowserInterface == "loopback-devtools" &&
-            Uri.TryCreate(settings.ComputerUseBrowserEndpoint, UriKind.Absolute, out var endpoint) && endpoint.IsLoopback)
-        {
-            foreach (var domain in ComputerUseConfiguration.ParseAllowlist(settings.ComputerUseAllowedBrowserDomains))
-            {
-                var session = new LoopbackDevToolsBrowserSession(_http, endpoint.Port, domain);
-                sessions.Add(new(domain, session));
-                browserContexts.Add(session);
-            }
-        }
-        async Task<string?> BrowserContextAsync(CancellationToken token)
-        {
-            if (_target?.ApplicationId is not ("chrome" or "msedge")) return null;
-            foreach (var browser in browserContexts)
-            {
-                var fingerprint = await browser.CaptureContextFingerprintAsync(token);
-                if (!string.IsNullOrEmpty(fingerprint)) return fingerprint;
-            }
-            return null;
-        }
-        return new ComputerUsePlannerService(
-            new WindowsUiAutomationObservationSource(() => _target, browserContexts.Count == 0 ? null : BrowserContextAsync),
-            new OpenAiResponsesPlannerProvider(_http, () =>
-                Environment.GetEnvironmentVariable("OPENAI_API_KEY") is { Length: > 0 } key ? key : _settings.Load().ResolvedOpenAIApiKey),
-            new WindowsUiAutomationExecutor(new RegisteredBrowserAutomationAdapter(sessions), new WindowsUiAutomationLocalAdapter(() => _target)),
-            new Confirmation(this));
-    }
-
-    private static ComputerUseWindowTarget? CaptureAllowedTarget(MuesliSettings settings)
-    {
-        try
-        {
-            var handle = GetForegroundWindow();
-            _ = GetWindowThreadProcessId(handle, out var processId);
-            using var process = System.Diagnostics.Process.GetProcessById((int)processId);
-            var application = process.ProcessName.ToLowerInvariant();
-            return ComputerUseConfiguration.ParseAllowlist(settings.ComputerUseAllowedApplications)
-                .Contains(application, StringComparer.OrdinalIgnoreCase) &&
-                ComputerUseWindowTarget.TryCapture(handle, application, processId, out var target) ? target : null;
-        }
-        catch { return null; }
-    }
-
-    private sealed class Confirmation(WinUiComputerUseContext owner) : IComputerUseConfirmation
-    {
-        public Task<bool> ConfirmAsync(ComputerUseAction action, CancellationToken token) =>
-            owner.ConfirmActionAsync?.Invoke(action, token) ?? Task.FromResult(false);
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
-
-    private void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
-
-    private void ThrowIfDisposed() =>
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 }
-
-public sealed record ComputerUseConfirmationRequest(string Preview, string Notice);

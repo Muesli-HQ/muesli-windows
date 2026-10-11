@@ -65,6 +65,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         ComputerUseVoiceLabel = _computerUse.VoiceButtonText;
         ComputerUseStopEnabled = _computerUse.StopEnabled;
         ComputerUseDiagnostics = _computerUse.Diagnostics;
+        ComputerUseSignedIn = _computerUse.ChatGpt.IsSignedIn;
     }
 
     private void OnMeetingsChanged(object? sender, EventArgs args)
@@ -132,13 +133,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial int LiveOwnershipIndex { get; set; }
     [ObservableProperty] public partial int ComputerUseProviderIndex { get; set; }
     [ObservableProperty] public partial string ComputerUsePlannerModel { get; set; } = "";
-    [ObservableProperty] public partial int ComputerUsePlannerTimeoutSeconds { get; set; } = 30;
-    [ObservableProperty] public partial int ComputerUsePerActionTimeoutSeconds { get; set; } = 10;
-    [ObservableProperty] public partial int ComputerUseMaximumActionCount { get; set; } = 5;
-    [ObservableProperty] public partial string ComputerUseAllowedApplications { get; set; } = "";
-    [ObservableProperty] public partial string ComputerUseAllowedBrowserDomains { get; set; } = "";
-    [ObservableProperty] public partial int ComputerUseBrowserInterfaceIndex { get; set; }
-    [ObservableProperty] public partial string ComputerUseBrowserEndpoint { get; set; } = "http://127.0.0.1:9222";
+    [NotifyPropertyChangedFor(nameof(ComputerUseSignInLabel))]
+    [ObservableProperty] public partial bool ComputerUseSignedIn { get; private set; }
+    [ObservableProperty] public partial string ComputerUseCommandText { get; set; } = "";
+    public string ComputerUseSignInLabel => ComputerUseSignedIn ? "Sign out of ChatGPT" : "Sign in with ChatGPT";
+    public string ComputerUseNotice => ComputerUseConfiguration.Notice;
     [ObservableProperty] public partial string ComputerUseStatus { get; private set; } = "";
     [ObservableProperty] public partial string ComputerUseVoiceLabel { get; private set; } = "Speak planner command";
     [ObservableProperty] public partial bool ComputerUseStopEnabled { get; private set; }
@@ -324,19 +323,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             : StreamingModelCatalog.Get(_source.LiveMeetingModelId)?.DisplayName ?? "Off";
         LiveOwnershipIndex = LiveTranscriptOwnershipDescriptor.ModeFromSettingValue(_source.LiveTranscriptOwnership)
             == LiveTranscriptOwnershipMode.UnifiedLiveAndFinal ? 1 : 0;
-        ComputerUseProviderIndex = ComputerUseConfiguration.ProviderLabel(_source.ComputerUsePlannerProvider) == "OpenAI" ? 1 : 0;
+        ComputerUseProviderIndex = ComputerUseConfiguration.ProviderIndex(_source.ComputerUsePlannerProvider);
         ComputerUsePlannerModel = _source.ComputerUsePlannerModel;
-        ComputerUsePlannerTimeoutSeconds = _source.ComputerUsePlannerTimeoutSeconds;
-        ComputerUsePerActionTimeoutSeconds = _source.ComputerUsePerActionTimeoutSeconds;
-        ComputerUseMaximumActionCount = _source.ComputerUseMaximumActionCount;
-        ComputerUseAllowedApplications = _source.ComputerUseAllowedApplications;
-        ComputerUseAllowedBrowserDomains = _source.ComputerUseAllowedBrowserDomains;
-        ComputerUseBrowserInterfaceIndex = ComputerUseConfiguration.BrowserInterfaceLabel(_source.ComputerUseBrowserInterface) == "Loopback DevTools" ? 1 : 0;
-        ComputerUseBrowserEndpoint = _source.ComputerUseBrowserEndpoint;
+        ComputerUseSignedIn = _computerUse.ChatGpt.IsSignedIn;
         ComputerUseStatus = _computerUse.Status;
         ComputerUseVoiceLabel = _computerUse.VoiceButtonText;
         ComputerUseStopEnabled = _computerUse.StopEnabled;
-        _computerUse.RefreshDiagnostics();
         ComputerUseDiagnostics = _computerUse.Diagnostics;
         CaptureStatus = _meetings.CaptureStatus;
         DetectionStatus = _detection.Status;
@@ -403,18 +395,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
                 LiveOwnershipIndex == 1
                     ? LiveTranscriptOwnershipMode.UnifiedLiveAndFinal
                     : LiveTranscriptOwnershipMode.PreviewOnly),
-            ComputerUsePlannerProvider = ComputerUseProviderIndex == 1 ? "openai" : "none",
+            ComputerUsePlannerProvider = ComputerUseConfiguration.ProviderSetting(ComputerUseProviderIndex),
             ComputerUsePlannerModel = ComputerUsePlannerModel.Trim(),
-            ComputerUsePlannerTimeoutSeconds = ComputerUsePlannerTimeoutSeconds,
-            ComputerUsePerActionTimeoutSeconds = ComputerUsePerActionTimeoutSeconds,
-            ComputerUseMaximumActionCount = ComputerUseMaximumActionCount,
-            ComputerUseAllowedApplications = ComputerUseConfiguration.NormalizeAllowlist(ComputerUseAllowedApplications),
-            ComputerUseAllowedBrowserDomains = ComputerUseConfiguration.NormalizeAllowlist(ComputerUseAllowedBrowserDomains),
-            ComputerUseIncludeWindowText = false,
-            ComputerUseIncludeBrowserPageText = false,
-            ComputerUseIncludeScreenshots = false,
-            ComputerUseBrowserInterface = ComputerUseBrowserInterfaceIndex == 1 ? "loopback-devtools" : "none",
-            ComputerUseBrowserEndpoint = ComputerUseBrowserEndpoint.Trim(),
             MeetingSummaryProvider = SelectedSummaryProvider?.Id ?? "local",
             OllamaEndpoint = OllamaEndpoint.Trim(),
             OllamaModel = OllamaModel.Trim(),
@@ -430,7 +412,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         };
         string? warning = null;
         if (draft.ComputerUseEnabled &&
-            !ComputerUseConfiguration.TryValidate(draft, draft.ResolvedOpenAIApiKey, out var error))
+            !ComputerUseConfiguration.TryValidate(draft, _computerUse.ChatGpt.IsSignedIn, out var error))
         {
             draft = draft with { ComputerUseEnabled = false };
             ComputerUseEnabled = false;
@@ -438,8 +420,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         }
 
         HotkeyTriggerThresholdMs = threshold;
-        ComputerUseAllowedApplications = draft.ComputerUseAllowedApplications;
-        ComputerUseAllowedBrowserDomains = draft.ComputerUseAllowedBrowserDomains;
         // Windows can refuse the startup task (e.g. disabled in Task Manager). That must not
         // block keys and every other setting from saving.
         if (IsStartupAvailable)
@@ -519,27 +499,30 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenComputerUseDiagnostics()
     {
-        _computerUse.RefreshDiagnostics();
         ComputerUseDiagnostics = _computerUse.Diagnostics;
-        ShowStatus("Loaded the redacted Computer Use trace.");
+        ShowStatus("Showing the last Computer Use run.");
     }
 
     [RelayCommand]
-    private void PreviewComputerUseConfirmation()
+    private async Task ToggleChatGptSignInAsync()
     {
-        var apps = ComputerUseConfiguration.ParseAllowlist(ComputerUseAllowedApplications);
-        if (apps.Length == 0)
-        {
-            ShowStatus("Allow at least one application before previewing a confirmation.", isError: true);
-            return;
-        }
-
-        _computerUse.PreviewConfirmation(new ComputerUseAction(
-            ComputerUseActionKind.FocusWindow,
-            new ComputerUseTarget(apps[0], null, null, null, null),
-            null,
-            ComputerUseRisk.None));
+        if (_computerUse.ChatGpt.IsSignedIn) _computerUse.SignOutOfChatGpt();
+        else await _computerUse.SignInToChatGptAsync();
+        ComputerUseSignedIn = _computerUse.ChatGpt.IsSignedIn;
     }
+
+    /// <summary>Runs a typed command, so Computer Use can be tried without the microphone.</summary>
+    [RelayCommand]
+    private async Task RunComputerUseCommandAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ComputerUseCommandText)) return;
+        await _computerUse.RunCommandAsync(ComputerUseCommandText.Trim());
+    }
+
+    [RelayCommand]
+    private void PreviewComputerUseConfirmation() =>
+        App.ShowComputerUseConfirmation("Allow Muesli to click \"Send\" in Outlook? (it looks like \"send\")",
+            "This is a preview. Nothing will happen when you choose either button.");
 
     /// <summary>
     /// ComboBox SelectedItem two-way bindings can clear when ItemsSource is assigned.

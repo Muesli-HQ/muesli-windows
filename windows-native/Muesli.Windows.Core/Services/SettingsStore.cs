@@ -366,6 +366,7 @@ public sealed class SettingsStore
     private static string NormalizeComputerUseProvider(string? value) => value?.Trim().ToLowerInvariant() switch
     {
         "openai" => "openai",
+        "chatgpt" => "chatgpt",
         _ => "none"
     };
 

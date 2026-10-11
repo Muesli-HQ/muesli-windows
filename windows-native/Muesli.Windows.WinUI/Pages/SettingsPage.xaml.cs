@@ -198,7 +198,6 @@ public sealed partial class SettingsPage : Page
         }
 
         DataActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
-        ComputerUseLimitsHost.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         ComputerUseActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         PushToTalkHost.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         ExportFolderHost.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;

@@ -25,21 +25,6 @@ public sealed class WinUiShellParityTests
     }
 
     [Fact]
-    public void ConfirmationPreviewIsLocalAndNeverLooksLikePersistence()
-    {
-        var action = new ComputerUseAction(
-            ComputerUseActionKind.SetText,
-            new ComputerUseTarget("notepad.exe", "editor", null, null, null),
-            "type this exactly",
-            ComputerUseRisk.None);
-        var preview = ComputerUseConfirmationPreview.Build(action);
-        Assert.Contains("notepad.exe", preview);
-        Assert.Contains("editor", preview);
-        Assert.Contains("type this exactly", preview);
-        Assert.DoesNotContain("trace.json", preview, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public void CaptureStatusStaysTruthfulForMissingSystemAudioAndPausedRecovery()
     {
         var recording = MeetingCaptureStatusFormatter.Describe(new MeetingCaptureSnapshot(
@@ -74,14 +59,19 @@ public sealed class WinUiShellParityTests
     }
 
     [Fact]
-    public void ComputerUseConfigurationFailClosedAndWinUiHostNoticeAreHonest()
+    public void ComputerUseNeedsASignedInPlannerAndTheNoticeIsHonest()
     {
-        var settings = new MuesliSettings { ComputerUseEnabled = true, ComputerUsePlannerProvider = "none" };
-        Assert.False(ComputerUseConfiguration.TryValidate(settings, null, out var error));
-        Assert.Contains("OpenAI", error);
-        Assert.Equal("OpenAI", ComputerUseConfiguration.ProviderLabel("openai"));
-        Assert.Contains("shared Windows UI Automation", ComputerUseConfiguration.WinUiExecutionHostNotice);
-        Assert.EndsWith(Path.Combine("computer-use", "trace.json"), ComputerUseConfiguration.TracePath(@"C:\tmp\profile"));
+        var chatGpt = new MuesliSettings { ComputerUseEnabled = true, ComputerUsePlannerProvider = "none" };
+        Assert.False(ComputerUseConfiguration.TryValidate(chatGpt, chatGptSignedIn: false, out var error));
+        Assert.Contains("Sign in to ChatGPT", error);
+        Assert.True(ComputerUseConfiguration.TryValidate(chatGpt, chatGptSignedIn: true, out _));
+        var apiKey = chatGpt with { ComputerUsePlannerProvider = "openai", ResolvedOpenAIApiKey = "" };
+        Assert.Equal(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_API_KEY")),
+            !ComputerUseConfiguration.TryValidate(apiKey, chatGptSignedIn: true, out _));
+        Assert.Equal("chatgpt", ComputerUseConfiguration.ProviderSetting(0));
+        Assert.Equal(1, ComputerUseConfiguration.ProviderIndex("openai"));
+        Assert.Contains("sends the screen", ComputerUseConfiguration.Notice);
+        Assert.EndsWith(Path.Combine("computer-use", "trace.txt"), ComputerUseConfiguration.TracePath(@"C:	mp\profile"));
     }
 
     [Fact]

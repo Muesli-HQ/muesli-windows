@@ -95,7 +95,7 @@ public partial class ShortcutsPageViewModel(
     {
         _settings = settingsContext.Load();
         ComputerUseConfigured = ComputerUseConfiguration.TryValidate(
-            _settings, _settings.ResolvedOpenAIApiKey, out var reason);
+            _settings, App.ComputerUse.ChatGpt.IsSignedIn, out var reason);
         ComputerUseConfigurationReason = ComputerUseConfigured ? "" : reason;
         OnPropertyChanged(nameof(ComputerUseNeedsConfiguration));
         OnPropertyChanged(nameof(ComputerUseShortcutState));
