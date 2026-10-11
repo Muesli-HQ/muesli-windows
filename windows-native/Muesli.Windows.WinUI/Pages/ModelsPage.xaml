@@ -10,68 +10,80 @@
         <local:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:BooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" Invert="True" />
         <local:VendorLogoConverter x:Key="VendorLogoConverter" />
+        <!-- macOS ModelsView cards: 16pt padding, raised surface, medium corner, 1pt border. -->
         <Style x:Key="ModelCardStyle" TargetType="Border" BasedOn="{StaticResource MuesliCardStyle}">
-            <Setter Property="Padding" Value="22,18" />
-            <Setter Property="Margin" Value="0" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="CornerRadius" Value="10" />
         </Style>
         <Style x:Key="ModelStatusChipStyle" TargetType="Border" BasedOn="{StaticResource MuesliBadgeStyle}">
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="9,3" />
+            <Setter Property="Padding" Value="8,3" />
             <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
         <Style x:Key="ModelActiveChipStyle" TargetType="Border" BasedOn="{StaticResource MuesliSuccessBadgeStyle}">
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="9,3" />
+            <Setter Property="Padding" Value="8,3" />
             <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
         <Style x:Key="ModelErrorChipStyle" TargetType="Border" BasedOn="{StaticResource MuesliBadgeStyle}">
             <Setter Property="Background" Value="{ThemeResource MuesliErrorMutedBrush}" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="9,3" />
+            <Setter Property="Padding" Value="8,3" />
             <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
         <Style x:Key="ModelErrorChipTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliBadgeTextStyle}">
             <Setter Property="Foreground" Value="{ThemeResource MuesliErrorBrush}" />
         </Style>
-        <!--
-            P6-02. The variant used to be a flat read-only chip, so it did not read as a control.
-            macOS uses a popup button (ModelsView.swift:701-710); this is the WinUI equivalent and
-            carries the chevron, pressed state, and UIA ExpandCollapse pattern that go with it.
-        -->
-        <Style x:Key="ModelVariantPickerStyle" TargetType="ComboBox">
-            <Setter Property="MinWidth" Value="200" />
-            <Setter Property="MaxWidth" Value="280" />
-            <Setter Property="HorizontalAlignment" Value="Left" />
+        <!-- The family's default/recommended capsule beside the title. -->
+        <Style x:Key="ModelFamilyBadgeStyle" TargetType="Border" BasedOn="{StaticResource MuesliAccentBadgeStyle}">
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="8,3" />
+        </Style>
+        <Style x:Key="ModelTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliRowTitleStyle}">
+            <Setter Property="FontSize" Value="16" />
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="CornerRadius" Value="{ThemeResource MuesliControlCornerRadius}" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+        </Style>
+        <Style x:Key="ModelCaptionStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliBodyStyle}">
+            <Setter Property="FontSize" Value="13" />
         </Style>
         <Style x:Key="ModelMetaLabelStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="FontSize" Value="13" />
         </Style>
-        <Style x:Key="ModelTextActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+        <!--
+            P6-02. The variant is a popup button (macOS ModelsView picker, menu style, 220 wide);
+            the WinUI equivalent carries the chevron, pressed state, and UIA ExpandCollapse.
+        -->
+        <Style x:Key="ModelPickerStyle" TargetType="ComboBox">
+            <Setter Property="Width" Value="220" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="CornerRadius" Value="{ThemeResource MuesliControlCornerRadius}" />
+        </Style>
+        <!-- macOS action buttons are small tinted pills: accent for the next step, neutral otherwise. -->
+        <Style x:Key="ModelAccentPillStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Background" Value="{ThemeResource MuesliAccentMutedBrush}" />
             <Setter Property="Foreground" Value="{ThemeResource MuesliAccentBrush}" />
-            <Setter Property="Padding" Value="4,6,12,6" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="MinHeight" Value="28" />
             <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="32" />
         </Style>
-        <Style x:Key="ModelSecondaryActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
-            <Setter Property="Padding" Value="10,6" />
+        <Style x:Key="ModelNeutralPillStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Background" Value="{ThemeResource MuesliSurfaceRaisedBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="MinHeight" Value="28" />
             <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="32" />
-        </Style>
-        <Style x:Key="ModelPrimaryActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliPrimaryButtonStyle}">
-            <Setter Property="Padding" Value="14,6" />
-            <Setter Property="MinHeight" Value="32" />
         </Style>
         <Style x:Key="ModelDeleteButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
-            <Setter Property="Width" Value="32" />
-            <Setter Property="Height" Value="32" />
-            <Setter Property="MinWidth" Value="32" />
-            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="28" />
+            <Setter Property="MinHeight" Value="28" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Foreground" Value="{ThemeResource MuesliErrorBrush}" />
+            <Setter Property="Opacity" Value="0.75" />
         </Style>
     </Page.Resources>
 
@@ -79,18 +91,17 @@
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="ContentStack"
                         Padding="{StaticResource MuesliPageContentPadding}"
-                        Spacing="18"
+                        Spacing="20"
                         HorizontalAlignment="Left"
                         MaxWidth="{StaticResource MuesliPageContentMaxWidth}">
                 <!--
-                    Hierarchy matches the macOS Models page: title, one subtitle, a labeled
-                    category segmented control, then family cards. Refresh stays a ghost
-                    icon so the Windows qualification AutomationId remains on the title row.
+                    macOS hierarchy: title, one subtitle, a centred segmented control, then cards.
+                    Refresh stays a ghost icon so the qualification AutomationId stays on the title row.
                 -->
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                     <StackPanel Spacing="6" MinWidth="0">
                         <TextBlock Text="Models" Style="{StaticResource MuesliPageTitleStyle}" />
-                        <TextBlock Text="Choose the transcription and cleanup models that fit how you speak and work."
+                        <TextBlock Text="Choose the dictation, live meeting, and cleanup models that fit how you speak and work."
                                    Style="{StaticResource MuesliPageSubtitleStyle}" />
                     </StackPanel>
                     <Button Grid.Column="1"
@@ -104,150 +115,25 @@
                     </Button>
                 </Grid>
 
-                <!--
-                    P6-05. The label used to be stacked above the segments and left-aligned; macOS
-                    sets it inline to the left of the group and centres the pair (04-models.png).
-                    Below the compact content width the pair stacks again so the segments keep
-                    their full hit targets instead of being pushed into a horizontal scroll.
-                -->
-                <StackPanel x:Name="CategoryRow" Spacing="8">
-                    <StackPanel x:Name="CategoryGroup"
-                                Orientation="Horizontal"
-                                Spacing="12"
-                                HorizontalAlignment="Center">
-                        <TextBlock x:Name="CategoryLabel"
-                                   Text="Model category"
-                                   FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
-                        <Border Style="{StaticResource MuesliSegmentedContainerStyle}">
-                            <SelectorBar x:Name="CategoryBar"
-                                         SelectionChanged="CategoryBar_SelectionChanged"
-                                         AutomationProperties.Name="Model category"
-                                         AutomationProperties.AutomationId="ModelsRolePicker">
-                                <SelectorBarItem Text="Dictation" Tag="0" IsSelected="True" AutomationProperties.Name="Show dictation models" />
-                                <SelectorBarItem Text="Live Meetings" Tag="1" AutomationProperties.Name="Show live meeting models" />
-                                <SelectorBarItem Text="Cleanup" Tag="2" AutomationProperties.Name="Show cleanup models" />
-                            </SelectorBar>
-                        </Border>
-                    </StackPanel>
-                    <TextBlock x:Name="CategoryDescription"
-                               Text="{x:Bind ViewModel.CategoryDescription, Mode=OneWay}"
-                               Style="{StaticResource MuesliBodyStyle}"
-                               TextWrapping="Wrap"
-                               HorizontalAlignment="Center"
-                               TextAlignment="Center"
-                               Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
-                </StackPanel>
+                <Border Style="{StaticResource MuesliSegmentedContainerStyle}" HorizontalAlignment="Center">
+                    <SelectorBar x:Name="CategoryBar"
+                                 SelectionChanged="CategoryBar_SelectionChanged"
+                                 AutomationProperties.Name="Model category"
+                                 AutomationProperties.AutomationId="ModelsRolePicker">
+                        <SelectorBarItem Text="Dictation" Tag="0" IsSelected="True" AutomationProperties.Name="Show dictation models" />
+                        <SelectorBarItem Text="Live Meetings" Tag="1" AutomationProperties.Name="Show live meeting models" />
+                        <SelectorBarItem Text="Cleanup" Tag="2" AutomationProperties.Name="Show cleanup models" />
+                    </SelectorBar>
+                </Border>
 
                 <InfoBar x:Name="StatusBar"
                          IsOpen="{x:Bind ViewModel.IsStatusOpen, Mode=TwoWay}"
                          Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                          AutomationProperties.AutomationId="ModelsStatus" />
 
-                <!--
-                    Execution provider. Automatic is the recommended choice: it tries a GPU provider
-                    only after a real warm-up inference proves it, then falls back to the same model
-                    on CPU. Detailed runtime facts stay inside the expander so normal use is quiet.
-                -->
-                <Border x:Name="AccelerationCard"
-                        Style="{StaticResource ModelCardStyle}"
-                        AutomationProperties.Name="Transcription acceleration"
-                        AutomationProperties.AutomationId="ModelsAccelerationCard">
-                    <StackPanel Spacing="12">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                            <Border Width="36" Height="36" CornerRadius="10"
-                                    VerticalAlignment="Top"
-                                    Background="{ThemeResource MuesliAccentMutedBrush}">
-                                <FontIcon Glyph="&#xE950;"
-                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                          FontSize="16"
-                                          Foreground="{ThemeResource MuesliAccentBrush}"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center" />
-                            </Border>
-                            <StackPanel Grid.Column="1" Spacing="4" MinWidth="0">
-                                <TextBlock Text="Transcription acceleration" Style="{StaticResource MuesliRowTitleStyle}" FontSize="17" />
-                                <TextBlock Text="{x:Bind ViewModel.AccelerationStatusLine, Mode=OneWay}"
-                                           Style="{StaticResource MuesliBodyStyle}"
-                                           TextWrapping="Wrap"
-                                           AutomationProperties.AutomationId="ModelsAccelerationStatus" />
-                            </StackPanel>
-                            <Border Grid.Column="2" Style="{StaticResource ModelStatusChipStyle}">
-                                <TextBlock Text="{x:Bind ViewModel.CudaPackStatusLine, Mode=OneWay}"
-                                           Style="{StaticResource MuesliBadgeTextStyle}"
-                                           MaxLines="2"
-                                           TextWrapping="Wrap" />
-                            </Border>
-                        </Grid>
-
-                        <InfoBar IsOpen="{x:Bind ViewModel.IsRestartRequired, Mode=OneWay}"
-                                 Severity="Warning"
-                                 Title="Restart Muesli to apply this provider"
-                                 Message="{x:Bind ViewModel.RestartRequiredMessage, Mode=OneWay}"
-                                 AutomationProperties.AutomationId="ModelsRestartRequired">
-                            <InfoBar.ActionButton>
-                                <Button Content="Restart Muesli"
-                                        Command="{x:Bind ViewModel.RestartCommand}"
-                                        Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                        AutomationProperties.Name="Restart Muesli" />
-                            </InfoBar.ActionButton>
-                        </InfoBar>
-
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                            <TextBlock Text="Execution provider" Style="{StaticResource ModelMetaLabelStyle}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1"
-                                      MinWidth="260"
-                                      HorizontalAlignment="Left"
-                                      ItemsSource="{x:Bind ViewModel.ProviderOptions}"
-                                      SelectedValuePath="Value"
-                                      DisplayMemberPath="Label"
-                                      SelectedValue="{x:Bind ViewModel.SelectedProviderValue, Mode=TwoWay}"
-                                      IsEnabled="{x:Bind ViewModel.CanChangeProvider, Mode=OneWay}"
-                                      AutomationProperties.Name="Execution provider"
-                                      AutomationProperties.AutomationId="ModelsProviderPicker" />
-                        </Grid>
-
-                        <Expander Header="Provider diagnostics"
-                                  IsExpanded="{x:Bind ViewModel.IsAccelerationDetailsOpen, Mode=TwoWay}"
-                                  AutomationProperties.AutomationId="ModelsAccelerationDetails">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="{x:Bind ViewModel.AccelerationDetailText, Mode=OneWay}"
-                                           Style="{StaticResource MuesliBodyStyle}"
-                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}"
-                                           TextWrapping="Wrap"
-                                           IsTextSelectionEnabled="True" />
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Button Content="Install CUDA pack"
-                                            Command="{x:Bind ViewModel.InstallCudaPackCommand}"
-                                            Style="{StaticResource ModelPrimaryActionStyle}"
-                                            AutomationProperties.Name="Install CUDA acceleration pack"
-                                            AutomationProperties.AutomationId="ModelsCudaPackInstall" />
-                                    <Button Content="Verify"
-                                            Command="{x:Bind ViewModel.VerifyCudaPackCommand}"
-                                            Style="{StaticResource ModelSecondaryActionStyle}"
-                                            AutomationProperties.Name="Verify CUDA acceleration pack"
-                                            AutomationProperties.AutomationId="ModelsCudaPackVerify" />
-                                    <Button Content="Delete pack"
-                                            Command="{x:Bind ViewModel.DeleteCudaPackCommand}"
-                                            IsEnabled="{x:Bind ViewModel.CanDeleteCudaPack, Mode=OneWay}"
-                                            Style="{StaticResource ModelSecondaryActionStyle}"
-                                            AutomationProperties.Name="Delete CUDA acceleration pack"
-                                            AutomationProperties.AutomationId="ModelsCudaPackDelete" />
-                                    <Button Content="Re-run GPU qualification"
-                                            Command="{x:Bind ViewModel.RequalifyGpuCommand}"
-                                            Style="{StaticResource ModelSecondaryActionStyle}"
-                                            AutomationProperties.Name="Re-run GPU qualification"
-                                            AutomationProperties.AutomationId="ModelsGpuRequalify" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Expander>
-                    </StackPanel>
-                </Border>
-
                 <StackPanel x:Name="ModelsPanel" Spacing="12">
                     <Border x:Name="EmptyState"
-                            Style="{StaticResource MuesliCardStyle}"
+                            Style="{StaticResource ModelCardStyle}"
                             Padding="24"
                             MinHeight="140"
                             Visibility="Collapsed"
@@ -262,11 +148,8 @@
                     </Border>
 
                     <!--
-                        P6-04 / TEST-03. ItemsRepeater has no automation peer, so the AutomationId
-                        it declared never reached UIA and `wait-for "ModelList"` timed out on every
-                        run. ItemsControl does create a peer, so the list is addressable as
-                        ModelFamilyList. The catalog is five family cards, so the virtualisation
-                        ItemsRepeater bought is not worth an unassertable list.
+                        P6-04 / TEST-03. ItemsRepeater has no automation peer, so the list is an
+                        ItemsControl, addressable as ModelFamilyList.
                     -->
                     <ItemsControl x:Name="ModelList"
                                   ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
@@ -284,77 +167,78 @@
                                       AutomationProperties.AutomationId="{Binding CardAutomationId}">
                                     <Border Style="{StaticResource ModelCardStyle}">
                                         <StackPanel Spacing="12">
-                                            <!-- Header: vendor mark, family name + default badge, family status. -->
+                                            <!-- Header: vendor mark, family name + badge, summary, status. -->
                                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                                <Border Width="36" Height="36" CornerRadius="10"
-                                                        VerticalAlignment="Top"
-                                                        Background="{ThemeResource MuesliSurfaceBrush}"
-                                                        ToolTipService.ToolTip="{Binding VendorAccessibleName}"
-                                                        AutomationProperties.Name="{Binding VendorAccessibleName}">
-                                                    <!-- Real repository-owned vendor mark; neutral glyph when absent. -->
-                                                    <Grid>
+                                                <!-- macOS brandLogo: a 32pt white tile for raster marks. -->
+                                                <Grid Width="32" Height="32"
+                                                      VerticalAlignment="Top"
+                                                      ToolTipService.ToolTip="{Binding VendorAccessibleName}"
+                                                      AutomationProperties.Name="{Binding VendorAccessibleName}">
+                                                    <Border CornerRadius="8"
+                                                            Background="White"
+                                                            Visibility="{Binding HasTileLogo, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                         <Image Source="{Binding LogoFile, Converter={StaticResource VendorLogoConverter}}"
-                                                               Stretch="Uniform"
-                                                               Margin="5"
-                                                               Visibility="{Binding HasLogo, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                               Width="24" Height="24"
+                                                               Stretch="Uniform" />
+                                                    </Border>
+                                                    <!-- macOS draws the OpenAI knot in the primary text colour, untiled. -->
+                                                    <Viewbox Width="23" Height="23"
+                                                             Visibility="{Binding UsesOpenAiGlyph, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Path Fill="{ThemeResource MuesliTextPrimaryBrush}"
+                                                              Data="F1 M22.2819,9.8211 C22.8248,8.1862 22.6369,6.3967 21.7662,4.9103 C20.4571,2.6316 17.8260,1.4595 15.2564,2.0103 C12.1364,-1.4602 6.4298,-0.2543 4.9807,4.1818 C3.2928,4.5279 1.8360,5.5847 0.9830,7.0818 C-0.3404,9.3568 -0.0401,12.2267 1.7257,14.1784 C1.1808,15.8125 1.3670,17.6022 2.2367,19.0891 C3.5475,21.3686 6.1803,22.5406 8.7513,21.9892 C9.8948,23.2770 11.5377,24.0097 13.2599,24.0000 C15.8937,24.0024 18.2271,22.3021 19.0317,19.7942 C20.7194,19.4475 22.1760,18.3908 23.0294,16.8941 C24.3368,14.6231 24.0351,11.7688 22.2819,9.8212 Z M13.2599,22.4292 C12.2086,22.4309 11.1903,22.0624 10.3835,21.3884 L10.5254,21.3080 L15.3037,18.5498 C15.5456,18.4079 15.6949,18.1490 15.6964,17.8685 L15.6964,11.1316 L17.7164,12.3002 C17.7367,12.3105 17.7508,12.3298 17.7544,12.3522 L17.7544,17.9348 C17.7491,20.4148 15.7399,22.4240 13.2599,22.4292 Z M3.5992,18.3038 C3.0720,17.3934 2.8827,16.3263 3.0646,15.2901 L3.2066,15.3753 L7.9896,18.1335 C8.2306,18.2749 8.5292,18.2749 8.7702,18.1335 L14.6130,14.7650 L14.6130,17.0974 C14.6119,17.1219 14.5997,17.1445 14.5798,17.1589 L9.7400,19.9502 C7.5893,21.1891 4.8416,20.4525 3.5992,18.3038 Z M2.3408,7.8956 C2.8717,6.9794 3.7096,6.2805 4.7063,5.9228 L4.7063,11.6000 C4.7026,11.8793 4.8513,12.1386 5.0942,12.2765 L10.9086,15.6308 L8.8885,16.7993 C8.8663,16.8111 8.8397,16.8111 8.8175,16.7993 L3.9872,14.0128 C1.8408,12.7686 1.1047,10.0230 2.3408,7.8720 Z M18.9371,11.7514 L13.1038,8.3640 L15.1192,7.2000 C15.1414,7.1882 15.1680,7.1882 15.1902,7.2000 L20.0205,9.9913 C23.3136,11.8915 22.9065,16.7676 19.3440,18.0955 L19.3440,12.4183 C19.3355,12.1397 19.1808,11.8863 18.9370,11.7513 Z M20.9478,8.7283 L20.8058,8.6431 L16.0323,5.8613 C15.7898,5.7190 15.4894,5.7190 15.2469,5.8613 L9.4090,9.2297 L9.4090,6.8974 C9.4065,6.8732 9.4174,6.8496 9.4374,6.8359 L14.2677,4.0493 C17.5693,2.1473 21.5928,4.9539 20.9479,8.7093 Z M8.3065,12.8630 L6.2865,11.6992 C6.2660,11.6869 6.2521,11.6661 6.2485,11.6425 L6.2485,6.0742 C6.2535,2.2647 10.6950,0.1849 13.6242,2.6205 L13.4822,2.7010 L8.7040,5.4590 C8.4621,5.6009 8.3128,5.8598 8.3113,6.1403 Z M9.4041,10.4976 L12.0061,8.9978 L14.6130,10.4976 L14.6130,13.4970 L12.0156,14.9967 L9.4089,13.4970 Z" />
+                                                    </Viewbox>
+                                                    <Border CornerRadius="8"
+                                                            Background="{ThemeResource MuesliAccentMutedBrush}"
+                                                            Visibility="{Binding HasLogo, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                                                         <FontIcon Glyph="{Binding VendorGlyph}"
                                                                   FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                                  FontSize="{ThemeResource MuesliIconSizeMedium}"
-                                                                  Foreground="{ThemeResource MuesliAccentBrush}"
-                                                                  HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"
-                                                                  Visibility="{Binding HasLogo, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-                                                    </Grid>
-                                                </Border>
+                                                                  FontSize="16"
+                                                                  Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                    </Border>
+                                                </Grid>
                                                 <StackPanel Grid.Column="1" Spacing="4" MinWidth="0">
                                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <TextBlock Text="{Binding FamilyLabel}"
-                                                                   Style="{StaticResource MuesliRowTitleStyle}"
-                                                                   FontSize="17"
-                                                                   VerticalAlignment="Center"
-                                                                   TextWrapping="NoWrap"
-                                                                   TextTrimming="CharacterEllipsis" />
-                                                        <Border Style="{StaticResource MuesliAccentBadgeStyle}"
-                                                                VerticalAlignment="Center"
+                                                        <TextBlock Text="{Binding FamilyLabel}" Style="{StaticResource ModelTitleStyle}" />
+                                                        <Border Style="{StaticResource ModelFamilyBadgeStyle}"
                                                                 Visibility="{Binding HasBadge, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                             <TextBlock Text="{Binding BadgeLabel}"
                                                                        Style="{StaticResource MuesliAccentBadgeTextStyle}" />
                                                         </Border>
+                                                        <!-- A single-variant card has no picker row, so its size sits by the title (macOS modelCard). -->
+                                                        <TextBlock Text="{Binding SelectedVariant.SizeCaption}"
+                                                                   Style="{StaticResource ModelMetaLabelStyle}"
+                                                                   Visibility="{Binding HasVariantPicker, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                                     </StackPanel>
                                                     <TextBlock Text="{Binding FamilySummary}"
-                                                               Style="{StaticResource MuesliBodyStyle}"
-                                                               TextWrapping="Wrap" />
+                                                               Style="{StaticResource ModelCaptionStyle}" />
                                                 </StackPanel>
-                                                <Border Grid.Column="2"
-                                                        Style="{StaticResource ModelActiveChipStyle}"
-                                                        Visibility="{Binding SelectedVariant.ShowActiveChip, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <TextBlock Text="Active" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
-                                                </Border>
-                                                <Border Grid.Column="2"
-                                                        Style="{StaticResource ModelStatusChipStyle}"
-                                                        Visibility="{Binding SelectedVariant.ShowDownloadedChip, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <TextBlock Text="Downloaded" Style="{StaticResource MuesliBadgeTextStyle}" />
-                                                </Border>
-                                                <Border Grid.Column="2"
-                                                        Style="{StaticResource ModelErrorChipStyle}"
-                                                        Visibility="{Binding SelectedVariant.ShowErrorChip, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <TextBlock Text="{Binding SelectedVariant.StatusChipLabel}"
-                                                               Style="{StaticResource ModelErrorChipTextStyle}" />
-                                                </Border>
-                                                <Border Grid.Column="2"
-                                                        Style="{StaticResource ModelStatusChipStyle}"
-                                                        Visibility="{Binding SelectedVariant.ShowUnavailableChip, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <TextBlock Text="Unavailable" Style="{StaticResource MuesliBadgeTextStyle}" />
-                                                </Border>
+                                                <Grid Grid.Column="2" VerticalAlignment="Top">
+                                                    <Border Style="{StaticResource ModelActiveChipStyle}"
+                                                            Visibility="{Binding SelectedVariant.ShowActiveChip, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock Text="Active" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
+                                                    </Border>
+                                                    <Border Style="{StaticResource ModelStatusChipStyle}"
+                                                            Visibility="{Binding SelectedVariant.ShowDownloadedChip, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock Text="Downloaded" Style="{StaticResource MuesliBadgeTextStyle}" />
+                                                    </Border>
+                                                    <Border Style="{StaticResource ModelErrorChipStyle}"
+                                                            Visibility="{Binding SelectedVariant.ShowErrorChip, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock Text="{Binding SelectedVariant.StatusChipLabel}"
+                                                                   Style="{StaticResource ModelErrorChipTextStyle}" />
+                                                    </Border>
+                                                    <Border Style="{StaticResource ModelStatusChipStyle}"
+                                                            Visibility="{Binding SelectedVariant.ShowUnavailableChip, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock Text="Unavailable" Style="{StaticResource MuesliBadgeTextStyle}" />
+                                                    </Border>
+                                                </Grid>
                                             </Grid>
 
-                                            <!-- Variant popup + the download/installed figures for the chosen variant. -->
-                                            <Grid ColumnDefinitions="Auto,Auto,*"
-                                                  ColumnSpacing="12"
+                                            <!-- Variant and language share one label column, as on macOS. -->
+                                            <Grid ColumnDefinitions="64,Auto,*" ColumnSpacing="12"
                                                   Visibility="{Binding HasVariantPicker, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                 <TextBlock Text="Variant" Style="{StaticResource ModelMetaLabelStyle}" />
                                                 <ComboBox Grid.Column="1"
-                                                          Style="{StaticResource ModelVariantPickerStyle}"
+                                                          Style="{StaticResource ModelPickerStyle}"
                                                           ItemsSource="{Binding Variants}"
                                                           SelectedItem="{Binding SelectedVariant, Mode=TwoWay}"
                                                           AutomationProperties.Name="{Binding VariantPickerAccessibleName}"
@@ -368,124 +252,91 @@
                                                         </DataTemplate>
                                                     </ComboBox.ItemTemplate>
                                                 </ComboBox>
-                                                <!-- macOS puts the size immediately right of the popup, not at the card edge. -->
-                                                <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center" HorizontalAlignment="Left">
-                                                    <TextBlock Text="{Binding SelectedVariant.DownloadLabel}"
-                                                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
-                                                    <TextBlock Text="{Binding SelectedVariant.InstalledLabel}"
-                                                               FontSize="11"
-                                                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                                               Visibility="{Binding SelectedVariant.HasInstalledSize, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                </StackPanel>
+                                                <!-- macOS puts the size immediately right of the popup. -->
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding SelectedVariant.SizeCaption}"
+                                                           Style="{StaticResource ModelMetaLabelStyle}" />
                                             </Grid>
 
-                                            <!-- A single-variant family has no picker, so its sizes sit on their own row. -->
-                                            <StackPanel Spacing="2"
-                                                        HorizontalAlignment="Left"
-                                                        Visibility="{Binding HasVariantPicker, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
-                                                <TextBlock Text="{Binding SelectedVariant.DownloadLabel}"
-                                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
-                                                <TextBlock Text="{Binding SelectedVariant.InstalledLabel}"
-                                                           FontSize="11"
-                                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                                           Visibility="{Binding SelectedVariant.HasInstalledSize, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                            </StackPanel>
-
-                                            <TextBlock Text="{Binding VariantDescription}"
-                                                       Style="{StaticResource MuesliBodyStyle}"
-                                                       Foreground="{ThemeResource MuesliTextSecondaryBrush}"
-                                                       TextWrapping="Wrap"
-                                                       Visibility="{Binding HasVariantDescription, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
                                             <!--
-                                                Real language selection: English-only models show a
-                                                disabled "Default English"; multilingual models show
-                                                Automatic plus only what the runtime supports.
+                                                Like macOS, the language row appears only when the runtime
+                                                offers a real choice; a fixed language is not a control.
                                             -->
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                                                <TextBlock Text="Language" Style="{StaticResource ModelMetaLabelStyle}" VerticalAlignment="Center" />
+                                            <Grid ColumnDefinitions="64,Auto" ColumnSpacing="12"
+                                                  Visibility="{Binding SelectedVariant.IsLanguageSelectable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock Text="Language" Style="{StaticResource ModelMetaLabelStyle}" />
                                                 <ComboBox Grid.Column="1"
-                                                          MinWidth="200"
-                                                          HorizontalAlignment="Left"
+                                                          Style="{StaticResource ModelPickerStyle}"
                                                           ItemsSource="{Binding SelectedVariant.LanguageOptions}"
                                                           DisplayMemberPath="Label"
                                                           SelectedValuePath="Code"
                                                           SelectedValue="{Binding SelectedVariant.SelectedLanguageCode, Mode=TwoWay}"
-                                                          IsEnabled="{Binding SelectedVariant.IsLanguageSelectable}"
                                                           AutomationProperties.Name="{Binding SelectedVariant.LanguageAccessibleName}"
                                                           SelectionChanged="ModelLanguage_SelectionChanged" />
                                             </Grid>
 
-                                            <Grid ColumnDefinitions="*,Auto"
-                                                  ColumnSpacing="12"
-                                                  Visibility="{Binding SelectedVariant.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="{Binding VariantDescription}"
+                                                       Style="{StaticResource ModelCaptionStyle}"
+                                                       Visibility="{Binding HasVariantDescription, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                            <StackPanel Spacing="4"
+                                                        Visibility="{Binding SelectedVariant.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                 <ProgressBar Value="{Binding SelectedVariant.ProgressValue}"
                                                              Maximum="100"
                                                              IsIndeterminate="{Binding SelectedVariant.IsProgressIndeterminate}"
-                                                             VerticalAlignment="Center"
                                                              AutomationProperties.Name="{Binding SelectedVariant.ProgressLabel}"
                                                              AutomationProperties.AutomationId="ModelProgressBar" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{Binding SelectedVariant.ProgressLabel}"
-                                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}"
-                                                           VerticalAlignment="Center" />
-                                            </Grid>
+                                                <TextBlock Text="{Binding SelectedVariant.ProgressLabel}"
+                                                           Style="{StaticResource ModelMetaLabelStyle}" />
+                                            </StackPanel>
 
-                                            <!--
-                                                Why an action this card does not offer is missing. Every string is
-                                                derived from the live snapshot, so an unavailable operation is
-                                                explained rather than shown as a button that cannot work.
-                                            -->
+                                            <!-- Why an operation is unavailable, derived from the live snapshot. -->
                                             <TextBlock Text="{Binding SelectedVariant.StateNote}"
-                                                       Style="{StaticResource MuesliBodyStyle}"
-                                                       Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                                       Style="{StaticResource ModelMetaLabelStyle}"
                                                        FontSize="12"
                                                        TextWrapping="Wrap"
                                                        AutomationProperties.AutomationId="ModelStateNote"
                                                        Visibility="{Binding SelectedVariant.HasStateNote, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                             <StackPanel Orientation="Horizontal"
-                                                        Spacing="6"
+                                                        Spacing="8"
                                                         Visibility="{Binding SelectedVariant.HasActions, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                 <Button Command="{Binding ViewModel.PrepareCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding SelectedVariant}"
-                                                        Style="{StaticResource ModelPrimaryActionStyle}"
+                                                        Style="{StaticResource ModelAccentPillStyle}"
                                                         Visibility="{Binding SelectedVariant.CanPrepare, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                         AutomationProperties.Name="Download model"
-                                                        AutomationProperties.AutomationId="ModelDownloadButton">
-                                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                                        <FontIcon Glyph="&#xE896;" FontSize="12" />
-                                                        <TextBlock Text="Download" />
-                                                    </StackPanel>
-                                                </Button>
+                                                        AutomationProperties.AutomationId="ModelDownloadButton"
+                                                        Content="Download" />
                                                 <Button Command="{Binding ViewModel.SetActiveCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding SelectedVariant}"
-                                                        Style="{StaticResource ModelTextActionStyle}"
+                                                        Style="{StaticResource ModelAccentPillStyle}"
                                                         Visibility="{Binding SelectedVariant.CanSetActive, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                         AutomationProperties.Name="Set model active"
                                                         AutomationProperties.AutomationId="ModelSetActiveButton"
                                                         Content="Set Active" />
-                                                <Button Command="{Binding ViewModel.VerifyCommand, ElementName=RootPage}"
-                                                        CommandParameter="{Binding SelectedVariant}"
-                                                        Style="{StaticResource ModelSecondaryActionStyle}"
-                                                        Visibility="{Binding SelectedVariant.CanVerify, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                        AutomationProperties.Name="Verify model files"
-                                                        AutomationProperties.AutomationId="ModelVerifyButton"
-                                                        Content="Verify" />
                                                 <Button Command="{Binding ViewModel.RetryCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding SelectedVariant}"
-                                                        Style="{StaticResource ModelSecondaryActionStyle}"
+                                                        Style="{StaticResource ModelAccentPillStyle}"
                                                         Visibility="{Binding SelectedVariant.CanRetry, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                         AutomationProperties.Name="Retry model operation"
                                                         AutomationProperties.AutomationId="ModelRetryButton"
                                                         Content="Retry" />
                                                 <Button Command="{Binding ViewModel.CancelCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding SelectedVariant}"
-                                                        Style="{StaticResource ModelSecondaryActionStyle}"
+                                                        Style="{StaticResource ModelNeutralPillStyle}"
                                                         Visibility="{Binding SelectedVariant.CanCancel, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                         AutomationProperties.Name="Cancel model operation"
                                                         AutomationProperties.AutomationId="ModelCancelButton"
                                                         Content="Cancel" />
+                                                <Button Command="{Binding ViewModel.VerifyCommand, ElementName=RootPage}"
+                                                        CommandParameter="{Binding SelectedVariant}"
+                                                        Style="{StaticResource ModelNeutralPillStyle}"
+                                                        Visibility="{Binding SelectedVariant.CanVerify, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                        ToolTipService.ToolTip="Check the downloaded files against their checksums"
+                                                        AutomationProperties.Name="Verify model files"
+                                                        AutomationProperties.AutomationId="ModelVerifyButton"
+                                                        Content="Verify files" />
                                                 <Button Command="{Binding ViewModel.DeleteCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding SelectedVariant}"
                                                         Style="{StaticResource ModelDeleteButtonStyle}"
@@ -493,158 +344,238 @@
                                                         ToolTipService.ToolTip="Delete local model files"
                                                         AutomationProperties.Name="Delete transcription model"
                                                         AutomationProperties.AutomationId="ModelDeleteButton">
-                                                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                                    <FontIcon Glyph="&#xE74D;" FontSize="13" />
                                                 </Button>
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
-                                    <Border BorderBrush="{ThemeResource MuesliAccentStrongBrush}"
-                                            BorderThickness="2"
-                                            CornerRadius="{StaticResource MuesliCardCornerRadius}"
+                                    <!-- macOS: the active card's border is the accent at half strength, 1.5pt. -->
+                                    <Border BorderBrush="{ThemeResource MuesliAccentBrush}"
+                                            BorderThickness="1.5"
+                                            Opacity="0.6"
+                                            CornerRadius="10"
                                             IsHitTestVisible="False"
                                             Visibility="{Binding SelectedVariant.IsActive, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <!--
+                        Windows-only: the ONNX execution provider. macOS has no equivalent (Core ML
+                        picks the Neural Engine itself), so it sits after the models as one compact
+                        card, with the CUDA pack and diagnostics folded away until asked for.
+                    -->
+                    <Border x:Name="AccelerationCard"
+                            Style="{StaticResource ModelCardStyle}"
+                            Margin="0,8,0,0"
+                            AutomationProperties.Name="Transcription acceleration"
+                            AutomationProperties.AutomationId="ModelsAccelerationCard">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                <Border Width="32" Height="32" CornerRadius="8"
+                                        VerticalAlignment="Top"
+                                        Background="{ThemeResource MuesliAccentMutedBrush}">
+                                    <FontIcon Glyph="&#xE950;"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="16"
+                                              Foreground="{ThemeResource MuesliAccentBrush}" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="4" MinWidth="0">
+                                    <TextBlock Text="Transcription acceleration" Style="{StaticResource ModelTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.AccelerationStatusLine, Mode=OneWay}"
+                                               Style="{StaticResource ModelCaptionStyle}"
+                                               AutomationProperties.AutomationId="ModelsAccelerationStatus" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="2"
+                                          Style="{StaticResource ModelPickerStyle}"
+                                          VerticalAlignment="Top"
+                                          ItemsSource="{x:Bind ViewModel.ProviderOptions}"
+                                          SelectedValuePath="Value"
+                                          DisplayMemberPath="Label"
+                                          SelectedValue="{x:Bind ViewModel.SelectedProviderValue, Mode=TwoWay}"
+                                          IsEnabled="{x:Bind ViewModel.CanChangeProvider, Mode=OneWay}"
+                                          AutomationProperties.Name="Execution provider"
+                                          AutomationProperties.AutomationId="ModelsProviderPicker" />
+                            </Grid>
+
+                            <InfoBar IsOpen="{x:Bind ViewModel.IsRestartRequired, Mode=OneWay}"
+                                     Severity="Warning"
+                                     Title="Restart Muesli to apply this provider"
+                                     Message="{x:Bind ViewModel.RestartRequiredMessage, Mode=OneWay}"
+                                     AutomationProperties.AutomationId="ModelsRestartRequired">
+                                <InfoBar.ActionButton>
+                                    <Button Content="Restart Muesli"
+                                            Command="{x:Bind ViewModel.RestartCommand}"
+                                            Style="{StaticResource MuesliPrimaryButtonStyle}"
+                                            AutomationProperties.Name="Restart Muesli" />
+                                </InfoBar.ActionButton>
+                            </InfoBar>
+
+                            <Expander
+                                      Background="Transparent"
+                                      BorderThickness="0"
+                                      HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Left"
+                                      IsExpanded="{x:Bind ViewModel.IsAccelerationDetailsOpen, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="ModelsAccelerationDetails">
+                                <Expander.Resources>
+                                    <SolidColorBrush x:Key="ExpanderHeaderBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="ExpanderHeaderBorderBrush" Color="Transparent" />
+                                    <SolidColorBrush x:Key="ExpanderContentBackground" Color="Transparent" />
+                                    <SolidColorBrush x:Key="ExpanderContentBorderBrush" Color="Transparent" />
+                                    <Thickness x:Key="ExpanderHeaderPadding">0,0,4,0</Thickness>
+                                    <Thickness x:Key="ExpanderContentPadding">0,4,0,0</Thickness>
+                                    <x:Double x:Key="ExpanderMinHeight">36</x:Double>
+                                </Expander.Resources>
+                                <Expander.Header>
+                                    <TextBlock Text="Diagnostics and CUDA pack" Style="{StaticResource ModelMetaLabelStyle}" />
+                                </Expander.Header>
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="{x:Bind ViewModel.CudaPackStatusLine, Mode=OneWay}"
+                                               Style="{StaticResource ModelCaptionStyle}"
+                                               Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                                    <TextBlock Text="{x:Bind ViewModel.AccelerationDetailText, Mode=OneWay}"
+                                               Style="{StaticResource ModelCaptionStyle}"
+                                               IsTextSelectionEnabled="True" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Install CUDA pack"
+                                                Command="{x:Bind ViewModel.InstallCudaPackCommand}"
+                                                Style="{StaticResource ModelAccentPillStyle}"
+                                                AutomationProperties.Name="Install CUDA acceleration pack"
+                                                AutomationProperties.AutomationId="ModelsCudaPackInstall" />
+                                        <Button Content="Verify"
+                                                Command="{x:Bind ViewModel.VerifyCudaPackCommand}"
+                                                Style="{StaticResource ModelNeutralPillStyle}"
+                                                AutomationProperties.Name="Verify CUDA acceleration pack"
+                                                AutomationProperties.AutomationId="ModelsCudaPackVerify" />
+                                        <Button Content="Re-run GPU check"
+                                                Command="{x:Bind ViewModel.RequalifyGpuCommand}"
+                                                Style="{StaticResource ModelNeutralPillStyle}"
+                                                AutomationProperties.Name="Re-run GPU qualification"
+                                                AutomationProperties.AutomationId="ModelsGpuRequalify" />
+                                        <Button Content="Delete pack"
+                                                Command="{x:Bind ViewModel.DeleteCudaPackCommand}"
+                                                IsEnabled="{x:Bind ViewModel.CanDeleteCudaPack, Mode=OneWay}"
+                                                Style="{StaticResource ModelNeutralPillStyle}"
+                                                Foreground="{ThemeResource MuesliErrorBrush}"
+                                                AutomationProperties.Name="Delete CUDA acceleration pack"
+                                                AutomationProperties.AutomationId="ModelsCudaPackDelete" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
-                <Border x:Name="CleanupPanel"
-                        Style="{StaticResource ModelCardStyle}"
-                        Visibility="Collapsed"
-                        AutomationProperties.Name="Cleanup models">
-                    <StackPanel Spacing="12">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                            <Border Width="36" Height="36" CornerRadius="10" Background="{ThemeResource MuesliAccentMutedBrush}" VerticalAlignment="Top">
-                                <FontIcon Glyph="&#xE8F1;"
-                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                          FontSize="16"
-                                          Foreground="{ThemeResource MuesliAccentBrush}"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center" />
-                            </Border>
-                            <StackPanel Grid.Column="1" Spacing="8" MinWidth="0">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="Cleanup models" Style="{StaticResource MuesliRowTitleStyle}" FontSize="17" />
-                                    <Border Style="{StaticResource MuesliBadgeStyle}">
-                                        <TextBlock Text="Optional · local" Style="{StaticResource MuesliBadgeTextStyle}" />
-                                    </Border>
-                                </StackPanel>
-                                <TextBlock Text="Optional local cleanup for punctuation, casing, filler words, and repeated ASR fragments. Downloading a model never activates it; selecting one changes the model used for cleanup. If unavailable, Muesli keeps the original transcript."
-                                           Style="{StaticResource MuesliBodyStyle}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Text="Enable local cleanup in Settings to use this stage after transcription."
-                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                           FontSize="12"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Border Grid.Column="2" Style="{StaticResource ModelStatusChipStyle}" VerticalAlignment="Top">
-                                <TextBlock Text="Managed in Models" Style="{StaticResource MuesliBadgeTextStyle}" />
-                            </Border>
-                        </Grid>
+                <!-- macOS postProcessorSection: a small section label and one card per model. -->
+                <StackPanel x:Name="CleanupPanel"
+                            Spacing="12"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="Cleanup models">
+                    <StackPanel Spacing="4" Margin="2,0,0,0">
+                        <TextBlock Text="CLEANUP" Style="{StaticResource MuesliSectionLabelStyle}" FontSize="11" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        <TextBlock Text="Optional local cleanup after transcription: punctuation, casing, filler words, and repeated fragments. Turn it on in Settings; if a model is unavailable, Muesli keeps the original transcript."
+                                   Style="{StaticResource ModelCaptionStyle}" />
+                    </StackPanel>
 
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.CleanupItems, Mode=OneWay}"
-                                      HorizontalContentAlignment="Stretch"
-                                      AutomationProperties.Name="Cleanup model list"
-                                      AutomationProperties.AutomationId="CleanupModelList">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Spacing="10" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="viewModels:CleanupModelItem">
-                                    <Border Background="{ThemeResource MuesliSurfaceBrush}"
-                                            CornerRadius="{StaticResource MuesliCardCornerRadius}"
-                                            Padding="16"
-                                            AutomationProperties.Name="{x:Bind AccessibleName}">
-                                        <StackPanel Spacing="10">
-                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                                <StackPanel Spacing="3" MinWidth="0">
-                                                    <TextBlock Text="{x:Bind DisplayName}" Style="{StaticResource MuesliRowTitleStyle}" />
-                                                    <TextBlock Text="{x:Bind Summary}"
-                                                               Style="{StaticResource MuesliBodyStyle}"
-                                                               Foreground="{ThemeResource MuesliTextSecondaryBrush}"
-                                                               TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.CleanupItems, Mode=OneWay}"
+                                  HorizontalContentAlignment="Stretch"
+                                  AutomationProperties.Name="Cleanup model list"
+                                  AutomationProperties.AutomationId="CleanupModelList">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="12" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="viewModels:CleanupModelItem">
+                                <Grid AutomationProperties.Name="{x:Bind AccessibleName}">
+                                    <Border Style="{StaticResource ModelCardStyle}">
+                                        <StackPanel Spacing="12">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                                <Border Width="32" Height="32" CornerRadius="8"
+                                                        VerticalAlignment="Top"
+                                                        Background="{ThemeResource MuesliAccentMutedBrush}">
+                                                    <FontIcon Glyph="&#xE8F1;"
+                                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                              FontSize="16"
+                                                              Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Spacing="4" MinWidth="0">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="{x:Bind DisplayName}" Style="{StaticResource ModelTitleStyle}" />
+                                                        <TextBlock Text="{x:Bind SizeCaption}" Style="{StaticResource ModelMetaLabelStyle}" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{x:Bind Summary}" Style="{StaticResource ModelCaptionStyle}" />
                                                     <TextBlock Text="{x:Bind License}"
+                                                               Style="{StaticResource ModelMetaLabelStyle}"
                                                                FontSize="11"
-                                                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
                                                                TextWrapping="Wrap" />
                                                 </StackPanel>
-                                                <StackPanel Grid.Column="1" Spacing="3" HorizontalAlignment="Right">
-                                                    <Border Style="{StaticResource ModelActiveChipStyle}"
-                                                            HorizontalAlignment="Right"
-                                                            Visibility="{x:Bind IsActive, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBlock Text="Selected" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
-                                                    </Border>
-                                                    <TextBlock Text="{x:Bind DownloadLabel}"
-                                                               Foreground="{ThemeResource MuesliTextSecondaryBrush}"
-                                                               HorizontalAlignment="Right" />
-                                                    <TextBlock Text="{x:Bind InstalledLabel}"
-                                                               FontSize="11"
-                                                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                                               HorizontalAlignment="Right"
-                                                               Visibility="{x:Bind HasInstalledSize, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                </StackPanel>
+                                                <Border Grid.Column="2"
+                                                        Style="{StaticResource ModelActiveChipStyle}"
+                                                        Visibility="{x:Bind IsActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock Text="Selected" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
+                                                </Border>
                                             </Grid>
 
                                             <TextBlock Text="{x:Bind StateNote}"
-                                                       Style="{StaticResource MuesliBodyStyle}"
-                                                       Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                                       Style="{StaticResource ModelMetaLabelStyle}"
                                                        FontSize="12"
                                                        TextWrapping="Wrap"
                                                        Visibility="{x:Bind HasStateNote, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-                                            <Grid ColumnDefinitions="*,Auto"
-                                                  ColumnSpacing="12"
-                                                  Visibility="{x:Bind IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <StackPanel Spacing="4"
+                                                        Visibility="{x:Bind IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                 <ProgressBar Value="{x:Bind ProgressValue}"
                                                              Maximum="100"
-                                                             IsIndeterminate="{x:Bind IsProgressIndeterminate}"
-                                                             VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{x:Bind ProgressLabel}"
-                                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}"
-                                                           VerticalAlignment="Center" />
-                                            </Grid>
+                                                             IsIndeterminate="{x:Bind IsProgressIndeterminate}" />
+                                                <TextBlock Text="{x:Bind ProgressLabel}" Style="{StaticResource ModelMetaLabelStyle}" />
+                                            </StackPanel>
 
-                                            <StackPanel Orientation="Horizontal" Spacing="6"
+                                            <StackPanel Orientation="Horizontal" Spacing="8"
                                                         Visibility="{x:Bind HasActions, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                 <Button Content="{x:Bind InstallButtonLabel}"
                                                         Command="{Binding ViewModel.PrepareCleanupCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding}"
-                                                        Style="{StaticResource ModelPrimaryActionStyle}"
+                                                        Style="{StaticResource ModelAccentPillStyle}"
                                                         Visibility="{x:Bind CanPrepare, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                         AutomationProperties.Name="Download cleanup model" />
-                                                <Button Content="Verify"
-                                                        Command="{Binding ViewModel.VerifyCleanupCommand, ElementName=RootPage}"
-                                                        CommandParameter="{Binding}"
-                                                        Style="{StaticResource ModelSecondaryActionStyle}"
-                                                        Visibility="{x:Bind CanVerify, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                        AutomationProperties.Name="Verify cleanup model" />
                                                 <Button Content="Use for cleanup"
                                                         Command="{Binding ViewModel.SelectCleanupModelCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding}"
-                                                        Style="{StaticResource ModelTextActionStyle}"
+                                                        Style="{StaticResource ModelAccentPillStyle}"
                                                         Visibility="{x:Bind CanSelect, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                         AutomationProperties.Name="Use cleanup model" />
+                                                <Button Content="Verify files"
+                                                        Command="{Binding ViewModel.VerifyCleanupCommand, ElementName=RootPage}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource ModelNeutralPillStyle}"
+                                                        Visibility="{x:Bind CanVerify, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                        AutomationProperties.Name="Verify cleanup model" />
                                                 <Button Command="{Binding ViewModel.DeleteCleanupCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding}"
                                                         Style="{StaticResource ModelDeleteButtonStyle}"
                                                         Visibility="{x:Bind CanDelete, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                         ToolTipService.ToolTip="Delete local cleanup model files"
                                                         AutomationProperties.Name="Delete cleanup model">
-                                                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                                    <FontIcon Glyph="&#xE74D;" FontSize="13" />
                                                 </Button>
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
-
+                                    <Border BorderBrush="{ThemeResource MuesliAccentBrush}"
+                                            BorderThickness="1.5"
+                                            Opacity="0.6"
+                                            CornerRadius="10"
+                                            IsHitTestVisible="False"
+                                            Visibility="{x:Bind IsActive, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>
