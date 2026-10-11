@@ -115,8 +115,9 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Computer Use: a fixed shortcut, enabled here once its configuration validates. -->
-                <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Computer Use Command shortcut">
+                <!-- Computer Use: a fixed shortcut, enabled here once its configuration validates.
+                     Hidden for v1: it does not yet match the macOS feature. -->
+                <Border Style="{StaticResource ShortcutSectionStyle}" Visibility="Collapsed" AutomationProperties.Name="Computer Use Command shortcut">
                     <StackPanel Spacing="16">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                             <StackPanel Spacing="4">

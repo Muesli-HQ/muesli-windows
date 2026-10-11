@@ -207,7 +207,8 @@
                                      AutomationProperties.AutomationId="SettingsSectionPicker">
                             <SelectorBarItem Text="General" IsSelected="True" AutomationProperties.Name="Settings: General" AutomationProperties.AutomationId="SettingsGeneralTab" />
                             <SelectorBarItem Text="Dictation" AutomationProperties.Name="Settings: Dictation" AutomationProperties.AutomationId="SettingsDictationTab" />
-                            <SelectorBarItem Text="Computer Use" AutomationProperties.Name="Settings: Computer Use" AutomationProperties.AutomationId="SettingsComputerUseTab" />
+                            <!-- Computer Use is hidden for v1: it does not yet match the macOS feature. -->
+                            <SelectorBarItem Text="Computer Use" Visibility="Collapsed" AutomationProperties.Name="Settings: Computer Use" AutomationProperties.AutomationId="SettingsComputerUseTab" />
                             <SelectorBarItem Text="Meetings" AutomationProperties.Name="Settings: Meetings" AutomationProperties.AutomationId="SettingsMeetingsTab" />
                             <SelectorBarItem Text="Appearance" AutomationProperties.Name="Settings: Appearance" AutomationProperties.AutomationId="SettingsAppearanceTab" />
                         </SelectorBar>

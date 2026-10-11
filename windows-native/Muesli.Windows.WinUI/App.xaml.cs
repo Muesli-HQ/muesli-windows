@@ -191,7 +191,8 @@ public partial class App : Application
         ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation);
         ComputerUse.ConfirmActionAsync = ConfirmComputerUseActionAsync;
         ComputerUse.CaptureStarted = () => ((MainWindow)Window).HideDashboard();
-        ComputerUse.RegisterVoiceShortcut(UiDispatcher);
+        // Computer Use is hidden for v1, so Ctrl+Shift+F8 is left free:
+        // ComputerUse.RegisterVoiceShortcut(UiDispatcher);
         MeetingDetection = new WinUiMeetingDetectionService();
         _meetingNotifications = new WinUiMeetingNotificationService(
             UiDispatcher,
