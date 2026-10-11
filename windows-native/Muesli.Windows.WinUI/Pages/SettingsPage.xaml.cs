@@ -76,6 +76,16 @@ public sealed partial class SettingsPage : Page
         UpdateSections();
     }
 
+    /// <summary>
+    /// macOS saves each control as it changes. Leaving the page builds a fresh one, so pending
+    /// edits are saved here instead of being dropped silently.
+    /// </summary>
+    protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
+    {
+        base.OnNavigatingFrom(e);
+        if (ViewModel.HasUnsavedChanges) _ = ViewModel.SaveCommand.ExecuteAsync(null);
+    }
+
     public static Visibility BoolToVisibility(bool value) =>
         value ? Visibility.Visible : Visibility.Collapsed;
 

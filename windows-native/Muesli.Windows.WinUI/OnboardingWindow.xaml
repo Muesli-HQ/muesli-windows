@@ -9,7 +9,6 @@
         x:Name="RootGrid"
         Background="{ThemeResource MuesliBackgroundBrush}"
         XYFocusKeyboardNavigation="Enabled"
-        KeyDown="RootGrid_KeyDown"
         SizeChanged="RootGrid_SizeChanged">
         <Grid.Resources>
             <local:OnboardingBoolVisConverter x:Key="BoolVis" />

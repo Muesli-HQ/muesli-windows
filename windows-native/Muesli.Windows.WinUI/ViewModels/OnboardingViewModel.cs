@@ -315,6 +315,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             RefreshPermissions(microphoneChecked: true, microphoneGranted: probe.IsUsable, probe.IsUsable ? "Capture verified" : probe.Failure.ToString(), MicrophonePolicyHint);
             NotifyReadyBindings();
         }
+        catch (Exception exception) { ApplyStatus($"Microphone test failed: {exception.Message}", isError: true); }
         finally { IsBusy = false; }
     }
 

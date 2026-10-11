@@ -221,20 +221,6 @@ public sealed partial class OnboardingWindow : Window
         }
     }
 
-    private void RootGrid_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
-    {
-        if (e.Key != VirtualKey.Escape)
-        {
-            return;
-        }
-
-        e.Handled = true;
-        if (ViewModel.SkipCommand.CanExecute(null))
-        {
-            ViewModel.SkipCommand.Execute(null);
-        }
-    }
-
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
     {
         if (_resizingForDpi) return;
