@@ -26,7 +26,7 @@ public partial class ShortcutsPageViewModel(
 
     [ObservableProperty] public partial string Hotkey { get; private set; } = "F8";
     [ObservableProperty] public partial IReadOnlyList<string> HotkeyParts { get; private set; } = ["F8"];
-    [ObservableProperty] public partial string CapturePrompt { get; private set; } = "Change Shortcut";
+    [ObservableProperty] public partial string CapturePrompt { get; private set; } = "Change…";
     [ObservableProperty] public partial bool IsCapturing { get; private set; }
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
     [ObservableProperty] public partial bool IsStatusOpen { get; set; }
@@ -64,8 +64,8 @@ public partial class ShortcutsPageViewModel(
             }
 
             return ComputerUseEnabled
-                ? "Registered for this session. Focus an allowed app, then press the shortcut to start and finish a command."
-                : "Registered for this session. Turn it on here to use the shortcut.";
+                ? "Focus an allowed app, then press to start and again to finish a command."
+                : "Turn it on to use the shortcut.";
         }
     }
 
@@ -76,9 +76,9 @@ public partial class ShortcutsPageViewModel(
     /// describing it as "this macOS command".
     /// </summary>
     public string QuillUnavailableReason =>
-        "Quill has no Windows runtime or global shortcut yet, so it cannot be triggered from the keyboard.";
+        "Not available on Windows yet.";
     public string MeetingRecordingUnavailableReason =>
-        "Meeting recording works, but no dedicated global shortcut is registered yet. Use the Meetings page, tray, or live notification to start and stop recording.";
+        "No global shortcut yet. Start and stop recording from Meetings or the tray.";
 
     public void Load()
     {
@@ -143,14 +143,14 @@ public partial class ShortcutsPageViewModel(
     {
         _captureTarget = target;
         IsCapturing = true;
-        CapturePrompt = "Press a shortcut…";
+        CapturePrompt = "Press shortcut…";
         IsStatusOpen = false;
     }
 
     public void CancelCapture()
     {
         IsCapturing = false;
-        CapturePrompt = "Change Shortcut";
+        CapturePrompt = "Change…";
     }
 
     public void ApplyCapturedGesture(string gesture)

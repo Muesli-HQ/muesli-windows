@@ -43,7 +43,7 @@ public sealed partial class ShortcutsPage : Page
         Loaded += (_, _) =>
         {
             ViewModel.Load();
-            ApplyResponsiveLayout(ContentRoot.ActualWidth);
+            ApplyResponsiveLayout(ActualWidth);
             ApplyCaptureChrome();
             _ready = true;
         };
@@ -58,6 +58,9 @@ public sealed partial class ShortcutsPage : Page
         value ? Visibility.Collapsed : Visibility.Visible;
 
     public static bool Not(bool value) => !value;
+
+    /// <summary>macOS hotkeyBadge prints the whole chord in one badge: "Ctrl + Shift + F8".</summary>
+    public static string Keys(IReadOnlyList<string> parts) => string.Join(" + ", parts);
 
     private void ChangeShortcut_Click(object sender, RoutedEventArgs e)
     {
@@ -136,83 +139,21 @@ public sealed partial class ShortcutsPage : Page
         if (IsLoaded) ViewModel.ApplyHoldThreshold();
     }
 
-    private void ApplyResponsiveLayout(double width)
-    {
-        // Shared tier, not a private 760 breakpoint (App.xaml:26-45).
-        var compact = MuesliPageMetrics.IsCompact(width) || MuesliPageMetrics.IsMedium(width);
+    private void ApplyResponsiveLayout(double width) =>
         ContentRoot.Padding = MuesliPageMetrics.ContentPadding(width);
 
-        if (compact)
-        {
-            Grid.SetRow(PttHoldRow, 1);
-            Grid.SetColumn(PttHoldRow, 0);
-            PttHoldRow.HorizontalAlignment = HorizontalAlignment.Left;
-            PttHoldRow.Margin = new Thickness(0, 12, 0, 0);
-        }
-        else
-        {
-            Grid.SetRow(PttHoldRow, 0);
-            Grid.SetColumn(PttHoldRow, 1);
-            PttHoldRow.HorizontalAlignment = HorizontalAlignment.Right;
-            PttHoldRow.Margin = new Thickness(0);
-        }
-
-        PlaceUnavailableRow(ComputerUseKeycap, ComputerUseReason, ComputerUseChange, compact);
-        PlaceUnavailableRow(QuillKeycap, QuillReason, QuillChange, compact);
-        PlaceUnavailableRow(MeetingKeycap, MeetingReason, MeetingChange, compact);
-    }
-
-    private static void PlaceUnavailableRow(FrameworkElement keycap, FrameworkElement reason, FrameworkElement button, bool compact)
-    {
-        if (compact)
-        {
-            Grid.SetRow(keycap, 0);
-            Grid.SetColumn(keycap, 0);
-            Grid.SetColumnSpan(keycap, 1);
-
-            Grid.SetRow(button, 0);
-            Grid.SetColumn(button, 1);
-            Grid.SetColumnSpan(button, 2);
-            button.HorizontalAlignment = HorizontalAlignment.Right;
-
-            Grid.SetRow(reason, 1);
-            Grid.SetColumn(reason, 0);
-            Grid.SetColumnSpan(reason, 3);
-        }
-        else
-        {
-            Grid.SetRow(keycap, 0);
-            Grid.SetColumn(keycap, 0);
-            Grid.SetColumnSpan(keycap, 1);
-
-            Grid.SetRow(reason, 0);
-            Grid.SetColumn(reason, 1);
-            Grid.SetColumnSpan(reason, 1);
-
-            Grid.SetRow(button, 0);
-            Grid.SetColumn(button, 2);
-            Grid.SetColumnSpan(button, 1);
-            button.HorizontalAlignment = HorizontalAlignment.Right;
-        }
-    }
-
+    /// <summary>While capturing, the badge takes the accent tint so it reads as listening.</summary>
     private void ApplyCaptureChrome()
     {
         var capturing = ViewModel.IsCapturing;
-        PushKeycapWell.BorderBrush = ThemeBrush(capturing ? "MuesliBorderStrongBrush" : "ControlFillColorTransparentBrush");
-        PushKeycapWell.Background = ThemeBrush(capturing ? "MuesliAccentMutedBrush" : "ControlFillColorTransparentBrush");
-        ChangePushToTalkButton.Style = capturing
-            ? (Style)Application.Current.Resources["MuesliPrimaryButtonStyle"]
-            : (Style)Application.Current.Resources["MuesliSecondaryButtonStyle"];
+        PushKeycapWell.BorderBrush = ThemeBrush(capturing ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        PushKeycapWell.Background = ThemeBrush(capturing ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
     }
 
     private static Brush ThemeBrush(string key) =>
         Application.Current.Resources[key] is Brush brush
             ? brush
             : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-
-    private static double Token(string key, double fallback) =>
-        Application.Current.Resources[key] is double value ? value : fallback;
 
     private static bool IsDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
