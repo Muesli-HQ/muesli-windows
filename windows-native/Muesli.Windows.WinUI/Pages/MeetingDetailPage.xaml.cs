@@ -16,9 +16,14 @@ public sealed partial class MeetingDetailPage : Page
         App.Dialogs,
         App.UiDispatcher);
 
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _playheadTimer;
+
     public MeetingDetailPage()
     {
         InitializeComponent();
+        _playheadTimer = DispatcherQueue.CreateTimer();
+        _playheadTimer.Interval = TimeSpan.FromMilliseconds(100);
+        _playheadTimer.Tick += (_, _) => ViewModel.RefreshPlaybackPosition();
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName is nameof(ViewModel.IsStatusError)
@@ -31,6 +36,12 @@ public sealed partial class MeetingDetailPage : Page
             }
 
             if (args.PropertyName == nameof(ViewModel.Transcript)) SavedTranscriptFeed.Update(null, ViewModel.Transcript);
+
+            if (args.PropertyName == nameof(ViewModel.IsPlaying))
+            {
+                if (ViewModel.IsPlaying) _playheadTimer.Start();
+                else _playheadTimer.Stop();
+            }
 
             if (args.PropertyName is nameof(ViewModel.ShowNotesTab) or null or "")
             {
@@ -54,6 +65,7 @@ public sealed partial class MeetingDetailPage : Page
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
         Unloaded += (_, _) =>
         {
+            _playheadTimer.Stop();
             ViewModel.LibraryChanged -= OnLibraryChanged;
             ViewModel.MeetingRemoved -= OnMeetingRemoved;
             ViewModel.RecordingStarted -= OnRecordingStarted;

@@ -533,6 +533,17 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         return options;
     }
 
+    /// <summary>
+    /// The playback service only raises on state changes, so the page polls this while playing, as macOS
+    /// polls the player's currentTime. Without it the playhead jumped only on pause.
+    /// </summary>
+    public void RefreshPlaybackPosition()
+    {
+        var position = _runtime.PlaybackPosition;
+        PlaybackSeconds = position.TotalSeconds;
+        PlaybackStatus = $"{_runtime.PlaybackState} · {FormatTime(position)} / {FormatTime(_runtime.PlaybackDuration)}";
+    }
+
     private void UpdatePlayback(MeetingPlaybackStateChangedEventArgs args)
     {
         PlaybackStatus = args.State == MeetingPlaybackState.Failed
