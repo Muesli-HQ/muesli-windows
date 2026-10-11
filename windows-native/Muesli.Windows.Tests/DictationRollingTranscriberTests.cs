@@ -18,6 +18,29 @@ public sealed class DictationRollingTranscriberTests
             kind, language, (ulong)freeMiB * 1048576, installed));
     }
 
+    [Theory]
+    [InlineData(1024, true)]
+    [InlineData(3071, true)]
+    [InlineData(3072, false)]
+    [InlineData(16384, false)]
+    public void IdleModelStaysLoadedUnlessMemoryIsLow(int freeMiB, bool expected) =>
+        Assert.Equal(expected, DictationCoordinator.ShouldReleaseIdleModel((ulong)freeMiB * 1048576));
+
+    [Fact]
+    public void PerformanceBoostRaisesPriorityAndRestoresItWhenTheLastScopeEnds()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        var before = process.PriorityClass;
+        var outer = TranscriptionPerformance.Boost();
+        var inner = TranscriptionPerformance.Boost();
+        inner.Dispose();
+        process.Refresh();
+        Assert.Equal(System.Diagnostics.ProcessPriorityClass.AboveNormal, process.PriorityClass);
+        outer.Dispose();
+        process.Refresh();
+        Assert.Equal(before, process.PriorityClass);
+    }
+
     [Fact]
     public async Task CompletedAudioDecodesBeforeStopAndTailIsAppendedInOrder()
     {

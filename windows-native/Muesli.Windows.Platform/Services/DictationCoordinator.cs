@@ -6,6 +6,12 @@ public sealed class DictationCoordinator : IDisposable
 {
     // Cohere peaked at 3.4 GiB in the local rolling benchmark; leave room for the shell and capture.
     private const ulong CohereMinimumFreeMemoryBytes = 4UL * 1024 * 1024 * 1024;
+    // The idle recognizer is kept loaded: reloading it on every dictation cost a cold start each
+    // time (sub-6 s Parakeet dictations measured a 3.5 s median). It is only released when the
+    // machine is actually short of memory.
+    private const ulong IdleReleaseMemoryThresholdBytes = 3UL * 1024 * 1024 * 1024;
+    // Long enough that loading the model does not compete with sign-in and app start-up.
+    private static readonly TimeSpan PreloadDelay = TimeSpan.FromSeconds(20);
     private readonly NativeTranscriptionClient _transcriptionClient;
     private readonly AppLogService _log = new();
     private readonly AudioCaptureService _audioCaptureService = new();
@@ -22,6 +28,8 @@ public sealed class DictationCoordinator : IDisposable
     private DictationRollingTranscriber? _rollingTranscriber;
     private string? _microphoneName;
     private volatile bool _prepareEnabled;
+    private int _preloadScheduled;
+    private IDisposable? _performanceBoost;
 
     public bool IsRecording { get; private set; }
     public bool IsBusy { get; private set; }
@@ -60,6 +68,33 @@ public sealed class DictationCoordinator : IDisposable
     {
         _prepareEnabled = true;
         PrepareInBackground(microphoneName);
+        PreloadModelOnce();
+    }
+
+    /// <summary>
+    /// Loads the dictation model shortly after launch so the first dictation is not a cold start.
+    /// Runs once, from the same post-onboarding opt-in that readies the microphone.
+    /// </summary>
+    private void PreloadModelOnce()
+    {
+        if (Interlocked.Exchange(ref _preloadScheduled, 1) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(PreloadDelay).ConfigureAwait(false);
+                if (Volatile.Read(ref _disposed) != 0 || !IsModelReady || IsRecording || IsBusy) return;
+                BeginModelWarmup();
+                await _modelWarmupTask!.ConfigureAwait(false);
+                _log.Info($"Dictation model preloaded. model={ModelId}");
+            }
+            catch (Exception exception) when (Volatile.Read(ref _disposed) == 0)
+            {
+                // The next dictation loads the model on demand and owns user-visible errors.
+                _log.Error("Dictation model preload failed; it will load on first use.", exception);
+            }
+            catch { }
+        });
     }
 
     private void RePrepareMicrophone()
@@ -129,6 +164,8 @@ public sealed class DictationCoordinator : IDisposable
                     $"Dictation used Parakeet fallback for low memory. availableMiB={freeMemory / 1048576}; requested=cohere-transcribe-int8-en");
             }
 
+            // Chunks decode while the user speaks, so the boost covers capture as well as the tail.
+            _performanceBoost ??= TranscriptionPerformance.Boost();
             _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient);
             _audioCaptureService.PcmSamplesAvailable += _rollingTranscriber.Feed;
             var preCaptureMs = startTimer.ElapsedMilliseconds;
@@ -157,9 +194,16 @@ public sealed class DictationCoordinator : IDisposable
         }
         finally
         {
+            if (!IsRecording) EndPerformanceBoost();
             IsBusy = false;
             _gate.Release();
         }
+    }
+
+    private void EndPerformanceBoost()
+    {
+        _performanceBoost?.Dispose();
+        _performanceBoost = null;
     }
 
     public async Task<TranscriptionResult> StopAsync()
@@ -347,6 +391,7 @@ public sealed class DictationCoordinator : IDisposable
         finally
         {
             if (DetachRollingTranscriber() is { } abandonedRolling) await abandonedRolling.DrainAsync();
+            EndPerformanceBoost();
             IsBusy = false;
             ScheduleIdleRelease();
             _gate.Release();
@@ -377,6 +422,7 @@ public sealed class DictationCoordinator : IDisposable
         }
         finally
         {
+            EndPerformanceBoost();
             IsBusy = false;
             ScheduleIdleRelease();
             _gate.Release();
@@ -411,8 +457,8 @@ public sealed class DictationCoordinator : IDisposable
             return;
         }
 
-        // Loading while the user is speaking hides native session construction without keeping
-        // the ~950 MB Parakeet recognizer resident for an app session that never uses dictation.
+        // Also runs on every hotkey press: if the model is loaded this is cheap, and the session
+        // refreshes weights Windows paged out while idle (see NativeParakeetClient.InitializeCore).
         // Task.Run: native session setup runs synchronously before its first await and measured
         // ~800 ms on the start path, delaying "Listening" after the microphone was already open.
         _modelWarmupTask = Task.Run(_transcriptionClient.InitializeAsync);
@@ -463,6 +509,9 @@ public sealed class DictationCoordinator : IDisposable
         kind == NativeAsrModelKind.CohereTranscribe && language.Equals("en", StringComparison.OrdinalIgnoreCase) &&
         freeMemoryBytes < CohereMinimumFreeMemoryBytes && parakeetReady;
 
+    internal static bool ShouldReleaseIdleModel(ulong freeMemoryBytes) =>
+        freeMemoryBytes < IdleReleaseMemoryThresholdBytes;
+
     private void ScheduleIdleRelease()
     {
         if (Volatile.Read(ref _disposed) != 0) return;
@@ -484,11 +533,12 @@ public sealed class DictationCoordinator : IDisposable
             try
             {
                 if (IsRecording || IsBusy || IsTranscribing || Volatile.Read(ref _disposed) != 0) return;
+                if (!ShouldReleaseIdleModel(AvailablePhysicalMemory())) return;
                 var before = Process.GetCurrentProcess().PrivateMemorySize64 / 1048576;
                 await _transcriptionClient.ReleaseModelAsync(_transcriptionClient.ModelId, cancellation.Token)
                     .ConfigureAwait(false);
                 var after = Process.GetCurrentProcess().PrivateMemorySize64 / 1048576;
-                new AppLogService().Info($"Idle dictation model released. privateMiB={before}->{after}; model={_transcriptionClient.ModelId}");
+                new AppLogService().Info($"Idle dictation model released for low memory. privateMiB={before}->{after}; model={_transcriptionClient.ModelId}");
             }
             finally
             {
@@ -519,6 +569,7 @@ public sealed class DictationCoordinator : IDisposable
         }
         CancelIdleRelease();
         _idleReleaseTask?.GetAwaiter().GetResult();
+        EndPerformanceBoost();
         _audioCaptureService.DeviceListChanged -= OnDeviceListChanged;
         _audioCaptureService.RouteChanged -= OnRouteChanged;
         _audioCaptureService.LevelChanged -= OnLevelChanged;

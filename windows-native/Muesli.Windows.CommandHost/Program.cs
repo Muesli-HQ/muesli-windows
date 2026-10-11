@@ -19,6 +19,9 @@ internal static class MuesliCommandHost
             // --provider wins so a CPU/GPU benchmark pair can be produced from one machine; when it
             // is absent the persisted product setting is used, matching the WinUI app.
             ConfigureExecutionProvider(args);
+            // --power eco reproduces the throttled background state from the dictation latency
+            // log; boost applies what the app does during dictation. Omitted: Windows decides.
+            using var power = ApplyPowerMode(Option(args, "--power"));
             if (Has(args, "--prepare-model") || Has(args, "--verify-model"))
                 return await RunModelPreparationAsync(args);
             if (Has(args, "--diagnose-native"))
@@ -48,6 +51,24 @@ internal static class MuesliCommandHost
             Log.Error("CommandHost failed.", exception);
             Console.Error.WriteLine(exception.Message);
             return 1;
+        }
+    }
+
+    private static IDisposable? ApplyPowerMode(string? mode)
+    {
+        switch (mode?.Trim().ToLowerInvariant())
+        {
+            case "eco":
+                TranscriptionPerformance.EnablePowerThrottling();
+                return null;
+            case "unthrottled":
+                TranscriptionPerformance.DisablePowerThrottling();
+                return null;
+            case "boost":
+                TranscriptionPerformance.DisablePowerThrottling();
+                return TranscriptionPerformance.Boost();
+            default:
+                return null;
         }
     }
 
