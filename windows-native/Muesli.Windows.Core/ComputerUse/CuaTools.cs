@@ -7,12 +7,15 @@ namespace Muesli.Windows.ComputerUse;
 /// <summary>One planner tool call: the tool name and its JSON arguments.</summary>
 public sealed record CuaToolCall(string Name, JsonObject Arguments)
 {
-    public static CuaToolCall Parse(string name, string? argumentsJson)
+    /// <summary>The planner's id for this call, echoed back with its result.</summary>
+    public string? CallId { get; init; }
+
+    public static CuaToolCall Parse(string name, string? argumentsJson, string? callId = null)
     {
         JsonObject arguments;
         try { arguments = JsonNode.Parse(string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson) as JsonObject ?? new JsonObject(); }
         catch (JsonException) { throw new CuaInvalidToolCallException(name, argumentsJson ?? "", "Arguments are not a JSON object."); }
-        return new CuaToolCall(name.Trim(), arguments);
+        return new CuaToolCall(name.Trim(), arguments) { CallId = callId };
     }
 
     public string? String(string key)
