@@ -91,6 +91,10 @@ public partial class IndicatorWindow : Window
     {
         var source = (HwndSource)PresentationSource.FromVisual(this)!;
         source.AddHook(WindowHook);
+        // A transparent (layered) WPF window drawn on the GPU can lose its surface under memory
+        // pressure or a graphics reset and stay blank while still "visible". The pill is tiny,
+        // so drawing it in software costs nothing and cannot lose a GPU surface.
+        if (source.CompositionTarget is { } target) target.RenderMode = RenderMode.SoftwareOnly;
 
         var handle = new WindowInteropHelper(this).Handle;
         var style = GetWindowLongPtr(handle, GwlExStyle);
