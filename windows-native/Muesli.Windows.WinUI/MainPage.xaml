@@ -59,33 +59,18 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <!--
-                            P1-06 — the product brand mark, not a generic waveform.
-
-                            This is the Muesli "M" waveform: center-aligned rounded bars under a
-                            symmetric two-peak envelope whose valley forms the letter M. The
-                            geometry is the macOS app's own, transcribed from
-                            native/MuesliNative/Sources/MuesliNativeApp/MWaveformIcon.swift
-                            (barCount 13 preset: 0.30 0.50 0.75 0.95 1.00 0.65 0.30 0.65 1.00
-                            0.95 0.75 0.50 0.30, rounded caps, centred) — the same shape the
-                            shipped app icon draws. Code-native geometry: no asset was invented,
-                            downloaded, or copied in.
-
-                            Bars sit on a 2.2-unit pitch with a 1.6-unit round-capped stroke, so
-                            the Viewbox scales stroke and geometry together; Path.Stretch stays
-                            None because Fill would distort the bar widths.
+                            P1-06 — the product brand mark: the 13 bars of the canonical app icon
+                            (macOS MenuBarIconRenderer crops the same mark), drawn in the accent.
+                            MainPage.DrawBrandMark snaps every bar and gap to whole pixels, since
+                            a scaled vector mark antialiases its gaps away at this size.
                         -->
-                        <Viewbox x:Name="BrandMark" Width="26" Height="24"
-                                 Stretch="Uniform"
-                                 VerticalAlignment="Center"
-                                 AutomationProperties.Name="Muesli"
-                                 AutomationProperties.AccessibilityView="Raw">
-                            <Path Data="M0.8,8.7 L0.8,15.3 M3,6.5 L3,17.5 M5.2,3.75 L5.2,20.25 M7.4,1.55 L7.4,22.45 M9.6,1 L9.6,23 M11.8,4.85 L11.8,19.15 M14,8.7 L14,15.3 M16.2,4.85 L16.2,19.15 M18.4,1 L18.4,23 M20.6,1.55 L20.6,22.45 M22.8,3.75 L22.8,20.25 M25,6.5 L25,17.5 M27.2,8.7 L27.2,15.3"
-                                  Stroke="{ThemeResource MuesliAccentBrush}"
-                                  StrokeThickness="1.6"
-                                  StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round"
-                                  Stretch="None" />
-                        </Viewbox>
+                        <Path x:Name="BrandMark"
+                              Stroke="{ThemeResource MuesliAccentBrush}"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              VerticalAlignment="Center"
+                              AutomationProperties.Name="Muesli"
+                              AutomationProperties.AccessibilityView="Raw" />
                         <TextBlock x:Name="BrandNameText" Grid.Column="1"
                                    Text="muesli"
                                    Margin="12,0,0,0"

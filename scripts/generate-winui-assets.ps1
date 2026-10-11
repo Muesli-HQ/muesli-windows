@@ -93,6 +93,13 @@ function New-OpticallySizedAppListBitmap {
     # master's own envelope. This is what makes the taskbar/Start mark read like the 1024px artwork
     # instead of a differently-proportioned approximation. Caller owns the bitmap.
     $barCount = if ($Size -lt 18) { 7 } elseif ($Size -lt 22) { 9 } elseif ($Size -lt 28) { 11 } else { 13 }
+    if (-not $Unplated) {
+        # On the plate the master mark spans only 635/1024 of the icon's width, so use the odd
+        # bar count whose one-pixel bars and gaps come closest to that footprint (5 at 16px, 11 at
+        # 32px). Filling the plate edge to edge reads as a different logo from the macOS icon.
+        $fit = ((635 / 1024.0 * $Size) + 1) / 2
+        $barCount = [Math]::Min(13, 2 * [int][Math]::Round(($fit - 1) / 2) + 1)
+    }
     $barHeights = Get-ResampledBarHeights -Profile $script:MasterBarProfile -Count $barCount
 
     $bitmap = New-Object System.Drawing.Bitmap $Size, $Size
@@ -133,8 +140,9 @@ function New-OpticallySizedAppListBitmap {
         $gap = 1
         $markWidth = ($barHeights.Count * $barWidth) + (($barHeights.Count - 1) * $gap)
         $left = [int][Math]::Floor(($Size - $markWidth) / 2.0)
-        # macOS draws the menu-bar mark 14pt tall in an 18pt image.
-        $maximumHeight = [int][Math]::Round($Size * $(if ($Unplated) { 14 / 18.0 } else { 0.58 }))
+        # macOS draws the menu-bar mark 14pt tall in an 18pt image; on the plate the master's
+        # tallest bar is 513 of 1024px.
+        $maximumHeight = [int][Math]::Round($Size * $(if ($Unplated) { 14 / 18.0 } else { 513 / 1024.0 }))
         $blue = New-Object System.Drawing.SolidBrush $MarkColor
         try {
             for ($index = 0; $index -lt $barHeights.Count; $index++) {
