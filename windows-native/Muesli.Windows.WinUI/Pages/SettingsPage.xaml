@@ -10,23 +10,34 @@
         <local:PermissionBrushConverter x:Key="PermissionBrushConverter" />
         <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <local:BoolToVisibilityConverter x:Key="InvertBoolToVisibilityConverter" Invert="True" />
-        <Style x:Key="SettingsCardStyle" TargetType="Border" BasedOn="{StaticResource MuesliSettingsGroupStyle}" />
-        <Style x:Key="RowTitleStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="15" />
+        <!-- macOS settingsSection: a cornerMedium raised card under an 11pt uppercase tertiary label. -->
+        <Style x:Key="SettingsCardStyle" TargetType="Border" BasedOn="{StaticResource MuesliSettingsGroupStyle}">
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style x:Key="SettingsSectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+            <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="CharacterSpacing" Value="40" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+            <Setter Property="Margin" Value="2,10,0,-6" />
+        </Style>
+        <!-- macOS settingsRow: body-size label, caption tertiary description. -->
+        <Style x:Key="RowTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
             <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
         <Style x:Key="RowHelpStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="Margin" Value="0,3,0,0" />
+            <Setter Property="Margin" Value="0,4,0,0" />
         </Style>
         <Style x:Key="DividerStyle" TargetType="Border">
             <Setter Property="Height" Value="1" />
             <Setter Property="Background" Value="{ThemeResource MuesliBorderSoftBrush}" />
-            <Setter Property="Margin" Value="18,0" />
+            <Setter Property="Margin" Value="16,0" />
         </Style>
         <!--
             P5-05/P5-07. Value controls sit in an Auto column and carry their own width, so no
@@ -36,12 +47,14 @@
             bug by construction; ApplyResponsiveLayout only retunes MinWidth/MaxWidth here.
         -->
         <Style x:Key="PickerStyle" TargetType="ComboBox">
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="MinWidth" Value="280" />
             <Setter Property="MaxWidth" Value="360" />
             <Setter Property="HorizontalAlignment" Value="Right" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style x:Key="ValueBoxStyle" TargetType="TextBox">
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="MinWidth" Value="280" />
             <Setter Property="MaxWidth" Value="360" />
             <Setter Property="HorizontalAlignment" Value="Right" />
@@ -55,17 +68,29 @@
             <Setter Property="HorizontalAlignment" Value="Right" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
-        <Style x:Key="GrantButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliPrimaryButtonStyle}">
-            <Setter Property="Padding" Value="12,5" />
-            <Setter Property="FontSize" Value="13" />
+        <!-- macOS permission Grant: an 11pt accent label on a subtle accent pill. -->
+        <Style x:Key="GrantButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="FontSize" Value="11" />
             <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="{ThemeResource MuesliAccentMutedBrush}" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliAccentBrush}" />
         </Style>
-        <Style x:Key="DestructiveActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliDestructiveButtonStyle}">
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="MinHeight" Value="40" />
-            <Setter Property="MinWidth" Value="220" />
-            <Setter Property="Padding" Value="16,10" />
+        <!-- macOS compactActionButton: 26pt tall, 12pt medium; destructive is red text on a bordered clear chip. -->
+        <Style x:Key="CompactActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}">
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="DestructiveActionStyle" TargetType="Button" BasedOn="{StaticResource CompactActionStyle}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliErrorBrush}" />
         </Style>
         <!--
             P5-06. macOS 09-settings-general.png shows a one-word status per permission row. The
@@ -82,7 +107,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid ColumnDefinitions="16,*,Auto" Padding="20,13" ColumnSpacing="10">
+                <Grid ColumnDefinitions="16,*,Auto" Padding="16,10" ColumnSpacing="10">
                     <Ellipse Width="8"
                              Height="8"
                              Fill="{x:Bind Granted, Converter={StaticResource PermissionBrushConverter}}"
@@ -98,12 +123,12 @@
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <TextBlock Text="Granted"
-                                   FontWeight="SemiBold"
+                                   FontSize="11"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource MuesliSuccessBrush}"
                                    Visibility="{x:Bind ShowGrantedLabel, Converter={StaticResource BoolToVisibilityConverter}}" />
                         <TextBlock Text="{x:Bind Status}"
-                                   FontWeight="SemiBold"
+                                   FontSize="11"
                                    VerticalAlignment="Center"
                                    Foreground="{ThemeResource MuesliTextTertiaryBrush}"
                                    Visibility="{x:Bind ShowUnavailableLabel, Converter={StaticResource BoolToVisibilityConverter}}" />
@@ -209,10 +234,10 @@
 
                 <!-- GENERAL -->
                 <StackPanel x:Name="GeneralPanel" Spacing="14">
-                    <TextBlock Text="GENERAL" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="GENERAL" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13" ColumnSpacing="24">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="24">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Your name" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Used for the dashboard greeting." Style="{StaticResource RowHelpStyle}" />
@@ -225,7 +250,7 @@
                                          AutomationProperties.AutomationId="SettingsUserName" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Launch at login" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Start Muesli after you sign in to Windows." Style="{StaticResource RowHelpStyle}" />
@@ -239,7 +264,7 @@
                                               AutomationProperties.AutomationId="StartAtLoginToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Open dashboard on launch" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Show this window when Muesli starts." Style="{StaticResource RowHelpStyle}" />
@@ -262,11 +287,11 @@
                              AutomationProperties.AutomationId="StartupAvailabilityNotice" />
 
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                        <TextBlock Text="PERMISSIONS" Style="{StaticResource MuesliSectionLabelStyle}" VerticalAlignment="Center" />
+                        <TextBlock Text="PERMISSIONS" Style="{StaticResource SettingsSectionLabelStyle}" VerticalAlignment="Center" />
                         <Button Grid.Column="1"
                                 Command="{x:Bind ViewModel.TestMicrophoneCommand}"
                                 Content="Test microphone"
-                                Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                Style="{StaticResource CompactActionStyle}"
                                 AutomationProperties.AutomationId="TestMicrophoneButton" />
                     </Grid>
                     <Border Style="{StaticResource SettingsCardStyle}" AutomationProperties.AutomationId="PermissionList">
@@ -277,9 +302,9 @@
                         </ItemsRepeater>
                     </Border>
 
-                    <TextBlock Text="DATA" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="DATA" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel Spacing="12" Padding="20,18">
+                        <StackPanel Spacing="12" Padding="16">
                             <!-- P5-04: the platform limitation that used to occupy a whole Sync tab,
                                  stated once in the section it actually describes. The permission list
                                  above carries the matching "Calendar / iPhone sync - Not available" row. -->
@@ -287,7 +312,7 @@
                                        Style="{StaticResource RowHelpStyle}"
                                        Margin="0"
                                        AutomationProperties.AutomationId="LocalOnlyLibraryNotice" />
-                            <StackPanel x:Name="DataActions" Orientation="Horizontal" Spacing="14">
+                            <StackPanel x:Name="DataActions" Orientation="Horizontal" Spacing="12">
                                 <Button Command="{x:Bind ViewModel.ClearDictationsCommand}"
                                         Content="Clear dictation history"
                                         Style="{StaticResource DestructiveActionStyle}"
@@ -303,9 +328,9 @@
 
                 <!-- DICTATION -->
                 <StackPanel x:Name="DictationPanel" Spacing="14" Visibility="Collapsed">
-                    <TextBlock Text="SPEECH RECOGNITION" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="SPEECH RECOGNITION" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                        <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                             <TextBlock Text="Dictation model" Style="{StaticResource RowTitleStyle}" VerticalAlignment="Center" />
                             <ComboBox Grid.Column="1"
                                       Style="{StaticResource PickerStyle}"
@@ -316,10 +341,10 @@
                         </Grid>
                     </Border>
 
-                    <TextBlock Text="TRANSCRIPTION" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="TRANSCRIPTION" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Microphone" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Automatic uses the Windows default input device." Style="{StaticResource RowHelpStyle}" />
@@ -341,41 +366,45 @@
                                 The row therefore routes to the surface that really owns the feature
                                 instead of showing a switch that would not persist anything.
                             -->
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Dictionary suggestions" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Suggested replacements saved in this profile are reviewed on the Dictionary page, where you accept or dismiss each one." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <Button Grid.Column="1"
                                         Content="Open Dictionary"
-                                        Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                        Style="{StaticResource CompactActionStyle}"
                                         VerticalAlignment="Center"
                                         Click="OpenDictionaryPage_Click"
                                         AutomationProperties.Name="Open the Dictionary page"
                                         AutomationProperties.AutomationId="OpenDictionaryPageButton" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Push-to-talk shortcut" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Hold to record, then release to transcribe. Change the gesture on the Shortcuts page." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <StackPanel x:Name="PushToTalkHost" Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                    <Border Background="{ThemeResource MuesliRaisedBrush}"
-                                            BorderBrush="{ThemeResource MuesliBorderBrush}"
+                                    <Border Background="{ThemeResource MuesliSurfaceRaisedBrush}"
+                                            BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
                                             BorderThickness="1"
-                                            CornerRadius="{StaticResource MuesliControlCornerRadius}"
-                                            Padding="12,7"
+                                            CornerRadius="6"
+                                            Padding="12,4"
                                             VerticalAlignment="Center">
                                         <TextBlock Text="{x:Bind ViewModel.Hotkey, Mode=OneWay}"
-                                                   FontWeight="SemiBold"
+                                                   FontFamily="{StaticResource MuesliFontFamilyMedium}"
+                                                   FontSize="12"
                                                    AutomationProperties.Name="Current push-to-talk shortcut" />
                                     </Border>
                                     <NumberBox Value="{x:Bind ViewModel.HotkeyTriggerThresholdMs, Mode=TwoWay}"
                                                Minimum="0"
                                                Maximum="1000"
-                                               SpinButtonPlacementMode="Inline"
-                                               Width="130"
+                                               SpinButtonPlacementMode="Hidden"
+                                               FontFamily="Consolas"
+                                               FontSize="13"
+                                               Width="76"
+                                               ToolTipService.ToolTip="Activation delay in milliseconds"
                                                AutomationProperties.Name="Hold threshold in milliseconds"
                                                AutomationProperties.AutomationId="HotkeyThresholdBox" />
                                 </StackPanel>
@@ -383,10 +412,10 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="DICTATION CLEANUP" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="DICTATION CLEANUP" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Remove filler words" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Remove common hesitations while preserving your meaning." Style="{StaticResource RowHelpStyle}" />
@@ -398,7 +427,7 @@
                                               AutomationProperties.AutomationId="RemoveFillerWordsToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Local transcript cleanup" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Polish transcripts on this machine. Dictation cleanup never sends text to a cloud service." Style="{StaticResource RowHelpStyle}" />
@@ -415,10 +444,10 @@
 
                 <!-- COMPUTER USE -->
                 <StackPanel x:Name="ComputerUsePanel" Spacing="14" Visibility="Collapsed">
-                    <TextBlock Text="COMPUTER USE" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="COMPUTER USE" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Voice-driven Computer Use" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="High-risk optional subsystem. Ordinary dictation and meetings never activate it." Style="{StaticResource RowHelpStyle}" />
@@ -433,7 +462,7 @@
                             <!-- P5-07: every row in this card pairs its label with a one-line
                                  description, so the left column carries content instead of leaving
                                  ~530 px of empty space between the label and its control. -->
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Planner provider" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="None keeps Computer Use off. OpenAI sends the command and observed window text to OpenAI." Style="{StaticResource RowHelpStyle}" />
@@ -448,7 +477,7 @@
                                 </ComboBox>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Planner model ID" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="The provider's model identifier used to plan each command." Style="{StaticResource RowHelpStyle}" />
@@ -460,7 +489,7 @@
                                          AutomationProperties.AutomationId="ComputerUsePlannerModel" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid Padding="20,14">
+                            <Grid Padding="16,10">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
@@ -478,10 +507,10 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="ALLOWLISTS AND OBSERVATION" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="ALLOWLISTS AND OBSERVATION" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Allowed applications" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Separate application names with semicolons." Style="{StaticResource RowHelpStyle}" />
@@ -494,7 +523,7 @@
                                          AutomationProperties.AutomationId="ComputerUseAllowedApps" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Include UI control text" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Unavailable until scoped masking is qualified." Style="{StaticResource RowHelpStyle}" />
@@ -507,7 +536,7 @@
                                               ToolTipService.ToolTip="Unavailable until scoped masking is qualified." />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Include browser page text" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Unavailable until scoped masking is qualified." Style="{StaticResource RowHelpStyle}" />
@@ -520,7 +549,7 @@
                                               ToolTipService.ToolTip="Unavailable until scoped masking is qualified." />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Include scoped screenshots" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Unavailable until scoped masking is qualified." Style="{StaticResource RowHelpStyle}" />
@@ -535,10 +564,10 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="BROWSER INTERFACE" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="BROWSER INTERFACE" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Browser automation" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Loopback DevTools drives a browser you already started with remote debugging enabled." Style="{StaticResource RowHelpStyle}" />
@@ -553,7 +582,7 @@
                                 </ComboBox>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Loopback DevTools endpoint" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Must stay on this machine's loopback address." Style="{StaticResource RowHelpStyle}" />
@@ -565,7 +594,7 @@
                                          AutomationProperties.AutomationId="ComputerUseBrowserEndpoint" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Allowed HTTPS origins" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Separate host names with semicolons. Everything else is refused." Style="{StaticResource RowHelpStyle}" />
@@ -580,9 +609,9 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="EXPLICIT VOICE SESSION" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="EXPLICIT VOICE SESSION" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel Spacing="12" Padding="20,18">
+                        <StackPanel Spacing="12" Padding="16">
                             <TextBlock Text="Press Ctrl + Shift + F8 anywhere in Windows to start or finish a spoken command. The shortcut is registered while Muesli runs and is not configurable."
                                        Style="{StaticResource RowHelpStyle}"
                                        Margin="0"
@@ -626,10 +655,10 @@
 
                 <!-- MEETINGS -->
                 <StackPanel x:Name="MeetingsPanel" Spacing="14" Visibility="Collapsed">
-                    <TextBlock Text="TRANSCRIPTION" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="TRANSCRIPTION" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Microphone" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Only affects Muesli. Automatic uses the Windows default input." Style="{StaticResource RowHelpStyle}" />
@@ -642,7 +671,7 @@
                                           AutomationProperties.AutomationId="MeetingMicrophonePicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Show transcript on hover" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Show the recent transcript beside the live waveform." Style="{StaticResource RowHelpStyle}" />
@@ -654,7 +683,7 @@
                                               AutomationProperties.AutomationId="LiveWaveformToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Live preview model" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Creates the live transcript while recording." Style="{StaticResource RowHelpStyle}" />
@@ -668,7 +697,7 @@
                                           AutomationProperties.AutomationId="LiveMeetingModelPicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Final transcript" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Used after recorded meetings and for imported audio." Style="{StaticResource RowHelpStyle}" />
@@ -681,7 +710,7 @@
                                           AutomationProperties.AutomationId="MeetingModelPicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Final transcript ownership" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Preview-only saves the final model. Unified keeps live output and uses the final model for measured gaps." Style="{StaticResource RowHelpStyle}" />
@@ -696,7 +725,7 @@
                                 </ComboBox>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Detect supported meetings" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Offer to record when a supported meeting app becomes active." Style="{StaticResource RowHelpStyle}" />
@@ -708,7 +737,7 @@
                                               AutomationProperties.AutomationId="MeetingDetectionToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Save meeting recordings" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Keep source audio for playback and retranscription." Style="{StaticResource RowHelpStyle}" />
@@ -747,10 +776,10 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="MEETING SUMMARIES" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="MEETING SUMMARIES" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Summary backend" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="{x:Bind ViewModel.SummaryDisclosure, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
@@ -766,7 +795,7 @@
                             <!-- P5-11: the default template lives with the other summary settings
                                  instead of in a card of its own. -->
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Default notes template" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Applied to new meeting notes. A meeting can still use a different template." Style="{StaticResource RowHelpStyle}" />
@@ -778,7 +807,7 @@
                                           AutomationProperties.AutomationId="DefaultMeetingTemplatePicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Ollama server" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="A localhost address keeps the transcript on this machine." Style="{StaticResource RowHelpStyle}" />
@@ -790,7 +819,7 @@
                                          AutomationProperties.AutomationId="OllamaEndpointBox" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Ollama model" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="The model tag pulled on that server." Style="{StaticResource RowHelpStyle}" />
@@ -802,7 +831,7 @@
                                          AutomationProperties.AutomationId="OllamaModelBox" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="LM Studio server" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="A localhost address keeps the transcript on this machine." Style="{StaticResource RowHelpStyle}" />
@@ -814,7 +843,7 @@
                                          AutomationProperties.AutomationId="LmStudioEndpointBox" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowLmStudioSettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="LM Studio model" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="The model identifier loaded in LM Studio." Style="{StaticResource RowHelpStyle}" />
@@ -826,7 +855,7 @@
                                          AutomationProperties.AutomationId="LmStudioModelBox" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Custom endpoint" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="An OpenAI-compatible /v1/chat/completions URL. A localhost address keeps the transcript on this machine." Style="{StaticResource RowHelpStyle}" />
@@ -838,7 +867,7 @@
                                          AutomationProperties.AutomationId="CustomLlmEndpointBox" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Custom model" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="The model identifier that endpoint expects." Style="{StaticResource RowHelpStyle}" />
@@ -850,7 +879,7 @@
                                          AutomationProperties.AutomationId="CustomLlmModelBox" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}" />
-                            <StackPanel Padding="20,14" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}">
+                            <StackPanel Padding="16,10" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCustomHttpSettings), Mode=OneWay}">
                                 <PasswordBox Header="Custom API key (optional)"
                                              Password="{x:Bind ViewModel.CustomLlmApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                              PasswordRevealMode="Hidden"
@@ -859,7 +888,7 @@
                                 <TextBlock Text="Protected by Windows Credential Manager. Leave empty for keyless local servers." Style="{StaticResource RowHelpStyle}" />
                             </StackPanel>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="OpenAI model" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="The model identifier used to write meeting notes." Style="{StaticResource RowHelpStyle}" />
@@ -873,7 +902,7 @@
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}" />
                             <!-- Secrets stay in a PasswordBox: masked on screen, in screenshots and in
                                  UIA (ValuePattern reports the mask, not the key). -->
-                            <StackPanel Padding="20,14" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}">
+                            <StackPanel Padding="16,10" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}">
                                 <PasswordBox Header="OpenAI API key"
                                              Password="{x:Bind ViewModel.OpenAIApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                              PasswordRevealMode="Hidden"
@@ -883,7 +912,7 @@
                                 <TextBlock Text="{x:Bind ViewModel.ChatGptSubscriptionNotice, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
                             </StackPanel>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="OpenRouter model" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="The model identifier used to write meeting notes." Style="{StaticResource RowHelpStyle}" />
@@ -895,7 +924,7 @@
                                          AutomationProperties.AutomationId="OpenRouterModelBox" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}" />
-                            <StackPanel Padding="20,14" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}">
+                            <StackPanel Padding="16,10" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}">
                                 <PasswordBox Header="OpenRouter API key"
                                              Password="{x:Bind ViewModel.OpenRouterApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                              PasswordRevealMode="Hidden"
@@ -906,10 +935,10 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="AFTER A MEETING" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="AFTER A MEETING" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Automatically export Markdown" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Save a copy of completed notes. Existing edited files are kept." Style="{StaticResource RowHelpStyle}" />
@@ -922,7 +951,7 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <!-- P5-11: the export folder was an unexplained empty field with no way to
                                  choose one. It now states where the copy goes and offers Browse. -->
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Export folder" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="{x:Bind ViewModel.AutoExportFolderHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
@@ -936,7 +965,7 @@
                                              AutomationProperties.HelpText="Enable Automatically export Markdown to change this folder."
                                              AutomationProperties.AutomationId="AutoExportMarkdownDirectory" />
                                     <Button Content="Browse…"
-                                            Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                            Style="{StaticResource CompactActionStyle}"
                                             VerticalAlignment="Center"
                                             IsEnabled="{x:Bind ViewModel.AutoExportMarkdownEnabled, Mode=OneWay}"
                                             Click="BrowseExportFolder_Click"
@@ -946,7 +975,7 @@
                                 </StackPanel>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Also export PDF" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="{x:Bind ViewModel.PdfAutoExportHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
@@ -958,7 +987,7 @@
                                               AutomationProperties.AutomationId="AutoExportPdfToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Run a post-meeting program" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Runs after notes are saved, using your configured payload (meeting metadata by default). Changes apply to the next meeting." Style="{StaticResource RowHelpStyle}" />
@@ -969,7 +998,7 @@
                                               AutomationProperties.AutomationId="PostMeetingHookToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Program path" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Full path to an .exe on this PC." Style="{StaticResource RowHelpStyle}" />
@@ -984,7 +1013,7 @@
                                          AutomationProperties.AutomationId="PostMeetingHookPath" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Program timeout" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Seconds before Muesli stops waiting for the program." Style="{StaticResource RowHelpStyle}" />
@@ -1005,10 +1034,10 @@
 
                 <!-- APPEARANCE -->
                 <StackPanel x:Name="AppearancePanel" Spacing="14" Visibility="Collapsed">
-                    <TextBlock Text="APPEARANCE" Style="{StaticResource MuesliSectionLabelStyle}" />
+                    <TextBlock Text="APPEARANCE" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="App theme" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Follow Windows or choose a theme for Muesli." Style="{StaticResource RowHelpStyle}" />
@@ -1024,7 +1053,7 @@
                                 </ComboBox>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Floating dictation indicator" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Show recording and transcription state above other apps." Style="{StaticResource RowHelpStyle}" />
@@ -1036,7 +1065,7 @@
                                               AutomationProperties.AutomationId="FloatingIndicatorToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Indicator style" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Classic is a compact pill. Minimal is a quiet bar until you hover it." Style="{StaticResource RowHelpStyle}" />
@@ -1051,7 +1080,7 @@
                                 </ComboBox>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,14" ColumnSpacing="16">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Accent color" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Colors Muesli's highlights and the floating indicator while you dictate." Style="{StaticResource RowHelpStyle}" />
@@ -1106,7 +1135,7 @@
                                 </ComboBox>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="20,13">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Recording sounds" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Play a cue when recording starts and stops." Style="{StaticResource RowHelpStyle}" />
