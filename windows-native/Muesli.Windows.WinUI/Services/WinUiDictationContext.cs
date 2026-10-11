@@ -22,6 +22,7 @@ public sealed class WinUiDictationContext : IDisposable
     private CancellationTokenSource? _operationCancellation;
     private IntPtr _pasteTarget;
     private string? _captureTraceId;
+    private volatile bool _auxiliarySession;
     private int _disposed;
 
     // WPF dispatched every shortcut callback with DispatcherPriority.Send, so shortcut down, up,
@@ -89,9 +90,10 @@ public sealed class WinUiDictationContext : IDisposable
                 () =>
                 {
                     // StopAsync can spend seconds in inference. Signal its token before the
-                    // serialized shortcut chain reaches the rest of cancellation cleanup.
-                    RequestCancellation();
-                    EnqueueHotkeyWork(CancelAsync, "escape");
+                    // serialized shortcut chain reaches the rest of cancellation cleanup. Cancel()
+                    // runs token callbacks inline, so it must not run on the keyboard-hook thread.
+                    _ = Task.Run(RequestCancellation);
+                    EnqueueHotkeyWork(CancelCoreAsync, "escape");
                 },
                 () => EnqueueHotkeyWork(() => ExecuteActionAsync(_hotkeyState.OtherKeyWhileArmed()), "other-key"));
             IsHotkeyRegistered = true;
@@ -120,12 +122,20 @@ public sealed class WinUiDictationContext : IDisposable
 
     public IReadOnlyList<string> ListMicrophones() => _coordinator.ListMicrophones();
 
-    public Task StartFromDashboardAsync() => StartAsync(shouldPasteToActiveApp: false);
+    // Dashboard, tray and pill actions join the same serialized chain as the shortcut, so a stop
+    // from one surface can never overlap a stop from another and clear its paste target.
+    public Task StartFromDashboardAsync() => RunSerializedAsync(() => StartAsync(shouldPasteToActiveApp: false), "dashboard-start");
 
-    public Task StopFromDashboardAsync() => StopAsync();
+    public Task StopFromDashboardAsync() => RunSerializedAsync(StopAsync, "dashboard-stop");
 
     /// <summary>Stops the active dictation and transcribes it (the indicator's "stop" action).</summary>
-    public Task StopRecordingAsync() => StopAsync();
+    public Task StopRecordingAsync() => RunSerializedAsync(StopAsync, "indicator-stop");
+
+    /// <summary>
+    /// True while an auxiliary (setup test or Computer Use) capture owns the microphone. Its owner
+    /// stops it without persisting; the normal stop path must never save or paste it.
+    /// </summary>
+    public bool IsAuxiliarySession => _auxiliarySession;
 
     public async Task StartAuxiliaryAsync(string? microphoneName = null)
     {
@@ -133,7 +143,9 @@ public sealed class WinUiDictationContext : IDisposable
         if (IsRecording || IsBusy) return;
         Status = "Listening";
         RaiseChanged();
+        _auxiliarySession = true;
         await _coordinator.StartAsync(microphoneName ?? _coordinator.PickPreferredMicrophone(), DictationSessionKind.Auxiliary);
+        if (!_coordinator.IsRecording) _auxiliarySession = false;
         Status = _coordinator.IsRecording ? "Listening" : "Ready";
         RaiseChanged();
     }
@@ -144,15 +156,29 @@ public sealed class WinUiDictationContext : IDisposable
         if (!_coordinator.IsRecording) return "";
         Status = "Transcribing locally…";
         RaiseChanged();
-        var result = await _coordinator.StopForOnboardingTestAsync(cancellationToken);
-        var text = result.Text?.Trim() ?? "";
-        Status = string.IsNullOrWhiteSpace(text) ? "No speech detected" : "Local test captured";
-        RaiseChanged();
-        return text;
+        try
+        {
+            var result = await _coordinator.StopForOnboardingTestAsync(cancellationToken);
+            var text = result.Text?.Trim() ?? "";
+            Status = string.IsNullOrWhiteSpace(text) ? "No speech detected" : "Local test captured";
+            RaiseChanged();
+            return text;
+        }
+        finally
+        {
+            _auxiliarySession = false;
+        }
     }
 
-    public async Task CancelAsync()
+    public Task CancelAsync()
     {
+        RequestCancellation();
+        return RunSerializedAsync(CancelCoreAsync, "cancel");
+    }
+
+    private async Task CancelCoreAsync()
+    {
+        _auxiliarySession = false;
         StopTimers();
         RequestCancellation();
         await _coordinator.CancelAsync();
@@ -203,6 +229,26 @@ public sealed class WinUiDictationContext : IDisposable
             // settings I/O and microphone setup must never execute inside the keyboard hook.
             _hotkeyChain = Task.Run(() => RunChainedAsync(previous, work, signal, receivedAt));
         }
+    }
+
+    /// <summary>Runs work on the serialized chain and completes when that work does.</summary>
+    private Task RunSerializedAsync(Func<Task> work, string signal)
+    {
+        if (Volatile.Read(ref _disposed) != 0) return Task.CompletedTask;
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        EnqueueHotkeyWork(async () =>
+        {
+            try
+            {
+                await work().ConfigureAwait(false);
+                done.TrySetResult();
+            }
+            catch (Exception exception)
+            {
+                done.TrySetException(exception);
+            }
+        }, signal);
+        return done.Task;
     }
 
     private async Task RunChainedAsync(Task previous, Func<Task> work, string signal, long receivedAt)
@@ -287,7 +333,7 @@ public sealed class WinUiDictationContext : IDisposable
 
             case DictationHotkeyAction.Cancel:
                 StopTimers();
-                await CancelAsync();
+                await CancelCoreAsync();
                 break;
 
             case DictationHotkeyAction.StartDoubleTapTimer:
@@ -326,6 +372,16 @@ public sealed class WinUiDictationContext : IDisposable
             Status = "Switching transcription model…";
             RaiseChanged();
             await _coordinator.SwitchModelAsync(current.DictationModelId);
+        }
+
+        // Fail closed before opening the microphone (macOS blocks at the hotkey press): speaking into
+        // a session that cannot produce text throws the user's words away.
+        if (!_coordinator.IsModelReady)
+        {
+            Status = $"Download {_coordinator.ModelDisplayName} in Models to dictate";
+            _log.Info($"Dictation start blocked. trace={_captureTraceId}; model={_coordinator.ModelId}; reason=model-not-ready");
+            RaiseChanged();
+            return;
         }
 
         // Capture the paste target before any indicator work: the floating pill must never become
@@ -369,6 +425,12 @@ public sealed class WinUiDictationContext : IDisposable
     {
         _log.Info($"Dictation stop requested. trace={_captureTraceId ?? "not-started"}; recording={IsRecording}; busy={IsBusy}");
         if (!_coordinator.IsRecording) return;
+        if (_auxiliarySession)
+        {
+            // A setup test or Computer Use command is stopped by its owner, never saved or pasted.
+            _log.Info("Dictation stop ignored for an auxiliary capture.");
+            return;
+        }
         var totalStarted = Stopwatch.StartNew();
         var pipelineMs = 0L;
         var persistenceMs = 0L;
@@ -395,8 +457,9 @@ public sealed class WinUiDictationContext : IDisposable
             if (!asrPath.StartsWith("ASR during capture:", StringComparison.Ordinal) &&
                 !asrPath.StartsWith("Rolling fallback:", StringComparison.Ordinal))
                 asrPath = "whole-file";
-            if (string.IsNullOrWhiteSpace(result.Text) ||
-                result.Text.Contains("[BLANK_AUDIO]", StringComparison.OrdinalIgnoreCase))
+            // Strip engine tokens like [BLANK_AUDIO] instead of discarding the speech around them.
+            var recognized = TranscriptionEngineArtifactsFilter.Apply(result.Text ?? "");
+            if (string.IsNullOrWhiteSpace(recognized))
             {
                 Status = result.DurationMs < HotkeyTriggerTiming.ShortDiscardMilliseconds
                     ? "Ready"
@@ -407,7 +470,7 @@ public sealed class WinUiDictationContext : IDisposable
             var settings = _settings.Load();
             var stageStarted = Stopwatch.StartNew();
             var text = await _pipeline.PrepareDictationTextAsync(
-                result.Text,
+                recognized,
                 settings.EnableLocalCleanup,
                 settings.RemoveFillerWords,
                 _library.LoadDictionary());
@@ -435,7 +498,8 @@ public sealed class WinUiDictationContext : IDisposable
                 {
                     _operationCancellation.Token.ThrowIfCancellationRequested();
                     stageStarted.Restart();
-                    var paste = await _paste.PasteTextAsync(text, _pasteTarget, _operationCancellation.Token);
+                    var paste = await _paste.PasteTextAsync(
+                        text + DictationPasteSpacing.TrailingSeparator(text), _pasteTarget, _operationCancellation.Token);
                     deliveryMs = stageStarted.ElapsedMilliseconds;
                     deliveryFocusMs = paste.FocusWaitMs;
                     deliveryInputMs = paste.InputMs;

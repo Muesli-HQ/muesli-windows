@@ -28,7 +28,8 @@ public static class FloatingIndicatorStateClassifier
     /// </summary>
     private static readonly string[] CancelMarkers = ["cancelled", "cancel"];
 
-    private static readonly string[] ErrorMarkers = ["failed", "error", "unavailable", "no speech", "no text remained"];
+    // "blocked"/"could not" cover MicrophoneAccessDiagnostics; "in models to dictate" covers the missing-model prompt.
+    private static readonly string[] ErrorMarkers = ["failed", "error", "unavailable", "no speech", "no text remained", "blocked", "could not", "in models to dictate"];
 
     /// <summary>
     /// A dictation that landed in the focused app is the normal outcome: macOS returns straight to

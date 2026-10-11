@@ -4,10 +4,12 @@ namespace Muesli.Windows.Services;
 
 public static partial class FillerWordFilter
 {
+    // macOS FillerWordFilter.swift: "you know" / "i mean" are fillers only when a comma follows
+    // ("do you know him" keeps its words); "sort of" / "kind of" are removed unconditionally.
+    private static readonly string[] CommaPhraseFillers = ["you know", "i mean"];
+
     private static readonly string[] PhraseFillers =
     [
-        "you know",
-        "i mean",
         "sort of",
         "kind of"
     ];
@@ -30,6 +32,15 @@ public static partial class FillerWordFilter
             @"(?<![\p{L}\p{N}])like\s*,(?![\p{L}\p{N}])",
             "",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        foreach (var phrase in CommaPhraseFillers)
+        {
+            filtered = Regex.Replace(
+                filtered,
+                $@"(?<![\p{{L}}\p{{N}}]){Regex.Escape(phrase)}\s*,",
+                "",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+
         foreach (var phrase in PhraseFillers)
         {
             filtered = Regex.Replace(

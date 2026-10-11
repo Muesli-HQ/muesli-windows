@@ -29,7 +29,7 @@ public sealed record TranscriptionModelSnapshot(
     bool CanVerify,
     bool CanDelete);
 
-internal static class TranscriptionModelReadiness
+public static class TranscriptionModelReadiness
 {
     public static bool IsVerified(TranscriptionModelDefinition model) =>
         model.Kind == NativeAsrModelKind.Parakeet
