@@ -14,7 +14,7 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0" />
             <Setter Property="MinHeight" Value="0" />
-            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="Background" Value="Transparent" />
@@ -41,13 +41,17 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Text="Dictations" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <!-- macOS voiceNoteButton: 30pt tall, 12pt semibold, accent, red while recording. -->
                         <Button Style="{StaticResource MuesliPrimaryButtonStyle}"
+                                Height="30" MinHeight="30" Padding="12,0" CornerRadius="6"
+                                VerticalAlignment="Center"
+                                Background="{x:Bind local:DictationsPage.RecordBackground(ViewModel.IsRecording), Mode=OneWay}"
                                 Command="{x:Bind ViewModel.ToggleDictationCommand}"
                                 AutomationProperties.Name="Start or stop dashboard dictation"
                                 AutomationProperties.AutomationId="DictationRecordButton">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE720;" FontSize="14" />
-                                <TextBlock Text="{x:Bind ViewModel.RecordButtonLabel, Mode=OneWay}" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="{x:Bind local:DictationsPage.RecordGlyph(ViewModel.IsRecording), Mode=OneWay}" FontSize="12" />
+                                <TextBlock Text="{x:Bind ViewModel.RecordButtonLabel, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" />
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource MuesliGhostButtonStyle}"
@@ -82,47 +86,34 @@
                          Message="{x:Bind ViewModel.DictationStatus, Mode=OneWay}"
                          AutomationProperties.AutomationId="DictationRuntimeStatus" />
 
-                <!--
-                    Stat cards mirror the macOS trio: streak flame, AI word count, pace gauge.
-                    Each icon sits in a fixed-height host so the three glyphs stay optically
-                    aligned even though they come from different icon kinds. All three figures
-                    now come from the shared library snapshot (P2-01), so Timeline prints the
-                    same numbers.
-                -->
-                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
-                    <Border Grid.Column="0" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Current dictation streak">
-                        <StackPanel Spacing="7">
-                            <Grid Height="24">
-                                <PathIcon Width="20" Height="20"
-                                          Data="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"
-                                          Foreground="{ThemeResource MuesliWarningBrush}" />
-                            </Grid>
+                <!-- macOS StatsHeaderView without the meeting card: each card opens Insights. -->
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
+                    <Button Grid.Column="0" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                            ToolTipService.ToolTip="Open streak insights" AutomationProperties.Name="Current dictation streak">
+                        <StackPanel Spacing="8">
+                            <PathIcon Width="20" Height="20" HorizontalAlignment="Center"
+                                      Data="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"
+                                      Foreground="{ThemeResource MuesliWarningBrush}" />
                             <TextBlock Text="{x:Bind ViewModel.CurrentStreakLabel, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
                             <TextBlock Text="day streak" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
-                    </Border>
-                    <Border Grid.Column="1" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Words dictated">
-                        <StackPanel Spacing="7">
-                            <Grid Height="24">
-                                <TextBlock Text="AI"
-                                           FontFamily="{StaticResource MuesliFontFamilySemiBold}"
-                                           FontSize="15" FontWeight="SemiBold"
-                                           Foreground="{ThemeResource MuesliAccentBrush}"
-                                           VerticalAlignment="Center" HorizontalAlignment="Center" />
-                            </Grid>
-                            <TextBlock Text="{x:Bind ViewModel.DictationWordsLabel, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
+                    </Button>
+                    <Button Grid.Column="1" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                            ToolTipService.ToolTip="Open word activity insights" AutomationProperties.Name="Words dictated">
+                        <StackPanel Spacing="8">
+                            <FontIcon Glyph="&#xE8D2;" FontSize="20" Foreground="{ThemeResource MuesliAccentBrush}" />
+                            <TextBlock Text="{x:Bind local:DictationsPage.CompactCount(ViewModel.DictationWordsLabel), Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
                             <TextBlock Text="words dictated" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
-                    </Border>
-                    <Border Grid.Column="2" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Average dictation pace">
-                        <StackPanel Spacing="7">
-                            <Grid Height="24">
-                                <FontIcon Glyph="&#xEC4A;" FontSize="20" Foreground="{ThemeResource MuesliSuccessBrush}" />
-                            </Grid>
+                    </Button>
+                    <Button Grid.Column="2" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                            ToolTipService.ToolTip="Open speaking pace insights" AutomationProperties.Name="Average dictation pace">
+                        <StackPanel Spacing="8">
+                            <FontIcon Glyph="&#xEC4A;" FontSize="20" Foreground="{ThemeResource MuesliSuccessBrush}" />
                             <TextBlock Text="{x:Bind ViewModel.AveragePaceLabel, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
                             <TextBlock Text="avg WPM" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
-                    </Border>
+                    </Button>
                 </Grid>
 
                 <!--
@@ -134,14 +125,24 @@
                     macOS shows "This Mac / From iPhone" because a second source genuinely exists
                     there; inventing the Windows equivalent would be fake data.
                 -->
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                    <TextBlock Text="{x:Bind ViewModel.ResultCountLabel, Mode=OneWay}"
-                               VerticalAlignment="Center"
-                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
-                    <ComboBox Grid.Column="1" SelectedIndex="{x:Bind ViewModel.SortIndex, Mode=TwoWay}" MinWidth="145" AutomationProperties.Name="Sort dictations" AutomationProperties.AutomationId="DictationsSort">
-                        <ComboBoxItem Content="Newest first" />
-                        <ComboBoxItem Content="Oldest first" />
-                    </ComboBox>
+                <Grid ColumnDefinitions="*,Auto" Margin="0,-4,0,-8">
+                    <Button x:Name="SortButton" Grid.Column="1"
+                            Style="{StaticResource MuesliGhostButtonStyle}"
+                            Padding="8,3" MinHeight="0" CornerRadius="12"
+                            ToolTipService.ToolTip="Sort"
+                            AutomationProperties.Name="Sort dictations"
+                            AutomationProperties.AutomationId="DictationsSort">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <FontIcon x:Name="SortIcon" Glyph="&#xE71C;" FontSize="12" />
+                            <TextBlock x:Name="SortLabel" Text="Oldest first" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <RadioMenuFlyoutItem x:Name="NewestFirstItem" Text="Newest first" GroupName="DictationsSort" Click="SortItem_Click" Tag="0" />
+                                <RadioMenuFlyoutItem x:Name="OldestFirstItem" Text="Oldest first" GroupName="DictationsSort" Click="SortItem_Click" Tag="1" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
                 </Grid>
 
                 <!--
@@ -168,7 +169,7 @@
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
                                 <Setter Property="Padding" Value="0" />
-                                <Setter Property="Margin" Value="0,0,0,14" />
+                                <Setter Property="Margin" Value="0,0,0,20" />
                                 <Setter Property="MinHeight" Value="0" />
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                 <Setter Property="Background" Value="Transparent" />
@@ -179,8 +180,7 @@
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="vm:DictationGroup">
                                 <StackPanel Spacing="8">
-                                    <TextBlock Text="{x:Bind Name}" Style="{StaticResource MuesliSectionLabelStyle}" Margin="4,2,0,0" />
-                                    <Border Style="{StaticResource MuesliCardStyle}" Padding="0">
+                                    <TextBlock Text="{x:Bind Name}" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextTertiaryBrush}" Margin="4,0,0,0" />
                                         <ListView ItemsSource="{x:Bind Items}"
                                                   SelectionMode="Single"
                                                   IsItemClickEnabled="False"
@@ -195,40 +195,28 @@
                                             <ListView.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:DictationListItem">
                                                     <!--
-                                                        Row hierarchy follows the macOS list:
-                                                        monospace timestamp, then the transcript.
-                                                        Duration stays as subdued metadata on the
-                                                        right; the per-row model line is gone
-                                                        (P2-08) because macOS never prints it and
-                                                        it repeated the same value on every row.
+                                                        macOS DictationRowView: 80pt monospaced time, a 20pt
+                                                        gap, the text at reading size over three lines, and
+                                                        copy/delete revealed on hover. No duration column:
+                                                        macOS never prints one on a dictation row.
                                                     -->
-                                                    <Border BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="0,0,0,1" Padding="18,14">
-                                                        <!--
-                                                            No MinHeight. A 46-DIP floor on top of
-                                                            the 14-DIP padding made a one-line
-                                                            dictation row 74 DIP while the same row
-                                                            on Timeline is 48, so the two history
-                                                            pages read at different densities. The
-                                                            row now sizes to its content like
-                                                            Timeline's, which is also the macOS
-                                                            density (02-dictations.png).
-                                                        -->
-                                                        <Grid ColumnDefinitions="86,*,Auto,Auto" ColumnSpacing="12">
-                                                            <TextBlock Text="{x:Bind TimeLabel}" Style="{StaticResource MuesliTimestampStyle}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                                    <Grid>
+                                                        <Grid ColumnDefinitions="80,*,Auto" ColumnSpacing="20" Padding="20,16">
+                                                            <TextBlock Text="{x:Bind TimeLabel}" Style="{StaticResource MuesliTimestampStyle}" FontWeight="Medium" VerticalAlignment="Top" Margin="0,2,0,0" />
                                                             <TextBlock Grid.Column="1"
                                                                        Text="{x:Bind Text}"
                                                                        FontFamily="{StaticResource MuesliFontFamily}"
                                                                        FontSize="15"
+                                                                       LineHeight="21"
                                                                        Foreground="{ThemeResource MuesliTextPrimaryBrush}"
                                                                        TextWrapping="Wrap"
                                                                        MaxLines="3"
                                                                        TextTrimming="CharacterEllipsis" />
-                                                            <TextBlock Grid.Column="2" Text="{x:Bind DurationLabel}" Style="{StaticResource MuesliRowSecondaryStyle}" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,2,0,0" />
                                                             <StackPanel x:Name="RowActions"
-                                                                        Grid.Column="3"
+                                                                        Grid.Column="2"
                                                                         Orientation="Horizontal"
                                                                         Spacing="2"
-                                                                        Margin="6,-4,-6,0"
+                                                                        Margin="-8,-4,-8,0"
                                                                         Opacity="0"
                                                                         IsHitTestVisible="False">
                                                                 <!--
@@ -249,7 +237,7 @@
                                                                         ToolTipService.ToolTip="Copy dictation"
                                                                         AutomationProperties.Name="Copy dictation"
                                                                         AutomationProperties.AutomationId="DictationCopyButton">
-                                                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                                                    <FontIcon Glyph="&#xE8C8;" FontSize="12" />
                                                                 </Button>
                                                                 <Button Style="{StaticResource DictationRowActionStyle}"
                                                                         Tag="{x:Bind}"
@@ -257,24 +245,25 @@
                                                                         ToolTipService.ToolTip="Delete dictation"
                                                                         AutomationProperties.Name="Delete dictation"
                                                                         AutomationProperties.AutomationId="DictationDeleteButton">
-                                                                    <FontIcon Glyph="&#xE74D;" FontSize="14" Foreground="{ThemeResource MuesliErrorBrush}" />
+                                                                    <FontIcon Glyph="&#xE74D;" FontSize="12" Foreground="{ThemeResource MuesliErrorBrush}" Opacity="0.6" />
                                                                 </Button>
                                                             </StackPanel>
                                                         </Grid>
-                                                    </Border>
+                                                        <Rectangle Height="1" Margin="20,0" VerticalAlignment="Bottom"
+                                                                   Fill="{ThemeResource MuesliBorderSoftBrush}" />
+                                                    </Grid>
                                                 </DataTemplate>
                                             </ListView.ItemTemplate>
                                         </ListView>
-                                    </Border>
                                 </StackPanel>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-                    <Border x:Name="EmptyState" Style="{StaticResource MuesliCardStyle}" MinHeight="170">
+                    <Border x:Name="EmptyState" MinHeight="260">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                            <FontIcon Glyph="&#xE720;" FontSize="28" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
-                            <TextBlock x:Name="EmptyStateTitle" Text="No dictations yet" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                            <TextBlock x:Name="EmptyStateBody" Text="Your first completed dictation will be stored here." Style="{StaticResource MuesliBodyStyle}" TextAlignment="Center" />
+                            <FontIcon Glyph="&#xE720;" FontSize="40" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateTitle" Text="No dictations yet" FontSize="18" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextSecondaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateBody" Text="Your first completed dictation will be stored here." FontSize="13" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextAlignment="Center" />
                         </StackPanel>
                     </Border>
                 </Grid>
