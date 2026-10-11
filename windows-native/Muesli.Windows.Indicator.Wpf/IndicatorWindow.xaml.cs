@@ -662,7 +662,7 @@ public partial class IndicatorWindow : Window
         // the cursor.
         if (_drag.IsDragging) return;
 
-        var workArea = WorkAreaForCursorDip();
+        var screen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
         var size = new DipSize(_widthDip, _heightDip, _cornerRadiusDip);
 
         if (string.Equals(_indicatorAnchor, "Custom", StringComparison.OrdinalIgnoreCase) &&
@@ -670,25 +670,59 @@ public partial class IndicatorWindow : Window
             _savedTop is { } savedTop)
         {
             // A dragged position belongs to the monitor it was dropped on, not the cursor's monitor.
-            // ponytail: every screen is converted with this window's DPI; exact only when monitors share a scale.
-            workArea = System.Windows.Forms.Screen.AllScreens
-                .Select(screen => ToDipRect(screen.WorkingArea))
-                .Where(area => savedLeft >= area.Left && savedLeft < area.Left + area.Width &&
-                               savedTop >= area.Top && savedTop < area.Top + area.Height)
-                .Cast<DipRect?>()
-                .FirstOrDefault() ?? workArea;
-            var repaired = FloatingIndicatorLayout.RepairSavedCenter(new DipPoint(savedLeft, savedTop), size, workArea);
+            // It was saved as Left/Top, i.e. physical pixels divided by that monitor's scale, so the
+            // owning monitor is the one containing the point scaled back by its own DPI.
+            screen = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(candidate =>
+            {
+                var scale = MonitorScale(candidate);
+                return candidate.Bounds.Contains((int)Math.Round(savedLeft * scale), (int)Math.Round(savedTop * scale));
+            }) ?? screen;
+        }
+
+        var screenScale = MonitorScale(screen);
+        var pixels = screen.WorkingArea;
+        var workArea = new DipRect(pixels.X / screenScale, pixels.Y / screenScale, pixels.Width / screenScale, pixels.Height / screenScale);
+
+        if (string.Equals(_indicatorAnchor, "Custom", StringComparison.OrdinalIgnoreCase) &&
+            _savedLeft is { } customLeft &&
+            _savedTop is { } customTop)
+        {
+            var repaired = FloatingIndicatorLayout.RepairSavedCenter(new DipPoint(customLeft, customTop), size, workArea);
             if (repaired is { } fixedCenter)
             {
                 _savedLeft = fixedCenter.X;
                 _savedTop = fixedCenter.Y;
             }
             var topLeft = new DipPoint(_savedLeft.Value - size.Width / 2, _savedTop.Value - size.Height / 2);
-            MoveTo(FloatingIndicatorLayout.Clamp(topLeft, size, workArea));
+            MoveToOnScreen(FloatingIndicatorLayout.Clamp(topLeft, size, workArea), screenScale);
             return;
         }
 
-        MoveTo(FloatingIndicatorLayout.AnchorTopLeft(_indicatorAnchor, size, workArea));
+        MoveToOnScreen(FloatingIndicatorLayout.AnchorTopLeft(_indicatorAnchor, size, workArea), screenScale);
+    }
+
+    /// <summary>
+    /// Places the pill on a monitor in that monitor's own DIPs. WPF converts Left/Top with the DPI
+    /// of the monitor the window is on now, which lands wrong when the target monitor has a
+    /// different scale, so the move is made in physical pixels.
+    /// </summary>
+    private void MoveToOnScreen(DipPoint point, double screenScale)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero ||
+            !SetWindowPos(handle, IntPtr.Zero, (int)Math.Round(point.X * screenScale), (int)Math.Round(point.Y * screenScale),
+                0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate))
+        {
+            MoveTo(point);
+        }
+    }
+
+    /// <summary>Physical pixels per DIP for a monitor (1.0 at 100%, 1.5 at 150%).</summary>
+    private static double MonitorScale(System.Windows.Forms.Screen screen)
+    {
+        var centre = new NativePoint { X = screen.Bounds.Left + screen.Bounds.Width / 2, Y = screen.Bounds.Top + screen.Bounds.Height / 2 };
+        var monitor = MonitorFromPoint(centre, MonitorDefaultToNearest);
+        return GetDpiForMonitor(monitor, MdtEffectiveDpi, out var dpiX, out _) == 0 && dpiX > 0 ? dpiX / 96.0 : 1.0;
     }
 
     private void MoveTo(DipPoint point)
@@ -887,6 +921,23 @@ public partial class IndicatorWindow : Window
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern long SetWindowLongPtr(IntPtr hWnd, int nIndex, long value);
+
+    private const uint SwpNoSize = 0x0001, SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010;
+    private const uint MonitorDefaultToNearest = 2;
+    private const int MdtEffectiveDpi = 0;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X; public int Y; }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(NativePoint point, uint flags);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
 
     protected override void OnClosing(CancelEventArgs e)
     {
