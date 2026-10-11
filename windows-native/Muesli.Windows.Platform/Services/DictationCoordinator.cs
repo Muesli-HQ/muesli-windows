@@ -6,19 +6,17 @@ public sealed class DictationCoordinator : IDisposable
 {
     // Cohere peaked at 3.4 GiB in the local rolling benchmark; leave room for the shell and capture.
     private const ulong CohereMinimumFreeMemoryBytes = 4UL * 1024 * 1024 * 1024;
-    // The idle recognizer is kept loaded: reloading it on every dictation cost a cold start each
-    // time (sub-6 s Parakeet dictations measured a 3.5 s median). It is only released when the
-    // machine is actually short of memory.
-    private const ulong IdleReleaseMemoryThresholdBytes = 3UL * 1024 * 1024 * 1024;
+    // The recognizer stays loaded once warm. Releasing it after idle made the next dictation a cold
+    // start (sub-6 s Parakeet dictations measured a 3.5 s median; first chunks after a release took
+    // 4-9 s). Under memory pressure Windows pages the idle weights out instead, and the hotkey-down
+    // refresh in NativeParakeetClient pulls them back while the user is still speaking.
+
     // Long enough that loading the model does not compete with sign-in and app start-up.
     private static readonly TimeSpan PreloadDelay = TimeSpan.FromSeconds(20);
     private readonly NativeTranscriptionClient _transcriptionClient;
     private readonly AppLogService _log = new();
     private readonly AudioCaptureService _audioCaptureService = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly object _idleReleaseGate = new();
-    private CancellationTokenSource? _idleReleaseCancellation;
-    private Task? _idleReleaseTask;
     private int _disposed;
     private int _cancelRequested;
     private DictationSessionKind _sessionKind;
@@ -126,7 +124,6 @@ public sealed class DictationCoordinator : IDisposable
 
     public async Task StartAsync(string? microphoneName, DictationSessionKind sessionKind)
     {
-        CancelIdleRelease();
         _microphoneName = microphoneName;
         // The global hotkey outlives this coordinator during shutdown. Without this guard every
         // keypress awaits a disposed semaphore and logs an ObjectDisposedException.
@@ -393,7 +390,6 @@ public sealed class DictationCoordinator : IDisposable
             if (DetachRollingTranscriber() is { } abandonedRolling) await abandonedRolling.DrainAsync();
             EndPerformanceBoost();
             IsBusy = false;
-            ScheduleIdleRelease();
             _gate.Release();
             RePrepareMicrophone();
         }
@@ -424,17 +420,13 @@ public sealed class DictationCoordinator : IDisposable
         {
             EndPerformanceBoost();
             IsBusy = false;
-            ScheduleIdleRelease();
             _gate.Release();
             RePrepareMicrophone();
         }
     }
 
-    public Task SwitchModelAsync(string modelId, CancellationToken cancellationToken = default)
-    {
-        CancelIdleRelease();
-        return _transcriptionClient.SwitchModelAsync(modelId, cancellationToken);
-    }
+    public Task SwitchModelAsync(string modelId, CancellationToken cancellationToken = default) =>
+        _transcriptionClient.SwitchModelAsync(modelId, cancellationToken);
 
     public async Task<ModelOperationResult> InitializeModelAsync()
     {
@@ -488,15 +480,6 @@ public sealed class DictationCoordinator : IDisposable
         }
     }
 
-    private void CancelIdleRelease()
-    {
-        lock (_idleReleaseGate)
-        {
-            _idleReleaseCancellation?.Cancel();
-            _idleReleaseCancellation = null;
-        }
-    }
-
     private static ulong AvailablePhysicalMemory()
     {
         try { return new Microsoft.VisualBasic.Devices.ComputerInfo().AvailablePhysicalMemory; }
@@ -509,66 +492,12 @@ public sealed class DictationCoordinator : IDisposable
         kind == NativeAsrModelKind.CohereTranscribe && language.Equals("en", StringComparison.OrdinalIgnoreCase) &&
         freeMemoryBytes < CohereMinimumFreeMemoryBytes && parakeetReady;
 
-    internal static bool ShouldReleaseIdleModel(ulong freeMemoryBytes) =>
-        freeMemoryBytes < IdleReleaseMemoryThresholdBytes;
-
-    private void ScheduleIdleRelease()
-    {
-        if (Volatile.Read(ref _disposed) != 0) return;
-        lock (_idleReleaseGate)
-        {
-            _idleReleaseCancellation?.Cancel();
-            var cancellation = new CancellationTokenSource();
-            _idleReleaseCancellation = cancellation;
-            _idleReleaseTask = ReleaseModelWhenIdleAsync(cancellation);
-        }
-    }
-
-    private async Task ReleaseModelWhenIdleAsync(CancellationTokenSource cancellation)
-    {
-        try
-        {
-            await Task.Delay(TimeSpan.FromMinutes(1), cancellation.Token).ConfigureAwait(false);
-            await _gate.WaitAsync(cancellation.Token).ConfigureAwait(false);
-            try
-            {
-                if (IsRecording || IsBusy || IsTranscribing || Volatile.Read(ref _disposed) != 0) return;
-                if (!ShouldReleaseIdleModel(AvailablePhysicalMemory())) return;
-                var before = Process.GetCurrentProcess().PrivateMemorySize64 / 1048576;
-                await _transcriptionClient.ReleaseModelAsync(_transcriptionClient.ModelId, cancellation.Token)
-                    .ConfigureAwait(false);
-                var after = Process.GetCurrentProcess().PrivateMemorySize64 / 1048576;
-                new AppLogService().Info($"Idle dictation model released for low memory. privateMiB={before}->{after}; model={_transcriptionClient.ModelId}");
-            }
-            finally
-            {
-                _gate.Release();
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (ObjectDisposedException) when (Volatile.Read(ref _disposed) != 0) { }
-        catch (Exception exception)
-        {
-            new AppLogService().Error("Idle dictation model release failed.", exception);
-        }
-        finally
-        {
-            lock (_idleReleaseGate)
-            {
-                if (ReferenceEquals(_idleReleaseCancellation, cancellation)) _idleReleaseCancellation = null;
-            }
-            cancellation.Dispose();
-        }
-    }
-
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
-        CancelIdleRelease();
-        _idleReleaseTask?.GetAwaiter().GetResult();
         EndPerformanceBoost();
         _audioCaptureService.DeviceListChanged -= OnDeviceListChanged;
         _audioCaptureService.RouteChanged -= OnRouteChanged;

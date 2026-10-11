@@ -18,14 +18,6 @@ public sealed class DictationRollingTranscriberTests
             kind, language, (ulong)freeMiB * 1048576, installed));
     }
 
-    [Theory]
-    [InlineData(1024, true)]
-    [InlineData(3071, true)]
-    [InlineData(3072, false)]
-    [InlineData(16384, false)]
-    public void IdleModelStaysLoadedUnlessMemoryIsLow(int freeMiB, bool expected) =>
-        Assert.Equal(expected, DictationCoordinator.ShouldReleaseIdleModel((ulong)freeMiB * 1048576));
-
     [Fact]
     public void PerformanceBoostRaisesPriorityAndRestoresItWhenTheLastScopeEnds()
     {
