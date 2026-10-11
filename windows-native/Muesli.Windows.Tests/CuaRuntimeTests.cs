@@ -105,6 +105,16 @@ public sealed class CuaRuntimeTests
     }
 
     [Fact]
+    public void PillStatusNamesTheStep()
+    {
+        var state = FakeDesktop.State(0);
+        Assert.Equal("Clicking Send", CuaRuntime.StatusFor(Call("click_element", new { element_index = 1, label = "x" }), state));
+        Assert.Equal("Opening Spotify", CuaRuntime.StatusFor(Call("launch_app", new { app_name = "Spotify" }), state));
+        Assert.Equal("Pressing ctrl+l", CuaRuntime.StatusFor(Call("press_key", new { key = "l", modifiers = new[] { "ctrl" } }), state));
+        Assert.Equal("Typing in Text editor", CuaRuntime.StatusFor(Call("type_text", new { text = "secret", element_index = 2 }), state));
+    }
+
+    [Fact]
     public void EnterInAChatComposerNeedsConfirmation()
     {
         var notepad = FakeDesktop.State(0);

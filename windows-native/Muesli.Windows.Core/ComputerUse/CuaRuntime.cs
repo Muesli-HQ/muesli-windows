@@ -92,7 +92,7 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
             if (step > _options.MaxSteps) return End(CuaRunStatus.Failed, "Computer Use reached its step limit.", step);
 
             CuaPlan plan;
-            Status($"Planning step {step}");
+            Status("Thinking…");
             actionTime.Stop();
             try
             {
@@ -181,7 +181,7 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
                     if (!approved) return End(CuaRunStatus.Cancelled, $"You declined: {Summary(call, before)}.", step);
                 }
 
-                Status(StatusFor(tool.Name));
+                Status(StatusFor(call, before));
                 CuaResult result;
                 try
                 {
@@ -321,19 +321,31 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
         };
     }
 
-    private static string StatusFor(string tool) => tool switch
+    /// <summary>The step as the pill shows it: "Clicking Liked Songs", "Opening Spotify".</summary>
+    internal static string StatusFor(CuaToolCall call, CuaWindowState state)
     {
-        "launch_app" => "Opening app",
-        "activate_window" => "Switching window",
-        "click_element" or "click_point" => "Clicking",
-        "type_text" => "Typing",
-        "paste_text" => "Pasting",
-        "press_key" => "Pressing keys",
-        "scroll" => "Scrolling",
-        "drag" => "Dragging",
-        "set_value" => "Setting value",
-        _ => "Working",
-    };
+        var element = call.ElementIndex is { } index ? state.Elements.FirstOrDefault(e => e.ElementIndex == index) : null;
+        var target = element is { Title.Length: > 0 } ? element.Title : call.String("label") ?? "";
+        if (target.Length > 40) target = target[..39].TrimEnd() + "…";
+        var on = target.Length > 0 ? $" {target}" : "";
+        return CuaCatalog.Find(call.Name)?.Name switch
+        {
+            "launch_app" => $"Opening {call.App ?? "the app"}",
+            "activate_window" => $"Switching to {call.App ?? "the window"}",
+            "click_element" or "click_point" => $"Clicking{on}",
+            "type_text" => target.Length > 0 ? $"Typing in{on}" : "Typing",
+            "paste_text" => target.Length > 0 ? $"Pasting into{on}" : "Pasting",
+            "press_key" => $"Pressing {string.Join("+", call.Strings("modifiers").Append(call.String("key") ?? ""))}",
+            "scroll" => "Scrolling",
+            "drag" => $"Dragging{on}",
+            "set_value" => $"Setting{on}",
+            "perform_secondary_action" => $"Opening menu on{on}",
+            "move_cursor" => "Moving the pointer",
+            "get_muesli_settings" => "Reading Muesli settings",
+            "set_muesli_setting" => "Changing a Muesli setting",
+            _ => "Working",
+        };
+    }
 
     /// <summary>Cheap fingerprint of what the user would see change.</summary>
     internal static string Signature(CuaWindowState state) => string.Join("|",

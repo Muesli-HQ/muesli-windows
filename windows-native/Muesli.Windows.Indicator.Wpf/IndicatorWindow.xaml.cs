@@ -256,7 +256,7 @@ public partial class IndicatorWindow : Window
     {
         var size = MinimalResting
             ? FloatingIndicatorLayout.MinimalRestingSize(_indicatorAnchor)
-            : FloatingIndicatorLayout.SizeFor(_state, _hovered, _message);
+            : FloatingIndicatorLayout.SizeFor(_state, _hovered, _message, _owner == IndicatorOwnerKind.ComputerUse);
         _widthDip = size.Width;
         _heightDip = size.Height;
         _cornerRadiusDip = size.CornerRadius;
@@ -449,6 +449,11 @@ public partial class IndicatorWindow : Window
 
     private void BuildTranscribing(Brush brush)
     {
+        if (_owner == IndicatorOwnerKind.ComputerUse)
+        {
+            BuildComputerUse(brush);
+            return;
+        }
         // macOS: an 18-point icon and "Transcribing" in 11pt regular at 82% white, 6 points apart,
         // centred. No cancel glyph; Esc and right-click still cancel.
         var stack = new StackPanel
@@ -467,6 +472,49 @@ public partial class IndicatorWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         });
         ContentHost.Children.Add(stack);
+    }
+
+    /// <summary>macOS Computer Use pill: a stop cross on the left, a cursor arrow and the current
+    /// step ("Clicking Liked Songs").</summary>
+    private void BuildComputerUse(Brush brush)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var stop = new TextBlock
+        {
+            Text = FloatingIndicatorLayout.RecordingCancelGlyph,
+            FontSize = FloatingIndicatorLayout.RecordingCancelFontSize,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = brush,
+            Width = 16,
+            TextAlignment = TextAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Stop Computer Use"
+        };
+        var cursor = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M0,0 L0,14 L3.6,10.6 L6.2,16 L8.4,15 L5.8,9.8 L10.6,9.8 Z"),
+            Fill = brush,
+            Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var text = new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(_message) ? "Computer use" : _message,
+            FontSize = 11,
+            Foreground = new SolidColorBrush(MediaColor.FromArgb(0xD1, 0xFF, 0xFF, 0xFF)),
+            Margin = new Thickness(7, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        Grid.SetColumn(cursor, 1);
+        Grid.SetColumn(text, 2);
+        grid.Children.Add(stop);
+        grid.Children.Add(cursor);
+        grid.Children.Add(text);
+        ContentHost.Children.Add(grid);
     }
 
     private static FrameworkElement TranscribingIcon(Brush brush)
@@ -518,6 +566,8 @@ public partial class IndicatorWindow : Window
             Foreground = ink,
             Margin = new Thickness(6, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
+            // Without a bound the centred text overflows both ends instead of ending in "…".
+            MaxWidth = Math.Max(40, _widthDip - 66),
             TextTrimming = TextTrimming.CharacterEllipsis
         });
         ContentHost.Children.Add(stack);
@@ -865,6 +915,12 @@ public partial class IndicatorWindow : Window
         }
 
         var x = e.GetPosition(this).X;
+        if (_state == FloatingIndicatorState.Transcribing && _owner == IndicatorOwnerKind.ComputerUse)
+        {
+            // macOS: the left 34 points stop the run; the rest of the pill only drags.
+            if (x < 34) _sendCommand(new IndicatorCommand { SessionId = _sessionId, Type = IndicatorCommandType.Cancel });
+            return;
+        }
         var action = FloatingIndicatorLayout.ActionForClick(_state, x);
         if (_state == FloatingIndicatorState.Recording)
         {

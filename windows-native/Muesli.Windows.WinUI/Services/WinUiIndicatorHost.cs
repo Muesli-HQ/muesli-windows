@@ -35,6 +35,8 @@ public sealed class WinUiIndicatorHost : IDisposable
     private int _disposed;
 
     private FloatingIndicatorState _state = FloatingIndicatorState.Idle;
+    private string _status = "";
+    private ComputerUseOutcome? _retiredOutcome; // Already flashed; never shown again.
     private string _owner = IndicatorOwnerKind.None;
     private bool _meetingPaused;
     private long _sessionId;
@@ -150,6 +152,14 @@ public sealed class WinUiIndicatorHost : IDisposable
         {
             owner = IndicatorOwnerKind.ComputerUse;
             state = FloatingIndicatorState.Transcribing;
+            status = _computerUse.Status;
+        }
+        else if (state == FloatingIndicatorState.Idle && _computerUse.Outcome is { } outcome && !ReferenceEquals(outcome, _retiredOutcome))
+        {
+            // macOS flashes the run's result like a dictation notice, then returns to idle.
+            owner = IndicatorOwnerKind.ComputerUse;
+            state = outcome.Succeeded ? FloatingIndicatorState.Success : FloatingIndicatorState.Error;
+            status = outcome.Message;
         }
 
         if (_probeState is { } probed)
@@ -170,6 +180,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
         _state = state;
         _owner = owner;
+        _status = status;
         _meetingPaused = meetingPaused;
 
         UpdateReturnDwell(state, status);
@@ -194,6 +205,7 @@ public sealed class WinUiIndicatorHost : IDisposable
                     await Task.Delay(TimeSpan.FromMilliseconds(duration), token);
                     if (token.IsCancellationRequested) return;
                     _dismissedOutcomeStatus = _pendingOutcomeStatus;
+                    if (_owner == IndicatorOwnerKind.ComputerUse) _retiredOutcome = _computerUse.Outcome;
                     _pendingOutcomeStatus = null;
                     _probeState = null;
                     _dispatcher.TryEnqueue(UpdateState);
@@ -221,7 +233,9 @@ public sealed class WinUiIndicatorHost : IDisposable
             Owner = _owner,
             Visible = visible,
             HotkeyLabel = string.IsNullOrWhiteSpace(settings.Hotkey) ? "shortcut" : settings.Hotkey,
-            Message = ComposeMessage(_state, _dictation.Status ?? ""),
+            Message = _owner == IndicatorOwnerKind.ComputerUse && _state == FloatingIndicatorState.Transcribing
+                ? _status
+                : ComposeMessage(_state, _status),
             RecordingColorHex = settings.RecordingColorHex,
             IndicatorStyle = settings.IndicatorStyle,
             MeetingPaused = _meetingPaused,

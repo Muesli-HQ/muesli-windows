@@ -112,9 +112,14 @@ public sealed class GlobalHotkeyService : IDisposable
         }
     }
 
+    /// <summary>Marks keys Computer Use sends, so its own Escape or shortcut-like chords never
+    /// cancel the run or trigger dictation.</summary>
+    public static readonly IntPtr SyntheticInputTag = unchecked((IntPtr)0x4D75657331);
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0)
+        // KBDLLHOOKSTRUCT: vkCode, scanCode, flags, time, then dwExtraInfo at offset 16.
+        if (nCode >= 0 && Marshal.ReadIntPtr(lParam, 16) != SyntheticInputTag)
         {
             var message = wParam.ToInt32();
             var virtualKey = Marshal.ReadInt32(lParam);

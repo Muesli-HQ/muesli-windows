@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Muesli.Windows.Services;
 
 namespace Muesli.Windows.ComputerUse;
 
@@ -289,11 +290,12 @@ public static class WindowsInput
                 VirtualKey = vk,
                 ScanCode = (ushort)MapVirtualKeyW(vk, 0),
                 Flags = (down ? 0 : KeyUp) | (IsExtended(vk) ? KeyExtended : 0),
+                ExtraInfo = GlobalHotkeyService.SyntheticInputTag,
             } },
         };
 
     private static Input UnicodeKey(char character, bool down) =>
-        new() { Type = 1, Union = new InputUnion { Keyboard = new KeyboardInput { ScanCode = character, Flags = KeyUnicode | (down ? 0 : KeyUp) } } };
+        new() { Type = 1, Union = new InputUnion { Keyboard = new KeyboardInput { ScanCode = character, Flags = KeyUnicode | (down ? 0 : KeyUp), ExtraInfo = GlobalHotkeyService.SyntheticInputTag } } };
 
     /// <summary>Navigation keys need the extended flag or they arrive as numpad keys.</summary>
     private static bool IsExtended(ushort vk) => vk is >= 0x21 and <= 0x28 or 0x2D or 0x2E or 0x5D or 0x6F;

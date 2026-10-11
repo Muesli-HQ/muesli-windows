@@ -44,6 +44,8 @@ public sealed class WinUiComputerUseContext : IDisposable
     public bool StopEnabled => _listening || _running;
     public string VoiceButtonText => _listening ? "Stop listening and run" : "Speak a command";
     public string Diagnostics { get; private set; } = "No Computer Use runs yet.";
+    /// <summary>How the last run (or attempt) ended, for the floating pill; null once a new one starts.</summary>
+    public ComputerUseOutcome? Outcome { get; private set; }
     public string TraceFilePath => ComputerUseConfiguration.TracePath(_library.Profile.RootDirectory);
 
     public void RegisterVoiceShortcut() =>
@@ -90,6 +92,7 @@ public sealed class WinUiComputerUseContext : IDisposable
 
     private async Task StartListeningAsync()
     {
+        Outcome = null;
         var settings = _settings.Load();
         if (!settings.ComputerUseEnabled) { Report("Turn on Computer Use in Settings first."); return; }
         if (!ComputerUseConfiguration.TryValidate(settings, ChatGpt.IsSignedIn, out var error)) { Report(error); return; }
@@ -120,13 +123,13 @@ public sealed class WinUiComputerUseContext : IDisposable
         catch (Exception exception)
         {
             _running = false;
-            Report($"Could not transcribe the command ({exception.GetType().Name}).");
+            Fail($"Could not transcribe the command ({exception.GetType().Name}).");
             return;
         }
         if (string.IsNullOrWhiteSpace(command))
         {
             _running = false;
-            Report("No command was heard; nothing was done.");
+            Fail("No command was heard; nothing was done.");
             return;
         }
         await RunAsync(command.Trim(), _settings.Load());
@@ -134,7 +137,8 @@ public sealed class WinUiComputerUseContext : IDisposable
 
     private async Task RunAsync(string command, MuesliSettings settings)
     {
-        if (!ComputerUseConfiguration.TryValidate(settings, ChatGpt.IsSignedIn, out var error)) { Report(error); return; }
+        Outcome = null;
+        if (!ComputerUseConfiguration.TryValidate(settings, ChatGpt.IsSignedIn, out var error)) { Fail(error); return; }
         _running = true;
         _sessionCancellation?.Dispose();
         var cancellation = _sessionCancellation = new CancellationTokenSource();
@@ -158,18 +162,20 @@ public sealed class WinUiComputerUseContext : IDisposable
                 return await new CuaRuntime(desktop, planner, options).RunAsync(command, cancellation.Token);
             });
             SaveTrace(result);
-            Report(result.Status switch
+            var message = result.Status switch
             {
                 CuaRunStatus.Done => result.Message,
                 CuaRunStatus.Cancelled => result.Message,
                 CuaRunStatus.TimedOut => "Computer Use ran out of time.",
                 _ => $"Stopped: {result.Message}",
-            });
+            };
+            if (result.Status != CuaRunStatus.Cancelled) Outcome = new(message, result.Status == CuaRunStatus.Done);
+            Report(message);
         }
         catch (Exception exception)
         {
             _log.Info($"Computer Use run failed: {exception.GetType().Name}.");
-            Report($"Computer Use failed: {exception.Message}");
+            Fail($"Computer Use failed: {exception.Message}");
         }
         finally
         {
@@ -192,6 +198,12 @@ public sealed class WinUiComputerUseContext : IDisposable
         catch (IOException) { }
     }
 
+    private void Fail(string message)
+    {
+        Outcome = new(message, false);
+        Report(message);
+    }
+
     /// <summary>Runs report status from a background thread; listeners update UI, so raise on the UI thread.</summary>
     private void Report(string status)
     {
@@ -208,3 +220,5 @@ public sealed class WinUiComputerUseContext : IDisposable
         _voiceHotkey.Dispose();
     }
 }
+
+public sealed record ComputerUseOutcome(string Message, bool Succeeded);
