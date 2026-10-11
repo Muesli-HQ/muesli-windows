@@ -34,6 +34,8 @@ public partial class DictionaryPageViewModel(
     [ObservableProperty] public partial bool HasNextPage { get; private set; }
 
     public bool HasItems => Items.Count > 0;
+    /// <summary>Search only earns its place once the dictionary spans more than one page.</summary>
+    public bool IsSearchUseful => _allItems.Count > PageSize;
     /// <summary>
     /// Whether the editor should show its inline validation line. The page-level InfoBar still
     /// announces the same text, but at 720 DIP the editor sits below the list and off-screen from
@@ -301,6 +303,7 @@ public partial class DictionaryPageViewModel(
         PageLabel = $"Page {PageIndex + 1:N0} of {pageCount:N0} · {filtered.Count:N0} entries";
         HasPreviousPage = PageIndex > 0;
         HasNextPage = PageIndex + 1 < pageCount;
+        OnPropertyChanged(nameof(IsSearchUseful));
         PreviousPageCommand.NotifyCanExecuteChanged();
         NextPageCommand.NotifyCanExecuteChanged();
     }
