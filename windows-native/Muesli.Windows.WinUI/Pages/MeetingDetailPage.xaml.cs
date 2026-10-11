@@ -16,14 +16,9 @@ public sealed partial class MeetingDetailPage : Page
         App.Dialogs,
         App.UiDispatcher);
 
-    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _playheadTimer;
-
     public MeetingDetailPage()
     {
         InitializeComponent();
-        _playheadTimer = DispatcherQueue.CreateTimer();
-        _playheadTimer.Interval = TimeSpan.FromMilliseconds(100);
-        _playheadTimer.Tick += (_, _) => ViewModel.RefreshPlaybackPosition();
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName is nameof(ViewModel.IsStatusError)
@@ -39,8 +34,9 @@ public sealed partial class MeetingDetailPage : Page
 
             if (args.PropertyName == nameof(ViewModel.IsPlaying))
             {
-                if (ViewModel.IsPlaying) _playheadTimer.Start();
-                else _playheadTimer.Stop();
+                // Drive the playhead once per rendered frame, only while audio plays.
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnRenderingFrame;
+                if (ViewModel.IsPlaying) Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnRenderingFrame;
             }
 
             if (args.PropertyName is nameof(ViewModel.ShowNotesTab) or null or "")
@@ -65,7 +61,7 @@ public sealed partial class MeetingDetailPage : Page
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
         Unloaded += (_, _) =>
         {
-            _playheadTimer.Stop();
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnRenderingFrame;
             ViewModel.LibraryChanged -= OnLibraryChanged;
             ViewModel.MeetingRemoved -= OnMeetingRemoved;
             ViewModel.RecordingStarted -= OnRecordingStarted;
@@ -112,6 +108,8 @@ public sealed partial class MeetingDetailPage : Page
 
     private void OnMeetingRemoved(object? sender, EventArgs e) =>
         BackButton.Focus(FocusState.Programmatic);
+
+    private void OnRenderingFrame(object? sender, object e) => ViewModel.RefreshPlaybackPosition();
 
     private void Waveform_Seeked(object? sender, double fraction) =>
         ViewModel.SeekTo(fraction * ViewModel.PlaybackDurationSeconds);

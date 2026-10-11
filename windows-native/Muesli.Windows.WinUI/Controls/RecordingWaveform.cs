@@ -24,7 +24,9 @@ public sealed class RecordingWaveform : UserControl
         new PropertyMetadata(0d, (d, _) => ((RecordingWaveform)d).Recolor()));
 
     private readonly Canvas _canvas = new() { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
-    private readonly Rectangle _playhead = new() { Width = 2, RadiusX = 1, RadiusY = 1 };
+    // Moved with a render transform: sub-pixel and no layout pass, so it glides at frame rate.
+    private readonly TranslateTransform _playheadOffset = new();
+    private readonly Rectangle _playhead;
     private readonly List<Rectangle> _bars = [];
 
     public IReadOnlyList<double>? Peaks { get => (IReadOnlyList<double>?)GetValue(PeaksProperty); set => SetValue(PeaksProperty, value); }
@@ -35,6 +37,7 @@ public sealed class RecordingWaveform : UserControl
 
     public RecordingWaveform()
     {
+        _playhead = new Rectangle { Width = 2, RadiusX = 1, RadiusY = 1, RenderTransform = _playheadOffset };
         Content = _canvas;
         IsTabStop = true;
         UseSystemFocusVisuals = true;
@@ -98,10 +101,12 @@ public sealed class RecordingWaveform : UserControl
         foreach (var bar in _bars)
         {
             var played = Canvas.GetLeft(bar) <= playedX;
-            bar.Fill = played ? accent : rest;
+            var fill = played ? accent : rest;
+            if (ReferenceEquals(bar.Fill, fill)) continue; // Per frame, only the bars just crossed change.
+            bar.Fill = fill;
             bar.Opacity = played ? 1 : 0.24 / 0.56; // macOS: textTertiary at 24%; the brush already carries 56%.
         }
         _playhead.Fill = accent;
-        Canvas.SetLeft(_playhead, Math.Max(0, Math.Min(playedX - 1, ActualWidth - 2)));
+        _playheadOffset.X = Math.Max(0, Math.Min(playedX - 1, ActualWidth - 2));
     }
 }

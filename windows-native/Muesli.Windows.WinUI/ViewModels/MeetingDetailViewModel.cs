@@ -533,15 +533,21 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         return options;
     }
 
+    private double _playbackAnchorSeconds;
+    private long _playbackAnchorTimestamp;
+
     /// <summary>
-    /// The playback service only raises on state changes, so the page polls this while playing, as macOS
-    /// polls the player's currentTime. Without it the playhead jumped only on pause.
+    /// Called every rendered frame while playing. The reader's position advances in read-ahead chunks, so
+    /// the playhead is extrapolated from the exact position of the last play/pause/seek on a high-resolution
+    /// clock, the way video editors drive a playhead.
     /// </summary>
+    // ponytail: wall clock vs. audio clock drift is ~0.01%; re-anchoring on every seek/pause keeps it invisible.
     public void RefreshPlaybackPosition()
     {
-        var position = _runtime.PlaybackPosition;
-        PlaybackSeconds = position.TotalSeconds;
-        PlaybackStatus = $"{_runtime.PlaybackState} · {FormatTime(position)} / {FormatTime(_runtime.PlaybackDuration)}";
+        if (!IsPlaying) return;
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(_playbackAnchorTimestamp).TotalSeconds;
+        PlaybackSeconds = Math.Min(_playbackAnchorSeconds + elapsed, PlaybackDurationSeconds);
+        PlaybackStatus = $"Playing · {FormatTime(TimeSpan.FromSeconds(PlaybackSeconds))} / {FormatTime(TimeSpan.FromSeconds(PlaybackDurationSeconds))}";
     }
 
     private void UpdatePlayback(MeetingPlaybackStateChangedEventArgs args)
@@ -551,6 +557,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             : $"{args.State} · {FormatTime(args.Position)} / {FormatTime(args.Duration)}";
         PlaybackSeconds = args.Position.TotalSeconds;
         PlaybackDurationSeconds = Math.Max(args.Duration.TotalSeconds, 0);
+        _playbackAnchorSeconds = PlaybackSeconds;
+        _playbackAnchorTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
         IsPlaying = args.State == MeetingPlaybackState.Playing;
         RefreshWaveform();
     }
