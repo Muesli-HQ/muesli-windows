@@ -262,6 +262,25 @@ public partial class App : Application
                 Meetings.SetSourceMissing(false);
             }
         };
+        Microsoft.Windows.System.Power.PowerManager.SystemSuspendStatusChanged += (_, _) =>
+        {
+            // Raised off the UI thread. Windows allows only a moment before sleeping, so checkpoint
+            // synchronously here instead of queueing behind UI work.
+            try
+            {
+                var status = Microsoft.Windows.System.Power.PowerManager.SystemSuspendStatus;
+                if (status == Microsoft.Windows.System.Power.SystemSuspendStatus.Entering)
+                    Meetings.SuspendForPowerAsync().Wait(TimeSpan.FromSeconds(5));
+                else if (status is Microsoft.Windows.System.Power.SystemSuspendStatus.AutoResume
+                    or Microsoft.Windows.System.Power.SystemSuspendStatus.ManualResume)
+                    UiDispatcher.TryEnqueue(async () =>
+                    {
+                        try { await Meetings.ResumeAfterPowerAsync(); }
+                        catch (Exception exception) { _log.Error("Meeting resume after sleep failed.", exception); }
+                    });
+            }
+            catch (Exception exception) { _log.Error("Meeting sleep checkpoint failed; audio remains recoverable.", exception); }
+        };
         Meetings.SourceWarningDismissed += (_, _) =>
         {
             _autoStop?.DismissWarning();
@@ -315,11 +334,14 @@ public partial class App : Application
             mainWindow.HideDashboard();
 
         // Development-only deterministic preview route for visual qualification. It never persists a
-        // fake meeting and never starts capture.
+        // fake meeting and never starts capture. Compiled out of Release so shipped builds can never
+        // show a made-up meeting.
+#if DEBUG
         if (TryGetMeetingNotificationPreview(out var previewState))
         {
             UiDispatcher.TryEnqueue(() => ShowMeetingNotificationPreview(previewState));
         }
+#endif
     }
 
     private async Task StopDetectedMeetingAsync()

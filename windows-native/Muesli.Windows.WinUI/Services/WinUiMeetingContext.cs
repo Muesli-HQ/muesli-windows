@@ -36,6 +36,7 @@ public sealed class WinUiMeetingContext : IDisposable
         _coordinator = new MeetingRecordingCoordinator(_transcription, _log);
         _coordinator.StateChanged += (_, _) =>
         {
+            _recoverable = null;
             CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
             RaiseChanged();
         };
@@ -99,6 +100,15 @@ public sealed class WinUiMeetingContext : IDisposable
         SaveManualNotesCore();
     }
 
+    /// <summary>Records typed notes in memory; Stop, discard and the debounced save persist them.</summary>
+    public void UpdateManualNotesDraft(string notes)
+    {
+        ThrowIfDisposed();
+        if (ActiveMeetingId is null) return;
+        ManualNotes = notes;
+        AreNotesSaved = false;
+    }
+
     private void SaveManualNotesCore()
     {
         if (ActiveMeetingId is null) return;
@@ -126,8 +136,18 @@ public sealed class WinUiMeetingContext : IDisposable
 
     public double SystemLevel { get; private set; }
 
+    // Discovery reads (and repairs) journals on disk. Cache it so live snapshots, which raise
+    // Changed several times a second, never rescan; lifecycle transitions invalidate it.
+    private IReadOnlyList<RecoverableMeetingSession>? _recoverable;
+
     public IReadOnlyList<RecoverableMeetingSession> RecoverableSessions =>
-        _coordinator.DiscoverRecoverableSessions();
+        _recoverable ??= _coordinator.DiscoverRecoverableSessions();
+
+    /// <summary>
+    /// Stop was requested but saving failed; the audio is retained and Stop retries. Distinct from
+    /// a user pause, which shares the coordinator's interrupted state.
+    /// </summary>
+    public bool FinalizationFailed { get; private set; }
 
     public LiveTranscriptSnapshot? LatestLiveSnapshot { get; private set; }
 
@@ -186,6 +206,7 @@ public sealed class WinUiMeetingContext : IDisposable
     private async Task StartCoreAsync(int? processId, CancellationToken cancellationToken, PersistedMeeting? resumedMeeting = null)
     {
         ThrowIfDisposed();
+        _suspendedForPower = false;
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         ManualNotes = "";
@@ -225,10 +246,21 @@ public sealed class WinUiMeetingContext : IDisposable
         ThrowIfDisposed();
         // Retry a failed autosave before stopping capture. A storage error must not lose writing.
         if (!AreNotesSaved) SaveManualNotesCore();
-        var result = await _coordinator.StopAsync(
-            _title,
-            _settings.SaveMeetingRecordings,
-            cancellationToken);
+        RecordedMeetingResult result;
+        try
+        {
+            result = await _coordinator.StopAsync(
+                _title,
+                _settings.SaveMeetingRecordings,
+                cancellationToken);
+        }
+        catch (MeetingSessionRecoverableException)
+        {
+            FinalizationFailed = true;
+            RaiseChanged();
+            throw;
+        }
+        FinalizationFailed = false;
         var persisted = Persist(result);
         var unchangedSpeech = IsResumingFinishedMeeting && string.IsNullOrWhiteSpace(result.Transcript);
         _coordinator.AcknowledgePersisted(result.MeetingId);
@@ -270,6 +302,7 @@ public sealed class WinUiMeetingContext : IDisposable
         if (keepNotes) SaveManualNotesCore();
         var resumed = IsResumingFinishedMeeting;
         await _coordinator.CancelAsync();
+        FinalizationFailed = false;
         if (ActiveMeetingId is { } id)
         {
             if (resumed) { /* Discard only the appended capture; the existing meeting and writing survive. */ }
@@ -297,10 +330,32 @@ public sealed class WinUiMeetingContext : IDisposable
         RaiseChanged();
     }
 
+    // Windows sleep: checkpoint the capture so the audio survives, and resume on wake only when
+    // the sleep (not the user) paused it.
+    private volatile bool _suspendedForPower;
+
+    public async Task SuspendForPowerAsync()
+    {
+        if (Volatile.Read(ref _disposed) != 0 || !IsRecording) return;
+        await _coordinator.SuspendAsync();
+        _suspendedForPower = true;
+        CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
+        RaiseChanged();
+    }
+
+    public async Task ResumeAfterPowerAsync()
+    {
+        if (!_suspendedForPower || Volatile.Read(ref _disposed) != 0) return;
+        _suspendedForPower = false;
+        if (IsPaused) await ResumeAsync();
+    }
+
     public async Task ResumeAsync()
     {
         ThrowIfDisposed();
         await _coordinator.ResumeAsync();
+        _suspendedForPower = false;
+        FinalizationFailed = false;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
         RaiseChanged();
     }
@@ -338,6 +393,7 @@ public sealed class WinUiMeetingContext : IDisposable
         if (IsRecording || IsPaused) throw new InvalidOperationException("Finish the active meeting before discarding recovered audio.");
         var id = recovery.Journal.SessionId;
         _coordinator.DiscardRecoverable(id);
+        _recoverable = null;
         if (recovery.Journal.ResumedMeeting is null && _library.FindMeeting(id) is { } draft && string.IsNullOrWhiteSpace(draft.Transcript))
         {
             if (string.IsNullOrWhiteSpace(draft.ManualNotes)) _library.DeleteMeeting(id);
@@ -491,8 +547,11 @@ public sealed class WinUiMeetingContext : IDisposable
             cancellationToken,
             manualNotes: meeting.ManualNotes,
             previousMeetingNotes: _library.Predecessor(meeting.Id) is { } predecessor ? MeetingContinuation.CarriedNotes(predecessor) : null);
+        // Title/notes generation can take minutes; apply generated fields onto the latest saved copy
+        // so a title, notes, or folder edited meanwhile in the detail page are not overwritten.
+        var latest = _library.FindMeeting(meeting.Id) ?? meeting;
         var finalized = MeetingNotesComposer.ApplyResummarization(
-            meeting,
+            latest,
             result.Summary,
             _settings.MeetingSummaryTemplate,
             generatedTitle);
@@ -510,7 +569,7 @@ public sealed class WinUiMeetingContext : IDisposable
                 PostMeetingAutomationOptions.FromSettings(_settings),
                 finalized.RecoveredFromInterruption ? PostMeetingCompletionEvent.RecoveryCompleted : PostMeetingCompletionEvent.RecordingCompleted,
                 cancellationToken);
-            finalized = finalized with { AutomationResult = automation };
+            finalized = (_library.FindMeeting(finalized.Id) ?? finalized) with { AutomationResult = automation };
             SaveMeeting(finalized);
         }
         return finalized;

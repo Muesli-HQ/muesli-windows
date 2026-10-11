@@ -230,7 +230,9 @@ public sealed class MeetingSessionJournalStore
         return timeline.Count == 0 ? 0 : timeline[^1].StartOffsetMs + timeline[^1].DurationMs;
     }
 
-    public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverable()
+    /// <param name="activeSessionId">The session this process is recording right now. It is live,
+    /// not interrupted, so it is neither repaired nor rewritten as recoverable.</param>
+    public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverable(string? activeSessionId = null)
     {
         lock (_gate)
         {
@@ -243,7 +245,8 @@ public sealed class MeetingSessionJournalStore
             foreach (var directory in Directory.EnumerateDirectories(_sessionsRoot))
             {
                 var sessionId = Path.GetFileName(directory);
-                if (!IsValidSessionId(sessionId))
+                if (!IsValidSessionId(sessionId) ||
+                    string.Equals(sessionId, activeSessionId, StringComparison.Ordinal))
                 {
                     continue;
                 }

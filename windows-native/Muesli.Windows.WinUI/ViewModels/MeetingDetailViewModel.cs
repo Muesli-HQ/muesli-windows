@@ -18,6 +18,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     private PersistedMeeting? _meeting;
     private RetranscriptionCandidate? _candidate;
     private int _disposed;
+    private CancellationTokenSource? _notesDebounce;
+    private bool _notesPending;
 
     public MeetingDetailViewModel(
         WinUiLibraryContext library,
@@ -159,6 +161,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     public void Load(string meetingId)
     {
+        FlushNotes();
         _meeting = _library.FindMeeting(meetingId);
         HasMeeting = _meeting is not null;
         if (_meeting is null)
@@ -197,9 +200,24 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     partial void OnManualNotesChanged(string value)
     {
         if (_meeting is null || value == _meeting.ManualNotes || Volatile.Read(ref _disposed) != 0) return;
+        // Each save rewrites the whole library, so persist after a typing pause, not per keystroke.
+        _notesPending = true;
+        _notesDebounce?.Cancel();
+        var debounce = _notesDebounce = new CancellationTokenSource();
+        _ = Task.Delay(700, debounce.Token).ContinueWith(
+            _ => _dispatcher.TryEnqueue(() => { if (!debounce.IsCancellationRequested) FlushNotes(); }),
+            TaskContinuationOptions.OnlyOnRanToCompletion);
+    }
+
+    // Writes pending notes now. Pass the freshest copy of the meeting when one was just reloaded.
+    private void FlushNotes(PersistedMeeting? latest = null)
+    {
+        _notesDebounce?.Cancel();
+        if (!_notesPending || (latest ?? _meeting) is not { } target) return;
+        _notesPending = false;
         try
         {
-            var updated = MeetingNotesComposer.ApplyManualNotes(_meeting, value);
+            var updated = MeetingNotesComposer.ApplyManualNotes(target, ManualNotes);
             if (_library.UpdateMeeting(updated)) _meeting = updated;
             else ShowStatus("The meeting no longer exists. Your writing has not been saved.", true);
         }
@@ -373,8 +391,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         // dictation and meeting list confirmations do.
         var name = string.IsNullOrWhiteSpace(_meeting.Title) ? "Untitled meeting" : _meeting.Title.Trim();
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete this meeting and its saved transcript?\n\n“{name}”\n{Metadata}\n\n" +
-            "Retained recordings owned by Muesli remain available for recovery until cleanup.",
+            $"Delete this meeting, its transcript, and its saved recording?\n\n“{name}”\n{Metadata}\n\n" +
+            "Imported original files are not deleted.",
             "Delete meeting", cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
         if (_library.DeleteMeeting(_meeting.Id))
@@ -468,6 +486,12 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     private void ApplyMeeting(PersistedMeeting meeting, bool keepTranscriptDraft = false)
     {
+        // A reload must not overwrite notes typed during the debounce window.
+        if (_notesPending && meeting.Id == _meeting?.Id)
+        {
+            FlushNotes(meeting);
+            meeting = _meeting ?? meeting;
+        }
         RelatedMeetings = _library.RelatedMeetings(meeting.Id);
         OnPropertyChanged(nameof(HasRelatedMeetings));
         Title = meeting.Title;
@@ -643,6 +667,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (Volatile.Read(ref _disposed) == 0) FlushNotes();
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _meetings.Changed -= OnMeetingRuntimeChanged;
         _runtime.Dispose();

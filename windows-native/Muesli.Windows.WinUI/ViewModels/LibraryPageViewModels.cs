@@ -498,9 +498,26 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         : "Captions appear as speech is recognized.";
 
     partial void OnShowLiveTabChanged(bool value) => OnPropertyChanged(nameof(ShowRecordingNotes));
+    // Each save rewrites the meeting library, so typing updates the in-memory draft (which Stop and
+    // discard already persist) and writes to disk only after a pause.
+    // ponytail: whole-library save per pause; add a single-meeting upsert if large libraries lag.
+    private CancellationTokenSource? _notesDebounce;
+
     partial void OnManualNotesChanged(string value)
     {
-        if (!_loadingNotes && CanEditRecordingNotes) SaveRecordingNotes();
+        if (_loadingNotes || !CanEditRecordingNotes) return;
+        _meetingRuntime.UpdateManualNotesDraft(value);
+        NotesSaveStatus = "Saving…";
+        _notesDebounce?.Cancel();
+        _notesDebounce = new CancellationTokenSource();
+        _ = SaveNotesAfterPauseAsync(_notesDebounce.Token);
+    }
+
+    private async Task SaveNotesAfterPauseAsync(CancellationToken token)
+    {
+        try { await Task.Delay(700, token); }
+        catch (OperationCanceledException) { return; }
+        if (CanEditRecordingNotes) SaveRecordingNotes();
     }
 
     [RelayCommand(CanExecute = nameof(CanEditRecordingNotes))]
@@ -670,9 +687,11 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         try
         {
             MeetingStatus = "Finalizing transcript…";
-            await _meetingRuntime.StopAndSaveAsync(cancellationToken);
+            var meeting = await _meetingRuntime.StopAndSaveAsync(cancellationToken);
             Reload();
-            MeetingStatus = "Meeting saved";
+            MeetingStatus = meeting.SessionState == MeetingSessionState.Failed || string.IsNullOrWhiteSpace(meeting.Transcript)
+                ? "Meeting saved without a transcript"
+                : "Meeting saved";
         }
         catch (OperationCanceledException)
         {
@@ -1119,7 +1138,9 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
                 $"{session.Journal.StartedAtUtc.ToLocalTime():g} · {session.MicrophonePartCount} mic part(s) · {session.SystemPartCount} system part(s)"))
             .ToList();
         if (IsRecording) MeetingStatus = $"Recording · {_meetingRuntime.ActiveTitle}";
-        else if (IsPaused) MeetingStatus = "Paused · audio retained";
+        else if (IsPaused) MeetingStatus = _meetingRuntime.FinalizationFailed
+            ? "Saving failed · audio kept. Choose Stop to retry."
+            : "Paused · audio retained";
         if (wasActive && !IsActive) Reload();
         NotifyCommandState();
         OnPropertyChanged(nameof(IsActive));

@@ -90,9 +90,17 @@ public sealed class WinUiLibraryContext : IDisposable
             foreach (var link in sqlite.Store.Meetings.ListFollowUpsLinkedTo(id).Where(link => link.Id == $"meeting_thread_{id}"))
                 sqlite.Store.Meetings.DeleteFollowUp(link.Id);
         var meetings = History.LoadMeetings().ToList();
-        var removed = meetings.RemoveAll(item => string.Equals(item.Id, id, StringComparison.Ordinal)) > 0;
-        if (removed) History.SaveMeetings(meetings, afterExplicitDeletion: true);
-        return removed;
+        var meeting = meetings.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
+        if (meeting is null) return false;
+        meetings.Remove(meeting);
+        History.SaveMeetings(meetings, afterExplicitDeletion: true);
+        // macOS deletes the saved recording with the meeting. Only Muesli-owned capture files under
+        // recordings/<id> are touched; imported originals are never deleted.
+        var cleanup = new CaptureStorageService(Profile.CaptureDirectory).DeleteOwnedMeetingAudio(
+            id, new[] { meeting.MicrophoneAudioPath, meeting.SystemAudioPath }.OfType<string>());
+        if (cleanup.FailedPaths.Count > 0)
+            new AppLogService().Error($"Deleted meeting audio could not be removed. failed={cleanup.FailedPaths.Count}");
+        return true;
     }
 
     public bool SupportsMeetingThreads => History is SqliteLibraryHistoryAdapter;
