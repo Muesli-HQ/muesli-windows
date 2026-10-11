@@ -8,7 +8,7 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
     [string]$OutputDirectory,
-    [string]$CertificateThumbprint
+    [string]$Publisher
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,7 +16,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
 $arguments = @{ Configuration = $Configuration }
 if ($OutputDirectory) { $arguments.OutputDirectory = $OutputDirectory }
-if ($CertificateThumbprint) { $arguments.CertificateThumbprint = $CertificateThumbprint }
+if ($Publisher) { $arguments.Publisher = $Publisher }
 & (Join-Path $PSScriptRoot 'package-winui-msix.ps1') @arguments
 
 Write-Host ''

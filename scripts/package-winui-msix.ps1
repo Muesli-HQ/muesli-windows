@@ -8,8 +8,8 @@
     script stops at package creation and reports what is still required to install it. It never
     claims the package was installed or qualified.
 
-    Pass -CertificateThumbprint to sign with a certificate already present in the current user's
-    certificate store. Production signing is a separate, externally gated step.
+    Signing is a separate step (scripts\build-signed-release.ps1 / sign-windows-release.ps1): this
+    script unpacks and repacks the package, which would destroy any signature applied here.
 
 .PARAMETER Configuration
     Release (default) or Debug.
@@ -17,15 +17,18 @@
 .PARAMETER OutputDirectory
     Where the .msix is written. Defaults to artifacts/msix under the repository root.
 
-.PARAMETER CertificateThumbprint
-    Optional thumbprint of a code-signing certificate in Cert:\CurrentUser\My.
+.PARAMETER Publisher
+    Production publisher, exactly the signing certificate's subject DN (for example
+    "CN=Muesli Works Inc., O=Muesli Works Inc., L=City, S=State, C=US"). Replaces the development
+    CN=AppPublisher identity in the packaged manifest; the MSIX only installs when this matches the
+    certificate that signs it. Omit for local/unsigned builds.
 #>
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
     [string]$OutputDirectory,
-    [string]$CertificateThumbprint
+    [string]$Publisher
 )
 
 $ErrorActionPreference = 'Stop'
@@ -75,11 +78,7 @@ if ($env:MUESLI_SHARED_CORE_MODE -eq 'managed-fallback') {
     $arguments += '-p:MuesliRequireSwiftBridge=false'
 }
 
-if ($CertificateThumbprint) {
-    $arguments += "-p:PackageCertificateThumbprint=$CertificateThumbprint"
-} else {
-    $arguments += '-p:AppxPackageSigningEnabled=false'
-}
+$arguments += '-p:AppxPackageSigningEnabled=false'
 
 Write-Host "Packaging Muesli ($Configuration, x64)..." -ForegroundColor Cyan
 & $dotnet @arguments
@@ -126,8 +125,43 @@ function Test-ForeignRidPath {
     return $false
 }
 
+# llama.dll/ggml*.dll (local text cleanup) import the MSVC C++ runtime and OpenMP. Windows does not
+# ship them, so a machine without the VC++ redistributable fails to load cleanup. Ship them
+# app-local at the package root, which is on the native library search path.
+$vcRuntimeFiles = @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'vcomp140.dll')
+
+function Get-VcRuntimeSources {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $installs = if (Test-Path -LiteralPath $vswhere) { @(& $vswhere -products * -property installationPath) } else { @() }
+    $redist = $installs | ForEach-Object {
+        Get-ChildItem -LiteralPath (Join-Path $_ 'VC\Redist\MSVC') -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^\d+\.\d+\.\d+$' }
+    } | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+    if (-not $redist) { throw 'The MSVC redistributable folder (VC\Redist\MSVC) was not found. Install Visual Studio Build Tools with the C++ workload; the package must ship the C++ runtime for local cleanup.' }
+    $sources = foreach ($name in $vcRuntimeFiles) {
+        $file = Get-ChildItem -LiteralPath (Join-Path $redist.FullName 'x64') -Recurse -File -Filter $name -ErrorAction SilentlyContinue |
+            Where-Object { $_.Directory.Name -match '^Microsoft\.VC\d+\.(CRT|OpenMP)$' } | Select-Object -First 1
+        if (-not $file) { throw "$name was not found under $($redist.FullName)." }
+        $file.FullName
+    }
+    return $sources
+}
+
+function Set-ManifestPublisher {
+    param([string]$ManifestPath, [string]$Publisher)
+    [xml]$manifest = Get-Content -LiteralPath $ManifestPath -Raw
+    $manifest.Package.Identity.Publisher = $Publisher
+    # The display name is the certificate's CN, as Windows shows it in the install prompt.
+    $commonName = [regex]::Match($Publisher, '(?:^|,\s*)CN=("(?:[^"]|"")*"|[^,]*)').Groups[1].Value.Trim().Trim('"')
+    if (-not $commonName) { throw "Publisher '$Publisher' has no CN= component." }
+    $manifest.Package.Properties.PublisherDisplayName = $commonName
+    $settings = [System.Xml.XmlWriterSettings]@{ Encoding = [System.Text.UTF8Encoding]::new($false); Indent = $false }
+    $writer = [System.Xml.XmlWriter]::Create($ManifestPath, $settings)
+    try { $manifest.Save($writer) } finally { $writer.Dispose() }
+}
+
 function Rebuild-MsixPayload {
-    param([string]$MsixPath, [string]$LooseDir, [string]$MakeAppx, [string]$RepoRoot)
+    param([string]$MsixPath, [string]$LooseDir, [string]$MakeAppx, [string]$RepoRoot, [string]$Publisher)
 
     $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ('muesli-msix-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $scratch | Out-Null
@@ -162,6 +196,12 @@ function Rebuild-MsixPayload {
             Copy-Item -LiteralPath $licenseSource -Destination (Join-Path $scratch 'licenses') -Recurse -Force
         }
 
+        foreach ($source in Get-VcRuntimeSources) {
+            Copy-Item -LiteralPath $source -Destination (Join-Path $scratch ([IO.Path]::GetFileName($source)).ToLowerInvariant()) -Force
+        }
+
+        if ($Publisher) { Set-ManifestPublisher -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -Publisher $Publisher }
+
         # Reject foreign-RID content last, after the staged bridge/companion copies, so a win-x64
         # package can never carry ARM64/x86/foreign runtimes from any source.
         $foreign = @(Get-ChildItem -LiteralPath $scratch -Recurse -File -Force | Where-Object {
@@ -187,7 +227,7 @@ $primaryMsix = Get-ChildItem -Path $OutputDirectory -Recurse -File -Filter 'Mues
     Select-Object -First 1
 $looseExe = Get-ChildItem (Join-Path $repoRoot "windows-native\Muesli.Windows.WinUI\bin\x64\$Configuration") -Recurse -Filter 'Muesli.Windows.WinUI.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($primaryMsix -and $looseExe -and $makeAppx) {
-    if (Rebuild-MsixPayload -MsixPath $primaryMsix.FullName -LooseDir $looseExe.DirectoryName -MakeAppx $makeAppx -RepoRoot $repoRoot) {
+    if (Rebuild-MsixPayload -MsixPath $primaryMsix.FullName -LooseDir $looseExe.DirectoryName -MakeAppx $makeAppx -RepoRoot $repoRoot -Publisher $Publisher) {
         Write-Host "Added the WPF companion and any pinned Swift bridge, pruned foreign-RID content, and included notices/licenses." -ForegroundColor Cyan
     }
 
@@ -215,17 +255,12 @@ foreach ($package in $packages) {
         Package  = $package.Name
         SizeMB   = [Math]::Round($package.Length / 1MB, 2)
         Path     = $package.FullName
-        Signed   = [bool]$CertificateThumbprint
+        Signed   = $false
     }
 }
 
-if (-not $CertificateThumbprint) {
-    Write-Host ''
-    Write-Warning @'
+Write-Host ''
+Write-Warning @'
 The package is UNSIGNED and has not been installed or qualified by this script.
-Installing it requires an elevated session to either:
-  * enable Developer Mode (Settings > System > For developers), or
-  * apply a sideloading policy and install a signed package whose certificate is trusted.
-Signed release qualification remains a separate step.
+Sign it with scripts\build-signed-release.ps1 (production certificate) before distributing it.
 '@
-}
