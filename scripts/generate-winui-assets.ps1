@@ -114,7 +114,10 @@ function New-OpticallySizedAppListBitmap {
 
         $margin = [Math]::Max(0.5, $Size / 64.0)
         $diameter = $Size * 0.43
-        $right = $Size - (2 * $margin)
+        # One-pixel bars make the mark an odd number of pixels wide and tall, centred on pixel
+        # (Size-1)/2, so the plate is one pixel smaller and centred there too; shifting the bars
+        # half a pixel instead would blur them.
+        $right = $Size - 1 - (2 * $margin)
         $backgroundPath.AddArc($margin, $margin, $diameter, $diameter, 180, 90)
         $backgroundPath.AddArc($right - $diameter + $margin, $margin, $diameter, $diameter, 270, 90)
         $backgroundPath.AddArc($right - $diameter + $margin, $right - $diameter + $margin, $diameter, $diameter, 0, 90)
@@ -147,7 +150,8 @@ function New-OpticallySizedAppListBitmap {
         try {
             for ($index = 0; $index -lt $barHeights.Count; $index++) {
                 $x = $left + ($index * ($barWidth + $gap))
-                $height = [Math]::Max(2, [int][Math]::Round($maximumHeight * $barHeights[$index]))
+                # Odd heights keep every bar centred on the same pixel row as the plate.
+                $height = [Math]::Max(3, 2 * [int][Math]::Round(($maximumHeight * $barHeights[$index] - 1) / 2) + 1)
                 $top = [int][Math]::Floor(($Size - $height) / 2.0)
                 $path = New-RoundedBarPath -X $x -Y $top -Width $barWidth -Height $height
                 try {
