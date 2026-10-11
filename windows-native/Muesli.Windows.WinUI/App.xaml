@@ -166,17 +166,18 @@
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
+            <!-- macOS StatCard: title2 (20pt semibold) value, caption (12pt secondary) label. -->
             <Style x:Key="MuesliStatValueStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
-                <Setter Property="FontSize" Value="26" />
+                <Setter Property="FontSize" Value="20" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
                 <Setter Property="HorizontalAlignment" Value="Center" />
             </Style>
             <Style x:Key="MuesliStatLabelStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
-                <Setter Property="FontSize" Value="13" />
-                <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
                 <Setter Property="HorizontalAlignment" Value="Center" />
             </Style>
 
@@ -189,7 +190,18 @@
                 <Setter Property="Padding" Value="18" />
             </Style>
             <Style x:Key="MuesliStatCardStyle" TargetType="Border" BasedOn="{StaticResource MuesliCardStyle}">
-                <Setter Property="Padding" Value="18,16" />
+                <Setter Property="Padding" Value="16" />
+                <Setter Property="CornerRadius" Value="10" />
+            </Style>
+            <!-- A stat card that opens Insights, as macOS StatsHeaderView cards do. -->
+            <Style x:Key="MuesliStatButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource MuesliSurfaceBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="16" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
             </Style>
 
             <!--

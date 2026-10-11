@@ -14,13 +14,13 @@
         <!--
             P2-04: a timeline row is a real ListViewItem, so it gets the platform hover, selected
             and keyboard-focus visuals and arrow-key navigation within its day. The container is
-            stripped back to a flat full-width row; the rounded card comes from the group's Border.
+            stripped back to a flat full-width row with the macOS small-corner hover.
         -->
         <Style x:Key="TimelineRowContainerStyle" TargetType="ListViewItem">
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0" />
             <Setter Property="MinHeight" Value="0" />
-            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="Background" Value="Transparent" />
@@ -43,76 +43,68 @@
                     </Button>
                 </Grid>
 
-                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="14">
-                    <Border Grid.Column="0" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Current streak">
-                        <StackPanel Spacing="7">
-                            <!--
-                                P2-10: a flame, not a speech bubble. Same geometry as the Dictations
-                                card so the two pages read as one metric, and a path rather than a
-                                Segoe glyph because the icon font has no flame.
-                            -->
-                            <Grid Height="24">
-                                <PathIcon Width="20" Height="20"
-                                          Data="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"
-                                          Foreground="{ThemeResource MuesliWarningBrush}" />
-                            </Grid>
+                <!-- macOS StatsHeaderView: four cards, each a button that opens Insights. -->
+                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="16">
+                    <Button Grid.Column="0" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                            ToolTipService.ToolTip="Open streak insights" AutomationProperties.Name="Current streak">
+                        <StackPanel Spacing="8">
+                            <!-- A flame path: the icon font has none. -->
+                            <PathIcon Width="20" Height="20" HorizontalAlignment="Center"
+                                      Data="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"
+                                      Foreground="{ThemeResource MuesliWarningBrush}" />
                             <TextBlock Text="{x:Bind ViewModel.Snapshot.CurrentStreak, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
                             <TextBlock Text="day streak" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
-                    </Border>
-                    <Border Grid.Column="1" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Words dictated">
-                        <StackPanel Spacing="7">
-                            <!-- Same "AI" mark as the Dictations card: both print the same figure. -->
-                            <Grid Height="24">
-                                <TextBlock Text="AI"
-                                           FontFamily="{StaticResource MuesliFontFamilySemiBold}"
-                                           FontSize="15" FontWeight="SemiBold"
-                                           Foreground="{ThemeResource MuesliAccentBrush}"
-                                           VerticalAlignment="Center" HorizontalAlignment="Center" />
-                            </Grid>
-                            <TextBlock Text="{x:Bind ViewModel.DictationWordsLabel, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
+                    </Button>
+                    <Button Grid.Column="1" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                            ToolTipService.ToolTip="Open word activity insights" AutomationProperties.Name="Words dictated">
+                        <StackPanel Spacing="8">
+                            <FontIcon Glyph="&#xE8D2;" FontSize="20" Foreground="{ThemeResource MuesliAccentBrush}" />
+                            <TextBlock Text="{x:Bind local:TimelinePage.CompactCount(ViewModel.Snapshot.DictationWords), Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
                             <TextBlock Text="words dictated" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
-                    </Border>
-                    <Border Grid.Column="2" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Average pace">
-                        <StackPanel Spacing="7">
-                            <Grid Height="24">
-                                <FontIcon Glyph="&#xEC4A;" FontSize="20" Foreground="{ThemeResource MuesliSuccessBrush}" />
-                            </Grid>
+                    </Button>
+                    <Button Grid.Column="2" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                            ToolTipService.ToolTip="Open speaking pace insights" AutomationProperties.Name="Average pace">
+                        <StackPanel Spacing="8">
+                            <FontIcon Glyph="&#xEC4A;" FontSize="20" Foreground="{ThemeResource MuesliSuccessBrush}" />
                             <TextBlock Text="{x:Bind ViewModel.AveragePaceLabel, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
                             <TextBlock Text="avg WPM" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
-                    </Border>
-                    <Border Grid.Column="3" Style="{StaticResource MuesliStatCardStyle}" AutomationProperties.Name="Meetings">
-                        <StackPanel Spacing="7">
-                            <Grid Height="24">
-                                <FontIcon Glyph="&#xE716;" FontSize="20" Foreground="{ThemeResource MuesliAccentBrush}" />
-                            </Grid>
+                    </Button>
+                    <Button Grid.Column="3" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                            ToolTipService.ToolTip="Open meeting insights" AutomationProperties.Name="Meetings">
+                        <StackPanel Spacing="8">
+                            <FontIcon Glyph="&#xE716;" FontSize="20" Foreground="{ThemeResource MuesliAccentBrush}" />
                             <TextBlock Text="{x:Bind ViewModel.Snapshot.MeetingCount, Mode=OneWay}" Style="{StaticResource MuesliStatValueStyle}" />
                             <TextBlock Text="meetings" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
-                    </Border>
+                    </Button>
                 </Grid>
 
                 <!--
-                    P2-05: no page-level search field. The sidebar field is the shell's single
-                    search entry point (macOS SearchResultsView has no field of its own either).
-                    The redundant All/Dictations/Meetings segmented control is gone: Timeline is one
-                    chronological mixed feed, so the control only duplicated the sort/count row.
-                    This row now carries the result count and sort order, right-aligned, with no
-                    empty left-hand space.
+                    No page-level search (the sidebar owns it). macOS ends the filter row with a
+                    borderless funnel menu that becomes an accent pill only when it is not the
+                    default; the filter Windows carries there is the sort order.
                 -->
-                <Grid x:Name="TimelineToolbar" ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                    <StackPanel x:Name="ActionsGroup" Grid.Column="1" Orientation="Horizontal" Spacing="12">
-                        <TextBlock x:Name="ResultCountText"
-                                   Text="{x:Bind ViewModel.ResultCountLabel, Mode=OneWay}"
-                                   VerticalAlignment="Center"
-                                   Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
-                        <ComboBox SelectedIndex="{x:Bind ViewModel.SortIndex, Mode=TwoWay}" MinWidth="145" AutomationProperties.Name="Sort timeline" AutomationProperties.AutomationId="TimelineSort">
-                            <ComboBoxItem Content="Newest first" />
-                            <ComboBoxItem Content="Oldest first" />
-                        </ComboBox>
-                    </StackPanel>
+                <Grid x:Name="TimelineToolbar" ColumnDefinitions="*,Auto" Margin="0,-4,0,-8">
+                    <Button x:Name="SortButton" Grid.Column="1"
+                            Style="{StaticResource MuesliGhostButtonStyle}"
+                            Padding="8,3" MinHeight="0" CornerRadius="12"
+                            ToolTipService.ToolTip="Sort"
+                            AutomationProperties.Name="Sort timeline"
+                            AutomationProperties.AutomationId="TimelineSort">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <FontIcon x:Name="SortIcon" Glyph="&#xE71C;" FontSize="12" />
+                            <TextBlock x:Name="SortLabel" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <RadioMenuFlyoutItem x:Name="NewestFirstItem" Text="Newest first" GroupName="TimelineSort" Click="SortItem_Click" Tag="0" />
+                                <RadioMenuFlyoutItem x:Name="OldestFirstItem" Text="Oldest first" GroupName="TimelineSort" Click="SortItem_Click" Tag="1" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
                 </Grid>
 
                 <Grid>
@@ -127,7 +119,7 @@
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
                                 <Setter Property="Padding" Value="0" />
-                                <Setter Property="Margin" Value="0,0,0,14" />
+                                <Setter Property="Margin" Value="0,0,0,20" />
                                 <Setter Property="MinHeight" Value="0" />
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                 <Setter Property="Background" Value="Transparent" />
@@ -139,8 +131,7 @@
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="vm:TimelineGroup">
                                 <StackPanel Spacing="8">
-                                    <TextBlock Text="{x:Bind Name}" Style="{StaticResource MuesliSectionLabelStyle}" Margin="4,2,0,0" />
-                                    <Border Style="{StaticResource MuesliCardStyle}" Padding="0">
+                                    <TextBlock Text="{x:Bind Name}" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextTertiaryBrush}" Margin="4,0,0,0" />
                                         <ListView ItemsSource="{x:Bind Items}"
                                                   SelectionMode="Single"
                                                   IsItemClickEnabled="True"
@@ -156,77 +147,80 @@
                                             <ListView.ItemTemplate>
                                                 <DataTemplate x:DataType="svc:WinUiTimelineEntry">
                                                     <!--
-                                                        P2-03: the title lives in a star column of a
-                                                        Grid, not in a horizontal StackPanel. A
-                                                        StackPanel measures its children with
-                                                        infinite width, so TextTrimming could never
-                                                        fire and titles were hard-clipped mid-word
-                                                        while the secondary line ellipsized
-                                                        correctly two lines below.
+                                                        macOS DictationRowView / TimelineMeetingRow: 80pt mono
+                                                        time, 20pt gap, 20x16 padding, and a hairline divider
+                                                        inset by the row padding. Titles sit in a star column
+                                                        so trimming works (P2-03).
                                                     -->
-                                                    <Border BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="0,0,0,1" Padding="18,14">
-                                                        <Grid ColumnDefinitions="86,*,Auto" ColumnSpacing="16">
-                                                            <TextBlock Text="{x:Bind TimeLabel}" Style="{StaticResource MuesliTimestampStyle}" VerticalAlignment="Top" Margin="0,1,0,0" />
-                                                            <StackPanel Grid.Column="1" Spacing="5" MinWidth="0">
-                                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                                                                    <FontIcon Glyph="&#xE716;"
-                                                                              FontSize="14"
+                                                    <Grid>
+                                                        <Grid ColumnDefinitions="80,*" ColumnSpacing="20" Padding="20,16">
+                                                            <TextBlock Text="{x:Bind TimeLabel}" Style="{StaticResource MuesliTimestampStyle}" FontWeight="Medium" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                                            <!-- Dictation: the row is its own text, at reading size, up to three lines. -->
+                                                            <TextBlock Grid.Column="1"
+                                                                       Text="{x:Bind TitleLabel}"
+                                                                       FontSize="15"
+                                                                       LineHeight="21"
+                                                                       Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                                                                       TextWrapping="Wrap"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       MaxLines="3"
+                                                                       Visibility="{x:Bind local:TimelinePage.InvertBoolToVisibility(IsMeeting)}" />
+                                                            <StackPanel Grid.Column="1" Spacing="8" MinWidth="0"
+                                                                        Visibility="{x:Bind local:TimelinePage.BoolToVisibility(IsMeeting)}">
+                                                                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+                                                                    <FontIcon Glyph="&#xE716;" FontSize="12"
                                                                               Foreground="{ThemeResource MuesliAccentBrush}"
-                                                                              VerticalAlignment="Top"
-                                                                              Margin="0,3,0,0"
-                                                                              Visibility="{x:Bind local:TimelinePage.BoolToVisibility(IsMeeting)}"
+                                                                              VerticalAlignment="Center"
                                                                               AutomationProperties.AccessibilityView="Raw" />
-                                                                    <!--
-                                                                        A meeting title is a name
-                                                                        and reads bold; a dictation
-                                                                        row *is* its transcript and
-                                                                        reads as body text, exactly
-                                                                        as on macOS.
-                                                                    -->
                                                                     <TextBlock Grid.Column="1"
                                                                                Text="{x:Bind TitleLabel}"
-                                                                               Style="{StaticResource MuesliRowTitleStyle}"
-                                                                               FontFamily="{x:Bind local:TimelinePage.TitleFont(IsMeeting)}"
-                                                                               FontWeight="{x:Bind local:TimelinePage.TitleWeight(IsMeeting)}"
-                                                                               TextWrapping="Wrap"
-                                                                               MaxLines="2" />
-                                                                    <StackPanel Grid.Column="2"
-                                                                                Orientation="Horizontal"
-                                                                                Spacing="6"
-                                                                                VerticalAlignment="Top"
-                                                                                Margin="0,1,0,0"
-                                                                                Visibility="{x:Bind local:TimelinePage.BoolToVisibility(IsMeeting)}">
-                                                                        <Border Style="{StaticResource MuesliSuccessBadgeStyle}">
-                                                                            <TextBlock Text="{x:Bind StatusLabel}" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
-                                                                        </Border>
-                                                                        <!-- The Windows equivalent of the macOS "Mac" source badge. -->
-                                                                        <Border Style="{StaticResource MuesliAccentBadgeStyle}">
-                                                                            <TextBlock Text="PC" Style="{StaticResource MuesliAccentBadgeTextStyle}" />
-                                                                        </Border>
-                                                                    </StackPanel>
+                                                                               FontFamily="{StaticResource MuesliFontFamilySemiBold}"
+                                                                               FontWeight="SemiBold"
+                                                                               FontSize="14"
+                                                                               Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               VerticalAlignment="Center" />
+                                                                    <Border Grid.Column="2" CornerRadius="8" Padding="6,2" VerticalAlignment="Center"
+                                                                            Background="{x:Bind local:TimelinePage.StatusTint(StatusLabel)}">
+                                                                        <TextBlock Text="{x:Bind StatusLabel}" FontSize="10" FontWeight="SemiBold"
+                                                                                   Foreground="{x:Bind local:TimelinePage.StatusBrush(StatusLabel)}" />
+                                                                    </Border>
+                                                                    <!-- The Windows equivalent of the macOS "Mac" origin badge. -->
+                                                                    <Border Grid.Column="3" CornerRadius="4" Padding="5,2" VerticalAlignment="Center"
+                                                                            Background="{ThemeResource MuesliAccentMutedBrush}"
+                                                                            ToolTipService.ToolTip="Recorded on this PC">
+                                                                        <TextBlock Text="PC" FontFamily="Consolas" FontSize="10" FontWeight="Bold"
+                                                                                   Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                                    </Border>
+                                                                    <TextBlock Grid.Column="5"
+                                                                               Text="{x:Bind local:TimelinePage.MeetingDuration(DurationMs)}"
+                                                                               FontSize="12"
+                                                                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                                                               VerticalAlignment="Center" />
                                                                 </Grid>
-                                                                <TextBlock Text="{x:Bind DetailLabel}"
-                                                                           Style="{StaticResource MuesliRowSecondaryStyle}"
-                                                                           TextWrapping="NoWrap"
-                                                                           MaxLines="1"
-                                                                           Visibility="{x:Bind local:TimelinePage.BoolToVisibility(HasDetail)}" />
+                                                                <TextBlock Text="{x:Bind local:TimelinePage.MeetingPreview(Detail)}"
+                                                                           FontSize="13"
+                                                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                                                           TextWrapping="Wrap"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           MaxLines="2" />
                                                             </StackPanel>
-                                                            <TextBlock Grid.Column="2" Text="{x:Bind DurationLabel}" Style="{StaticResource MuesliRowSecondaryStyle}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,0,0" />
                                                         </Grid>
-                                                    </Border>
+                                                        <Rectangle Height="1" Margin="20,0" VerticalAlignment="Bottom"
+                                                                   Fill="{ThemeResource MuesliBorderSoftBrush}" />
+                                                    </Grid>
                                                 </DataTemplate>
                                             </ListView.ItemTemplate>
                                         </ListView>
-                                    </Border>
                                 </StackPanel>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-                    <Border x:Name="EmptyState" Style="{StaticResource MuesliCardStyle}" MinHeight="160">
+                    <Border x:Name="EmptyState" MinHeight="260">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                            <FontIcon Glyph="&#xE823;" FontSize="28" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
-                            <TextBlock x:Name="EmptyStateTitle" Text="No timeline activity yet" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                            <TextBlock x:Name="EmptyStateBody" Text="Saved dictations and completed meetings will appear here." Style="{StaticResource MuesliBodyStyle}" TextAlignment="Center" />
+                            <FontIcon Glyph="&#xE823;" FontSize="40" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateTitle" Text="No activity yet" FontSize="18" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextSecondaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateBody" Text="Saved dictations and completed meetings will appear here." FontSize="13" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextAlignment="Center" />
                         </StackPanel>
                     </Border>
                 </Grid>
