@@ -498,9 +498,8 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         : "Captions appear as speech is recognized.";
 
     partial void OnShowLiveTabChanged(bool value) => OnPropertyChanged(nameof(ShowRecordingNotes));
-    // Each save rewrites the meeting library, so typing updates the in-memory draft (which Stop and
-    // discard already persist) and writes to disk only after a pause.
-    // ponytail: whole-library save per pause; add a single-meeting upsert if large libraries lag.
+    // Typing updates the in-memory draft (which Stop and discard already persist) and writes to
+    // disk only after a pause.
     private CancellationTokenSource? _notesDebounce;
 
     partial void OnManualNotesChanged(string value)

@@ -200,7 +200,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     partial void OnManualNotesChanged(string value)
     {
         if (_meeting is null || value == _meeting.ManualNotes || Volatile.Read(ref _disposed) != 0) return;
-        // Each save rewrites the whole library, so persist after a typing pause, not per keystroke.
+        // Persist after a typing pause, not per keystroke.
         _notesPending = true;
         _notesDebounce?.Cancel();
         var debounce = _notesDebounce = new CancellationTokenSource();

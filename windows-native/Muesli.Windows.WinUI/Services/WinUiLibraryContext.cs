@@ -69,18 +69,43 @@ public sealed class WinUiLibraryContext : IDisposable
         return removed;
     }
 
-    public PersistedMeeting? FindMeeting(string id) => History.LoadMeetings()
-        .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
+    public PersistedMeeting? FindMeeting(string id) => History is SqliteLibraryHistoryAdapter sqlite
+        ? sqlite.FindMeeting(id)
+        : History.LoadMeetings().FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
 
+    // Notes autosave and live meetings write one meeting at a time. SQLite upserts only that row
+    // (SaveMeetings never deletes rows it was not given); the JSON library is a single document,
+    // so it is rewritten whole.
     public bool UpdateMeeting(PersistedMeeting meeting)
     {
         ArgumentNullException.ThrowIfNull(meeting);
+        if (History is SqliteLibraryHistoryAdapter sqlite)
+        {
+            if (sqlite.FindMeeting(meeting.Id) is null) return false;
+            sqlite.SaveMeetings([meeting]);
+            return true;
+        }
         var meetings = History.LoadMeetings().ToList();
         var index = meetings.FindIndex(item => string.Equals(item.Id, meeting.Id, StringComparison.Ordinal));
         if (index < 0) return false;
         meetings[index] = meeting;
         History.SaveMeetings(meetings);
         return true;
+    }
+
+    /// <summary>Inserts or replaces one meeting; a new or updated meeting is listed first.</summary>
+    public void SaveMeeting(PersistedMeeting meeting)
+    {
+        ArgumentNullException.ThrowIfNull(meeting);
+        if (History is SqliteLibraryHistoryAdapter sqlite)
+        {
+            sqlite.SaveMeetings([meeting]);
+            return;
+        }
+        var meetings = History.LoadMeetings().ToList();
+        meetings.RemoveAll(existing => string.Equals(existing.Id, meeting.Id, StringComparison.Ordinal));
+        meetings.Insert(0, meeting);
+        History.SaveMeetings(meetings);
     }
 
     public bool DeleteMeeting(string id)

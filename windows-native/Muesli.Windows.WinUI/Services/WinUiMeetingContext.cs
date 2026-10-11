@@ -505,13 +505,7 @@ public sealed class WinUiMeetingContext : IDisposable
         return meeting;
     }
 
-    private void SaveMeeting(PersistedMeeting meeting)
-    {
-        var meetings = _library.History.LoadMeetings().ToList();
-        meetings.RemoveAll(existing => string.Equals(existing.Id, meeting.Id, StringComparison.Ordinal));
-        meetings.Insert(0, meeting);
-        _library.History.SaveMeetings(meetings);
-    }
+    private void SaveMeeting(PersistedMeeting meeting) => _library.SaveMeeting(meeting);
 
     private async Task<PersistedMeeting> FinalizeMeetingAsync(
         PersistedMeeting meeting,
