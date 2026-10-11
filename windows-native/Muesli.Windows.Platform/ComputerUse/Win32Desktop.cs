@@ -116,28 +116,53 @@ public static class Win32Desktop
 
     public static bool IsForeground(long windowId) => GetForegroundWindow() == new IntPtr(windowId);
 
-    /// <summary>Restores and foregrounds a window. Windows only lets the foreground process change
-    /// focus, so a synthetic Alt press first unlocks SetForegroundWindow for this process.</summary>
+    /// <summary>The top-level window under a screen point (0 when none).</summary>
+    public static long RootWindowAt(double x, double y) =>
+        GetAncestor(WindowFromPoint(new NativePoint { X = (int)Math.Round(x), Y = (int)Math.Round(y) }), GaRoot).ToInt64();
+
+    private const uint GaRoot = 2;
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr handle, uint flags);
+
+    /// <summary>
+    /// Restores and foregrounds a window. Windows only lets the process that received the last
+    /// input change the foreground, so a zero-distance mouse move first gives this process that
+    /// right. (The common Alt-tap trick is avoided: the Alt reaches the newly focused app and puts
+    /// it in menu key-tip mode, turning the next typed letters into shortcuts.)
+    /// </summary>
     public static bool Activate(long windowId)
     {
         var handle = new IntPtr(windowId);
         if (!IsWindow(handle)) return false;
         if (IsIconic(handle)) ShowWindow(handle, SwRestore);
         if (GetForegroundWindow() == handle) return true;
-        keybd_event(VkMenu, 0, 0, UIntPtr.Zero);
-        keybd_event(VkMenu, 0, KeyEventKeyUp, UIntPtr.Zero);
+        WindowsInput.NudgeMouse();
         SetForegroundWindow(handle);
+        if (!WaitForeground(handle))
+        {
+            var foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), out _);
+            var ownThread = GetCurrentThreadId();
+            AttachThreadInput(ownThread, foregroundThread, true);
+            BringWindowToTop(handle);
+            SetForegroundWindow(handle);
+            AttachThreadInput(ownThread, foregroundThread, false);
+        }
+        return WaitForeground(handle);
+    }
+
+    private static bool WaitForeground(IntPtr handle)
+    {
         for (var attempt = 0; attempt < 20 && GetForegroundWindow() != handle; attempt++) Thread.Sleep(25);
         return GetForegroundWindow() == handle;
     }
 
     private const int SwRestore = 9;
-    private const byte VkMenu = 0x12;
-    private const uint KeyEventKeyUp = 0x2;
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr handle);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr handle, int command);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr handle);
-    [DllImport("user32.dll")] private static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extraInfo);
+    [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr handle);
+    [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint attach, uint attachTo, bool attachInput);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
 
     /// <summary>Copies the on-screen pixels of a rectangle (the window must be visible).</summary>
     public static Bitmap CaptureScreen(CuaRect frame)
