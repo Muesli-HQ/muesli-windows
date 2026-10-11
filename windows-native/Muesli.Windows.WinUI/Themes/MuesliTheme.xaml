@@ -338,8 +338,8 @@
                 <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#E0000000" />
                 <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#A8000000" />
                 <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8C000000" />
-                <SolidColorBrush x:Key="MuesliAccentBrush" Color="#2364C9" />
-                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#1F2364C9" />
+                <SolidColorBrush x:Key="MuesliAccentBrush" Color="#2563EB" />
+                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#1F2563EB" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#1F62D6" />
                 <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#0F9F6E" />
                 <SolidColorBrush x:Key="MuesliSuccessMutedBrush" Color="#1F0F9F6E" />
@@ -351,9 +351,9 @@
                 <SolidColorBrush x:Key="MuesliControlHoverBrush" Color="#F3F5F8" />
                 <SolidColorBrush x:Key="MuesliControlPressedBrush" Color="#E8EBF0" />
                 <SolidColorBrush x:Key="MuesliControlDisabledBrush" Color="#F6F7F9" />
-                <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="MuesliFocusOuterBrush" Color="#000000" />
-                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="MuesliOverlayBrush" Color="#66000000" />
 
                 <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E6000000" />
@@ -364,7 +364,7 @@
                 <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#E6000000" />
                 <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#61000000" />
                 <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#61000000" />
-                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#1D55AD" />
                 <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#174892" />
 
@@ -382,9 +382,9 @@
 
                 <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#1A000000" />
                 <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#24000000" />
-                <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="#000000" />
-                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#14000000" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#DDE1E8" />
                 <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#0F000000" />
@@ -409,12 +409,12 @@
                     See the note in the Default dictionary for why the ramp, not the brushes,
                     is the override point.
                 -->
-                <Color x:Key="SystemAccentColor">#2364C9</Color>
+                <Color x:Key="SystemAccentColor">#2563EB</Color>
                 <Color x:Key="SystemAccentColorLight1">#4C86DE</Color>
                 <Color x:Key="SystemAccentColorLight2">#7BA9EC</Color>
                 <Color x:Key="SystemAccentColorLight3">#A9C8F4</Color>
                 <Color x:Key="SystemAccentColorDark1">#1F62D6</Color>
-                <Color x:Key="SystemAccentColorDark2">#2364C9</Color>
+                <Color x:Key="SystemAccentColorDark2">#2563EB</Color>
                 <Color x:Key="SystemAccentColorDark3">#1D55AD</Color>
                 <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#1F62D6" />
                 <!--
@@ -432,7 +432,7 @@
                     </LinearGradientBrush.GradientStops>
                 </LinearGradientBrush>
                 <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
-                <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#2563EB" />
                 <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#1B58C0" />
                 <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#174CA6" />
