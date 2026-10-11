@@ -12,10 +12,8 @@ does not replace the applicable license texts in `licenses/` or upstream terms.
 - License: the license shipped in the 2026.5.0 NuGet package; this build selects
   `LicenseType.Community`.
 - Use: PDF meeting export.
-- Important: the Community license is not universally available. The legal entity that
-  builds or distributes Muesli must confirm eligibility under QuestPDF's current License
-  Selection Guide or obtain the appropriate paid license. No eligibility conclusion is
-  made here.
+- Eligibility: Muesli is an open-source project, which QuestPDF's Community license covers
+  (confirmed by the release owner on 2026-10-11).
 - Included text: `licenses/QuestPDF-2026.5.0.md`.
 
 QuestPDF's redistributed native/content dependencies in this package include:
@@ -39,9 +37,8 @@ QuestPDF's redistributed native/content dependencies in this package include:
   License 1.1; https://www.latofonts.com/; the upstream `LatoFont/OFL.txt` is
   also retained verbatim in the published package.
 
-QuestPDF community-license eligibility is a Phase 13 / EXP-01 release-owner
-check. This repository records that the build selects `LicenseType.Community`
-and does not declare that the distributing entity is eligible.
+The build selects `LicenseType.Community`; the release owner confirmed eligibility
+(EXP-01) on 2026-10-11 because Muesli is an open-source project.
 
 ### NAudio 2.2.1
 
@@ -156,14 +153,6 @@ and does not declare that the distributing entity is eligible.
 - Source: https://github.com/rsms/inter
 - License: SIL Open Font License 1.1.
 - Use: application typography.
-- Included text: `licenses/OFL-1.1.txt`.
-
-### Lato
-
-- Copyright: Łukasz Dziedzic (tyPoland).
-- Source: https://www.latofonts.com
-- License: SIL Open Font License 1.1.
-- Use: default font bundled by QuestPDF for PDF export (`LatoFont/`).
 - Included text: `licenses/OFL-1.1.txt`.
 
 ## Downloaded model artifacts

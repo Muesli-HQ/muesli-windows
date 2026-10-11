@@ -6,6 +6,9 @@ namespace Muesli.Windows.Tests;
 /// AUTO-01: automatic PDF export shares the Markdown exporter's atomic, collision-safe,
 /// manifest-backed machinery and honors the EXP-01 QuestPDF release gate.
 /// </summary>
+
+// Both classes flip the static PDF gate; running them in parallel made each see the other's value.
+[Collection("PdfExportGate")]
 public sealed class AutoPdfExportTests
 {
     [Fact]

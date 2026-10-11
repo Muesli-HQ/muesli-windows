@@ -169,16 +169,15 @@ public sealed class PackageDisclosureAndNativeInventoryTests
     }
 
     [Fact]
-    public void QuestPDFCommunityLicenseIsSelectedWithoutAnEligibilityConclusion()
+    public void QuestPDFCommunityLicenseEligibilityIsRecorded()
     {
         var exporter = Read("windows-native/Muesli.Windows.Platform/Services/MeetingDocumentWriter.cs");
         var notices = Read("THIRD-PARTY-NOTICES.md");
         var ledger = Read("docs/WINDOWS_LAUNCH_LEDGER.md");
         Assert.Contains("QuestPDF.Settings.License = LicenseType.Community", exporter, StringComparison.Ordinal);
         Assert.Contains("QuestPDF 2026.5.0", notices, StringComparison.Ordinal);
-        Assert.Contains("No eligibility conclusion is", notices, StringComparison.Ordinal);
-        Assert.Contains("does not declare that the distributing entity is eligible", notices, StringComparison.Ordinal);
-        Assert.Contains("community-license eligibility remains a Phase 13 release-owner check", ledger, StringComparison.Ordinal);
+        Assert.Contains("Muesli is an open-source project", notices, StringComparison.Ordinal);
+        Assert.Contains("community-license eligibility approved 2026-10-11 (open-source project)", ledger, StringComparison.Ordinal);
         var expRow = ledger.Split('\n').First(line => line.Contains("| EXP-01 |", StringComparison.Ordinal));
         Assert.Contains("Implemented with verification debt", expRow, StringComparison.Ordinal);
         Assert.DoesNotContain("Complete and verified", expRow, StringComparison.Ordinal);

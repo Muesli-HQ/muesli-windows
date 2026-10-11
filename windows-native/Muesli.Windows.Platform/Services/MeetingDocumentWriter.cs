@@ -7,13 +7,12 @@ namespace Muesli.Windows.Services;
 public static class MeetingDocumentWriter
 {
     /// <summary>
-    /// Release gate for the QuestPDF-backed PDF export. QuestPDF's Community-license eligibility is
-    /// a release-owner decision (EXP-01); until that conclusion is recorded, PDF is not offered.
-    /// The export system is retained and can be enabled with this switch (or the
-    /// <c>MUESLI_PDF_EXPORT_APPROVED=1</c> development override) once eligibility is approved.
+    /// Release gate for the QuestPDF-backed PDF export (EXP-01). Approved 2026-10-11: Muesli is an
+    /// open-source project, which QuestPDF's Community license covers. Kept as a switch so PDF can be
+    /// withdrawn without removing the exporter; <c>MUESLI_PDF_EXPORT_APPROVED=0</c> turns it off.
     /// </summary>
     public static bool PdfExportApproved { get; set; } =
-        string.Equals(Environment.GetEnvironmentVariable("MUESLI_PDF_EXPORT_APPROVED"), "1", StringComparison.Ordinal);
+        !string.Equals(Environment.GetEnvironmentVariable("MUESLI_PDF_EXPORT_APPROVED"), "0", StringComparison.Ordinal);
 
     /// <summary>Save formats the export picker may offer, in order.</summary>
     public static string[] ApprovedExportExtensions =>
@@ -117,8 +116,7 @@ public static class MeetingDocumentWriter
 
     private static Document CreatePdfDocument(string markdown)
     {
-        // This build selects QuestPDF's Community license. The distributing legal
-        // entity must confirm that it satisfies QuestPDF's current eligibility terms.
+        // QuestPDF's Community license: Muesli is open source (EXP-01, approved 2026-10-11).
         QuestPDF.Settings.License = LicenseType.Community;
 
         var lines = markdown.Split(new[] { '\r', '\n' }, StringSplitOptions.None);

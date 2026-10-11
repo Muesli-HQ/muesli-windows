@@ -97,7 +97,7 @@ fresh-launch log evidence.
 
 - Updates are manual: Muesli does not check for, download, or install updates automatically.
 - Muesli does not pause or duck unrelated media while recording ("no interference").
-- PDF export is disabled pending a QuestPDF Community-license eligibility decision; Markdown export remains available and PDF must not be advertised.
+- Meetings export as Markdown or PDF (QuestPDF Community license; Muesli is open source).
 - Public support/privacy URLs and the production publisher identity are not final; the package is unsigned and carries the development publisher until a signing identity is configured.
 
 ## Roadmap

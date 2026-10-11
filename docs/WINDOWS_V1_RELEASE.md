@@ -4,7 +4,7 @@
 
 - **Updates are manual.** Muesli can check a signed update manifest and download/verify a package, but automatic installation is disabled until a production signing identity exists. Release notes and the project page remain the update channel.
 - **No audio interference.** Muesli records without pausing or ducking unrelated media.
-- **PDF export is disabled** (`PdfExportApproved=false`) pending an explicit QuestPDF Community-license eligibility decision. Markdown export remains available; PDF must not be advertised.
+- **PDF export is enabled**: QuestPDF Community-license eligibility was approved on 2026-10-11 (Muesli is open source). `MUESLI_PDF_EXPORT_APPROVED=0` withdraws it.
 - **Support/privacy publication and production signing are not final.** Public support and privacy URLs are pending, the package carries the development publisher, and it is unsigned until a production signing identity is configured.
 
 ## Build artifacts (WinUI MSIX)
