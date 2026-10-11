@@ -43,7 +43,11 @@ public sealed partial class InsightsPage : Page
             ViewModel.Load();
             ScrollHeatmapToLatest();
         };
-        SizeChanged += (_, _) => ScrollHeatmapToLatest();
+        SizeChanged += (_, args) =>
+        {
+            ApplyResponsiveLayout(args.NewSize.Width);
+            ScrollHeatmapToLatest();
+        };
     }
 
     /// <summary>
@@ -104,22 +108,22 @@ public sealed partial class InsightsPage : Page
     public static FontWeight WordWeight(bool isTop) =>
         isTop ? FontWeights.Bold : FontWeights.Medium;
 
-    // Heatmap palette (macOS InsightsPalette.intensity): empty = surface 62%; L1/L2 = accent
-    // 24%/48%; L3/L4 = cyan 67%/95%. Three themed layers share the cell so Light/Dark/Contrast
-    // repaint through ThemeResource without rebuilding the grid.
+    /// <summary>macOS word cloud: the top word cyan, words at half its count accent, the rest secondary.</summary>
+    public static Brush WordBrush(bool isTop, bool isStrong) => isTop
+        ? new SolidColorBrush(Color.FromArgb(0xFF, 0x32, 0xD2, 0xE6))
+        : (Brush)Application.Current.Resources[isStrong ? "MuesliAccentBrush" : "MuesliTextSecondaryBrush"];
+
+    // Heatmap palette (macOS InsightsPalette.intensity): empty = surface 62%, then accent at
+    // 24/48/72/100%. Two themed layers share the cell so Light/Dark/Contrast repaint through
+    // ThemeResource without rebuilding the grid.
     public static double HeatEmptyOpacity(int level) => level == 0 ? 0.62 : 0;
 
     public static double HeatAccentOpacity(int level) => level switch
     {
         1 => 0.24,
         2 => 0.48,
-        _ => 0
-    };
-
-    public static double HeatCyanOpacity(int level) => level switch
-    {
-        3 => 0.67,
-        4 => 0.95,
+        3 => 0.72,
+        4 => 1,
         _ => 0
     };
 
@@ -193,6 +197,29 @@ public sealed partial class InsightsPage : Page
         };
     }
 
+    /// <summary>
+    /// The macOS ViewThatFits fallbacks: the range controls drop under the header identity, and
+    /// the OVERVIEW box under the word balance, once the page is too narrow for one row.
+    /// </summary>
+    private void ApplyResponsiveLayout(double width)
+    {
+        ContentStack.Padding = MuesliPageMetrics.ContentPadding(width);
+        var narrow = width < 1000;
+        Grid.SetRow(RangeControls, narrow ? 1 : 0);
+        Grid.SetColumn(RangeControls, narrow ? 0 : 2);
+        Grid.SetColumnSpan(RangeControls, narrow ? 3 : 1);
+
+        var stacked = width < 820;
+        UsageGrid.ColumnDefinitions[1].Width = stacked ? new GridLength(0) : new GridLength(300);
+        UsageGrid.ColumnSpacing = stacked ? 0 : 20;
+        UsageGrid.RowSpacing = stacked ? 20 : 0;
+        Grid.SetRow(OverviewBox, stacked ? 1 : 0);
+        Grid.SetColumn(OverviewBox, stacked ? 0 : 1);
+    }
+
+    private void UpdateActivitySubtitle() =>
+        ActivitySubtitle.Text = ViewModel.ActivityModeIndex == 1 ? "Meetings recorded each day" : "Words captured each day";
+
     private void RangeBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
         if (sender.SelectedItem is SelectorBarItem { Tag: string tag } && int.TryParse(tag, out var index))
@@ -206,6 +233,7 @@ public sealed partial class InsightsPage : Page
         if (sender.SelectedItem is SelectorBarItem { Tag: string tag } && int.TryParse(tag, out var index))
         {
             ViewModel.ActivityModeIndex = index;
+            UpdateActivitySubtitle();
         }
     }
 

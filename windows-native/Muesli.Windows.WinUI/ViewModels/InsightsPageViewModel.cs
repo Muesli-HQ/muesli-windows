@@ -15,13 +15,22 @@ public partial class InsightsPageViewModel(
 {
     private InsightsShareCardData _shareData = new("12 months", 0, 0, 0, 0, 0, 0, 0);
     private string? _previewFile;
-    [ObservableProperty] public partial int RangeIndex { get; set; } = 2;
+    [ObservableProperty] public partial int RangeIndex { get; set; } = 1;
     [ObservableProperty] public partial int ActivityModeIndex { get; set; }
     [ObservableProperty] public partial string TotalWords { get; private set; } = "0";
     [ObservableProperty] public partial string Meetings { get; private set; } = "0";
     [ObservableProperty] public partial string AveragePace { get; private set; } = "—";
     [ObservableProperty] public partial string LifetimeTotalWords { get; private set; } = "0";
     [ObservableProperty] public partial string LifetimeMeetings { get; private set; } = "0";
+    [ObservableProperty] public partial string LifetimeDictationWords { get; private set; } = "0";
+    [ObservableProperty] public partial string LifetimeMeetingWords { get; private set; } = "0";
+    [ObservableProperty] public partial string SelectedDictationWords { get; private set; } = "0";
+    [ObservableProperty] public partial string SelectedMeetingWords { get; private set; } = "0";
+    [ObservableProperty] public partial string LongestStreakNumber { get; private set; } = "0";
+    [ObservableProperty] public partial string CurrentStreakUnit { get; private set; } = "days";
+    [ObservableProperty] public partial string LongestStreakUnit { get; private set; } = "days";
+    [ObservableProperty] public partial string ActiveDaysUnit { get; private set; } = "days";
+    [ObservableProperty] public partial bool IsStreakBroken { get; private set; } = true;
     [ObservableProperty] public partial string LifetimeAveragePace { get; private set; } = "—";
     [ObservableProperty] public partial string CurrentStreak { get; private set; } = "0 days";
     [ObservableProperty] public partial string LongestStreak { get; private set; } = "0 days";
@@ -162,6 +171,15 @@ public partial class InsightsPageViewModel(
         SelectedAveragePace = AveragePace;
         LifetimeTotalWords = snapshot.Lifetime.TotalWords.ToString("N0");
         LifetimeMeetings = snapshot.Lifetime.Meetings.ToString("N0");
+        LifetimeDictationWords = snapshot.Lifetime.DictationWords.ToString("N0");
+        LifetimeMeetingWords = snapshot.Lifetime.MeetingWords.ToString("N0");
+        SelectedDictationWords = snapshot.Selected.DictationWords.ToString("N0");
+        SelectedMeetingWords = snapshot.Selected.MeetingWords.ToString("N0");
+        LongestStreakNumber = snapshot.LongestStreakDays.ToString("N0");
+        CurrentStreakUnit = snapshot.CurrentStreakDays == 1 ? "day" : "days";
+        LongestStreakUnit = snapshot.LongestStreakDays == 1 ? "day" : "days";
+        ActiveDaysUnit = snapshot.ActiveDaysInRange == 1 ? "day" : "days";
+        IsStreakBroken = snapshot.CurrentStreakDays == 0;
         LifetimeAveragePace = snapshot.Lifetime.AverageWpm <= 0 ? "—" : $"{snapshot.Lifetime.AverageWpm:N0} WPM";
         CurrentStreak = Count(snapshot.CurrentStreakDays, "day", "days");
         LongestStreak = Count(snapshot.LongestStreakDays, "day", "days");
@@ -259,7 +277,8 @@ public partial class InsightsPageViewModel(
             item.Word,
             item.Count,
             WordFontSize(item.Count, high, low),
-            item.Count == high)).ToList();
+            item.Count == high,
+            item.Count >= high / 2)).ToList();
     }
 
     private static double WordFontSize(int count, int high, int low)
@@ -385,7 +404,8 @@ public sealed record InsightsDayItem(string DateLabel, int Words, int Meetings, 
           $"{InsightsPageViewModel.Count(Meetings, "meeting", "meetings")}";
 }
 
-public sealed record InsightsWordItem(string Word, int Count, double DisplaySize, bool IsTop)
+/// <summary>macOS word cloud tones: the top word cyan, words at half its count or more accent, the rest secondary.</summary>
+public sealed record InsightsWordItem(string Word, int Count, double DisplaySize, bool IsTop, bool IsStrong = false)
 {
     public string AccessibleLabel => Count == 1
         ? $"{Word}, used once"
