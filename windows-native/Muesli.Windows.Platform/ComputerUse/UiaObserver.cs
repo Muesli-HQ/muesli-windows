@@ -105,7 +105,7 @@ public sealed class UiaObserver : IDisposable
         {
             library.Element.ControlType, library.Element.Name, library.Element.IsEnabled, library.Element.BoundingRectangle,
             library.Element.IsOffscreen, library.Element.IsPassword, library.Element.HelpText, library.Element.HasKeyboardFocus,
-            library.Element.IsKeyboardFocusable, library.Element.ProcessId,
+            library.Element.IsKeyboardFocusable, library.Element.ProcessId, library.Element.LocalizedControlType,
             _automation.PatternLibrary.InvokePattern.AvailabilityProperty, _automation.PatternLibrary.TogglePattern.AvailabilityProperty,
             _automation.PatternLibrary.ExpandCollapsePattern.AvailabilityProperty, _automation.PatternLibrary.SelectionItemPattern.AvailabilityProperty,
             _automation.PatternLibrary.ValuePattern.AvailabilityProperty, _automation.PatternLibrary.RangeValuePattern.AvailabilityProperty,
@@ -168,7 +168,8 @@ public sealed class UiaObserver : IDisposable
         {
             if (name.Length > 0 && texts.Count < MaxTextLines && type is ControlType.Text or ControlType.Header or ControlType.HeaderItem
                     or ControlType.StatusBar or ControlType.TitleBar or ControlType.Image or ControlType.Group && seenText.Add(name))
-                texts.Add(Truncate(name, 160));
+                // Web pages expose h1-h6 as "heading"; mark them so the model can tell a heading from body text.
+                texts.Add(Get<string>(element, library.Element.LocalizedControlType) == "heading" ? "# " + Truncate(name, 160) : Truncate(name, 160));
             return false;
         }
 

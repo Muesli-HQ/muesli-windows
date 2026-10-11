@@ -56,7 +56,7 @@ public static class CuaPrompt
             text.Append('\n');
         }
         if (state.Elements.Count == 0) text.Append("(none found; use the screenshot)\n");
-        if (state.VisibleText is { Length: > 0 } visible) text.Append("Other visible text:\n").Append(Clip(visible, MaxTextLength)).Append('\n');
+        if (state.VisibleText is { Length: > 0 } visible) text.Append("Other visible text (# marks a heading):\n").Append(Clip(visible, MaxTextLength)).Append('\n');
         if (state.DocumentText is { Length: > 0 } document) text.Append("Text of the focused document:\n").Append(Clip(document, MaxTextLength)).Append('\n');
         return text.ToString();
     }
