@@ -9,39 +9,79 @@
     XYFocusKeyboardNavigation="Enabled"
     UseSystemFocusVisuals="True">
     <Page.Resources>
-        <Style x:Key="AboutRowTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliRowTitleStyle}">
-            <Setter Property="FontSize" Value="15" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="TextTrimming" Value="None" />
+        <!-- macOS AboutView: aboutCard (padding 20, cornerMedium), sectionHeader (11 semibold caps). -->
+        <Style x:Key="AboutCardStyle" TargetType="Border" BasedOn="{StaticResource MuesliSettingsGroupStyle}">
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="20,12" />
         </Style>
-        <Style x:Key="AboutRowHelpStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliBodyStyle}">
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="Margin" Value="0,3,0,0" />
-        </Style>
-        <Style x:Key="AboutMonoValueStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliTimestampStyle}">
-            <Setter Property="FontSize" Value="13" />
+        <Style x:Key="AboutSectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+            <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="CharacterSpacing" Value="40" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+            <Setter Property="Margin" Value="2,8,0,-4" />
+        </Style>
+        <Style x:Key="AboutRowStyle" TargetType="Grid">
+            <Setter Property="Padding" Value="0,8" />
+            <Setter Property="ColumnSpacing" Value="16" />
+            <Setter Property="MinHeight" Value="44" />
+        </Style>
+        <Style x:Key="AboutRowTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
             <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
-            <Setter Property="TextWrapping" Value="WrapWholeWords" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="AboutCaptionStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="AboutPathStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, monospace" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
             <Setter Property="IsTextSelectionEnabled" Value="True" />
             <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-        <Style x:Key="AboutPathStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliTimestampStyle}">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="IsTextSelectionEnabled" Value="True" />
-            <Setter Property="VerticalAlignment" Value="Top" />
-            <Setter Property="MinWidth" Value="0" />
         </Style>
         <Style x:Key="AboutDividerStyle" TargetType="Border">
             <Setter Property="Height" Value="1" />
             <Setter Property="Background" Value="{ThemeResource MuesliBorderSoftBrush}" />
-            <Setter Property="Margin" Value="16,0" />
         </Style>
-        <Style x:Key="AboutRowButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}">
-            <Setter Property="MinHeight" Value="32" />
-            <Setter Property="Padding" Value="12,6" />
+        <!-- macOS actionButton: fixed 136 wide, 13 medium, cornerSmall. -->
+        <Style x:Key="AboutActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}">
+            <Setter Property="Width" Value="136" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="AboutPrimaryActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliPrimaryButtonStyle}">
+            <Setter Property="Width" Value="136" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- The diagnostics disclosure reads as a card row, not a filled Fluent expander. -->
+        <SolidColorBrush x:Key="ExpanderHeaderBackground" Color="Transparent" />
+        <SolidColorBrush x:Key="ExpanderHeaderBorderBrush" Color="Transparent" />
+        <SolidColorBrush x:Key="ExpanderContentBackground" Color="Transparent" />
+        <SolidColorBrush x:Key="ExpanderContentBorderBrush" Color="Transparent" />
+        <Style x:Key="AboutIconButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </Page.Resources>
@@ -50,417 +90,290 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       TabNavigation="Cycle">
-            <!-- P7-07: one shared reading-width cap instead of this page's private 760/720 pair.
-                 HorizontalAlignment must stay Left - Stretch + MaxWidth centres the column and
-                 breaks the shared page gutter (P1-04). -->
             <StackPanel x:Name="ContentRoot"
                         Padding="{StaticResource MuesliPageContentPadding}"
-                        Spacing="12"
-                        MaxWidth="{StaticResource MuesliPageContentMaxWidth}"
-                        HorizontalAlignment="Left">
+                        Spacing="12">
 
-                <StackPanel Spacing="4">
-                    <TextBlock Text="About" Style="{StaticResource MuesliPageTitleStyle}" />
-                    <TextBlock Text="Muesli keeps dictation and meeting transcription close to your Windows workspace."
-                               Style="{StaticResource MuesliPageSubtitleStyle}" />
-                </StackPanel>
+                <TextBlock Text="About" Style="{StaticResource MuesliPageTitleStyle}" />
 
-                <!-- Branding -->
-                <Border Style="{StaticResource MuesliCardStyle}"
-                        Padding="16,14"
-                        AutomationProperties.Name="Muesli branding">
-                    <Grid x:Name="BrandGrid">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Border x:Name="BrandMark"
-                                Width="72"
-                                Height="72"
-                                CornerRadius="18"
-                                Background="{ThemeResource MuesliAccentMutedBrush}"
-                                VerticalAlignment="Top">
-                            <StackPanel Orientation="Horizontal"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Spacing="4">
-                                <Border Width="5" Height="18" CornerRadius="3" Background="{ThemeResource MuesliAccentBrush}" />
-                                <Border Width="5" Height="30" CornerRadius="3" Background="{ThemeResource MuesliAccentBrush}" />
-                                <Border Width="5" Height="24" CornerRadius="3" Background="{ThemeResource MuesliAccentBrush}" />
-                                <Border Width="5" Height="14" CornerRadius="3" Background="{ThemeResource MuesliAccentBrush}" />
-                            </StackPanel>
-                        </Border>
-                        <StackPanel x:Name="BrandCopy"
-                                    Grid.Column="1"
-                                    Spacing="6"
-                                    VerticalAlignment="Center"
-                                    MinWidth="0">
-                            <TextBlock Text="Muesli"
-                                       FontSize="26"
-                                       FontWeight="SemiBold"
-                                       FontFamily="{StaticResource MuesliFontFamilySemiBold}" />
-                            <TextBlock Text="Windows-native dictation and meeting transcription"
-                                       Style="{StaticResource MuesliBodyStyle}"
-                                       FontSize="14" />
-                            <Border Style="{StaticResource MuesliAccentBadgeStyle}"
-                                    HorizontalAlignment="Left"
-                                    Margin="0,2,0,0"
-                                    ToolTipService.ToolTip="{x:Bind ViewModel.VersionTooltip, Mode=OneWay}">
-                                <TextBlock Text="{x:Bind ViewModel.Version, Mode=OneWay}"
-                                           Style="{StaticResource MuesliAccentBadgeTextStyle}"
-                                           AutomationProperties.Name="Application version"
-                                           AutomationProperties.AutomationId="AboutVersionBadge" />
-                            </Border>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- App info: truthful assembly / runtime identity -->
-                <TextBlock Text="APP INFO" Style="{StaticResource MuesliSectionLabelStyle}" />
-                <Border Style="{StaticResource MuesliSettingsGroupStyle}"
+                <!-- App info -->
+                <TextBlock Text="APP INFO" Style="{StaticResource AboutSectionLabelStyle}" />
+                <Border Style="{StaticResource AboutCardStyle}"
                         AutomationProperties.Name="Application information">
                     <StackPanel>
-                        <Grid Padding="16,10" ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Version"
-                                       Style="{StaticResource AboutRowTitleStyle}"
-                                       VerticalAlignment="Center" />
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="Version" Style="{StaticResource AboutRowTitleStyle}" />
+                                <TextBlock Style="{StaticResource AboutCaptionStyle}"
+                                           AutomationProperties.AutomationId="AboutRuntimeVersionValue">
+                                    <Run Text="Assembly" />
+                                    <Run Text="{x:Bind ViewModel.AssemblyVersion, Mode=OneWay}" />
+                                    <Run Text="·" />
+                                    <Run Text="{x:Bind ViewModel.RuntimeVersion, Mode=OneWay}" />
+                                </TextBlock>
+                            </StackPanel>
                             <TextBlock Grid.Column="1"
                                        Text="{x:Bind ViewModel.Version, Mode=OneWay}"
-                                       Style="{StaticResource AboutMonoValueStyle}"
+                                       FontFamily="Consolas, Cascadia Mono, monospace"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       IsTextSelectionEnabled="True"
                                        ToolTipService.ToolTip="{x:Bind ViewModel.VersionTooltip, Mode=OneWay}"
                                        AutomationProperties.Name="Product version"
                                        AutomationProperties.AutomationId="AboutVersionValue" />
                         </Grid>
                         <Border Style="{StaticResource AboutDividerStyle}" />
-                        <Grid Padding="16,10" ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Assembly" Style="{StaticResource AboutRowTitleStyle}" VerticalAlignment="Center" />
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Text="Updates" Style="{StaticResource AboutRowTitleStyle}" />
                             <TextBlock Grid.Column="1"
-                                       Text="{x:Bind ViewModel.AssemblyVersion, Mode=OneWay}"
-                                       Style="{StaticResource AboutMonoValueStyle}"
-                                       AutomationProperties.Name="Assembly version"
-                                       AutomationProperties.AutomationId="AboutAssemblyVersionValue" />
-                        </Grid>
-                        <Border Style="{StaticResource AboutDividerStyle}" />
-                        <Grid Padding="16,10" ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="Runtime" Style="{StaticResource AboutRowTitleStyle}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1"
-                                       Text="{x:Bind ViewModel.RuntimeVersion, Mode=OneWay}"
-                                       Style="{StaticResource AboutMonoValueStyle}"
+                                       Text="{x:Bind ViewModel.UpdateStatus, Mode=OneWay}"
+                                       FontSize="13"
+                                       Foreground="{ThemeResource MuesliTextSecondaryBrush}"
                                        TextWrapping="Wrap"
-                                       AutomationProperties.Name="Runtime version"
-                                       AutomationProperties.AutomationId="AboutRuntimeVersionValue" />
-                        </Grid>
-                        <Border Style="{StaticResource AboutDividerStyle}" />
-                        <Grid Padding="16,10" ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel MinWidth="0" Spacing="2">
-                                <TextBlock Text="Updates" Style="{StaticResource AboutRowTitleStyle}" />
-                                <TextBlock Text="{x:Bind ViewModel.UpdateStatus, Mode=OneWay}"
-                                           Style="{StaticResource AboutRowHelpStyle}"
-                                           TextWrapping="Wrap"
-                                           AutomationProperties.Name="Update status"
-                                           AutomationProperties.AutomationId="UpdateStatusText" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    Style="{StaticResource MuesliSecondaryButtonStyle}"
-                                    VerticalAlignment="Center"
+                                       TextAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       AutomationProperties.Name="Update status"
+                                       AutomationProperties.AutomationId="UpdateStatusText" />
+                            <Button Grid.Column="2"
+                                    Style="{StaticResource AboutActionStyle}"
                                     Command="{x:Bind ViewModel.CheckForUpdatesCommand}"
-                                    Content="Check for updates"
                                     IsEnabled="{x:Bind local:AboutPage.Not(ViewModel.IsBusy), Mode=OneWay}"
                                     AutomationProperties.Name="Check for updates"
-                                    AutomationProperties.AutomationId="CheckForUpdatesButton" />
+                                    AutomationProperties.AutomationId="CheckForUpdatesButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE895;" FontSize="11" />
+                                    <TextBlock Text="Check now" />
+                                </StackPanel>
+                            </Button>
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <!-- Setup and tour: existing commands only -->
-                <TextBlock Text="SETUP AND TOUR" Style="{StaticResource MuesliSectionLabelStyle}" />
-                <Border Style="{StaticResource MuesliSettingsGroupStyle}"
+                <!-- Setup and tour (Windows only; macOS keeps these in the menu bar) -->
+                <TextBlock Text="SETUP" Style="{StaticResource AboutSectionLabelStyle}" />
+                <Border Style="{StaticResource AboutCardStyle}"
                         AutomationProperties.Name="Setup and feature tour">
                     <StackPanel>
-                        <Grid Padding="16,10" ColumnSpacing="16">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel x:Name="ResumeSetupCopy" MinWidth="0">
-                                <TextBlock Text="Resume setup" Style="{StaticResource AboutRowTitleStyle}" />
-                                <TextBlock Text="Review microphone, models, shortcuts, and the main Muesli workflow."
-                                           Style="{StaticResource AboutRowHelpStyle}" />
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="Setup" Style="{StaticResource AboutRowTitleStyle}" />
+                                <TextBlock Text="Microphone, models and shortcuts."
+                                           Style="{StaticResource AboutCaptionStyle}" />
                             </StackPanel>
                             <Button x:Name="ResumeSetupButton"
                                     Grid.Column="1"
-                                    Style="{StaticResource MuesliPrimaryButtonStyle}"
+                                    Style="{StaticResource AboutPrimaryActionStyle}"
                                     Command="{x:Bind ViewModel.ResumeSetupCommand}"
                                     Content="Resume setup"
                                     AutomationProperties.Name="Resume Muesli setup"
                                     AutomationProperties.AutomationId="ResumeSetupButton" />
                         </Grid>
                         <Border Style="{StaticResource AboutDividerStyle}" />
-                        <Grid Padding="16,10" ColumnSpacing="16">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel x:Name="ReplayTourCopy" MinWidth="0">
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                            <StackPanel VerticalAlignment="Center" Spacing="2">
                                 <TextBlock Text="Feature tour" Style="{StaticResource AboutRowTitleStyle}" />
-                                <TextBlock Text="Replay the in-app tour of the dashboard, dictation, and meetings."
-                                           Style="{StaticResource AboutRowHelpStyle}" />
+                                <TextBlock Text="Dashboard, dictation and meetings in a minute."
+                                           Style="{StaticResource AboutCaptionStyle}" />
                             </StackPanel>
                             <Button x:Name="ReplayFeatureTourButton"
                                     Grid.Column="1"
-                                    Style="{StaticResource AboutRowButtonStyle}"
+                                    Style="{StaticResource AboutActionStyle}"
                                     Command="{x:Bind ViewModel.ReplayFeatureTourCommand}"
-                                    Content="Replay tour"
                                     AutomationProperties.Name="Open feature tour"
-                                    AutomationProperties.AutomationId="ReplayFeatureTourButton" />
+                                    AutomationProperties.AutomationId="ReplayFeatureTourButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE768;" FontSize="11" />
+                                    <TextBlock Text="Replay tour" />
+                                </StackPanel>
+                            </Button>
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <!-- Isolated profile paths: wrap in-card, tooltip carries the full string -->
-                <StackPanel Spacing="4">
-                    <TextBlock Text="LOCAL PROFILE" Style="{StaticResource MuesliSectionLabelStyle}" />
-                    <!--
-                        The old copy claimed "Model cache follows the active profile", which is not
-                        true of the profile this page reports. TranscriptionModelCatalog.
-                        ModelCacheDirectory resolves MUESLI_NATIVE_ASR_CACHE, then
-                        MuesliPathService.UserProfileDirectory - which reads only the
-                        MUESLI_PROFILE_ROOT environment variable, never the profile-root command
-                        line argument the rest of these rows come from. So a profile passed on the
-                        command line moves the library but leaves the weights where they were.
-                    -->
-                    <TextBlock Text="Directories this process is using. Model weights sit outside the profile and are shared between profiles."
-                               Style="{StaticResource MuesliBodyStyle}" />
-                </StackPanel>
-                <Border Style="{StaticResource MuesliSettingsGroupStyle}"
+                <!-- Data: macOS "App Data Directory" row, plus the other folders this process uses -->
+                <TextBlock Text="DATA" Style="{StaticResource AboutSectionLabelStyle}" />
+                <Border Style="{StaticResource AboutCardStyle}"
                         AutomationProperties.Name="Local profile paths">
                     <StackPanel>
-                        <Grid Padding="16,8" ColumnSpacing="16">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="ProfileLabel"
-                                       Text="Profile"
-                                       Style="{StaticResource AboutRowTitleStyle}" />
-                            <TextBlock x:Name="ProfileValue"
-                                       Grid.Column="1"
-                                       Text="{x:Bind ViewModel.ProfilePath, Mode=OneWay}"
-                                       Style="{StaticResource AboutPathStyle}"
-                                       ToolTipService.ToolTip="{x:Bind ViewModel.ProfilePath, Mode=OneWay}"
-                                       AutomationProperties.Name="Local profile path"
-                                       AutomationProperties.AutomationId="LocalProfilePath" />
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                            <StackPanel VerticalAlignment="Center" Spacing="4" MinWidth="0">
+                                <TextBlock Text="App Data Directory" Style="{StaticResource AboutRowTitleStyle}" />
+                                <TextBlock Text="{x:Bind ViewModel.ProfilePath, Mode=OneWay}"
+                                           Style="{StaticResource AboutPathStyle}"
+                                           ToolTipService.ToolTip="{x:Bind ViewModel.ProfilePath, Mode=OneWay}"
+                                           AutomationProperties.Name="Local profile path"
+                                           AutomationProperties.AutomationId="LocalProfilePath" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource AboutActionStyle}"
+                                    Command="{x:Bind ViewModel.OpenDataDirectoryCommand}"
+                                    AutomationProperties.Name="Open app data directory"
+                                    AutomationProperties.AutomationId="OpenDataDirectoryButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE838;" FontSize="11" />
+                                    <TextBlock Text="Open" />
+                                </StackPanel>
+                            </Button>
                         </Grid>
                         <Border Style="{StaticResource AboutDividerStyle}" />
-                        <Grid Padding="16,8" ColumnSpacing="16">
+                        <Grid Padding="0,10,0,4" ColumnSpacing="12" RowSpacing="2" ColumnDefinitions="96,*,Auto">
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="28" />
+                                <RowDefinition Height="28" />
+                                <RowDefinition Height="28" />
+                                <RowDefinition Height="28" />
                             </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="LogsLabel"
-                                       Text="Logs"
-                                       Style="{StaticResource AboutRowTitleStyle}" />
-                            <TextBlock x:Name="LogsValue"
-                                       Grid.Column="1"
-                                       Text="{x:Bind ViewModel.LogDirectory, Mode=OneWay}"
-                                       Style="{StaticResource AboutPathStyle}"
-                                       ToolTipService.ToolTip="{x:Bind ViewModel.LogDirectory, Mode=OneWay}"
-                                       AutomationProperties.Name="Log directory path"
-                                       AutomationProperties.AutomationId="LogDirectoryPath" />
-                        </Grid>
-                        <Border Style="{StaticResource AboutDividerStyle}" />
-                        <Grid Padding="16,8" ColumnSpacing="16">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="DataLabel"
-                                       Text="Data"
-                                       Style="{StaticResource AboutRowTitleStyle}" />
-                            <TextBlock x:Name="DataValue"
-                                       Grid.Column="1"
+                            <TextBlock Text="Data" Style="{StaticResource AboutCaptionStyle}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1"
                                        Text="{x:Bind ViewModel.DataDirectory, Mode=OneWay}"
                                        Style="{StaticResource AboutPathStyle}"
                                        ToolTipService.ToolTip="{x:Bind ViewModel.DataDirectory, Mode=OneWay}"
                                        AutomationProperties.Name="Data directory path"
                                        AutomationProperties.AutomationId="DataDirectoryPath" />
-                        </Grid>
-                        <Border Style="{StaticResource AboutDividerStyle}" />
-                        <Grid Padding="16,8" ColumnSpacing="16">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="SettingsLabel"
-                                       Text="Settings"
-                                       Style="{StaticResource AboutRowTitleStyle}" />
-                            <TextBlock x:Name="SettingsValue"
+
+                            <TextBlock Grid.Row="1" Text="Settings" Style="{StaticResource AboutCaptionStyle}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Row="1"
                                        Grid.Column="1"
                                        Text="{x:Bind ViewModel.SettingsFilePath, Mode=OneWay}"
                                        Style="{StaticResource AboutPathStyle}"
                                        ToolTipService.ToolTip="{x:Bind ViewModel.SettingsFilePath, Mode=OneWay}"
                                        AutomationProperties.Name="Settings file path"
                                        AutomationProperties.AutomationId="SettingsFilePath" />
-                        </Grid>
-                        <Border Style="{StaticResource AboutDividerStyle}" />
-                        <Grid Padding="16,8" ColumnSpacing="16">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="CacheLabel"
-                                       Text="Model cache"
-                                       Style="{StaticResource AboutRowTitleStyle}" />
-                            <TextBlock x:Name="CacheValue"
+
+                            <TextBlock Grid.Row="2" Text="Logs" Style="{StaticResource AboutCaptionStyle}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Row="2"
+                                       Grid.Column="1"
+                                       Text="{x:Bind ViewModel.LogDirectory, Mode=OneWay}"
+                                       Style="{StaticResource AboutPathStyle}"
+                                       ToolTipService.ToolTip="{x:Bind ViewModel.LogDirectory, Mode=OneWay}"
+                                       AutomationProperties.Name="Log directory path"
+                                       AutomationProperties.AutomationId="LogDirectoryPath" />
+                            <Button Grid.Row="2"
+                                    Grid.Column="2"
+                                    Style="{StaticResource AboutIconButtonStyle}"
+                                    Command="{x:Bind ViewModel.OpenLogsCommand}"
+                                    ToolTipService.ToolTip="Open logs"
+                                    AutomationProperties.Name="Open Muesli logs"
+                                    AutomationProperties.AutomationId="OpenLogsButton">
+                                <FontIcon Glyph="&#xE838;" FontSize="12" />
+                            </Button>
+
+                            <!--
+                                Model weights resolve MUESLI_NATIVE_ASR_CACHE, then the user profile -
+                                never the profile-root command line argument the rows above come from.
+                            -->
+                            <TextBlock Grid.Row="3" Text="Model cache" Style="{StaticResource AboutCaptionStyle}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Row="3"
                                        Grid.Column="1"
                                        Text="{x:Bind ViewModel.ModelCachePath, Mode=OneWay}"
                                        Style="{StaticResource AboutPathStyle}"
-                                       ToolTipService.ToolTip="Set MUESLI_NATIVE_ASR_CACHE to move downloaded model weights. The profile passed on the command line does not move them."
-                                       AutomationProperties.HelpText="Set MUESLI_NATIVE_ASR_CACHE to move downloaded model weights. The profile passed on the command line does not move them."
+                                       ToolTipService.ToolTip="Shared between profiles. Set MUESLI_NATIVE_ASR_CACHE to move downloaded model weights."
+                                       AutomationProperties.HelpText="Shared between profiles. Set MUESLI_NATIVE_ASR_CACHE to move downloaded model weights."
                                        AutomationProperties.Name="Model cache path"
                                        AutomationProperties.AutomationId="ModelCachePath" />
+                            <Button Grid.Row="3"
+                                    Grid.Column="2"
+                                    Style="{StaticResource AboutIconButtonStyle}"
+                                    Command="{x:Bind ViewModel.OpenModelCacheCommand}"
+                                    ToolTipService.ToolTip="Open model cache"
+                                    AutomationProperties.Name="Open model cache"
+                                    AutomationProperties.AutomationId="OpenModelCacheButton">
+                                <FontIcon Glyph="&#xE838;" FontSize="12" />
+                            </Button>
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <!-- Diagnostics -->
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                    <TextBlock Text="DIAGNOSTICS" Style="{StaticResource MuesliSectionLabelStyle}" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="1"
-                               Text="Local-only details"
-                               Style="{StaticResource MuesliBadgeTextStyle}"
-                               VerticalAlignment="Center" />
-                </Grid>
-                <Border Style="{StaticResource MuesliCardStyle}"
-                        Padding="16,14"
+                <!-- Diagnostics: the Windows counterpart of macOS "Report a Problem" -->
+                <TextBlock Text="DIAGNOSTICS" Style="{StaticResource AboutSectionLabelStyle}" />
+                <Border Style="{StaticResource AboutCardStyle}"
                         AutomationProperties.Name="Runtime diagnostics">
-                    <StackPanel Spacing="12">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                            <StackPanel Spacing="3" MinWidth="0">
-                                <TextBlock Text="Runtime diagnostics" Style="{StaticResource AboutRowTitleStyle}" />
-                                <TextBlock Text="Environment, package, model, and service information for troubleshooting. Transcripts and secrets are not included."
-                                           Style="{StaticResource AboutRowHelpStyle}" />
+                    <StackPanel>
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="Report a problem" Style="{StaticResource AboutRowTitleStyle}" />
+                                <TextBlock Text="Preview a support bundle before saving it. Transcripts and secrets are never included."
+                                           Style="{StaticResource AboutCaptionStyle}" />
                             </StackPanel>
-                            <ProgressRing Grid.Column="1"
-                                          IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
-                                          Width="22"
-                                          Height="22"
-                                          VerticalAlignment="Top"
-                                          AutomationProperties.Name="Refreshing diagnostics" />
-                        </Grid>
-                        <!--
-                            "Keep technical diagnostics accessible but secondary": the raw
-                            environment dump used to sit open in the page flow, making the largest
-                            block on About a wall of monospace. It is one keyboard-reachable
-                            disclosure away now, while Refresh / Copy / Open logs / Open model cache
-                            stay in the flow, so nothing became harder to reach.
-                        -->
-                        <Expander x:Name="DiagnosticsDetail"
-                                  HorizontalAlignment="Stretch"
-                                  HorizontalContentAlignment="Stretch"
-                                  Header="Environment, package and model detail"
-                                  AutomationProperties.Name="Show runtime diagnostics detail"
-                                  AutomationProperties.AutomationId="RuntimeDiagnosticsExpander">
-                            <Border Background="{ThemeResource MuesliBackgroundDeepBrush}"
-                                    BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="8"
-                                    Padding="12,10"
-                                    MaxHeight="240">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Disabled">
-                                    <TextBlock Text="{x:Bind ViewModel.RuntimeSummary, Mode=OneWay}"
-                                               FontFamily="Consolas, Cascadia Mono, monospace"
-                                               FontSize="12"
-                                               LineHeight="18"
-                                               TextWrapping="Wrap"
-                                               IsTextSelectionEnabled="True"
-                                               AutomationProperties.AutomationId="RuntimeDiagnosticsText" />
-                                </ScrollViewer>
-                            </Border>
-                        </Expander>
-                        <StackPanel x:Name="DiagnosticActions" Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="RefreshDiagnosticsButton"
-                                    Style="{StaticResource MuesliSecondaryButtonStyle}"
-                                    Command="{x:Bind ViewModel.RefreshCommand}"
-                                    Content="Refresh"
-                                    IsEnabled="{x:Bind local:AboutPage.Not(ViewModel.IsBusy), Mode=OneWay}"
-                                    AutomationProperties.Name="Refresh diagnostics"
-                                    AutomationProperties.AutomationId="RefreshDiagnosticsButton" />
-                            <Button x:Name="CopyDiagnosticsButton"
-                                    Style="{StaticResource MuesliGhostButtonStyle}"
-                                    Command="{x:Bind ViewModel.CopyDiagnosticsCommand}"
-                                    Content="Copy diagnostics"
-                                    AutomationProperties.Name="Copy diagnostics"
-                                    AutomationProperties.AutomationId="CopyDiagnosticsButton" />
                             <Button x:Name="ExportSupportBundleButton"
-                                    Style="{StaticResource MuesliGhostButtonStyle}"
+                                    Grid.Column="1"
+                                    Style="{StaticResource AboutActionStyle}"
                                     Command="{x:Bind ViewModel.ExportSupportBundleCommand}"
-                                    Content="Support bundle"
                                     IsEnabled="{x:Bind local:AboutPage.Not(ViewModel.IsBusy), Mode=OneWay}"
                                     AutomationProperties.Name="Preview and export a support bundle"
-                                    AutomationProperties.AutomationId="ExportSupportBundleButton" />
-                            <Button x:Name="OpenLogsButton"
-                                    Style="{StaticResource MuesliGhostButtonStyle}"
-                                    Command="{x:Bind ViewModel.OpenLogsCommand}"
-                                    Content="Open logs"
-                                    AutomationProperties.Name="Open Muesli logs"
-                                    AutomationProperties.AutomationId="OpenLogsButton" />
-                            <Button x:Name="OpenModelCacheButton"
-                                    Style="{StaticResource MuesliGhostButtonStyle}"
-                                    Command="{x:Bind ViewModel.OpenModelCacheCommand}"
-                                    Content="Open model cache"
-                                    AutomationProperties.Name="Open model cache"
-                                    AutomationProperties.AutomationId="OpenModelCacheButton" />
-                        </StackPanel>
+                                    AutomationProperties.AutomationId="ExportSupportBundleButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE8BD;" FontSize="11" />
+                                    <TextBlock Text="Open report" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                        <Border Style="{StaticResource AboutDividerStyle}" />
+                        <!-- The raw environment dump stays one disclosure away. -->
+                        <Expander x:Name="DiagnosticsDetail"
+                                  Margin="-16,4,-8,4"
+                                  HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Stretch"
+                                  AutomationProperties.Name="Show runtime diagnostics detail"
+                                  AutomationProperties.AutomationId="RuntimeDiagnosticsExpander">
+                            <Expander.Header>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <StackPanel VerticalAlignment="Center" Spacing="2" Padding="0,6">
+                                        <TextBlock Text="Runtime diagnostics" Style="{StaticResource AboutRowTitleStyle}" />
+                                        <TextBlock Text="Environment, package, model and service details."
+                                                   Style="{StaticResource AboutCaptionStyle}" />
+                                    </StackPanel>
+                                    <ProgressRing Grid.Column="1"
+                                                  IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                                                  Width="16"
+                                                  Height="16"
+                                                  AutomationProperties.Name="Refreshing diagnostics" />
+                                </Grid>
+                            </Expander.Header>
+                            <StackPanel Spacing="10">
+                                <Border Background="{ThemeResource MuesliBackgroundDeepBrush}"
+                                        BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="12,10"
+                                        MaxHeight="240">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <TextBlock Text="{x:Bind ViewModel.RuntimeSummary, Mode=OneWay}"
+                                                   FontFamily="Consolas, Cascadia Mono, monospace"
+                                                   FontSize="12"
+                                                   LineHeight="18"
+                                                   TextWrapping="Wrap"
+                                                   IsTextSelectionEnabled="True"
+                                                   AutomationProperties.AutomationId="RuntimeDiagnosticsText" />
+                                    </ScrollViewer>
+                                </Border>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="RefreshDiagnosticsButton"
+                                            Style="{StaticResource AboutActionStyle}"
+                                            Command="{x:Bind ViewModel.RefreshCommand}"
+                                            IsEnabled="{x:Bind local:AboutPage.Not(ViewModel.IsBusy), Mode=OneWay}"
+                                            AutomationProperties.Name="Refresh diagnostics"
+                                            AutomationProperties.AutomationId="RefreshDiagnosticsButton">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE72C;" FontSize="11" />
+                                            <TextBlock Text="Refresh" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="CopyDiagnosticsButton"
+                                            Style="{StaticResource AboutActionStyle}"
+                                            Command="{x:Bind ViewModel.CopyDiagnosticsCommand}"
+                                            AutomationProperties.Name="Copy diagnostics"
+                                            AutomationProperties.AutomationId="CopyDiagnosticsButton">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE8C8;" FontSize="11" />
+                                            <TextBlock Text="Copy" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
                 </Border>
 
