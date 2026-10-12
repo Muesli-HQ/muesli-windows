@@ -115,8 +115,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Computer Use: a fixed shortcut, enabled here once its configuration validates.
-                     Hidden for v1: it does not yet match the macOS feature. -->
+                <!-- Computer Use: its own configurable shortcut, enabled once ChatGPT is signed in. -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Computer Use Command shortcut">
                     <StackPanel Spacing="16">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
@@ -130,15 +129,24 @@
                                           IsEnabled="{x:Bind ViewModel.ComputerUseConfigured, Mode=OneWay}"
                                           Toggled="ComputerUse_Toggled"
                                           AutomationProperties.Name="Computer Use shortcut enabled"
-                                          AutomationProperties.HelpText="Enable the fixed Computer Use shortcut for focused allowed apps." />
+                                          AutomationProperties.HelpText="Enable the Computer Use shortcut." />
                         </Grid>
                         <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                            <Border Style="{StaticResource ShortcutBadgeStyle}">
-                                <TextBlock Text="Ctrl + Shift + F8" Style="{StaticResource ShortcutBadgeTextStyle}" />
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12">
+                            <Border x:Name="ComputerUseKeycapWell" Style="{StaticResource ShortcutBadgeStyle}"
+                                    AutomationProperties.Name="Current Computer Use shortcut"
+                                    AutomationProperties.LiveSetting="Polite">
+                                <TextBlock Text="{x:Bind local:ShortcutsPage.Keys(ViewModel.ComputerUseHotkeyParts), Mode=OneWay}" Style="{StaticResource ShortcutBadgeTextStyle}" />
                             </Border>
-                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.ComputerUseShortcutState, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
-                            <Button Grid.Column="2" Content="Configure…" Click="ComputerUseConfigure_Click"
+                            <Button x:Name="ChangeComputerUseButton" Grid.Column="1"
+                                    Click="ChangeComputerUseShortcut_Click"
+                                    Content="{x:Bind ViewModel.ComputerUseCapturePrompt, Mode=OneWay}"
+                                    Style="{StaticResource ShortcutLinkStyle}"
+                                    AutomationProperties.Name="Change Computer Use shortcut"
+                                    AutomationProperties.AutomationId="ChangeComputerUseShortcutButton"
+                                    ToolTipService.ToolTip="Press to capture a new Windows shortcut. Escape cancels." />
+                            <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.ComputerUseShortcutState, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" VerticalAlignment="Center" />
+                            <Button Grid.Column="3" Content="Configure…" Click="ComputerUseConfigure_Click"
                                     Style="{StaticResource ShortcutLinkStyle}"
                                     Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.ComputerUseNeedsConfiguration), Mode=OneWay}"
                                     AutomationProperties.Name="Configure Computer Use in Settings" />

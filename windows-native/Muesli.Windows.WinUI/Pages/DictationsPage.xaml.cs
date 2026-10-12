@@ -217,6 +217,14 @@ public sealed partial class DictationsPage : Page
         }
     }
 
+    private async void CopySteps_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender) is { } item)
+        {
+            await ViewModel.CopyStepsCommand.ExecuteAsync(item);
+        }
+    }
+
     private async void DeleteDictation_Click(object sender, RoutedEventArgs e)
     {
         if (Tagged(sender) is { } item)

@@ -203,15 +203,41 @@
                                                     <Grid>
                                                         <Grid ColumnDefinitions="80,*,Auto" ColumnSpacing="20" Padding="20,16">
                                                             <TextBlock Text="{x:Bind TimeLabel}" Style="{StaticResource MuesliTimestampStyle}" FontWeight="Medium" VerticalAlignment="Top" Margin="0,2,0,0" />
-                                                            <TextBlock Grid.Column="1"
-                                                                       Text="{x:Bind Text}"
-                                                                       FontFamily="{StaticResource MuesliFontFamily}"
-                                                                       FontSize="15"
-                                                                       LineHeight="21"
-                                                                       Foreground="{ThemeResource MuesliTextPrimaryBrush}"
-                                                                       TextWrapping="Wrap"
-                                                                       MaxLines="3"
-                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <!-- macOS DictationRowView: a Computer Use run shows its
+                                                                 command with an expandable list of steps. -->
+                                                            <StackPanel Grid.Column="1" Spacing="6">
+                                                                <TextBlock Text="COMPUTER USE"
+                                                                           Visibility="{x:Bind local:DictationsPage.BoolToVisibility(IsComputerUse)}"
+                                                                           FontFamily="{StaticResource MuesliFontFamilySemiBold}"
+                                                                           FontSize="11"
+                                                                           Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                                <TextBlock Text="{x:Bind Text}"
+                                                                           FontFamily="{StaticResource MuesliFontFamily}"
+                                                                           FontSize="15"
+                                                                           LineHeight="21"
+                                                                           Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                                                                           TextWrapping="Wrap"
+                                                                           MaxLines="3"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                                <Expander Visibility="{x:Bind local:DictationsPage.BoolToVisibility(HasSteps)}"
+                                                                          Header="Steps"
+                                                                          HorizontalAlignment="Stretch"
+                                                                          HorizontalContentAlignment="Stretch"
+                                                                          AutomationProperties.AutomationId="DictationStepsExpander">
+                                                                    <StackPanel Spacing="8">
+                                                                        <TextBlock Text="{x:Bind Steps}"
+                                                                                   FontFamily="Consolas"
+                                                                                   FontSize="12"
+                                                                                   TextWrapping="Wrap"
+                                                                                   IsTextSelectionEnabled="True"
+                                                                                   Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                                                        <Button Content="Copy steps"
+                                                                                Tag="{x:Bind}"
+                                                                                Click="CopySteps_Click"
+                                                                                AutomationProperties.AutomationId="DictationCopyStepsButton" />
+                                                                    </StackPanel>
+                                                                </Expander>
+                                                            </StackPanel>
                                                             <StackPanel x:Name="RowActions"
                                                                         Grid.Column="2"
                                                                         Orientation="Horizontal"

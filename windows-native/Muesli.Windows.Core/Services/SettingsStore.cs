@@ -216,6 +216,9 @@ public sealed class SettingsStore
             AutoExportMarkdownContent = NormalizeAutoExportContent(settings.AutoExportMarkdownContent),
             ComputerUsePlannerProvider = NormalizeComputerUseProvider(settings.ComputerUsePlannerProvider),
             ComputerUsePlannerModel = settings.ComputerUsePlannerModel?.Trim() ?? "",
+            ComputerUseReasoningEffort = settings.ComputerUseReasoningEffort?.Trim().ToLowerInvariant() ?? "",
+            ComputerUseTimeoutSeconds = Math.Clamp(settings.ComputerUseTimeoutSeconds, 1, 600),
+            ComputerUseHotkey = DefaultIfBlank(settings.ComputerUseHotkey, ComputerUseConfiguration.DefaultHotkey).Trim(),
             ComputerUsePlannerTimeoutSeconds = Math.Clamp(settings.ComputerUsePlannerTimeoutSeconds, 5, 120),
             ComputerUsePerActionTimeoutSeconds = Math.Clamp(settings.ComputerUsePerActionTimeoutSeconds, 1, 30),
             ComputerUseMaximumActionCount = Math.Clamp(settings.ComputerUseMaximumActionCount, 1, 20),
@@ -487,6 +490,11 @@ public sealed record MuesliSettings
     public bool ComputerUseEnabled { get; init; }
     public string ComputerUsePlannerProvider { get; init; } = "none";
     public string ComputerUsePlannerModel { get; init; } = "";
+    /// <summary>Planner thinking effort; empty or unsupported uses the model's default.</summary>
+    public string ComputerUseReasoningEffort { get; init; } = "";
+    /// <summary>Limits desktop observation and actions; planning and questions are excluded.</summary>
+    public int ComputerUseTimeoutSeconds { get; init; } = 120;
+    public string ComputerUseHotkey { get; init; } = ComputerUseConfiguration.DefaultHotkey;
     public int ComputerUsePlannerTimeoutSeconds { get; init; } = 30;
     public int ComputerUsePerActionTimeoutSeconds { get; init; } = 10;
     public int ComputerUseMaximumActionCount { get; init; } = 5;

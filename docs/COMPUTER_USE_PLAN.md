@@ -83,11 +83,17 @@ Each module ends with a test that proves the feature works on this PC before the
   choice settings (models, theme, indicator, sounds, filler words, double-tap, meeting detection).
   Models that are not downloaded are refused. The dictation shortcut can be changed too, with the
   Shortcuts page's rules; a shortcut Windows refuses is rolled back.
-- **App integration (M8, done):** Ctrl+Shift+F8 voice session sharing dictation's microphone (dictation
+- **App integration (M8, done):** a voice session (Ctrl+Shift+F8 by default, changeable on the
+  Shortcuts page and never equal to the dictation shortcut) sharing dictation's microphone (dictation
   cannot start over it; Escape cancels both). The pill shows a stop cross, the spoken command while
   the planner thinks, the current step while it acts, then the result as a green or amber notice.
   Risky steps open the approval window; `ask_user` opens a question window with suggested answers
-  and a free-text box. Settings > Computer Use keeps the last 20 run traces.
+  and a free-text box.
+- **Settings and history (macOS parity):** Settings > Computer Use has the on/off switch, ChatGPT
+  sign-in, the planner model (macOS presets), Thinking (the efforts each model supports, with its
+  default) and the execution timeout (1–600 s, default 120; planning and questions excluded). Each run
+  is a Dictations row labelled Computer Use: the spoken command, with its steps in an expander and a
+  Copy steps button. Steps live in `computer-use/runs/<id>.txt` and go when the row is deleted.
 - **Safety beyond macOS:** clicks named Close, Quit or Don't save ask first, and so does Enter (or a
   typed newline) in a chat composer. Keys Computer Use sends are tagged so Muesli's own shortcuts
   ignore them.

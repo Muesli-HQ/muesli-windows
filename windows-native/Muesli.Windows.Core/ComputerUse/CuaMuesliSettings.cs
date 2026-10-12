@@ -15,7 +15,6 @@ public sealed class CuaMuesliSettings(Func<MuesliSettings> load, Action<MuesliSe
     Func<string, bool>? shortcutFree = null, Func<string?>? applyShortcut = null)
 {
     private const string ShortcutId = "dictation_shortcut";
-    private const string ComputerUseShortcut = "Ctrl+Shift+F8";
 
     private sealed record Choice(string Id, string Label, string? Unavailable = null);
 
@@ -64,7 +63,7 @@ public sealed class CuaMuesliSettings(Func<MuesliSettings> load, Action<MuesliSe
                 $"{choice.Id} = {choice.Label}{(choice.Unavailable is null ? "" : $" [{choice.Unavailable}]")}"));
             text.Append('\n');
         }
-        text.Append($"{ShortcutId} (Push-to-talk dictation shortcut): {current.Hotkey}; any one key with optional Ctrl, Alt, Shift or Win, for example F9 or Ctrl+Space. Not Escape or {ComputerUseShortcut}.\n");
+        text.Append($"{ShortcutId} (Push-to-talk dictation shortcut): {current.Hotkey}; any one key with optional Ctrl, Alt, Shift or Win, for example F9 or Ctrl+Space. Not Escape or {current.ComputerUseHotkey} (the Computer Use shortcut).\n");
         return text.ToString();
     }
 
@@ -95,9 +94,9 @@ public sealed class CuaMuesliSettings(Func<MuesliSettings> load, Action<MuesliSe
         try { gesture = HotkeyGestureParser.Parse(value); }
         catch (InvalidOperationException) { return CuaResult.Fail($"\"{value}\" is not a shortcut Muesli can use. Use one key with optional Ctrl, Alt, Shift or Win. Nothing was changed."); }
         var name = gesture.DisplayName;
-        if (HotkeyGestureParser.IsEscape(gesture.VirtualKey) || name.Equals(ComputerUseShortcut, StringComparison.OrdinalIgnoreCase))
-            return CuaResult.Fail($"{name} is reserved. Nothing was changed.");
         var current = load();
+        if (HotkeyGestureParser.IsEscape(gesture.VirtualKey) || name.Equals(current.ComputerUseHotkey, StringComparison.OrdinalIgnoreCase))
+            return CuaResult.Fail($"{name} is reserved. Nothing was changed.");
         if (current.Hotkey.Equals(name, StringComparison.OrdinalIgnoreCase)) return CuaResult.Ok($"The dictation shortcut is already {name}.");
         if (shortcutFree?.Invoke(name) == false) return CuaResult.Fail($"Another app already uses {name}. Nothing was changed.");
 

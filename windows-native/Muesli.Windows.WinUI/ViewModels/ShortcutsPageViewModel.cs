@@ -17,9 +17,11 @@ namespace Muesli.Windows.WinUI.ViewModels;
 /// called again, so without this the page would report a new gesture while the old one stayed live
 /// until restart - and the old gesture, still hooked, was swallowed before it could be captured.
 /// </param>
+/// <param name="reapplyComputerUseHotkey">Re-registers the Computer Use shortcut; null on success.</param>
 public partial class ShortcutsPageViewModel(
     WinUiSettingsContext settingsContext,
-    Func<string?>? reapplyHotkey = null) : ObservableObject
+    Func<string?>? reapplyHotkey = null,
+    Func<string?>? reapplyComputerUseHotkey = null) : ObservableObject
 {
     private MuesliSettings _settings = new();
     private string _captureTarget = "push";
@@ -27,6 +29,9 @@ public partial class ShortcutsPageViewModel(
     [ObservableProperty] public partial string Hotkey { get; private set; } = "F8";
     [ObservableProperty] public partial IReadOnlyList<string> HotkeyParts { get; private set; } = ["F8"];
     [ObservableProperty] public partial string CapturePrompt { get; private set; } = "Change…";
+    [ObservableProperty] public partial IReadOnlyList<string> ComputerUseHotkeyParts { get; private set; } = SplitHotkey(ComputerUseConfiguration.DefaultHotkey);
+    [ObservableProperty] public partial string ComputerUseCapturePrompt { get; private set; } = "Change…";
+    public bool IsCapturingComputerUse => IsCapturing && _captureTarget == "computer-use";
     [ObservableProperty] public partial bool IsCapturing { get; private set; }
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
     [ObservableProperty] public partial bool IsStatusOpen { get; set; }
@@ -47,7 +52,7 @@ public partial class ShortcutsPageViewModel(
     public string CaptureCancelHint => "Escape cancels capture";
 
     /// <summary>
-    /// Ctrl+Shift+F8 is genuinely registered for the whole session by
+    /// The Computer Use shortcut is registered for the whole session by
     /// <c>WinUiComputerUseContext.RegisterVoiceShortcut</c>, so this row describes a working
     /// shortcut with a precondition. When the required configuration is incomplete the row says so
     /// with the exact validation reason and offers a route to Settings.
@@ -59,12 +64,12 @@ public partial class ShortcutsPageViewModel(
             if (!ComputerUseConfigured)
             {
                 return string.IsNullOrWhiteSpace(ComputerUseConfigurationReason)
-                    ? "Not configured. Computer Use needs an OpenAI planner, an allowed app, and privacy observation off."
+                    ? "Not configured. Sign in to ChatGPT in Settings > Computer Use."
                     : ComputerUseConfigurationReason;
             }
 
             return ComputerUseEnabled
-                ? "Focus an allowed app, then press to start and again to finish a command."
+                ? "Press to start a spoken command and again to run it."
                 : "Turn it on to use the shortcut.";
         }
     }
@@ -84,6 +89,7 @@ public partial class ShortcutsPageViewModel(
     {
         _settings = settingsContext.Load();
         ApplyHotkey(_settings.Hotkey);
+        ComputerUseHotkeyParts = SplitHotkey(HotkeyGestureParser.Parse(_settings.ComputerUseHotkey).DisplayName);
         ComputerUseEnabled = _settings.ComputerUseEnabled;
         HandsFreeEnabled = _settings.EnableDoubleTapDictation;
         HoldThresholdMs = _settings.HotkeyTriggerThresholdMs;
@@ -143,7 +149,8 @@ public partial class ShortcutsPageViewModel(
     {
         _captureTarget = target;
         IsCapturing = true;
-        CapturePrompt = "Press shortcut…";
+        if (target == "computer-use") ComputerUseCapturePrompt = "Press shortcut…";
+        else CapturePrompt = "Press shortcut…";
         IsStatusOpen = false;
     }
 
@@ -151,25 +158,43 @@ public partial class ShortcutsPageViewModel(
     {
         IsCapturing = false;
         CapturePrompt = "Change…";
+        ComputerUseCapturePrompt = "Change…";
     }
 
     public void ApplyCapturedGesture(string gesture)
     {
         try
         {
-            if (_captureTarget != "push")
-            {
-                throw new InvalidOperationException("Only the push-to-talk shortcut can currently be customized.");
-            }
-
             var parsed = HotkeyGestureParser.Parse(gesture);
+            var computerUse = _captureTarget == "computer-use";
             if (HotkeyGestureParser.IsEscape(parsed.VirtualKey))
             {
                 throw new InvalidOperationException("Escape is reserved for cancelling an active dictation.");
             }
+            var other = HotkeyGestureParser.Parse(computerUse ? _settings.Hotkey : _settings.ComputerUseHotkey).DisplayName;
+            if (parsed.DisplayName.Equals(other, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(computerUse
+                    ? $"{other} is the dictation shortcut. Choose a different one."
+                    : $"{other} is the Computer Use shortcut. Choose a different one.");
+            }
             if (!HotkeyConflictProbe.IsAdvisoryRegistrationAvailable(parsed.DisplayName))
             {
                 throw new InvalidOperationException("Windows reports that this shortcut is already registered by another app.");
+            }
+
+            if (computerUse)
+            {
+                _settings = _settings with { ComputerUseHotkey = parsed.DisplayName };
+                settingsContext.Save(_settings);
+                ComputerUseHotkeyParts = SplitHotkey(parsed.DisplayName);
+                var registerFailure = reapplyComputerUseHotkey?.Invoke();
+                ShowStatus(
+                    registerFailure is null
+                        ? $"Computer Use shortcut changed to {parsed.DisplayName}."
+                        : $"{parsed.DisplayName} was saved, but it is not listening yet: {registerFailure}",
+                    isError: registerFailure is not null);
+                return;
             }
 
             _settings = _settings with { Hotkey = parsed.DisplayName };

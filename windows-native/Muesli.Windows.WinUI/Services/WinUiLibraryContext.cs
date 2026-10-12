@@ -64,6 +64,8 @@ public sealed class WinUiLibraryContext : IDisposable
         if (removed)
         {
             History.SaveDictations(dictations, afterExplicitDeletion: true);
+            try { File.Delete(ComputerUseConfiguration.RunStepsPath(Profile.RootDirectory, id)); }
+            catch (IOException) { }
         }
 
         return removed;
@@ -160,6 +162,9 @@ public sealed class WinUiLibraryContext : IDisposable
         var count = History.LoadDictations().Count;
         if (count == 0) return 0;
         History.SaveDictations([], afterExplicitDeletion: true);
+        var runs = Path.GetDirectoryName(ComputerUseConfiguration.RunStepsPath(Profile.RootDirectory, "x"))!;
+        try { if (Directory.Exists(runs)) Directory.Delete(runs, recursive: true); }
+        catch (IOException) { }
         return count;
     }
 

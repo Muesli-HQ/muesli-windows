@@ -12,7 +12,7 @@ public sealed partial class ShortcutsPage : Page
 {
     private bool _ready;
 
-    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey);
+    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey, App.ComputerUse.RegisterVoiceShortcut);
 
     /// <summary>
     /// Re-installs the global push-to-talk hook from the saved gesture. Returns null when the hook
@@ -62,6 +62,13 @@ public sealed partial class ShortcutsPage : Page
     /// <summary>macOS hotkeyBadge prints the whole chord in one badge: "Ctrl + Shift + F8".</summary>
     public static string Keys(IReadOnlyList<string> parts) => string.Join(" + ", parts);
 
+    private void ChangeComputerUseShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.BeginCapture("computer-use");
+        ApplyCaptureChrome();
+        Focus(FocusState.Programmatic);
+    }
+
     private void ChangeShortcut_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.BeginCapture();
@@ -106,11 +113,12 @@ public sealed partial class ShortcutsPage : Page
         }
 
         e.Handled = true;
+        var button = ViewModel.IsCapturingComputerUse ? ChangeComputerUseButton : ChangePushToTalkButton;
         if (e.Key == VirtualKey.Escape)
         {
             ViewModel.CancelCapture();
             ApplyCaptureChrome();
-            ChangePushToTalkButton.Focus(FocusState.Programmatic);
+            button.Focus(FocusState.Programmatic);
             return;
         }
         if (e.Key is VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl or
@@ -131,7 +139,7 @@ public sealed partial class ShortcutsPage : Page
         parts.Add(label);
         ViewModel.ApplyCapturedGesture(string.Join('+', parts));
         ApplyCaptureChrome();
-        ChangePushToTalkButton.Focus(FocusState.Programmatic);
+        button.Focus(FocusState.Programmatic);
     }
 
     private void HoldThreshold_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
@@ -145,9 +153,12 @@ public sealed partial class ShortcutsPage : Page
     /// <summary>While capturing, the badge takes the accent tint so it reads as listening.</summary>
     private void ApplyCaptureChrome()
     {
-        var capturing = ViewModel.IsCapturing;
-        PushKeycapWell.BorderBrush = ThemeBrush(capturing ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
-        PushKeycapWell.Background = ThemeBrush(capturing ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+        var computerUse = ViewModel.IsCapturingComputerUse;
+        var push = ViewModel.IsCapturing && !computerUse;
+        PushKeycapWell.BorderBrush = ThemeBrush(push ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        PushKeycapWell.Background = ThemeBrush(push ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+        ComputerUseKeycapWell.BorderBrush = ThemeBrush(computerUse ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        ComputerUseKeycapWell.Background = ThemeBrush(computerUse ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
     }
 
     private static Brush ThemeBrush(string key) =>

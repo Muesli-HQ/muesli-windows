@@ -462,23 +462,8 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Planner" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="The model that decides each step. A ChatGPT account uses your ChatGPT plan; an API key is billed by OpenAI." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ComboBox Grid.Column="1"
-                                          Style="{StaticResource PickerStyle}"
-                                          SelectedIndex="{x:Bind ViewModel.ComputerUseProviderIndex, Mode=TwoWay}"
-                                          AutomationProperties.Name="Planner"
-                                          AutomationProperties.AutomationId="ComputerUseProviderPicker">
-                                    <ComboBoxItem Content="ChatGPT account" />
-                                    <ComboBoxItem Content="OpenAI API key" />
-                                </ComboBox>
-                            </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
                                     <TextBlock Text="ChatGPT account" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Signs in through your browser. Muesli keeps the sign-in in Windows Credential Manager." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="The planner uses your ChatGPT plan. Signs in through your browser; Muesli keeps the sign-in in Windows Credential Manager." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <Button Grid.Column="1"
                                         Command="{x:Bind ViewModel.ToggleChatGptSignInCommand}"
@@ -489,68 +474,42 @@
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Planner model" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Leave empty for the default (gpt-6.1-sol)." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="The model that decides each step." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
-                                <TextBox Grid.Column="1"
-                                         Style="{StaticResource ValueBoxStyle}"
-                                         PlaceholderText="gpt-6.1-sol"
-                                         Text="{x:Bind ViewModel.ComputerUsePlannerModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Planner model"
-                                         AutomationProperties.AutomationId="ComputerUsePlannerModel" />
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.ComputerUseModels}"
+                                          SelectedIndex="{x:Bind ViewModel.ComputerUseModelIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Planner model"
+                                          AutomationProperties.AutomationId="ComputerUsePlannerModel" />
                             </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Text="EXPLICIT VOICE SESSION" Style="{StaticResource SettingsSectionLabelStyle}" />
-                    <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel Spacing="12" Padding="16">
-                            <TextBlock Text="Press Ctrl + Shift + F8 anywhere in Windows to start or finish a spoken command. The shortcut is registered while Muesli runs and is not configurable."
-                                       Style="{StaticResource RowHelpStyle}"
-                                       Margin="0"
-                                       AutomationProperties.AutomationId="ComputerUseShortcutNotice" />
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <TextBox PlaceholderText="Or type a command, for example: open Notepad and write a shopping list"
-                                         Text="{x:Bind ViewModel.ComputerUseCommandText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Computer Use command"
-                                         AutomationProperties.AutomationId="ComputerUseCommandBox" />
-                                <Button Grid.Column="1"
-                                        Command="{x:Bind ViewModel.RunComputerUseCommandCommand}"
-                                        Content="Run"
-                                        AutomationProperties.AutomationId="ComputerUseRunButton" />
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Thinking" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="More thinking plans better steps but takes longer." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.ComputerUseEfforts, Mode=OneWay}"
+                                          SelectedIndex="{x:Bind ViewModel.ComputerUseEffortIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Thinking"
+                                          AutomationProperties.AutomationId="ComputerUseThinking" />
                             </Grid>
-                            <StackPanel x:Name="ComputerUseActions" Orientation="Horizontal" Spacing="8">
-                                <Button Command="{x:Bind ViewModel.SpeakComputerUseCommand}"
-                                        Content="{x:Bind ViewModel.ComputerUseVoiceLabel, Mode=OneWay}"
-                                        Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                        AutomationProperties.AutomationId="ComputerUseSpeakButton" />
-                                <Button Command="{x:Bind ViewModel.StopComputerUseCommand}"
-                                        Content="Stop"
-                                        IsEnabled="{x:Bind ViewModel.ComputerUseStopEnabled, Mode=OneWay}"
-                                        AutomationProperties.AutomationId="ComputerUseStopButton" />
-                                <Button Command="{x:Bind ViewModel.OpenComputerUseDiagnosticsCommand}"
-                                        Content="Show recent runs"
-                                        AutomationProperties.AutomationId="ComputerUseDiagnosticsButton" />
-                                <Button Command="{x:Bind ViewModel.PreviewComputerUseConfirmationCommand}"
-                                        Content="Preview confirmation"
-                                        AutomationProperties.AutomationId="ComputerUsePreviewConfirmationButton" />
-                            </StackPanel>
-                            <TextBlock Text="{x:Bind ViewModel.ComputerUseStatus, Mode=OneWay}"
-                                       Style="{StaticResource RowHelpStyle}"
-                                       AutomationProperties.LiveSetting="Polite"
-                                       AutomationProperties.AutomationId="ComputerUseStatusText" />
-                            <!-- Redacted trace text; technical by nature, so it is kept inside an
-                                 explicitly opened expander rather than in the normal flow (P5-06). -->
-                            <Expander HorizontalAlignment="Stretch"
-                                      HorizontalContentAlignment="Stretch"
-                                      Header="Recent runs"
-                                      AutomationProperties.AutomationId="ComputerUseDiagnosticsExpander">
-                                <TextBlock Text="{x:Bind ViewModel.ComputerUseDiagnostics, Mode=OneWay}"
-                                           FontFamily="Consolas"
-                                           FontSize="12"
-                                           TextWrapping="Wrap"
-                                           IsTextSelectionEnabled="True"
-                                           AutomationProperties.AutomationId="ComputerUseDiagnosticsText" />
-                            </Expander>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Execution timeout" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Seconds. Limits desktop observation and actions. Model thinking and time spent answering questions are excluded." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <NumberBox Grid.Column="1"
+                                           Value="{x:Bind ViewModel.ComputerUseTimeoutSeconds, Mode=TwoWay}"
+                                           Minimum="1" Maximum="600" SmallChange="15" LargeChange="60" Width="130"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           SpinButtonPlacementMode="Compact"
+                                           AutomationProperties.Name="Execution timeout in seconds"
+                                           AutomationProperties.AutomationId="ComputerUseTimeout" />
+                            </Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>

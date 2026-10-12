@@ -238,6 +238,21 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task CopyStepsAsync(DictationListItem? item, CancellationToken cancellationToken)
+    {
+        if (item?.Steps is not { } steps) return;
+        try
+        {
+            await _clipboard.SetTextAsync(steps, cancellationToken);
+            ShowStatus("Computer Use steps copied to the clipboard.");
+        }
+        catch (Exception exception)
+        {
+            ShowStatus($"Could not copy the steps: {WinUiClipboardService.DescribeFailure(exception)}", isError: true);
+        }
+    }
+
+    [RelayCommand]
     private async Task DeleteAsync(DictationListItem? item, CancellationToken cancellationToken)
     {
         if (item is null) return;
@@ -270,6 +285,14 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>A Computer Use run's steps, saved beside its history record.</summary>
+    private string? ReadSteps(PersistedDictation item)
+    {
+        if (item.ModelProfile != ComputerUseConfiguration.HistoryLabel) return null;
+        try { return File.ReadAllText(ComputerUseConfiguration.RunStepsPath(_library.Profile.RootDirectory, item.Id)); }
+        catch (IOException) { return null; }
+    }
+
     /// <summary>One line of the transcript, short enough to stay readable inside a dialog.</summary>
     private static string Snippet(string text)
     {
@@ -288,7 +311,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     private void Reload()
     {
         var snapshot = _library.ReadSnapshot();
-        _allItems = snapshot.Dictations.Select(DictationListItem.From).ToList();
+        _allItems = snapshot.Dictations.Select(item => DictationListItem.From(item) with { Steps = ReadSteps(item) }).ToList();
         DictationWordsLabel = snapshot.DictationWords.ToString("N0");
         CurrentStreakLabel = snapshot.CurrentStreak.ToString("N0");
         // P2-01: the pace is read from the shared snapshot calculation rather than recomputed
@@ -360,6 +383,11 @@ public sealed record DictationListItem(
     string ModelLabel)
 {
     public string TimeLabel => Timestamp.ToLocalTime().ToString("hh:mm tt");
+
+    /// <summary>The steps of a Computer Use run, or null for a dictation.</summary>
+    public string? Steps { get; init; }
+    public bool IsComputerUse => ModelLabel == ComputerUseConfiguration.HistoryLabel;
+    public bool HasSteps => Steps is not null;
 
     public static DictationListItem From(PersistedDictation item) => new(
         item.Id,

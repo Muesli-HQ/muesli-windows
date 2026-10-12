@@ -65,13 +65,20 @@ public sealed class WinUiShellParityTests
         Assert.False(ComputerUseConfiguration.TryValidate(chatGpt, chatGptSignedIn: false, out var error));
         Assert.Contains("Sign in to ChatGPT", error);
         Assert.True(ComputerUseConfiguration.TryValidate(chatGpt, chatGptSignedIn: true, out _));
-        var apiKey = chatGpt with { ComputerUsePlannerProvider = "openai", ResolvedOpenAIApiKey = "" };
-        Assert.Equal(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENAI_API_KEY")),
-            !ComputerUseConfiguration.TryValidate(apiKey, chatGptSignedIn: true, out _));
-        Assert.Equal("chatgpt", ComputerUseConfiguration.ProviderSetting(0));
-        Assert.Equal(1, ComputerUseConfiguration.ProviderIndex("openai"));
         Assert.Contains("sends the screen", ComputerUseConfiguration.Notice);
-        Assert.EndsWith(Path.Combine("computer-use", "trace.txt"), ComputerUseConfiguration.TracePath(@"C:	mp\profile"));
+        Assert.EndsWith(Path.Combine("computer-use", "runs", "dict_1.txt"), ComputerUseConfiguration.RunStepsPath(@"C:\tmp\profile", "dict_1"));
+    }
+
+    [Fact]
+    public void PlannerEffortFallsBackToTheModelDefault()
+    {
+        Assert.Equal("gpt-6.1-sol", ComputerUseConfiguration.Model("").Id);
+        Assert.Equal("gpt-6.1-sol", ComputerUseConfiguration.Model("custom-model").Id);
+        var astra = ComputerUseConfiguration.Model("gpt-6-astra");
+        Assert.Equal("high", ComputerUseConfiguration.Effort(astra, ""));
+        Assert.Equal("high", ComputerUseConfiguration.Effort(astra, "none"));
+        Assert.Equal("none", ComputerUseConfiguration.Effort(ComputerUseConfiguration.Model("gpt-6-luna"), "none"));
+        Assert.Equal("Extra High", ComputerUseConfiguration.EffortLabel("xhigh"));
     }
 
     [Fact]
@@ -92,7 +99,7 @@ public sealed class WinUiShellParityTests
         var settings = File.ReadAllText(Path.Combine(winUi, "Pages", "SettingsPage.xaml"));
         Assert.Contains("Computer Use", settings);
         Assert.Contains("SelectorBar", settings);
-        Assert.Contains("ComputerUsePreviewConfirmationButton", settings);
+        Assert.Contains("ComputerUseThinking", settings);
 
         var timeline = File.ReadAllText(Path.Combine(winUi, "Pages", "TimelinePage.xaml"));
         // Timeline is one chronological mixed feed: no source filter and no kind segmented control.

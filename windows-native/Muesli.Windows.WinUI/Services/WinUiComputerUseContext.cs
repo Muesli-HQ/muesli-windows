@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Muesli.Windows.ComputerUse;
 using Muesli.Windows.Core.Contracts;
 using Muesli.Windows.Services;
@@ -5,7 +6,7 @@ using Muesli.Windows.Services;
 namespace Muesli.Windows.WinUI.Services;
 
 /// <summary>
-/// WinUI Computer Use host: Ctrl+Shift+F8 starts voice capture, a second press transcribes the
+/// WinUI Computer Use host: the Computer Use shortcut (Ctrl+Shift+F8 by default) starts voice capture, a second press transcribes the
 /// command locally and runs it with <see cref="CuaRuntime"/> on the desktop the user was working in.
 /// </summary>
 public sealed class WinUiComputerUseContext : IDisposable
@@ -20,6 +21,7 @@ public sealed class WinUiComputerUseContext : IDisposable
     private CancellationTokenSource? _sessionCancellation;
     private bool _listening;
     private bool _running;
+    private Stopwatch? _listenClock;
     private int _disposed;
 
     public WinUiComputerUseContext(WinUiLibraryContext library, WinUiSettingsContext settings, WinUiDictationContext dictation, IUiDispatcher dispatcher)
@@ -30,8 +32,7 @@ public sealed class WinUiComputerUseContext : IDisposable
         _dictation = dictation;
         ChatGpt = new ChatGptAuth(settings.Secrets, _http);
         _dictation.Changed += OnDictationChanged;
-        Status = "Press Ctrl+Shift+F8, say what to do, then press it again.";
-        if (File.Exists(TraceFilePath)) Diagnostics = File.ReadAllText(TraceFilePath);
+        Status = $"Press {Shortcut}, say what to do, then press it again.";
     }
 
     public ChatGptAuth ChatGpt { get; }
@@ -48,18 +49,24 @@ public sealed class WinUiComputerUseContext : IDisposable
     public bool IsListening => _listening;
     public bool IsRunning => _running;
     public bool StopEnabled => _listening || _running;
-    public string VoiceButtonText => _listening ? "Stop listening and run" : "Speak a command";
-    public string Diagnostics { get; private set; } = NoRuns;
-    private const string NoRuns = "No Computer Use runs yet.";
-    private const string RunSeparator = "\n\n────────\n\n";
-    private const int MaxSavedRuns = 20;
     /// <summary>How the last run (or attempt) ended, for the floating pill; null once a new one starts.</summary>
     public ComputerUseOutcome? Outcome { get; private set; }
-    public string TraceFilePath => ComputerUseConfiguration.TracePath(_library.Profile.RootDirectory);
+    private string Shortcut => _settings.Load().ComputerUseHotkey;
 
-    public void RegisterVoiceShortcut() =>
-        _voiceHotkey.Register("Ctrl+Shift+F8", () => _dispatcher.TryEnqueue(() => _ = ToggleVoiceAsync()),
-            () => { }, () => StopEnabled, () => _dispatcher.TryEnqueue(() => _ = CancelAsync()));
+    /// <summary>Installs the saved Computer Use shortcut; returns why it failed, or null.</summary>
+    public string? RegisterVoiceShortcut()
+    {
+        try
+        {
+            _voiceHotkey.Register(Shortcut, () => _dispatcher.TryEnqueue(() => _ = ToggleVoiceAsync()),
+                () => { }, () => StopEnabled, () => _dispatcher.TryEnqueue(() => _ = CancelAsync()));
+            return null;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return exception.Message;
+        }
+    }
 
     public async Task SignInToChatGptAsync()
     {
@@ -105,9 +112,6 @@ public sealed class WinUiComputerUseContext : IDisposable
         Report("Computer Use stopped.");
     }
 
-    /// <summary>Runs a typed command (Settings page test box and automation).</summary>
-    public Task RunCommandAsync(string command) => _running ? Task.CompletedTask : RunAsync(command, _settings.Load());
-
     private async Task StartListeningAsync()
     {
         Outcome = null;
@@ -121,8 +125,9 @@ public sealed class WinUiComputerUseContext : IDisposable
             await _dictation.StartAuxiliaryAsync(settings.MicrophoneName);
             _listening = _dictation.IsRecording;
             if (!_listening) throw new InvalidOperationException("The microphone did not start.");
+            _listenClock = Stopwatch.StartNew();
             CaptureStarted?.Invoke();
-            Report("Listening. Press Ctrl+Shift+F8 again when you are done.");
+            Report($"Listening. Press {settings.ComputerUseHotkey} again when you are done.");
         }
         catch (Exception exception)
         {
@@ -150,10 +155,10 @@ public sealed class WinUiComputerUseContext : IDisposable
             Fail("No command was heard; nothing was done.");
             return;
         }
-        await RunAsync(command.Trim(), _settings.Load());
+        await RunAsync(command.Trim(), (int)(_listenClock?.ElapsedMilliseconds ?? 0), _settings.Load());
     }
 
-    private async Task RunAsync(string command, MuesliSettings settings)
+    private async Task RunAsync(string command, int spokenMs, MuesliSettings settings)
     {
         Outcome = null;
         if (!ComputerUseConfiguration.TryValidate(settings, ChatGpt.IsSignedIn, out var error)) { Fail(error); return; }
@@ -162,12 +167,12 @@ public sealed class WinUiComputerUseContext : IDisposable
         var cancellation = _sessionCancellation = new CancellationTokenSource();
         _command = command;
         Report($"Working on: {command}");
-        var model = string.IsNullOrWhiteSpace(settings.ComputerUsePlannerModel) ? null : settings.ComputerUsePlannerModel;
-        ICuaPlanner planner = ComputerUseConfiguration.UsesApiKey(settings)
-            ? ResponsesPlanner.WithApiKey(_http, Environment.GetEnvironmentVariable("OPENAI_API_KEY") is { Length: > 0 } key ? key : settings.ResolvedOpenAIApiKey, model)
-            : ResponsesPlanner.WithChatGpt(_http, ChatGpt, model, appVersion: typeof(WinUiComputerUseContext).Assembly.GetName().Version?.ToString(3) ?? "1.0");
+        var model = ComputerUseConfiguration.Model(settings.ComputerUsePlannerModel);
+        var planner = ResponsesPlanner.WithChatGpt(_http, ChatGpt, model.Id, ComputerUseConfiguration.Effort(model, settings.ComputerUseReasoningEffort),
+            typeof(WinUiComputerUseContext).Assembly.GetName().Version?.ToString(3) ?? "1.0");
         var options = new CuaRuntimeOptions
         {
+            Timeout = TimeSpan.FromSeconds(settings.ComputerUseTimeoutSeconds),
             Confirm = ConfirmActionAsync,
             Ask = AskAsync,
             Settings = new CuaMuesliSettings(_settings.Load, saved => _dispatcher.EnqueueAsync(() => _settings.Save(saved), CancellationToken.None).GetAwaiter().GetResult(),
@@ -182,7 +187,7 @@ public sealed class WinUiComputerUseContext : IDisposable
                 using var desktop = new WindowsDesktop();
                 return await new CuaRuntime(desktop, planner, options).RunAsync(command, cancellation.Token);
             });
-            SaveTrace(result);
+            SaveRun(command, spokenMs, result);
             var message = result.Status switch
             {
                 CuaRunStatus.Done => result.Message,
@@ -217,21 +222,24 @@ public sealed class WinUiComputerUseContext : IDisposable
         return failure;
     }
 
-    /// <summary>Keeps the latest run's steps for the Settings diagnostics view (typed text included,
-    /// screenshots never).</summary>
-    private void SaveTrace(CuaRunResult result)
+    /// <summary>Like macOS, a run is a dictation-history record (the spoken command) whose steps
+    /// (typed text included, screenshots never) sit in a file beside it for the Dictations page.</summary>
+    private void SaveRun(string command, int spokenMs, CuaRunResult result)
     {
-        var run = $"{DateTime.Now:g}  {result.Status}\n" + string.Join("\n",
+        var id = $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}";
+        var steps = $"{result.Status}\n" + string.Join("\n",
             result.Trace.Select(item => $"{(item.Step is { } step ? $"[{step}] " : "")}{item.Title}: {item.Body}"));
-        // Newest first; the oldest runs fall off so the file stays small.
-        Diagnostics = string.Join(RunSeparator, new[] { run }.Concat(Diagnostics.Split(RunSeparator)
-            .Where(previous => previous != NoRuns)).Take(MaxSavedRuns));
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(TraceFilePath)!);
-            File.WriteAllText(TraceFilePath, Diagnostics);
+            var path = ComputerUseConfiguration.RunStepsPath(_library.Profile.RootDirectory, id);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, steps);
+            _library.History.AppendDictation(new PersistedDictation(id, DateTime.Now, command, spokenMs, ComputerUseConfiguration.HistoryLabel));
         }
-        catch (IOException) { }
+        catch (Exception exception)
+        {
+            _log.Info($"Computer Use run was not saved to history: {exception.GetType().Name}.");
+        }
     }
 
     private void Fail(string message)

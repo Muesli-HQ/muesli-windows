@@ -59,14 +59,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         _meetings.Changed += OnMeetingsChanged;
     }
 
-    private void OnComputerUseChanged(object? sender, EventArgs args)
-    {
-        ComputerUseStatus = _computerUse.Status;
-        ComputerUseVoiceLabel = _computerUse.VoiceButtonText;
-        ComputerUseStopEnabled = _computerUse.StopEnabled;
-        ComputerUseDiagnostics = _computerUse.Diagnostics;
+    private void OnComputerUseChanged(object? sender, EventArgs args) =>
         ComputerUseSignedIn = _computerUse.ChatGpt.IsSignedIn;
-    }
 
     private void OnMeetingsChanged(object? sender, EventArgs args)
     {
@@ -131,17 +125,18 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial IReadOnlyList<string> LiveModels { get; private set; } = [];
     [ObservableProperty] public partial string SelectedLiveModel { get; set; } = "Off";
     [ObservableProperty] public partial int LiveOwnershipIndex { get; set; }
-    [ObservableProperty] public partial int ComputerUseProviderIndex { get; set; }
-    [ObservableProperty] public partial string ComputerUsePlannerModel { get; set; } = "";
+    /// <summary>Index into <see cref="ComputerUseConfiguration.PlannerModels"/>.</summary>
+    [ObservableProperty] public partial int ComputerUseModelIndex { get; set; }
+    public IReadOnlyList<string> ComputerUseModels { get; } = ComputerUseConfiguration.PlannerModels.Select(model => model.Label).ToList();
+    /// <summary>The thinking efforts the selected model supports, as labels.</summary>
+    [ObservableProperty] public partial IReadOnlyList<string> ComputerUseEfforts { get; private set; } = [];
+    [ObservableProperty] public partial int ComputerUseEffortIndex { get; set; }
+    [ObservableProperty] public partial int ComputerUseTimeoutSeconds { get; set; } = 120;
+    private string _computerUseEffort = "";
     [NotifyPropertyChangedFor(nameof(ComputerUseSignInLabel))]
     [ObservableProperty] public partial bool ComputerUseSignedIn { get; private set; }
-    [ObservableProperty] public partial string ComputerUseCommandText { get; set; } = "";
     public string ComputerUseSignInLabel => ComputerUseSignedIn ? "Sign out of ChatGPT" : "Sign in with ChatGPT";
     public string ComputerUseNotice => ComputerUseConfiguration.Notice;
-    [ObservableProperty] public partial string ComputerUseStatus { get; private set; } = "";
-    [ObservableProperty] public partial string ComputerUseVoiceLabel { get; private set; } = "Speak planner command";
-    [ObservableProperty] public partial bool ComputerUseStopEnabled { get; private set; }
-    [ObservableProperty] public partial string ComputerUseDiagnostics { get; private set; } = "";
     [ObservableProperty] public partial string CaptureStatus { get; private set; } = "Idle";
     [ObservableProperty] public partial string DetectionStatus { get; private set; } = "";
     [NotifyPropertyChangedFor(nameof(ShowOllamaSettings))]
@@ -250,8 +245,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [
         nameof(SectionIndex), nameof(HasUnsavedChanges), nameof(StatusMessage), nameof(IsStatusOpen),
         nameof(IsStatusError), nameof(Permissions), nameof(Microphones), nameof(DictationModels),
-        nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseStatus),
-        nameof(ComputerUseVoiceLabel), nameof(ComputerUseStopEnabled), nameof(ComputerUseDiagnostics),
+        nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseEfforts),
         nameof(CaptureStatus), nameof(DetectionStatus), nameof(IsStartupAvailable),
         nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp),
         nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings),
@@ -323,13 +317,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             : StreamingModelCatalog.Get(_source.LiveMeetingModelId)?.DisplayName ?? "Off";
         LiveOwnershipIndex = LiveTranscriptOwnershipDescriptor.ModeFromSettingValue(_source.LiveTranscriptOwnership)
             == LiveTranscriptOwnershipMode.UnifiedLiveAndFinal ? 1 : 0;
-        ComputerUseProviderIndex = ComputerUseConfiguration.ProviderIndex(_source.ComputerUsePlannerProvider);
-        ComputerUsePlannerModel = _source.ComputerUsePlannerModel;
+        _computerUseEffort = _source.ComputerUseReasoningEffort;
+        ComputerUseModelIndex = IndexOfPlannerModel(_source.ComputerUsePlannerModel);
+        ShowComputerUseEfforts();
+        ComputerUseTimeoutSeconds = _source.ComputerUseTimeoutSeconds;
         ComputerUseSignedIn = _computerUse.ChatGpt.IsSignedIn;
-        ComputerUseStatus = _computerUse.Status;
-        ComputerUseVoiceLabel = _computerUse.VoiceButtonText;
-        ComputerUseStopEnabled = _computerUse.StopEnabled;
-        ComputerUseDiagnostics = _computerUse.Diagnostics;
         CaptureStatus = _meetings.CaptureStatus;
         DetectionStatus = _detection.Status;
         SelectedSummaryProvider = SummaryProviderDisclosure.For(_source.MeetingSummaryProvider);
@@ -395,8 +387,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
                 LiveOwnershipIndex == 1
                     ? LiveTranscriptOwnershipMode.UnifiedLiveAndFinal
                     : LiveTranscriptOwnershipMode.PreviewOnly),
-            ComputerUsePlannerProvider = ComputerUseConfiguration.ProviderSetting(ComputerUseProviderIndex),
-            ComputerUsePlannerModel = ComputerUsePlannerModel.Trim(),
+            ComputerUsePlannerProvider = "chatgpt",
+            ComputerUsePlannerModel = SelectedPlannerModel.Id,
+            ComputerUseReasoningEffort = ComputerUseConfiguration.Effort(SelectedPlannerModel, _computerUseEffort),
+            ComputerUseTimeoutSeconds = Math.Clamp(ComputerUseTimeoutSeconds, 1, 600),
             MeetingSummaryProvider = SelectedSummaryProvider?.Id ?? "local",
             OllamaEndpoint = OllamaEndpoint.Trim(),
             OllamaModel = OllamaModel.Trim(),
@@ -491,19 +485,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task SpeakComputerUseAsync() => await _computerUse.ToggleVoiceAsync();
-
-    [RelayCommand]
-    private async Task StopComputerUseAsync() => await _computerUse.CancelAsync();
-
-    [RelayCommand]
-    private void OpenComputerUseDiagnostics()
-    {
-        ComputerUseDiagnostics = _computerUse.Diagnostics;
-        ShowStatus("Showing the last Computer Use run.");
-    }
-
-    [RelayCommand]
     private async Task ToggleChatGptSignInAsync()
     {
         if (_computerUse.ChatGpt.IsSignedIn) _computerUse.SignOutOfChatGpt();
@@ -511,18 +492,27 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         ComputerUseSignedIn = _computerUse.ChatGpt.IsSignedIn;
     }
 
-    /// <summary>Runs a typed command, so Computer Use can be tried without the microphone.</summary>
-    [RelayCommand]
-    private async Task RunComputerUseCommandAsync()
+    private ComputerUseConfiguration.PlannerModel SelectedPlannerModel =>
+        ComputerUseConfiguration.PlannerModels[Math.Clamp(ComputerUseModelIndex, 0, ComputerUseConfiguration.PlannerModels.Count - 1)];
+
+    private static int IndexOfPlannerModel(string id) =>
+        ComputerUseConfiguration.PlannerModels.ToList().IndexOf(ComputerUseConfiguration.Model(id));
+
+    /// <summary>macOS keeps the chosen thinking level when the new model supports it, else its default.</summary>
+    partial void OnComputerUseModelIndexChanged(int value) => ShowComputerUseEfforts();
+
+    partial void OnComputerUseEffortIndexChanged(int value)
     {
-        if (string.IsNullOrWhiteSpace(ComputerUseCommandText)) return;
-        await _computerUse.RunCommandAsync(ComputerUseCommandText.Trim());
+        if (value >= 0 && value < SelectedPlannerModel.Efforts.Count) _computerUseEffort = SelectedPlannerModel.Efforts[value];
     }
 
-    [RelayCommand]
-    private void PreviewComputerUseConfirmation() =>
-        App.ShowComputerUseConfirmation("Allow Muesli to click \"Send\" in Outlook? (it looks like \"send\")",
-            "This is a preview. Nothing will happen when you choose either button.");
+    private void ShowComputerUseEfforts()
+    {
+        var model = SelectedPlannerModel;
+        var effort = ComputerUseConfiguration.Effort(model, _computerUseEffort);
+        ComputerUseEfforts = model.Efforts.Select(ComputerUseConfiguration.EffortLabel).ToList();
+        ComputerUseEffortIndex = model.Efforts.ToList().IndexOf(effort);
+    }
 
     /// <summary>
     /// ComboBox SelectedItem two-way bindings can clear when ItemsSource is assigned.
