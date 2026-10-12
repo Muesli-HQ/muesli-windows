@@ -83,6 +83,14 @@ public sealed partial class ShortcutsPage : Page
         ViewModel.SetHandsFreeEnabled(HandsFreeToggle.IsOn);
     }
 
+    private void PushToTalk_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || PushToTalkToggle.IsOn == ViewModel.PushToTalkEnabled) return;
+        ViewModel.SetPushToTalkEnabled(PushToTalkToggle.IsOn);
+    }
+
+    private void ResetDefaults_Click(object sender, RoutedEventArgs e) => ViewModel.ResetToDefaults();
+
     /// <summary>Persists Computer Use enablement from this page once the user toggles it.</summary>
     private void ComputerUse_Toggled(object sender, RoutedEventArgs e)
     {

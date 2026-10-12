@@ -74,6 +74,16 @@ public sealed class WinUiDictationContext : IDisposable
     public void RegisterHotkey()
     {
         ThrowIfDisposed();
+        if (!_settings.Load().PushToTalkEnabled)
+        {
+            // Off means the key belongs to other apps again, so the hook is removed, not muted.
+            _hotkey.Dispose();
+            IsHotkeyRegistered = false;
+            Status = "Push to Talk is turned off.";
+            _log.Info("Dictation shortcut disabled.");
+            RaiseChanged();
+            return;
+        }
         try
         {
             _hotkey.Register(

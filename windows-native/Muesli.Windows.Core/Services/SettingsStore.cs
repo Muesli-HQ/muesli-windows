@@ -473,6 +473,8 @@ public sealed record MuesliSettings
     public string? FeatureTourLastLaunchedVersion { get; init; }
     /// <summary>macOS featureTour.lastPresentedVersion: the newest What's New tour already offered.</summary>
     public string? FeatureTourLastPresentedVersion { get; init; }
+    /// <summary>macOS push_to_talk: off releases the dictation shortcut entirely.</summary>
+    public bool PushToTalkEnabled { get; init; } = true;
     public bool EnableDoubleTapDictation { get; init; }
     public int HotkeyTriggerThresholdMs { get; init; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
     public string RecordingColorHex { get; init; } = "1e1e2e";

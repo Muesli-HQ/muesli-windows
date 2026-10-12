@@ -45,6 +45,11 @@ public partial class ShortcutsPageViewModel(
     [ObservableProperty] public partial int HoldThresholdMs { get; set; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
     [NotifyPropertyChangedFor(nameof(PushToTalkDescription))]
     [ObservableProperty] public partial bool HandsFreeEnabled { get; private set; }
+    [NotifyPropertyChangedFor(nameof(PushToTalkOff))]
+    [ObservableProperty] public partial bool PushToTalkEnabled { get; private set; } = true;
+    [ObservableProperty] public partial bool IsAtDefaults { get; private set; } = true;
+
+    public bool PushToTalkOff => !PushToTalkEnabled;
 
     public string PushToTalkDescription => HandsFreeEnabled
         ? "Hold to record, release to transcribe, or double-tap to lock hands-free"
@@ -93,7 +98,40 @@ public partial class ShortcutsPageViewModel(
         ComputerUseEnabled = _settings.ComputerUseEnabled;
         HandsFreeEnabled = _settings.EnableDoubleTapDictation;
         HoldThresholdMs = _settings.HotkeyTriggerThresholdMs;
+        PushToTalkEnabled = _settings.PushToTalkEnabled;
         RefreshComputerUseConfiguration();
+        RefreshDefaults();
+    }
+
+    /// <summary>Turns the dictation shortcut on or off; off removes the global hook.</summary>
+    public void SetPushToTalkEnabled(bool enabled)
+    {
+        _settings = _settings with { PushToTalkEnabled = enabled };
+        settingsContext.Save(_settings);
+        PushToTalkEnabled = enabled;
+        var failure = reapplyHotkey?.Invoke();
+        if (!enabled) ShowStatus("Push to Talk is turned off.");
+        else ShowStatus(failure is null ? $"Push to Talk is on: {Hotkey}." : $"Push to Talk could not start: {failure}", failure is not null);
+    }
+
+    /// <summary>
+    /// macOS Reset to Defaults: both shortcuts, Push to Talk on, Computer Use off, default delay.
+    /// </summary>
+    public void ResetToDefaults()
+    {
+        _settings = _settings with
+        {
+            Hotkey = new MuesliSettings().Hotkey,
+            PushToTalkEnabled = true,
+            ComputerUseHotkey = ComputerUseConfiguration.DefaultHotkey,
+            ComputerUseEnabled = false,
+            HotkeyTriggerThresholdMs = HotkeyTriggerTiming.DefaultThresholdMilliseconds,
+        };
+        settingsContext.Save(_settings);
+        Load();
+        var dictationFailure = reapplyHotkey?.Invoke();
+        var failure = reapplyComputerUseHotkey?.Invoke() ?? dictationFailure;
+        ShowStatus(failure is null ? "Shortcuts reset to defaults." : $"Shortcuts reset, but one is not listening yet: {failure}", failure is not null);
     }
 
     /// <summary>Re-reads the shared Computer Use configuration and the exact validation reason.</summary>
@@ -200,9 +238,11 @@ public partial class ShortcutsPageViewModel(
             _settings = _settings with { Hotkey = parsed.DisplayName };
             settingsContext.Save(_settings);
             ApplyHotkey(parsed.DisplayName);
-            var failure = reapplyHotkey?.Invoke();
+            var failure = _settings.PushToTalkEnabled ? reapplyHotkey?.Invoke() : null;
             ShowStatus(
-                failure is null
+                !_settings.PushToTalkEnabled
+                    ? $"Push-to-talk shortcut changed to {Hotkey}. Turn on Push to Talk to use it."
+                    : failure is null
                     ? $"Push-to-talk shortcut changed to {Hotkey}."
                     : $"{Hotkey} was saved, but it is not listening yet: {failure}",
                 isError: failure is not null);
@@ -245,8 +285,16 @@ public partial class ShortcutsPageViewModel(
         return parts.Length == 0 ? [displayName] : parts;
     }
 
+    private void RefreshDefaults() =>
+        IsAtDefaults = HotkeyGestureParser.Parse(_settings.Hotkey).DisplayName == HotkeyGestureParser.Parse(new MuesliSettings().Hotkey).DisplayName
+            && _settings.PushToTalkEnabled
+            && HotkeyGestureParser.Parse(_settings.ComputerUseHotkey).DisplayName == HotkeyGestureParser.Parse(ComputerUseConfiguration.DefaultHotkey).DisplayName
+            && !_settings.ComputerUseEnabled
+            && _settings.HotkeyTriggerThresholdMs == HotkeyTriggerTiming.DefaultThresholdMilliseconds;
+
     private void ShowStatus(string message, bool isError = false)
     {
+        RefreshDefaults();
         StatusMessage = message;
         IsStatusError = isError;
         IsStatusOpen = true;
