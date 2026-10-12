@@ -17,7 +17,7 @@ public sealed class WinUiQuillContext : IDisposable
     private readonly IUiDispatcher _dispatcher;
     private readonly AppLogService _log = new();
     private readonly GlobalHotkeyService _hotkey = new();
-    private readonly WinRtClipboardAdapter _clipboard = new();
+    private readonly WinRtClipboardAdapter _clipboard;
     private readonly ActiveAppPasteService _paste;
     private CancellationTokenSource? _run;
     private IntPtr _target;
@@ -33,6 +33,7 @@ public sealed class WinUiQuillContext : IDisposable
         _dictation = dictation;
         _computerUse = computerUse;
         _dispatcher = dispatcher;
+        _clipboard = new WinRtClipboardAdapter(dispatcher);
         _paste = new ActiveAppPasteService(_clipboard, new NativeWindowActivationAdapter(),
             new NativeKeyboardInputAdapter(() => _settings.Load().PasteShortcut));
         _dictation.Changed += OnDictationChanged;

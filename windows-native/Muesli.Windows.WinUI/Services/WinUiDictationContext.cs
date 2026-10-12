@@ -53,7 +53,7 @@ public sealed class WinUiDictationContext : IDisposable
         _cleanup = new NativeTextCleanupService(_log);
         _pipeline = new TranscriptionPipelineService(_cleanup, _log);
         _paste = new ActiveAppPasteService(
-            new WinRtClipboardAdapter(),
+            new WinRtClipboardAdapter(dispatcher),
             new NativeWindowActivationAdapter(),
             new NativeKeyboardInputAdapter(() => _settings.Load().PasteShortcut));
         _media = new DictationMediaControl(_log);
