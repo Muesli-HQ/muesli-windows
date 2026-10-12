@@ -171,7 +171,7 @@
                                 AutomationProperties.AutomationId="NavTimeline"
                                 AutomationProperties.Name="Navigate to Timeline">
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <FontIcon x:Name="TimelineIcon" Glyph="&#xE823;" Style="{StaticResource MuesliSidebarIconStyle}" />
                                 <TextBlock Grid.Column="1" Text="Timeline" VerticalAlignment="Center" />
                             </Grid>
@@ -183,7 +183,7 @@
                                 AutomationProperties.AutomationId="NavDictations"
                                 AutomationProperties.Name="Navigate to Dictations">
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <FontIcon x:Name="DictationsIcon" Glyph="&#xE720;" Style="{StaticResource MuesliSidebarIconStyle}" />
                                 <TextBlock Grid.Column="1" Text="Dictations" VerticalAlignment="Center" />
                             </Grid>
@@ -205,7 +205,7 @@
                                         AutomationProperties.AutomationId="NavMeetings"
                                         AutomationProperties.Name="Navigate to Meetings">
                                     <Grid>
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                         <FontIcon x:Name="MeetingsIcon" Glyph="&#xE716;" Style="{StaticResource MuesliSidebarIconStyle}" />
                                         <TextBlock Grid.Column="1" Text="Meetings" VerticalAlignment="Center" />
                                     </Grid>
@@ -253,7 +253,7 @@
                                 AutomationProperties.AutomationId="NavInsights"
                                 AutomationProperties.Name="Navigate to Insights">
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <FontIcon x:Name="InsightsIcon" Glyph="&#xE9D2;" Style="{StaticResource MuesliSidebarIconStyle}" />
                                 <TextBlock Grid.Column="1" Text="Insights" VerticalAlignment="Center" />
                             </Grid>
@@ -265,7 +265,7 @@
                                 AutomationProperties.AutomationId="NavDictionary"
                                 AutomationProperties.Name="Navigate to Dictionary">
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <FontIcon x:Name="DictionaryIcon" Glyph="&#xE8A5;" Style="{StaticResource MuesliSidebarIconStyle}" />
                                 <TextBlock Grid.Column="1" Text="Dictionary" VerticalAlignment="Center" />
                             </Grid>
@@ -286,7 +286,7 @@
                             AutomationProperties.AutomationId="NavModels"
                             AutomationProperties.Name="Navigate to Models">
                         <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <FontIcon x:Name="ModelsIcon" Glyph="&#xE950;" Style="{StaticResource MuesliSidebarIconStyle}" />
                             <TextBlock Grid.Column="1" Text="Models" VerticalAlignment="Center" />
                         </Grid>
@@ -298,7 +298,7 @@
                             AutomationProperties.AutomationId="NavShortcuts"
                             AutomationProperties.Name="Navigate to Shortcuts">
                         <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <FontIcon x:Name="ShortcutsIcon" Glyph="&#xE765;" Style="{StaticResource MuesliSidebarIconStyle}" />
                             <TextBlock Grid.Column="1" Text="Shortcuts" VerticalAlignment="Center" />
                         </Grid>
@@ -310,7 +310,7 @@
                             AutomationProperties.AutomationId="NavSettings"
                             AutomationProperties.Name="Navigate to Settings">
                         <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <FontIcon x:Name="SettingsIcon" Glyph="&#xE713;" Style="{StaticResource MuesliSidebarIconStyle}" />
                             <TextBlock Grid.Column="1" Text="Settings" VerticalAlignment="Center" />
                         </Grid>
@@ -322,7 +322,7 @@
                             AutomationProperties.AutomationId="NavAbout"
                             AutomationProperties.Name="Navigate to About">
                         <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <FontIcon x:Name="AboutIcon" Glyph="&#xE946;" Style="{StaticResource MuesliSidebarIconStyle}" />
                             <TextBlock Grid.Column="1" Text="About" VerticalAlignment="Center" />
                         </Grid>

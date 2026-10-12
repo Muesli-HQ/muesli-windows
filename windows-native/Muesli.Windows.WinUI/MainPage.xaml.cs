@@ -219,7 +219,7 @@ public sealed partial class MainPage : Page
         {
             grid.ColumnDefinitions[0].Width = compact
                 ? new GridLength(1, GridUnitType.Star)
-                : new GridLength(22);
+                : new GridLength(32);
             foreach (var icon in grid.Children.OfType<FontIcon>())
             {
                 icon.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
@@ -672,7 +672,7 @@ public sealed partial class MainPage : Page
         {
             Margin = new Thickness(Math.Min(folder.Depth, 8) * 12, 0, 0, 0)
         };
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
 
@@ -729,6 +729,8 @@ public sealed partial class MainPage : Page
             var selected = string.Equals(tag, _selectedTag, StringComparison.OrdinalIgnoreCase);
             button.Background = selected ? selectedBackground : null;
             button.Foreground = selected ? primary : secondary;
+            // macOS: labels are medium, the selected one semibold.
+            button.FontWeight = selected ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Medium;
 
             if (button.Content is Grid grid)
             {
