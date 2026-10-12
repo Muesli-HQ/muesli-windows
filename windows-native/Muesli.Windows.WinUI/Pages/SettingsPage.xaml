@@ -441,6 +441,51 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <TextBlock Text="ADVANCED" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Paste shortcut" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Keys Muesli presses to paste. Some terminals need Ctrl+Shift+V or Shift+Insert." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.PasteShortcutIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Paste shortcut"
+                                          AutomationProperties.AutomationId="PasteShortcutPicker">
+                                    <ComboBoxItem Content="Ctrl + V" />
+                                    <ComboBoxItem Content="Ctrl + Shift + V" />
+                                    <ComboBoxItem Content="Shift + Insert" />
+                                </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Pause media during dictation" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Pauses music and videos while you dictate, then resumes them." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.PauseMediaDuringDictation, Mode=TwoWay}"
+                                              AutomationProperties.Name="Pause media during dictation"
+                                              AutomationProperties.AutomationId="PauseMediaToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Mute system audio during dictation" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Mutes your speakers while you dictate, then unmutes them." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.MuteAudioDuringDictation, Mode=TwoWay}"
+                                              AutomationProperties.Name="Mute system audio during dictation"
+                                              AutomationProperties.AutomationId="MuteAudioToggle" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- COMPUTER USE -->
@@ -609,6 +654,21 @@
                                               AutomationProperties.Name="Save meeting recordings"
                                               AutomationProperties.AutomationId="SaveMeetingRecordingsToggle" />
                             </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.SaveMeetingRecordings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.SaveMeetingRecordings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Recording format" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="M4A is recommended for smaller files. WAV is lossless and uses more storage." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.RecordingFormatIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Recording format"
+                                          AutomationProperties.AutomationId="RecordingFormatPicker">
+                                    <ComboBoxItem Content="WAV" />
+                                    <ComboBoxItem Content="M4A" />
+                                </ComboBox>
+                            </Grid>
                             <!-- P5-11: capture and detection state used to float between the cards as
                                  two loose lines. They belong to this card, so they render as its
                                  final row with a live region for screen readers. -->
@@ -666,6 +726,20 @@
                                           SelectedItem="{x:Bind ViewModel.MeetingSummaryTemplate, Mode=TwoWay}"
                                           AutomationProperties.Name="Default notes template"
                                           AutomationProperties.AutomationId="DefaultMeetingTemplatePicker" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Summary retries" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Retry transient AI summary failures before saving failed notes." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <NumberBox Grid.Column="1"
+                                           Value="{x:Bind ViewModel.MeetingSummaryRetryCount, Mode=TwoWay}"
+                                           Minimum="0" Maximum="5" Width="130"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           SpinButtonPlacementMode="Compact"
+                                           AutomationProperties.Name="Summary retries"
+                                           AutomationProperties.AutomationId="SummaryRetryCount" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}">

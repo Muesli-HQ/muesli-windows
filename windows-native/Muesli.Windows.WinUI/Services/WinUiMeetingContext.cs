@@ -267,6 +267,7 @@ public sealed class WinUiMeetingContext : IDisposable
         ActiveMeetingId = null;
         IsSourceMissing = false;
         var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
+        meeting = await CompressSavedTracksAsync(meeting);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -381,6 +382,7 @@ public sealed class WinUiMeetingContext : IDisposable
         var unchangedSpeech = IsResumingFinishedMeeting && string.IsNullOrWhiteSpace(result.Transcript);
         _coordinator.AcknowledgePersisted(result.MeetingId);
         var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
+        meeting = await CompressSavedTracksAsync(meeting);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -506,6 +508,18 @@ public sealed class WinUiMeetingContext : IDisposable
     }
 
     private void SaveMeeting(PersistedMeeting meeting) => _library.SaveMeeting(meeting);
+
+    /// <summary>Recording format M4A: compress the kept tracks once the transcript no longer needs them.</summary>
+    private async Task<PersistedMeeting> CompressSavedTracksAsync(PersistedMeeting meeting)
+    {
+        if (!_settings.SaveMeetingRecordings || _settings.MeetingRecordingFormat != "m4a") return meeting;
+        var microphone = await Task.Run(() => MeetingRecordingCompression.ToM4a(meeting.MicrophoneAudioPath, _log.Error));
+        var system = await Task.Run(() => MeetingRecordingCompression.ToM4a(meeting.SystemAudioPath, _log.Error));
+        if (microphone == meeting.MicrophoneAudioPath && system == meeting.SystemAudioPath) return meeting;
+        meeting = meeting with { MicrophoneAudioPath = microphone, SystemAudioPath = system };
+        SaveMeeting(meeting);
+        return meeting;
+    }
 
     private async Task<PersistedMeeting> FinalizeMeetingAsync(
         PersistedMeeting meeting,

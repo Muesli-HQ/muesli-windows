@@ -222,6 +222,33 @@ public static class MeetingSummaryService
         var provider = settings.MeetingSummaryProvider.Trim().ToLowerInvariant();
         try
         {
+            var retries = MeetingSummaryRetryPolicy.Clamp(settings.MeetingSummaryRetryCount);
+            for (var attempt = 1; ; attempt++)
+            {
+                try { return await SummarizeOnceAsync(); }
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
+                    attempt <= MeetingSummaryRetryPolicy.EffectiveRetries(retries, provider, exception))
+                {
+                    await RetryDelay(MeetingSummaryRetryPolicy.Delay(attempt), cancellationToken);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var fallback = CreateLocalSummary(localInput, meetingTitle, settings);
+            var reason = exception is SummaryProviderException providerException
+                ? providerException.SafeReason
+                : exception is TaskCanceledException ? "timeout"
+                : exception is JsonException ? "malformed-response" : "provider-error";
+            return new SummaryGenerationResult(fallback, provider, true, reason);
+        }
+
+        async Task<SummaryGenerationResult> SummarizeOnceAsync()
+        {
             var summary = provider switch
             {
                 "chatgpt" => await SummarizeWithChatGptAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
@@ -238,20 +265,10 @@ public static class MeetingSummaryService
                 false,
                 null);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            var fallback = CreateLocalSummary(localInput, meetingTitle, settings);
-            var reason = exception is SummaryProviderException providerException
-                ? providerException.SafeReason
-                : exception is TaskCanceledException ? "timeout"
-                : exception is JsonException ? "malformed-response" : "provider-error";
-            return new SummaryGenerationResult(fallback, provider, true, reason);
-        }
     }
+
+    /// <summary>Waits between summary retries; tests replace it to run without real delays.</summary>
+    public static Func<TimeSpan, CancellationToken, Task> RetryDelay { get; set; } = Task.Delay;
 
     private static string CreateLocalSummary(string transcript, string meetingTitle, MuesliSettings settings)
     {
@@ -1457,6 +1474,37 @@ public sealed record SummaryGenerationResult(
     string Provider,
     bool UsedLocalFallback,
     string? SafeFailureReason);
+
+/// <summary>
+/// macOS MeetingSummaryRetryPolicy: retry transient failures (timeouts, empty replies, 408/409/425/
+/// 429/5xx) with 1, 2, 4, 8 s backoff. Setup problems never retry, and a local server at most once.
+/// </summary>
+public static class MeetingSummaryRetryPolicy
+{
+    public const int DefaultRetryCount = 3;
+    public const int MaximumRetryCount = 5;
+
+    public static int Clamp(int count) => Math.Clamp(count, 0, MaximumRetryCount);
+
+    public static TimeSpan Delay(int attempt) => TimeSpan.FromSeconds(Math.Min(Math.Pow(2, Math.Max(attempt - 1, 0)), 8));
+
+    public static int EffectiveRetries(int configured, string provider, Exception error)
+    {
+        var retries = Clamp(configured);
+        if (retries == 0 || !IsTransient(error)) return 0;
+        return provider is "ollama" or "lmstudio" ? Math.Min(retries, 1) : retries;
+    }
+
+    public static bool IsTransient(Exception error) => error switch
+    {
+        SummaryProviderException { SafeReason: var reason } => reason is "empty-response" or "provider-error"
+            || (reason.StartsWith("http-", StringComparison.Ordinal)
+                && int.TryParse(reason.AsSpan(5), out var status)
+                && (status is 408 or 409 or 425 or 429 || status is >= 500 and < 600)),
+        TaskCanceledException or HttpRequestException or JsonException => true,
+        _ => false
+    };
+}
 
 public sealed class SummaryProviderException : Exception
 {

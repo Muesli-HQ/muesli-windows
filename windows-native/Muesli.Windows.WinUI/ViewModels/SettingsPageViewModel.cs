@@ -105,6 +105,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial int IndicatorPositionIndex { get; set; }
     [ObservableProperty] public partial IReadOnlyList<string> IndicatorPositions { get; private set; } = IndicatorAnchors;
     [ObservableProperty] public partial int AutoExportContentIndex { get; set; }
+    [ObservableProperty] public partial int PasteShortcutIndex { get; set; }
+    [ObservableProperty] public partial bool PauseMediaDuringDictation { get; set; }
+    [ObservableProperty] public partial bool MuteAudioDuringDictation { get; set; }
+    [ObservableProperty] public partial int RecordingFormatIndex { get; set; }
+    private static readonly string[] PasteShortcuts = ["ctrl-v", "ctrl-shift-v", "shift-insert"];
+    [ObservableProperty] public partial int MeetingSummaryRetryCount { get; set; } = MeetingSummaryRetryPolicy.DefaultRetryCount;
 
     /// <summary>macOS indicator_position choices; "Custom" appears only after a drag.</summary>
     public static readonly string[] IndicatorAnchors =
@@ -290,6 +296,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
         AutoMeetingDetectionEnabled = _source.AutoMeetingDetectionEnabled;
         SaveMeetingRecordings = _source.SaveMeetingRecordings;
+        RecordingFormatIndex = _source.MeetingRecordingFormat == "m4a" ? 1 : 0;
         AutoExportMarkdownEnabled = _source.AutoExportMarkdownEnabled;
         AutoExportMarkdownDirectory = _source.AutoExportMarkdownDirectory;
         AutoExportPdfEnabled = _source.AutoExportPdfEnabled;
@@ -299,6 +306,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         MeetingTemplates = MeetingSummaryService.BuiltInTemplateNames.Concat(_library.LoadMeetingTemplates().Select(item => item.Name)).Distinct().ToList();
         MeetingSummaryTemplate = MeetingSummaryService.NormalizeTemplateName(_source.MeetingSummaryTemplate);
         RemoveFillerWords = _source.RemoveFillerWords;
+        PasteShortcutIndex = Math.Max(0, Array.IndexOf(PasteShortcuts, _source.PasteShortcut));
+        PauseMediaDuringDictation = _source.PauseMediaDuringDictation;
+        MuteAudioDuringDictation = _source.MuteAudioDuringDictation;
+        MeetingSummaryRetryCount = MeetingSummaryRetryPolicy.Clamp(_source.MeetingSummaryRetryCount);
         EnableLocalCleanup = _source.EnableLocalCleanup;
         ComputerUseEnabled = _source.ComputerUseEnabled;
         ShowFloatingIndicator = _source.ShowFloatingIndicator;
@@ -378,6 +389,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             StartAtLogin = StartAtLogin,
             AutoMeetingDetectionEnabled = AutoMeetingDetectionEnabled,
             SaveMeetingRecordings = SaveMeetingRecordings,
+            MeetingRecordingFormat = RecordingFormatIndex == 1 ? "m4a" : "wav",
             AutoExportMarkdownEnabled = AutoExportMarkdownEnabled,
             AutoExportMarkdownDirectory = AutoExportMarkdownDirectory.Trim(),
             AutoExportPdfEnabled = AutoExportPdfEnabled,
@@ -386,7 +398,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             PostMeetingHookExecutablePath = PostMeetingHookExecutablePath.Trim(),
             PostMeetingHookTimeoutSeconds = Math.Clamp(PostMeetingHookTimeoutSeconds, 1, 600),
             MeetingSummaryTemplate = MeetingSummaryTemplate,
+            MeetingSummaryRetryCount = MeetingSummaryRetryPolicy.Clamp(MeetingSummaryRetryCount),
             RemoveFillerWords = RemoveFillerWords,
+            PasteShortcut = PasteShortcuts[Math.Clamp(PasteShortcutIndex, 0, PasteShortcuts.Length - 1)],
+            PauseMediaDuringDictation = PauseMediaDuringDictation,
+            MuteAudioDuringDictation = MuteAudioDuringDictation,
             EnableLocalCleanup = EnableLocalCleanup,
             ComputerUseEnabled = enableComputerUse,
             ShowFloatingIndicator = ShowFloatingIndicator,

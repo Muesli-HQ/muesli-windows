@@ -62,13 +62,20 @@ public sealed class CaptureStorageService
 
         var meetingDirectory = EnsureTrailingSeparator(Path.GetFullPath(Path.Combine(_recordingsDirectory, meetingId)));
         var fullPath = Path.GetFullPath(path);
-        var name = Path.GetFileName(fullPath);
-        var resumed = name.StartsWith("microphone-resume-", StringComparison.OrdinalIgnoreCase)
-            ? name[18..] : name.StartsWith("system-resume-", StringComparison.OrdinalIgnoreCase) ? name[14..] : "";
+        // Saved tracks are WAV, or M4A when the recording format setting compresses them.
+        var extension = Path.GetExtension(fullPath);
+        if (!extension.Equals(".wav", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        var stem = Path.GetFileNameWithoutExtension(fullPath);
+        var resumed = stem.StartsWith("microphone-resume-", StringComparison.OrdinalIgnoreCase)
+            ? stem[18..] : stem.StartsWith("system-resume-", StringComparison.OrdinalIgnoreCase) ? stem[14..] : null;
         return fullPath.StartsWith(meetingDirectory, StringComparison.OrdinalIgnoreCase) &&
-               (name.Equals("microphone.wav", StringComparison.OrdinalIgnoreCase) ||
-                name.Equals("system.wav", StringComparison.OrdinalIgnoreCase) ||
-                resumed.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) && IsValidMeetingId(resumed[..^4]));
+               (stem.Equals("microphone", StringComparison.OrdinalIgnoreCase) ||
+                stem.Equals("system", StringComparison.OrdinalIgnoreCase) ||
+                resumed is not null && IsValidMeetingId(resumed));
     }
 
     public CaptureCleanupResult DeleteOwnedMeetingAudio(string meetingId, IEnumerable<string> paths)

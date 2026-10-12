@@ -41,9 +41,10 @@ public sealed class NativeWindowActivationAdapter : IWindowActivationAdapter, IW
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }
 
-public sealed class NativeKeyboardInputAdapter : IKeyboardInputAdapter
+/// <param name="pasteShortcut">The saved paste keys; some terminals paste only with Ctrl+Shift+V or Shift+Insert.</param>
+public sealed class NativeKeyboardInputAdapter(Func<string>? pasteShortcut = null) : IKeyboardInputAdapter
 {
-    public bool SendPasteShortcut() => WindowsInputInterop.SendCtrlV();
+    public bool SendPasteShortcut() => WindowsInputInterop.SendPaste(pasteShortcut?.Invoke());
 
     public TextInputResult SendText(string text) => WindowsInputInterop.SendUnicodeText(text);
 }
@@ -55,17 +56,32 @@ internal static class WindowsInputInterop
     private const uint KeyeventfUnicode = 0x0004;
     private const ushort VkControl = 0x11;
     private const ushort VkV = 0x56;
+    private const ushort VkShift = 0x10;
+    private const ushort VkInsert = 0x2D;
+    private const uint KeyeventfExtendedKey = 0x0001;
     private const int SwRestore = 9;
     private const int UnicodeTextBatchLength = 256;
 
-    internal static bool SendCtrlV()
+    internal static bool SendPaste(string? shortcut)
     {
-        var inputs = new[]
+        var inputs = shortcut switch
         {
-            KeyboardInput(VkControl, 0),
-            KeyboardInput(VkV, 0),
-            KeyboardInput(VkV, KeyeventfKeyup),
-            KeyboardInput(VkControl, KeyeventfKeyup)
+            "ctrl-shift-v" => new[]
+            {
+                KeyboardInput(VkControl, 0), KeyboardInput(VkShift, 0), KeyboardInput(VkV, 0),
+                KeyboardInput(VkV, KeyeventfKeyup), KeyboardInput(VkShift, KeyeventfKeyup), KeyboardInput(VkControl, KeyeventfKeyup)
+            },
+            // Insert is an extended key; without the flag Windows reads it as numpad 0.
+            "shift-insert" => new[]
+            {
+                KeyboardInput(VkShift, 0), KeyboardInput(VkInsert, KeyeventfExtendedKey),
+                KeyboardInput(VkInsert, KeyeventfExtendedKey | KeyeventfKeyup), KeyboardInput(VkShift, KeyeventfKeyup)
+            },
+            _ => new[]
+            {
+                KeyboardInput(VkControl, 0), KeyboardInput(VkV, 0),
+                KeyboardInput(VkV, KeyeventfKeyup), KeyboardInput(VkControl, KeyeventfKeyup)
+            }
         };
         return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>()) == inputs.Length;
     }

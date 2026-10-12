@@ -11,6 +11,7 @@ public sealed class WinUiDictationContext : IDisposable
     private readonly WinUiSettingsContext _settings;
     private readonly IUiDispatcher _dispatcher;
     private readonly AppLogService _log = new();
+    private readonly DictationMediaControl _media;
     private readonly NativeTranscriptionClient _transcription;
     private readonly DictationCoordinator _coordinator;
     private readonly TranscriptionPipelineService _pipeline;
@@ -53,7 +54,8 @@ public sealed class WinUiDictationContext : IDisposable
         _paste = new ActiveAppPasteService(
             new WinRtClipboardAdapter(),
             new NativeWindowActivationAdapter(),
-            new NativeKeyboardInputAdapter());
+            new NativeKeyboardInputAdapter(() => _settings.Load().PasteShortcut));
+        _media = new DictationMediaControl(_log);
         Status = "Ready";
     }
 
@@ -211,6 +213,7 @@ public sealed class WinUiDictationContext : IDisposable
         StopTimers();
         RequestCancellation();
         await _coordinator.CancelAsync();
+        await _media.RestoreAsync();
         _hotkeyState.Reset();
         _pasteTarget = IntPtr.Zero;
         Status = "Dictation cancelled";
@@ -235,6 +238,7 @@ public sealed class WinUiDictationContext : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         StopTimers();
         _operationCancellation?.Cancel();
+        Task.Run(_media.RestoreAsync).Wait(TimeSpan.FromSeconds(2));
         _hotkey.Dispose();
         _coordinator.LevelChanged -= OnRecordingLevelChanged;
         _coordinator.Dispose();
@@ -448,6 +452,7 @@ public sealed class WinUiDictationContext : IDisposable
         }
 
         _log.Info($"Dictation capture start result. trace={_captureTraceId}; recording={_coordinator.IsRecording}; model={_coordinator.ModelId}");
+        if (_coordinator.IsRecording) _media.Apply(current.PauseMediaDuringDictation, current.MuteAudioDuringDictation);
         Status = !_coordinator.IsRecording ? "Ready" :
             _coordinator.ModelId == current.DictationModelId ? "Listening" : "Listening with Parakeet (low memory)";
         RaiseChanged();
@@ -456,6 +461,8 @@ public sealed class WinUiDictationContext : IDisposable
     private async Task StopAsync()
     {
         _log.Info($"Dictation stop requested. trace={_captureTraceId ?? "not-started"}; recording={IsRecording}; busy={IsBusy}");
+        // Restoring is a no-op when nothing was paused or muted, so it runs before every early exit.
+        await _media.RestoreAsync();
         if (!_coordinator.IsRecording) return;
         if (_auxiliarySession)
         {

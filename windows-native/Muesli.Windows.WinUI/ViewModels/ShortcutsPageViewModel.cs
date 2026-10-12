@@ -18,10 +18,12 @@ namespace Muesli.Windows.WinUI.ViewModels;
 /// until restart - and the old gesture, still hooked, was swallowed before it could be captured.
 /// </param>
 /// <param name="reapplyComputerUseHotkey">Re-registers the Computer Use shortcut; null on success.</param>
+/// <param name="reapplyMeetingHotkey">Re-registers the meeting recording shortcut; null on success.</param>
 public partial class ShortcutsPageViewModel(
     WinUiSettingsContext settingsContext,
     Func<string?>? reapplyHotkey = null,
-    Func<string?>? reapplyComputerUseHotkey = null) : ObservableObject
+    Func<string?>? reapplyComputerUseHotkey = null,
+    Func<string?>? reapplyMeetingHotkey = null) : ObservableObject
 {
     private MuesliSettings _settings = new();
     private string _captureTarget = "push";
@@ -31,7 +33,11 @@ public partial class ShortcutsPageViewModel(
     [ObservableProperty] public partial string CapturePrompt { get; private set; } = "Change…";
     [ObservableProperty] public partial IReadOnlyList<string> ComputerUseHotkeyParts { get; private set; } = SplitHotkey(ComputerUseConfiguration.DefaultHotkey);
     [ObservableProperty] public partial string ComputerUseCapturePrompt { get; private set; } = "Change…";
+    [ObservableProperty] public partial IReadOnlyList<string> MeetingHotkeyParts { get; private set; } = SplitHotkey(new MuesliSettings().MeetingRecordingHotkey);
+    [ObservableProperty] public partial string MeetingCapturePrompt { get; private set; } = "Change…";
+    [ObservableProperty] public partial bool MeetingShortcutEnabled { get; private set; }
     public bool IsCapturingComputerUse => IsCapturing && _captureTarget == "computer-use";
+    public bool IsCapturingMeeting => IsCapturing && _captureTarget == "meeting";
     [ObservableProperty] public partial bool IsCapturing { get; private set; }
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
     [ObservableProperty] public partial bool IsStatusOpen { get; set; }
@@ -87,8 +93,6 @@ public partial class ShortcutsPageViewModel(
     /// </summary>
     public string QuillUnavailableReason =>
         "Not available on Windows yet.";
-    public string MeetingRecordingUnavailableReason =>
-        "No global shortcut yet. Start and stop recording from Meetings or the tray.";
 
     public void Load()
     {
@@ -99,6 +103,8 @@ public partial class ShortcutsPageViewModel(
         HandsFreeEnabled = _settings.EnableDoubleTapDictation;
         HoldThresholdMs = _settings.HotkeyTriggerThresholdMs;
         PushToTalkEnabled = _settings.PushToTalkEnabled;
+        MeetingShortcutEnabled = _settings.MeetingRecordingShortcutEnabled;
+        MeetingHotkeyParts = SplitHotkey(HotkeyGestureParser.Parse(_settings.MeetingRecordingHotkey).DisplayName);
         RefreshComputerUseConfiguration();
         RefreshDefaults();
     }
@@ -114,8 +120,21 @@ public partial class ShortcutsPageViewModel(
         else ShowStatus(failure is null ? $"Push to Talk is on: {Hotkey}." : $"Push to Talk could not start: {failure}", failure is not null);
     }
 
+    /// <summary>Turns the meeting recording shortcut on or off; off removes its hook.</summary>
+    public void SetMeetingShortcutEnabled(bool enabled)
+    {
+        _settings = _settings with { MeetingRecordingShortcutEnabled = enabled };
+        settingsContext.Save(_settings);
+        MeetingShortcutEnabled = enabled;
+        var failure = reapplyMeetingHotkey?.Invoke();
+        var keys = HotkeyGestureParser.Parse(_settings.MeetingRecordingHotkey).DisplayName;
+        if (!enabled) ShowStatus("Meeting recording shortcut disabled.");
+        else ShowStatus(failure is null ? $"{keys} now starts and stops meeting recording." : $"The meeting shortcut could not start: {failure}", failure is not null);
+    }
+
     /// <summary>
-    /// macOS Reset to Defaults: both shortcuts, Push to Talk on, Computer Use off, default delay.
+    /// macOS Reset to Defaults: every shortcut, Push to Talk on, Computer Use and the meeting
+    /// shortcut off, default delay.
     /// </summary>
     public void ResetToDefaults()
     {
@@ -125,12 +144,15 @@ public partial class ShortcutsPageViewModel(
             PushToTalkEnabled = true,
             ComputerUseHotkey = ComputerUseConfiguration.DefaultHotkey,
             ComputerUseEnabled = false,
+            MeetingRecordingHotkey = new MuesliSettings().MeetingRecordingHotkey,
+            MeetingRecordingShortcutEnabled = false,
             HotkeyTriggerThresholdMs = HotkeyTriggerTiming.DefaultThresholdMilliseconds,
         };
         settingsContext.Save(_settings);
         Load();
         var dictationFailure = reapplyHotkey?.Invoke();
-        var failure = reapplyComputerUseHotkey?.Invoke() ?? dictationFailure;
+        var meetingFailure = reapplyMeetingHotkey?.Invoke();
+        var failure = reapplyComputerUseHotkey?.Invoke() ?? dictationFailure ?? meetingFailure;
         ShowStatus(failure is null ? "Shortcuts reset to defaults." : $"Shortcuts reset, but one is not listening yet: {failure}", failure is not null);
     }
 
@@ -188,6 +210,7 @@ public partial class ShortcutsPageViewModel(
         _captureTarget = target;
         IsCapturing = true;
         if (target == "computer-use") ComputerUseCapturePrompt = "Press shortcut…";
+        else if (target == "meeting") MeetingCapturePrompt = "Press shortcut…";
         else CapturePrompt = "Press shortcut…";
         IsStatusOpen = false;
     }
@@ -197,6 +220,7 @@ public partial class ShortcutsPageViewModel(
         IsCapturing = false;
         CapturePrompt = "Change…";
         ComputerUseCapturePrompt = "Change…";
+        MeetingCapturePrompt = "Change…";
     }
 
     public void ApplyCapturedGesture(string gesture)
@@ -209,16 +233,37 @@ public partial class ShortcutsPageViewModel(
             {
                 throw new InvalidOperationException("Escape is reserved for cancelling an active dictation.");
             }
-            var other = HotkeyGestureParser.Parse(computerUse ? _settings.Hotkey : _settings.ComputerUseHotkey).DisplayName;
-            if (parsed.DisplayName.Equals(other, StringComparison.OrdinalIgnoreCase))
+            var meeting = _captureTarget == "meeting";
+            foreach (var (owner, name, value) in new[]
             {
-                throw new InvalidOperationException(computerUse
-                    ? $"{other} is the dictation shortcut. Choose a different one."
-                    : $"{other} is the Computer Use shortcut. Choose a different one.");
+                ("push", "dictation", _settings.Hotkey),
+                ("computer-use", "Computer Use", _settings.ComputerUseHotkey),
+                ("meeting", "meeting recording", _settings.MeetingRecordingHotkey)
+            })
+            {
+                var other = HotkeyGestureParser.Parse(value).DisplayName;
+                if (owner != _captureTarget && parsed.DisplayName.Equals(other, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"{other} is the {name} shortcut. Choose a different one.");
             }
             if (!HotkeyConflictProbe.IsAdvisoryRegistrationAvailable(parsed.DisplayName))
             {
                 throw new InvalidOperationException("Windows reports that this shortcut is already registered by another app.");
+            }
+
+            if (meeting)
+            {
+                _settings = _settings with { MeetingRecordingHotkey = parsed.DisplayName };
+                settingsContext.Save(_settings);
+                MeetingHotkeyParts = SplitHotkey(parsed.DisplayName);
+                var meetingFailure = _settings.MeetingRecordingShortcutEnabled ? reapplyMeetingHotkey?.Invoke() : null;
+                ShowStatus(
+                    !_settings.MeetingRecordingShortcutEnabled
+                        ? $"Meeting recording shortcut changed to {parsed.DisplayName}. Turn it on to use it."
+                        : meetingFailure is null
+                            ? $"Meeting recording shortcut changed to {parsed.DisplayName}."
+                            : $"{parsed.DisplayName} was saved, but it is not listening yet: {meetingFailure}",
+                    isError: meetingFailure is not null);
+                return;
             }
 
             if (computerUse)
@@ -290,6 +335,8 @@ public partial class ShortcutsPageViewModel(
             && _settings.PushToTalkEnabled
             && HotkeyGestureParser.Parse(_settings.ComputerUseHotkey).DisplayName == HotkeyGestureParser.Parse(ComputerUseConfiguration.DefaultHotkey).DisplayName
             && !_settings.ComputerUseEnabled
+            && !_settings.MeetingRecordingShortcutEnabled
+            && HotkeyGestureParser.Parse(_settings.MeetingRecordingHotkey).DisplayName == HotkeyGestureParser.Parse(new MuesliSettings().MeetingRecordingHotkey).DisplayName
             && _settings.HotkeyTriggerThresholdMs == HotkeyTriggerTiming.DefaultThresholdMilliseconds;
 
     private void ShowStatus(string message, bool isError = false)

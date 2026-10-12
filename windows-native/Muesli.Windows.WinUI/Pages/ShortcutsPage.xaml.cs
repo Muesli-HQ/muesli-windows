@@ -12,7 +12,7 @@ public sealed partial class ShortcutsPage : Page
 {
     private bool _ready;
 
-    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey, App.ComputerUse.RegisterVoiceShortcut);
+    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey, App.ComputerUse.RegisterVoiceShortcut, App.RegisterMeetingShortcut);
 
     /// <summary>
     /// Re-installs the global push-to-talk hook from the saved gesture. Returns null when the hook
@@ -105,11 +105,17 @@ public sealed partial class ShortcutsPage : Page
         Frame?.Navigate(typeof(SettingsPage), "computer-use");
     }
 
-    /// <summary>Meeting recording has no global shortcut yet; open the page that starts it.</summary>
-    private void OpenMeetings_Click(object sender, RoutedEventArgs e)
+    private void MeetingShortcut_Toggled(object sender, RoutedEventArgs e)
     {
-        (App.Window as MainWindow)?.ShellPage?.SyncRailSelection("meetings");
-        Frame?.Navigate(typeof(MeetingsPage));
+        if (!_ready || MeetingShortcutToggle.IsOn == ViewModel.MeetingShortcutEnabled) return;
+        ViewModel.SetMeetingShortcutEnabled(MeetingShortcutToggle.IsOn);
+    }
+
+    private void ChangeMeetingShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.BeginCapture("meeting");
+        ApplyCaptureChrome();
+        Focus(FocusState.Programmatic);
     }
 
     protected override void OnKeyDown(KeyRoutedEventArgs e)
@@ -121,7 +127,8 @@ public sealed partial class ShortcutsPage : Page
         }
 
         e.Handled = true;
-        var button = ViewModel.IsCapturingComputerUse ? ChangeComputerUseButton : ChangePushToTalkButton;
+        var button = ViewModel.IsCapturingComputerUse ? ChangeComputerUseButton
+            : ViewModel.IsCapturingMeeting ? ChangeMeetingButton : ChangePushToTalkButton;
         if (e.Key == VirtualKey.Escape)
         {
             ViewModel.CancelCapture();
@@ -147,7 +154,10 @@ public sealed partial class ShortcutsPage : Page
     private void ApplyCaptureChrome()
     {
         var computerUse = ViewModel.IsCapturingComputerUse;
-        var push = ViewModel.IsCapturing && !computerUse;
+        var meeting = ViewModel.IsCapturingMeeting;
+        var push = ViewModel.IsCapturing && !computerUse && !meeting;
+        MeetingKeycapWell.BorderBrush = ThemeBrush(meeting ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        MeetingKeycapWell.Background = ThemeBrush(meeting ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
         PushKeycapWell.BorderBrush = ThemeBrush(push ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
         PushKeycapWell.Background = ThemeBrush(push ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
         ComputerUseKeycapWell.BorderBrush = ThemeBrush(computerUse ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");

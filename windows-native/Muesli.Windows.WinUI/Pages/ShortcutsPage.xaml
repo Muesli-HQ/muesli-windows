@@ -188,22 +188,40 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Meeting Recording: no dedicated Windows global shortcut yet. -->
+                <!-- Meeting Recording: macOS meeting_shortcut, off until the user turns it on. -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Meeting Recording shortcut">
                     <StackPanel Spacing="16">
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Meeting Recording" Style="{StaticResource ShortcutTitleStyle}" />
-                            <TextBlock Text="Toggle meeting recording on/off" Style="{StaticResource ShortcutCaptionStyle}" />
-                        </StackPanel>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Meeting Recording" Style="{StaticResource ShortcutTitleStyle}" />
+                                <TextBlock Text="Toggle meeting recording on/off" Style="{StaticResource ShortcutCaptionStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="MeetingShortcutToggle" Grid.Column="1"
+                                          Style="{StaticResource ShortcutToggleStyle}"
+                                          IsOn="{x:Bind ViewModel.MeetingShortcutEnabled, Mode=OneWay}"
+                                          Toggled="MeetingShortcut_Toggled"
+                                          AutomationProperties.Name="Meeting recording shortcut enabled"
+                                          AutomationProperties.AutomationId="MeetingShortcutToggle" />
+                        </Grid>
                         <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                            <Border Style="{StaticResource ShortcutBadgeStyle}" Opacity="0.7">
-                                <TextBlock Text="None" Style="{StaticResource ShortcutBadgeTextStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="12" RowDefinitions="Auto,Auto" RowSpacing="8">
+                            <Border x:Name="MeetingKeycapWell" Style="{StaticResource ShortcutBadgeStyle}"
+                                    AutomationProperties.Name="Current meeting recording shortcut"
+                                    AutomationProperties.LiveSetting="Polite">
+                                <TextBlock Text="{x:Bind local:ShortcutsPage.Keys(ViewModel.MeetingHotkeyParts), Mode=OneWay}" Style="{StaticResource ShortcutBadgeTextStyle}" />
                             </Border>
-                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.MeetingRecordingUnavailableReason, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
-                            <Button Grid.Column="2" Content="Open Meetings" Click="OpenMeetings_Click"
+                            <Button x:Name="ChangeMeetingButton" Grid.Column="1"
+                                    Click="ChangeMeetingShortcut_Click"
+                                    Content="{x:Bind ViewModel.MeetingCapturePrompt, Mode=OneWay}"
                                     Style="{StaticResource ShortcutLinkStyle}"
-                                    AutomationProperties.Name="Open the Meetings page to start or stop recording" />
+                                    AutomationProperties.Name="Change meeting recording shortcut"
+                                    AutomationProperties.AutomationId="ChangeMeetingShortcutButton"
+                                    ToolTipService.ToolTip="Press to capture a new Windows shortcut. Escape cancels." />
+                            <TextBlock Grid.Row="1" Grid.ColumnSpan="3"
+                                       Text="Global shortcuts take the key from every other app while on, so pick one you don't use elsewhere."
+                                       Style="{StaticResource ShortcutCaptionStyle}"
+                                       Foreground="{ThemeResource MuesliWarningBrush}"
+                                       Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.MeetingShortcutEnabled), Mode=OneWay}" />
                         </Grid>
                     </StackPanel>
                 </Border>

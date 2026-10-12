@@ -198,6 +198,7 @@ public partial class App : Application
         ComputerUse.AskAsync = AskComputerUseQuestionAsync;
         ComputerUse.CaptureStarted = () => ((MainWindow)Window).HideDashboard();
         ComputerUse.RegisterVoiceShortcut();
+        RegisterMeetingShortcut();
         MeetingDetection = new WinUiMeetingDetectionService();
         _meetingNotifications = new WinUiMeetingNotificationService(
             UiDispatcher,
@@ -220,15 +221,7 @@ public partial class App : Application
             () => Dictation.IsRecording,
             () => Meetings.IsRecording,
             () => Dictation.IsRecording ? Dictation.StopFromDashboardAsync() : Dictation.StartFromDashboardAsync(),
-            async () =>
-            {
-                if (Meetings.IsRecording || Meetings.IsPaused) await Meetings.StopAndSaveAsync();
-                else
-                {
-                    await Meetings.StartQuickNoteAsync();
-                    mainWindow.ShowDashboard("meetings");
-                }
-            },
+            ToggleMeetingRecordingAsync,
             mainWindow.ShowDashboard,
             () => _ = RequestExitAsync(),
             Path.Combine(AppContext.BaseDirectory, "Assets", "TrayIcon.ico"),
@@ -320,6 +313,7 @@ public partial class App : Application
                 LiveTranscript.Dispose();
                 MeetingDetection.Dispose();
                 ComputerUse.Dispose();
+                MeetingHotkey.Dispose();
                 Meetings.Dispose();
                 DictionarySuggestions.Dispose();
                 Dictation.Dispose();
@@ -380,6 +374,50 @@ public partial class App : Application
                 _autoStop?.SuppressWarning();
                 Meetings.SetSourceMissing(false);
             }));
+    }
+
+    private static readonly GlobalHotkeyService MeetingHotkey = new();
+
+    /// <summary>Tray item and meeting shortcut: stop the recording, or start one and show it.</summary>
+    private static async Task ToggleMeetingRecordingAsync()
+    {
+        if (Meetings.IsRecording || Meetings.IsPaused) await Meetings.StopAndSaveAsync();
+        else
+        {
+            await Meetings.StartQuickNoteAsync();
+            ((MainWindow)Window).ShowDashboard("meetings");
+        }
+    }
+
+    /// <summary>
+    /// macOS meeting_shortcut. Off releases the key entirely; returns null when the hook is in the
+    /// state the settings ask for, otherwise why Windows refused it.
+    /// </summary>
+    public static string? RegisterMeetingShortcut()
+    {
+        var settings = Settings.Load();
+        if (!settings.MeetingRecordingShortcutEnabled)
+        {
+            MeetingHotkey.Dispose();
+            return null;
+        }
+        try
+        {
+            MeetingHotkey.Register(settings.MeetingRecordingHotkey,
+                () => UiDispatcher.TryEnqueue(() => _ = ToggleMeetingRecordingSafelyAsync()), () => { });
+            return null;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return exception.Message;
+        }
+    }
+
+    private static async Task ToggleMeetingRecordingSafelyAsync()
+    {
+        if (Meetings.IsBusy) return;
+        try { await ToggleMeetingRecordingAsync(); }
+        catch (Exception exception) { new AppLogService().Error("Meeting shortcut could not toggle recording.", exception); }
     }
 
     private async Task RequestExitAsync()

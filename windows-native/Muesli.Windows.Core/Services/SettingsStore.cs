@@ -200,6 +200,9 @@ public sealed class SettingsStore
             UserName = settings.UserName ?? "",
             Hotkey = DefaultIfBlank(settings.Hotkey, "F8").Trim(),
             PasteBehavior = DefaultIfBlank(settings.PasteBehavior, "active-app").Trim(),
+            PasteShortcut = settings.PasteShortcut is "ctrl-shift-v" or "shift-insert" ? settings.PasteShortcut : "ctrl-v",
+            MeetingRecordingHotkey = DefaultIfBlank(settings.MeetingRecordingHotkey, "Ctrl+Alt+R").Trim(),
+            MeetingRecordingFormat = settings.MeetingRecordingFormat == "m4a" ? "m4a" : "wav",
             DictationModelId = NormalizePersistedModelId(settings.DictationModelId),
             FinalMeetingModelId = NormalizePersistedModelId(settings.FinalMeetingModelId),
             LiveTranscriptOwnership = NormalizeOwnership(settings.LiveTranscriptOwnership),
@@ -476,6 +479,13 @@ public sealed record MuesliSettings
     /// <summary>macOS push_to_talk: off releases the dictation shortcut entirely.</summary>
     public bool PushToTalkEnabled { get; init; } = true;
     public bool EnableDoubleTapDictation { get; init; }
+    /// <summary>macOS meeting_shortcut: off by default, so no key is taken until the user opts in.</summary>
+    public bool MeetingRecordingShortcutEnabled { get; init; }
+    public string MeetingRecordingHotkey { get; init; } = "Ctrl+Alt+R";
+    public bool PauseMediaDuringDictation { get; init; }
+    public bool MuteAudioDuringDictation { get; init; }
+    /// <summary>Keys sent to paste dictated text: "ctrl-v", "ctrl-shift-v" or "shift-insert".</summary>
+    public string PasteShortcut { get; init; } = "ctrl-v";
     public int HotkeyTriggerThresholdMs { get; init; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
     public string RecordingColorHex { get; init; } = "1e1e2e";
     /// <summary>Idle indicator style: <c>classic</c> pill or macOS-style <c>minimal</c> grip.</summary>
@@ -486,9 +496,12 @@ public sealed record MuesliSettings
     public bool AutoMeetingDetectionEnabled { get; init; } = true;
     public string MeetingSummaryProvider { get; init; } = "local";
     public string MeetingSummaryTemplate { get; init; } = "standard";
+    public int MeetingSummaryRetryCount { get; init; } = MeetingSummaryRetryPolicy.DefaultRetryCount;
     public string MeetingSummaryPromptOverride { get; init; } = "";
     public bool OpenDashboardOnLaunch { get; init; } = true;
     public bool SaveMeetingRecordings { get; init; } = true;
+    /// <summary>"wav" keeps lossless tracks; "m4a" compresses them once the transcript is final.</summary>
+    public string MeetingRecordingFormat { get; init; } = "wav";
     public bool PostMeetingHookEnabled { get; init; }
     public string PostMeetingHookExecutablePath { get; init; } = "";
     public string PostMeetingHookTranscriptPolicy { get; init; } = "metadata-only";
