@@ -10,7 +10,7 @@ public static class ContributionShare
 {
     public const int DictationWordInterval = 1_000;
     public const string MuesliUrl = "https://muesli.works";
-    public const string GitHubUrl = "https://github.com/Muesli-HQ/muesli";
+    public const string GitHubUrl = "https://github.com/Muesli-HQ/muesli-windows";
     public const string DonateUrl = "https://buymeacoffee.com/phequals7";
 
     public static int? CompletedWordMilestone(int totalWords) =>
