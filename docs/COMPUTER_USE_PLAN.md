@@ -71,6 +71,22 @@ Each module ends with a test that proves the feature works on this PC before the
   the selection (or ctrl+a) with `paste_text`. Verified live rewriting a Notepad list.
 - **Settings by voice (M7, done):** `get_muesli_settings` / `set_muesli_setting` over a fixed list of
   choice settings (models, theme, indicator, sounds, filler words, double-tap, meeting detection).
-  Models that are not downloaded are refused. Clarifying questions arrive with the M8 UI.
+  Models that are not downloaded are refused. The dictation shortcut can be changed too, with the
+  Shortcuts page's rules; a shortcut Windows refuses is rolled back.
+- **App integration (M8, done):** Ctrl+Shift+F8 voice session sharing dictation's microphone (dictation
+  cannot start over it; Escape cancels both). The pill shows a stop cross, the spoken command while
+  the planner thinks, the current step while it acts, then the result as a green or amber notice.
+  Risky steps open the approval window; `ask_user` opens a question window with suggested answers
+  and a free-text box. Settings > Computer Use keeps the last 20 run traces.
+- **Safety beyond macOS:** clicks named Close, Quit or Don't save ask first, and so does Enter (or a
+  typed newline) in a chat composer. Keys Computer Use sends are tagged so Muesli's own shortcuts
+  ignore them.
+- **Acceptance (M9):** verified live with the ChatGPT planner: Spotify (play from Liked Songs, search
+  and play, pause), Calculator, Chrome (Hacker News, YouTube search), File Explorer, Clock timer,
+  Windows Settings, WhatsApp (read; sending asks first), copying between Chrome and Notepad, Muesli
+  settings and the dictation shortcut by voice, and clarifying questions. The spoken path needs a
+  person at the microphone.
+- **Not built:** the on-device Gemma planner (optional), and Computer Use entries in the Timeline,
+  which needs a history schema change.
 - **ChatGPT sign-in** uses the same sign-in flow and endpoint as macOS, with the same risk that
   OpenAI may change it.
