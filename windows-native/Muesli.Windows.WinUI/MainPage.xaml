@@ -269,35 +269,11 @@
                                 <TextBlock Grid.Column="1" Text="Dictionary" VerticalAlignment="Center" />
                             </Grid>
                         </Button>
-
-                        <TextBlock x:Name="SpreadTheWordLabel" Text="Spread the Word" Style="{StaticResource MuesliSidebarGroupLabelStyle}" />
-                        <Button x:Name="TweetNav"
-                                Style="{StaticResource MuesliSidebarButtonStyle}"
-                                Tag="tweet"
-                                Click="Share_Click"
-                                AutomationProperties.Name="Tweet about Muesli">
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE72D;" Style="{StaticResource MuesliSidebarIconStyle}" />
-                                <TextBlock Grid.Column="1" Text="Tweet about Muesli" VerticalAlignment="Center" />
-                            </Grid>
-                        </Button>
-                        <Button x:Name="LinkedInNav"
-                                Style="{StaticResource MuesliSidebarButtonStyle}"
-                                Tag="linkedin"
-                                Click="Share_Click"
-                                AutomationProperties.Name="Post on LinkedIn">
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE77B;" Style="{StaticResource MuesliSidebarIconStyle}" />
-                                <TextBlock Grid.Column="1" Text="Post on LinkedIn" VerticalAlignment="Center" />
-                            </Grid>
-                        </Button>
                 <!--
                     P1-05 — Models, Shortcuts, Settings, and About are the last group of ONE
                     contiguous list, exactly like the macOS sidebar
                     (docs/ui-reference/macos-current-2026-08-27/01-timeline.png). They used to be
-                    pinned to a third grid row, which left a dead band under "Post on LinkedIn"
+                    pinned to a third grid row, which left a dead band under the last nav item
                     at tall window sizes and detached them from the list they belong to. They keep
                     their automation ids, accessible names, click handlers, and order in
                     AllNavItems()/VisibleNavItems(), so keyboard traversal is unchanged.

@@ -140,7 +140,6 @@ public sealed partial class MainPage : Page
 
         BrandNameText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         GreetingText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        SpreadTheWordLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         NavigationHeader.Margin = compact ? new Thickness(8, 18, 8, 12) : new Thickness(16, 18, 16, 16);
         SearchBox.PlaceholderText = compact ? string.Empty : "Search...";
         if (compact)
@@ -567,19 +566,6 @@ public sealed partial class MainPage : Page
         if (ContentFrame.Content is Pages.MeetingsPage page) page.ViewModel.Refresh();
     }
 
-    private void Share_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button button || button.Tag is not string tag)
-        {
-            return;
-        }
-
-        var target = string.Equals(tag, "linkedin", StringComparison.OrdinalIgnoreCase)
-            ? "https://www.linkedin.com/sharing/share-offsite/?url=https://muesli.app"
-            : "https://twitter.com/intent/tweet?text=Meet%20Muesli%20%E2%80%94%20private%20on-device%20dictation&url=https://muesli.app";
-        _ = Launcher.LaunchUriAsync(new Uri(target));
-    }
-
     private void TourNext_Click(object sender, RoutedEventArgs e)
     {
         if (_tourIndex < 0) return;
@@ -887,8 +873,6 @@ public sealed partial class MainPage : Page
 
         yield return InsightsNav;
         yield return DictionaryNav;
-        yield return TweetNav;
-        yield return LinkedInNav;
         yield return ModelsNav;
         yield return ShortcutsNav;
         yield return SettingsNav;

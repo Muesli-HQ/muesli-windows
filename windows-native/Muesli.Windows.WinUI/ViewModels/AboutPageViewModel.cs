@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Muesli.Windows.Core.Contracts;
+using Muesli.Windows.Core.Insights;
 using Muesli.Windows.Services;
 using Muesli.Windows.WinUI.Services;
 
@@ -13,9 +14,7 @@ public partial class AboutPageViewModel(
     WinUiSettingsContext settings,
     IClipboardService clipboard,
     IFilePickerService filePickers,
-    IAppDialogService dialogs,
-    Action resumeSetup,
-    Action replayTour) : ObservableObject
+    IAppDialogService dialogs) : ObservableObject
 {
     private static readonly HttpClient UpdateHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
 
@@ -29,19 +28,17 @@ public partial class AboutPageViewModel(
     [ObservableProperty] public partial string RuntimeVersion { get; private set; } = "";
     [ObservableProperty] public partial string VersionTooltip { get; private set; } = "";
     [ObservableProperty] public partial string ProfilePath { get; private set; } = library.Profile.RootDirectory;
-    [ObservableProperty] public partial string LogDirectory { get; private set; } = library.Profile.LogDirectory;
-    [ObservableProperty] public partial string DataDirectory { get; private set; } = library.Profile.DataDirectory;
-    [ObservableProperty] public partial string SettingsFilePath { get; private set; } = library.Profile.SettingsPath;
-    [ObservableProperty] public partial string ModelCachePath { get; private set; } = "";
-    [ObservableProperty] public partial string RuntimeSummary { get; private set; } = "Loading diagnostics…";
+    /// <summary>The completed 1,000-word milestone the share links post; null hides them.</summary>
+    [ObservableProperty] public partial int? ShareWordCount { get; private set; }
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
     [ObservableProperty] public partial bool IsStatusOpen { get; set; }
     [ObservableProperty] public partial bool IsStatusError { get; private set; }
     [ObservableProperty] public partial bool IsBusy { get; private set; }
+    public bool CanShare => ShareWordCount is not null;
     [ObservableProperty] public partial string UpdateStatus { get; private set; } =
         "Updates are manual. Release notes are the update channel.";
 
-    public async Task LoadAsync()
+    public void Load()
     {
         var assembly = typeof(App).Assembly;
         var version = assembly.GetName().Version;
@@ -60,80 +57,35 @@ public partial class AboutPageViewModel(
 
         RuntimeVersion = RuntimeInformation.FrameworkDescription;
         ProfilePath = library.Profile.RootDirectory;
-        LogDirectory = library.Profile.LogDirectory;
-        DataDirectory = library.Profile.DataDirectory;
-        SettingsFilePath = library.Profile.SettingsPath;
-        ModelCachePath = _diagnostics.ModelCacheDirectory;
+        ShareWordCount = ContributionShare.CompletedWordMilestone(library.ReadSnapshot().DictationWords);
 
         var update = settings.Load();
         UpdateStatus = string.IsNullOrWhiteSpace(update.UpdateManifestUrl) ||
                        string.IsNullOrWhiteSpace(update.UpdatePublisherPublicKeySha256)
             ? "Updates are manual. Release notes are the update channel."
             : "An automatic update channel is configured. Use Check for updates.";
-
-        await RefreshAsync();
     }
 
-    [RelayCommand]
-    private async Task RefreshAsync()
+    partial void OnShareWordCountChanged(int? value) => OnPropertyChanged(nameof(CanShare));
+
+    /// <summary>macOS openContributionSocialAction: LinkedIn drops prefilled text, so the message goes to the clipboard too.</summary>
+    public async Task ShareAsync(bool linkedIn)
     {
-        try
+        if (ShareWordCount is not { } words) return;
+        if (linkedIn)
         {
-            IsBusy = true;
-            var current = settings.Load();
-            var result = await _diagnostics.InspectAsync(
-                current.EnableLocalCleanup,
-                current.DictationModelId,
-                current.FinalMeetingModelId,
-                current.LiveMeetingModelId);
-            RuntimeSummary = result.Summary;
-            ModelCachePath = result.ModelCacheDirectory;
+            try { await clipboard.SetTextAsync(ContributionShare.Message(words), CancellationToken.None); }
+            catch (Exception) { } // A busy clipboard only loses the convenience copy.
         }
-        catch (Exception exception)
-        {
-            RuntimeSummary = $"Diagnostics could not be completed: {exception.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        await global::Windows.System.Launcher.LaunchUriAsync(
+            linkedIn ? ContributionShare.LinkedInUrl(words) : ContributionShare.TweetUrl(words));
     }
-
-    [RelayCommand]
-    private void OpenLogs() => _log.OpenLogDirectory();
 
     [RelayCommand]
     private void OpenDataDirectory()
     {
         Directory.CreateDirectory(ProfilePath);
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = ProfilePath, UseShellExecute = true });
-    }
-
-    [RelayCommand]
-    private void OpenModelCache() => _diagnostics.OpenModelCacheDirectory();
-
-    [RelayCommand]
-    private async Task CopyDiagnosticsAsync(CancellationToken cancellationToken)
-    {
-        // Prompt 9 CR-01: Clipboard.SetContent throws COMException 0x800401D0 while another
-        // process holds the clipboard open. Uncaught, AsyncRelayCommand rethrows it on the UI
-        // context and App.UnhandledException (App.xaml.cs:89-90) lets the shell terminate.
-        try
-        {
-            await clipboard.SetTextAsync(RuntimeSummary, cancellationToken);
-            IsStatusError = false;
-            StatusMessage = "Diagnostics copied to the clipboard.";
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-        catch (Exception exception)
-        {
-            IsStatusError = true;
-            StatusMessage = $"Could not copy diagnostics: {WinUiClipboardService.DescribeFailure(exception)}";
-        }
-        IsStatusOpen = true;
     }
 
     [RelayCommand]
@@ -255,9 +207,4 @@ public partial class AboutPageViewModel(
         }
     }
 
-    [RelayCommand]
-    private void ResumeSetup() => resumeSetup();
-
-    [RelayCommand]
-    private void ReplayFeatureTour() => replayTour();
 }

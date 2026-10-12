@@ -32,6 +32,9 @@ public sealed class WinUiDictationContext : IDisposable
     private readonly object _hotkeyChainGate = new();
     private Task _hotkeyChain = Task.CompletedTask;
 
+    /// <summary>Raised after a dictation was pasted into another app (macOS starts its correction monitor here).</summary>
+    public event Action<DictationPaste>? Pasted;
+
     public WinUiDictationContext(
         WinUiLibraryContext library,
         WinUiSettingsContext settings,
@@ -496,7 +499,9 @@ public sealed class WinUiDictationContext : IDisposable
             persisted = true;
             persistenceMs = stageStarted.ElapsedMilliseconds;
             // macOS records the destination app on each dictation (the row's app icon and filter).
-            if (DictationTargetApps.Capture(_pasteTarget) is { } targetApp)
+            var pasteTarget = _pasteTarget;
+            var targetApp = DictationTargetApps.Capture(pasteTarget);
+            if (targetApp is not null)
             {
                 try { DictationTargetApps.Record(_library.Profile.RootDirectory, dictationId, targetApp); }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -518,6 +523,7 @@ public sealed class WinUiDictationContext : IDisposable
                     deliveryInputMs = paste.InputMs;
                     deliveryClipboardMs = paste.ClipboardMs;
                     Status = "Dictation inserted";
+                    Pasted?.Invoke(new DictationPaste(text, targetApp, pasteTarget));
                 }
                 catch (OperationCanceledException) when (_operationCancellation.IsCancellationRequested)
                 {
@@ -622,3 +628,5 @@ public sealed class WinUiDictationContext : IDisposable
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 }
+
+public sealed record DictationPaste(string Text, DictationTargetApp? App, IntPtr Window);

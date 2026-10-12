@@ -10,7 +10,9 @@ public enum MeetingNotificationKind
 {
     ActiveDetected,
     ScheduledUpcoming,
-    SignalLost
+    SignalLost,
+    /// <summary>macOS "Add correction?": a dictionary suggestion with Add and Ignore.</summary>
+    DictionarySuggestion
 }
 
 /// <summary>The three configurable scheduled-meeting actions, mirroring the macOS default action.</summary>
@@ -76,7 +78,9 @@ public enum MeetingNotificationAction
     JoinOnly,
     TranscribeOnly,
     Dismiss,
-    StopTranscribing
+    StopTranscribing,
+    Accept,
+    Ignore
 }
 
 /// <summary>
@@ -112,11 +116,18 @@ public sealed record MeetingNotificationRequest(
     string? MeetingUrl,
     MeetingJoinDefaultAction DefaultAction = MeetingJoinDefaultActions.Fallback,
     double DismissAfterSeconds = MeetingNotificationPolicy.ActiveAutoDismissSeconds,
-    nint WindowHandle = 0)
+    nint WindowHandle = 0,
+    string? SecondaryActionLabel = null)
 {
     public bool IsScheduled => Kind == MeetingNotificationKind.ScheduledUpcoming;
-    public MeetingNotificationAction SingleAction => Kind == MeetingNotificationKind.SignalLost
-        ? MeetingNotificationAction.StopTranscribing : MeetingNotificationAction.StartTranscribing;
+    public MeetingNotificationAction SingleAction => Kind switch
+    {
+        MeetingNotificationKind.SignalLost => MeetingNotificationAction.StopTranscribing,
+        MeetingNotificationKind.DictionarySuggestion => MeetingNotificationAction.Accept,
+        _ => MeetingNotificationAction.StartTranscribing
+    };
+
+    public bool HasSecondaryAction => !string.IsNullOrWhiteSpace(SecondaryActionLabel);
 
     public bool HasJoinActions =>
         IsScheduled && !string.IsNullOrWhiteSpace(MeetingUrl);

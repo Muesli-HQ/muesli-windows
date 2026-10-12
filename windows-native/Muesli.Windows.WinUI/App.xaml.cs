@@ -52,6 +52,8 @@ public partial class App : Application
 
     public static WinUiDictationContext Dictation { get; private set; } = null!;
 
+    public static WinUiDictionarySuggestionService DictionarySuggestions { get; private set; } = null!;
+
     public static WinUiComputerUseContext ComputerUse { get; private set; } = null!;
 
     public static WinUiMeetingDetectionService MeetingDetection { get; private set; } = null!;
@@ -188,6 +190,7 @@ public partial class App : Application
         Meetings = new WinUiMeetingContext(Library, Settings, UiDispatcher);
         Models = new WinUiModelsContext(Library, Settings);
         Dictation = new WinUiDictationContext(Library, Settings, UiDispatcher);
+        DictionarySuggestions = new WinUiDictionarySuggestionService(Library, Settings, UiDispatcher, Dictation);
         ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation, UiDispatcher);
         ComputerUse.ConfirmActionAsync = ConfirmComputerUseActionAsync;
         ComputerUse.AskAsync = AskComputerUseQuestionAsync;
@@ -316,6 +319,7 @@ public partial class App : Application
                 MeetingDetection.Dispose();
                 ComputerUse.Dispose();
                 Meetings.Dispose();
+                DictionarySuggestions.Dispose();
                 Dictation.Dispose();
                 Models.Dispose();
                 Library.Dispose();

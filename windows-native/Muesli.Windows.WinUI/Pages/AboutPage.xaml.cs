@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Muesli.Windows.Core.Insights;
 using Muesli.Windows.WinUI.ViewModels;
+using Windows.System;
 
 namespace Muesli.Windows.WinUI.Pages;
 
@@ -11,16 +13,14 @@ public sealed partial class AboutPage : Page
         App.Settings,
         App.Clipboard,
         App.FilePickers,
-        App.Dialogs,
-        () => App.ShowOnboarding(explicitResume: true),
-        App.ShowFeatureTour);
+        App.Dialogs);
 
     public AboutPage()
     {
         InitializeComponent();
-        Loaded += async (_, _) =>
+        Loaded += (_, _) =>
         {
-            await ViewModel.LoadAsync();
+            ViewModel.Load();
             ApplyResponsiveLayout(ActualWidth);
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
@@ -33,6 +33,16 @@ public sealed partial class AboutPage : Page
 
     public static InfoBarSeverity StatusSeverity(bool isError) =>
         isError ? InfoBarSeverity.Error : InfoBarSeverity.Success;
+
+    private void Donate_Click(object sender, RoutedEventArgs e) =>
+        _ = Launcher.LaunchUriAsync(new Uri(ContributionShare.DonateUrl));
+
+    private void GitHub_Click(object sender, RoutedEventArgs e) =>
+        _ = Launcher.LaunchUriAsync(new Uri(ContributionShare.GitHubUrl));
+
+    private void PostOnX_Click(object sender, RoutedEventArgs e) => _ = ViewModel.ShareAsync(linkedIn: false);
+
+    private void PostOnLinkedIn_Click(object sender, RoutedEventArgs e) => _ = ViewModel.ShareAsync(linkedIn: true);
 
     private void ApplyResponsiveLayout(double pageWidth)
     {

@@ -29,12 +29,8 @@ public sealed class WinUiShellQualificationTests
         ("models", "NavModels", "ModelsRolePicker"),
         ("shortcuts", "NavShortcuts", "ChangePushToTalkButton"),
         ("settings", "NavSettings", "SettingsSaveButton"),
-        // Prompt 7 moved the raw diagnostics dump into a collapsed Expander ("keep technical
-        // diagnostics accessible but secondary"), and a collapsed Expander keeps its content out
-        // of the UIA tree, so RuntimeDiagnosticsText is not realized on arrival. The diagnostics
-        // card's Refresh button is the About-only control that is always published; the dump
-        // itself is asserted, expanded, by About_diagnostics_detail_is_reachable_behind_its_disclosure.
-        ("about", "NavAbout", "RefreshDiagnosticsButton")
+        // The runtime diagnostics now travel in the support-bundle preview behind Report a Problem.
+        ("about", "NavAbout", "ExportSupportBundleButton")
     ];
 
     [WinUiAutomationFact]
@@ -281,37 +277,6 @@ public sealed class WinUiShellQualificationTests
     });
 
     /// <summary>
-    /// The raw runtime diagnostics are secondary but must stay reachable: the About page opens
-    /// with the dump collapsed, and opening the disclosure must realize real text rather than an
-    /// empty placeholder.
-    /// </summary>
-    [WinUiAutomationFact]
-    public void About_diagnostics_detail_is_reachable_behind_its_disclosure() => StaRunner.Run(() =>
-    {
-        using var session = MuesliWinUiSession.Launch();
-        session.Run(() =>
-        {
-            session.NavigateTo("about", "NavAbout", "RefreshDiagnosticsButton");
-
-            // Secondary: a collapsed Expander keeps its content out of the UIA tree entirely.
-            session.RequireAbsentAutomationId(
-                "RuntimeDiagnosticsText",
-                "the diagnostics dump starts collapsed.");
-
-            // Accessible: one disclosure, and the real summary is there.
-            session.ExpandAutomationId("RuntimeDiagnosticsExpander");
-            var summary = session.RequireAutomationId("RuntimeDiagnosticsText", mustBeOnscreen: true);
-            Assert.False(
-                string.IsNullOrWhiteSpace(summary.Current.Name),
-                "The expanded runtime diagnostics must publish the collected summary.");
-            Assert.DoesNotContain(
-                "Loading diagnostics",
-                summary.Current.Name,
-                StringComparison.Ordinal);
-        });
-    });
-
-    /// <summary>
     /// DIAG-01: the support-bundle export is a first-class About action, not a hidden artifact.
     /// The button must be realized and enabled so a user can preview and save a redacted bundle.
     /// </summary>
@@ -321,7 +286,7 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.Launch();
         session.Run(() =>
         {
-            session.NavigateTo("about", "NavAbout", "RefreshDiagnosticsButton");
+            session.NavigateTo("about", "NavAbout", "ExportSupportBundleButton");
             var button = session.RequireAutomationId("ExportSupportBundleButton", mustBeOnscreen: true);
             Assert.True(button.Current.IsEnabled, "The support-bundle export action must be enabled.");
         });

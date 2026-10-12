@@ -228,6 +228,7 @@ public sealed class SettingsStore
             ComputerUseBrowserEndpoint = NormalizeLoopbackEndpoint(settings.ComputerUseBrowserEndpoint),
             IndicatorAnchor = DefaultIfBlank(settings.IndicatorAnchor, "Middle Right").Trim(),
             DictionarySuggestions = NormalizeDictionarySuggestions(settings.DictionarySuggestions),
+            DismissedDictionarySuggestionKeys = settings.DismissedDictionarySuggestionKeys?.Where(key => !string.IsNullOrWhiteSpace(key)).ToArray() ?? [],
             ModelLanguages = NormalizeModelLanguages(settings.ModelLanguages),
             ExecutionProvider = NormalizeExecutionProvider(settings.ExecutionProvider),
             CleanupModelId = CleanupModelCatalog.Normalize(settings.CleanupModelId),
@@ -303,7 +304,13 @@ public sealed class SettingsStore
             ? []
             : suggestions
                 .Where(item => item is not null)
-                .Select(item => new DictionarySuggestion(item.Observed ?? "", item.Replacement ?? ""))
+                .Select(item => item with
+                {
+                    Observed = item.Observed ?? "",
+                    Replacement = item.Replacement ?? "",
+                    AppContext = item.AppContext ?? "",
+                    OccurrenceCount = Math.Max(1, item.OccurrenceCount)
+                })
                 .Where(item => !string.IsNullOrWhiteSpace(item.Observed))
                 .ToArray();
 
@@ -509,6 +516,12 @@ public sealed record MuesliSettings
     public bool SoundEnabled { get; init; } = true;
     public string IndicatorAnchor { get; init; } = "Middle Right";
     public IReadOnlyList<DictionarySuggestion> DictionarySuggestions { get; init; } = [];
+    /// <summary>
+    /// macOS "Dictionary suggestions": after a paste, briefly read the focused field's text through
+    /// UI Automation to notice corrections. Off by default, as on macOS.
+    /// </summary>
+    public bool EnableDictionaryCorrectionPrompts { get; init; }
+    public IReadOnlyList<string> DismissedDictionarySuggestionKeys { get; init; } = [];
 
     /// <summary>Per-model language code selections, keyed by model id. Empty uses each model's default.</summary>
     public IReadOnlyDictionary<string, string> ModelLanguages { get; init; } =

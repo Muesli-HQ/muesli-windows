@@ -206,8 +206,17 @@ public sealed class WinUiShellParityTests
         Assert.True(File.Exists(Path.Combine(winUi, "ComputerUseConfirmationWindow.xaml")));
 
         var about = File.ReadAllText(Path.Combine(winUi, "Pages", "AboutPage.xaml"));
-        Assert.Contains("ResumeSetupButton", about);
-        Assert.Contains("ReplayFeatureTourButton", about);
+        // macOS AboutView: Support (Donate, GitHub, Report), Spread the Word, Data, Acknowledgements.
+        // Setup and the tour live in the tray menu, as macOS keeps them in the menu bar.
+        Assert.Contains("DonateButton", about);
+        Assert.Contains("GitHubButton", about);
+        Assert.Contains("ExportSupportBundleButton", about);
+        Assert.Contains("ShareOnXButton", about);
+        Assert.Contains("ACKNOWLEDGEMENTS", about);
+        Assert.DoesNotContain("ResumeSetupButton", about);
+        Assert.DoesNotContain("RuntimeDiagnosticsExpander", about);
+        // macOS moved "Spread the Word" out of the sidebar into About.
+        Assert.DoesNotContain("TweetNav", main);
     }
 
     private static string FindRepositoryRoot() => TestRepositoryLayout.Root;
