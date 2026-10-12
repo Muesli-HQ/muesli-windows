@@ -210,6 +210,57 @@ public static class Win32Desktop
 
     public static void MinimizeWithoutActivating(long windowId) => ShowWindow(new IntPtr(windowId), SwShowMinNoActive);
 
+    public static bool IsMinimized(long windowId) => IsIconic(new IntPtr(windowId));
+
+    private static readonly HashSet<long> Ghosts = [];
+
+    /// <summary>
+    /// Makes a window invisible and click-through, so a minimized window can be restored, read,
+    /// drawn and pressed without appearing on the user's screen. Ghosts are undone on exit as well,
+    /// so a crash cannot leave an app invisible. False when the window is already layered.
+    /// </summary>
+    public static bool Ghost(long windowId)
+    {
+        var handle = new IntPtr(windowId);
+        var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
+        if ((style & WsExLayered) != 0) return false;
+        lock (Ghosts)
+        {
+            if (Ghosts.Count == 0)
+            {
+                AppDomain.CurrentDomain.ProcessExit -= UnghostAll;
+                AppDomain.CurrentDomain.ProcessExit += UnghostAll;
+            }
+            Ghosts.Add(windowId);
+        }
+        SetWindowLongPtr(handle, GwlExStyle, new IntPtr(style | WsExLayered | WsExTransparent));
+        SetLayeredWindowAttributes(handle, 0, 0, LwaAlpha);
+        return true;
+    }
+
+    public static bool IsGhost(long windowId) { lock (Ghosts) return Ghosts.Contains(windowId); }
+
+    public static void Unghost(long windowId)
+    {
+        lock (Ghosts) if (!Ghosts.Remove(windowId)) return;
+        var handle = new IntPtr(windowId);
+        if (!IsWindow(handle)) return;
+        var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
+        SetWindowLongPtr(handle, GwlExStyle, new IntPtr(style & ~(WsExLayered | WsExTransparent)));
+    }
+
+    private static void UnghostAll(object? sender, EventArgs e)
+    {
+        long[] all;
+        lock (Ghosts) all = [.. Ghosts];
+        foreach (var window in all) Unghost(window);
+    }
+
+    private const long WsExLayered = 0x80000, WsExTransparent = 0x20;
+    private const uint LwaAlpha = 2;
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr(IntPtr handle, int index, IntPtr value);
+    [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(IntPtr handle, uint key, byte alpha, uint flags);
+
     private const int SwShowMinNoActive = 7;
 
     /// <summary>

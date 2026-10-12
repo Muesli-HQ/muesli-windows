@@ -17,7 +17,7 @@ public sealed class WindowsDesktop : ICuaDesktop
     private readonly UiaObserver _observer = new();
     private readonly long _userWindow = Win32Desktop.ForegroundWindow();
     private readonly HashSet<long> _touched = [];
-    private readonly HashSet<long> _unminimized = [];
+    private readonly HashSet<long> _hidden = [];
     private bool _launched;
     private bool _broughtForward;
     private CuaWindow? _target;
@@ -34,12 +34,35 @@ public sealed class WindowsDesktop : ICuaDesktop
             return CuaWindowState.Empty(window.AppName) with { AppId = window.AppId, WindowId = window.Id, VisibleText = reason };
         _target = window;
         _touched.Add(window.Id);
-        if (Win32Desktop.ShowWithoutActivating(window.Id))
+        if (Win32Desktop.IsMinimized(window.Id)) _hidden.Add(window.Id);
+        Wake();
+        try { return _observer.Observe(window, includeScreenshot); }
+        finally { Sleep(); }
+    }
+
+    /// <summary>
+    /// A window the user minimized is restored only for the moment it is read or acted on, and
+    /// invisibly (ghosted): the user never sees it, and between steps it is a normal minimized
+    /// window they can open themselves. Restoring happens under the foreground lock because
+    /// Chrome activates itself when restored.
+    /// </summary>
+    private void Wake()
+    {
+        if (_target is not { } window || !_hidden.Contains(window.Id) || !Win32Desktop.IsMinimized(window.Id)) return;
+        if (!Win32Desktop.Ghost(window.Id)) { _hidden.Remove(window.Id); return; } // Already layered: shown normally.
+        Win32Desktop.LockForeground(true);
+        Win32Desktop.ShowWithoutActivating(window.Id);
+        Thread.Sleep(250); // Let it repaint before it is read.
+        Win32Desktop.LockForeground(false);
+    }
+
+    private void Sleep()
+    {
+        foreach (var window in _hidden.Where(Win32Desktop.IsAlive))
         {
-            _unminimized.Add(window.Id);
-            Thread.Sleep(250); // Let it repaint before it is read.
+            if (!Win32Desktop.IsMinimized(window)) Win32Desktop.MinimizeWithoutActivating(window);
+            Win32Desktop.Unghost(window);
         }
-        return _observer.Observe(window, includeScreenshot);
     }
 
     public CuaResult Execute(CuaToolCall call, CancellationToken cancellationToken)
@@ -51,6 +74,7 @@ public sealed class WindowsDesktop : ICuaDesktop
         Win32Desktop.LockForeground(true);
         try
         {
+            Wake();
             return call.Name switch
             {
                 "list_apps" => ListApps(),
@@ -83,6 +107,7 @@ public sealed class WindowsDesktop : ICuaDesktop
         }
         finally
         {
+            Sleep();
             Win32Desktop.LockForeground(false);
             // The pointer goes back where the user left it; move_cursor exists to leave it on a hover target.
             if (call.Name != "move_cursor" && Win32Desktop.CursorPosition() != pointer) Win32Desktop.SetCursor(pointer);
@@ -215,6 +240,9 @@ public sealed class WindowsDesktop : ICuaDesktop
         _touched.Add(window.Id);
         _broughtForward = true;
         Win32Desktop.LockForeground(false);
+        // Keyboard input must never go to a window the user cannot see.
+        Win32Desktop.Unghost(window.Id);
+        _hidden.Remove(window.Id);
         return Win32Desktop.Activate(window.Id) ? null : CuaResult.Fail($"Windows did not let Muesli bring {window.AppName} to the front.");
     }
 
@@ -506,8 +534,17 @@ public sealed class WindowsDesktop : ICuaDesktop
         var text = call.String("url") ?? throw new ArgumentException("open_url needs url.");
         if (!Uri.TryCreate(text.Contains("://") ? text : "https://" + text, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https"))
             return CuaResult.Fail("open_url only opens http or https web addresses.");
-        var before = Win32Desktop.ListWindows().Where(window => Browsers.Contains(window.AppId)).ToDictionary(window => window.Id, window => window.Title);
+        var browsers = Win32Desktop.ListWindows().Where(window => Browsers.Contains(window.AppId)).ToList();
+        var before = browsers.ToDictionary(window => window.Id, window => window.Title);
+        // The browser restores a minimized window to show the tab; ghosted, it does so invisibly.
+        foreach (var window in browsers.Where(window => Win32Desktop.IsMinimized(window.Id) && Win32Desktop.Ghost(window.Id)))
+            _hidden.Add(window.Id);
         Process.Start(new ProcessStartInfo(url.AbsoluteUri) { UseShellExecute = true });
+        return WaitForTab(url, before, cancellationToken);
+    }
+
+    private CuaResult WaitForTab(Uri url, Dictionary<long, string> before, CancellationToken cancellationToken)
+    {
         // The tab lands in a new window, or retitles an existing one as it starts loading.
         for (var attempt = 0; attempt < 40; attempt++)
         {
@@ -624,9 +661,9 @@ public sealed class WindowsDesktop : ICuaDesktop
     /// launch_app, whose app the user asked to see.</summary>
     public void Dispose()
     {
+        Sleep();
         if (!_launched)
         {
-            foreach (var window in _unminimized.Where(Win32Desktop.IsAlive)) Win32Desktop.MinimizeWithoutActivating(window);
             var foreground = Win32Desktop.ForegroundWindow();
             if (_userWindow != 0 && foreground != _userWindow && _touched.Contains(foreground) && Win32Desktop.IsAlive(_userWindow))
                 Win32Desktop.Activate(_userWindow);

@@ -318,7 +318,7 @@ public sealed class UiaObserver : IDisposable
     {
         // Drawn in the background where the app allows it; otherwise the window must be in front.
         using var capture = Win32Desktop.CaptureWindow(windowId, frame)
-                            ?? (Win32Desktop.Activate(windowId) ? Win32Desktop.CaptureScreen(frame) : throw new InvalidOperationException("The window could not be brought forward."));
+                            ?? (!Win32Desktop.IsGhost(windowId) && Win32Desktop.Activate(windowId) ? Win32Desktop.CaptureScreen(frame) : throw new InvalidOperationException("The window could not be brought forward."));
         var scale = Math.Min(1.0, (double)MaxScreenshotWidth / capture.Width);
         var width = Math.Max(1, (int)Math.Round(capture.Width * scale));
         var height = Math.Max(1, (int)Math.Round(capture.Height * scale));
