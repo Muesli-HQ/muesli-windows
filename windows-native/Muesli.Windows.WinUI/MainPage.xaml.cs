@@ -298,7 +298,20 @@ public sealed partial class MainPage : Page
         }
     }
 
+    /// <summary>
+    /// Logs how long a page switch takes: building the page, then until the UI thread is idle again
+    /// (layout and first render done), so a slow page shows up in the log instead of as a hunch.
+    /// </summary>
     private void Navigate(string tag)
+    {
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        NavigateCore(tag);
+        var buildMs = started.ElapsedMilliseconds;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            new AppLogService().Info($"Page navigation. page={tag}; buildMs={buildMs}; readyMs={started.ElapsedMilliseconds}"));
+    }
+
+    private void NavigateCore(string tag)
     {
         if (tag.StartsWith("meetings", StringComparison.OrdinalIgnoreCase))
         {

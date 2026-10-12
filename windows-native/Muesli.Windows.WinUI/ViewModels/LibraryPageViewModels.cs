@@ -60,11 +60,9 @@ public partial class TimelinePageViewModel : ObservableObject
 
     /// <summary>
     /// Timeline sections mirror the desktop library: a small date heading followed by one
-    /// divided surface containing the activity for that day.  Keeping the grouping in the
-    /// view model means the page can stay responsive while filtering and sorting.
+    /// divided surface containing the activity for that day, revealed a page at a time.
     /// </summary>
-    [ObservableProperty]
-    public partial IReadOnlyList<TimelineGroup> Groups { get; private set; } = [];
+    public IncrementalGroups<TimelineGroup> Groups { get; } = new(group => group.Items.Count);
 
     /// <summary>macOS timeline date filter: every <see cref="HistoryFormat.DateFilters"/> range is offered.</summary>
     [ObservableProperty]
@@ -124,18 +122,17 @@ public partial class TimelinePageViewModel : ObservableObject
             query = query.Where(item => !item.IsMeeting && DictationTargetApps.Same(item.TargetApp, app));
         Entries = query.OrderByDescending(item => item.Timestamp).ToList();
 
-        Groups = Entries
+        Groups.Reset(Entries
             .GroupBy(item => item.Timestamp.ToLocalTime().Date)
             .Select(group => new TimelineGroup(
                 HistoryFormat.DayHeading(group.Key, DateTime.Today),
                 group.ToList()))
-            .ToList();
+            .ToList());
     }
 
     private void NotifyDerived()
     {
         OnPropertyChanged(nameof(Entries));
-        OnPropertyChanged(nameof(Groups));
         OnPropertyChanged(nameof(HasEntries));
         OnPropertyChanged(nameof(Apps));
         OnPropertyChanged(nameof(ShowAppFilter));
@@ -147,6 +144,45 @@ public partial class TimelinePageViewModel : ObservableObject
 }
 
 public sealed record TimelineGroup(string Name, IReadOnlyList<WinUiTimelineEntry> Items);
+
+/// <summary>
+/// Day groups shown a page of rows at a time. The history lists sit inside their page's
+/// ScrollViewer, which turns ListView virtualization off, so building every row of a long history
+/// made each visit to Timeline or Dictations take seconds. Pages call <see cref="ShowMore"/> as the
+/// user nears the bottom; appending only builds the new rows.
+/// </summary>
+public sealed class IncrementalGroups<TGroup>(Func<TGroup, int> rowCount) : System.Collections.ObjectModel.ObservableCollection<TGroup>
+{
+    public const int PageRows = 40;
+    private IReadOnlyList<TGroup> _all = [];
+
+    public bool HasMore => Count < _all.Count;
+
+    public void Reset(IReadOnlyList<TGroup> all)
+    {
+        _all = all;
+        Clear();
+        ShowMore();
+    }
+
+    public void ShowMore()
+    {
+        for (var rows = 0; rows < PageRows && Count < _all.Count;) rows += Add(_all[Count]);
+    }
+
+    /// <summary>Reveals groups up to and including the first one matching <paramref name="contains"/>.</summary>
+    public void ShowThrough(Func<TGroup, bool> contains)
+    {
+        var index = _all.ToList().FindIndex(group => contains(group));
+        while (Count <= index) Add(_all[Count]);
+    }
+
+    private new int Add(TGroup group)
+    {
+        base.Add(group);
+        return Math.Max(1, rowCount(group));
+    }
+}
 
 public partial class DictationsPageViewModel : ObservableObject, IDisposable
 {
@@ -181,8 +217,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial IReadOnlyList<DictationListItem> Items { get; private set; }
 
-    [ObservableProperty]
-    public partial IReadOnlyList<DictationGroup> Groups { get; private set; } = [];
+    public IncrementalGroups<DictationGroup> Groups { get; } = new(group => group.Items.Count);
 
     /// <summary>macOS DictationsView date filter; only ranges the history can fill are offered.</summary>
     [ObservableProperty]
@@ -378,12 +413,12 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
             .OrderByDescending(item => item.Timestamp)
             .ToList();
 
-        Groups = Items
+        Groups.Reset(Items
             .GroupBy(item => item.Timestamp.ToLocalTime().Date)
             .Select(group => new DictationGroup(
                 HistoryFormat.DayHeading(group.Key, DateTime.Today),
                 group.ToList()))
-            .ToList();
+            .ToList());
 
         // macOS filteredDictationStats: the cards describe the dictations the filters show, with
         // the same word, streak and pace rules as Timeline and Insights (LibraryMetrics, P2-01).

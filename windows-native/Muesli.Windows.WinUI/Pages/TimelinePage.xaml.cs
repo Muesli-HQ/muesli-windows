@@ -49,6 +49,14 @@ public sealed partial class TimelinePage : Page
         if (!App.Dictation.IsRecording && !App.Dictation.IsBusy) ViewModel.Refresh();
     }
 
+    /// <summary>Builds the next page of older days once the reader is within a screen of the end.</summary>
+    private void PageScroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (sender is ScrollViewer scroller && ViewModel.Groups.HasMore &&
+            scroller.VerticalOffset >= scroller.ScrollableHeight - scroller.ViewportHeight)
+            ViewModel.Groups.ShowMore();
+    }
+
     public static Visibility BoolToVisibility(bool value) =>
         value ? Visibility.Visible : Visibility.Collapsed;
 

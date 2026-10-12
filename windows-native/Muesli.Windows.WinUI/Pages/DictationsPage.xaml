@@ -37,7 +37,7 @@
     </Page.Resources>
 
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ViewChanged="PageScroller_ViewChanged">
             <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="20">
                 <TextBlock Text="Dictations" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" />
 

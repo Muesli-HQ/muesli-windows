@@ -49,6 +49,14 @@ public sealed partial class DictationsPage : Page
 
     private void OnComputerUseChanged(object? sender, EventArgs e) => ViewModel.Refresh();
 
+    /// <summary>Builds the next page of older days once the reader is within a screen of the end.</summary>
+    private void PageScroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (sender is ScrollViewer scroller && ViewModel.Groups.HasMore &&
+            scroller.VerticalOffset >= scroller.ScrollableHeight - scroller.ViewportHeight)
+            ViewModel.Groups.ShowMore();
+    }
+
     public static Visibility BoolToVisibility(bool value) =>
         value ? Visibility.Visible : Visibility.Collapsed;
 
@@ -97,6 +105,9 @@ public sealed partial class DictationsPage : Page
         base.OnNavigatedTo(e);
         var id = e.Parameter as string;
         _pendingRevealId = ViewModel.Contains(id) ? id : null;
+        // An older dictation's day may not be built yet.
+        if (_pendingRevealId is { } reveal)
+            ViewModel.Groups.ShowThrough(group => group.Items.Any(item => item.Id == reveal));
     }
 
     private void UpdateEmptyState()
