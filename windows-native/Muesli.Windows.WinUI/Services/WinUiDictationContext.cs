@@ -311,6 +311,7 @@ public sealed class WinUiDictationContext : IDisposable
         {
             Status = $"Dictation failed: {exception.Message}";
             _log.Error("WinUI dictation hotkey action failed.", exception);
+            DiagnosticIncidentPrompts.Record(DiagnosticIncident.DictationTranscriptionFailed, "standard_dictation_transcribe", _coordinator.ModelId, exception);
             ResetHotkeyDictationState();
             RaiseChanged();
         }
@@ -451,6 +452,7 @@ public sealed class WinUiDictationContext : IDisposable
             else
             {
                 _log.Error("Could not start dictation microphone.", exception);
+                DiagnosticIncidentPrompts.Record(DiagnosticIncident.DictationAudioFailed, "dictation_audio_session", _coordinator.ModelId, exception);
             }
             _pasteTarget = IntPtr.Zero;
             RaiseChanged();

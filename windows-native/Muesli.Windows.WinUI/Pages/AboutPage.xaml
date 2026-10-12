@@ -174,16 +174,27 @@
                             <Button x:Name="ExportSupportBundleButton"
                                     Grid.Column="1"
                                     Style="{StaticResource AboutActionStyle}"
-                                    Command="{x:Bind ViewModel.ExportSupportBundleCommand}"
+                                    Click="OpenReport_Click"
                                     IsEnabled="{x:Bind local:AboutPage.Not(ViewModel.IsBusy), Mode=OneWay}"
-                                    ToolTipService.ToolTip="Preview a support bundle before saving it. Transcripts and secrets are never included."
-                                    AutomationProperties.Name="Preview and export a support bundle"
+                                    ToolTipService.ToolTip="Prepare an anonymized GitHub issue, or preview a support bundle. Transcripts and secrets are never included."
+                                    AutomationProperties.Name="Report a problem"
                                     AutomationProperties.AutomationId="ExportSupportBundleButton">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon Glyph="&#xE8BD;" FontSize="11" />
                                     <TextBlock Text="Open Report" />
                                 </StackPanel>
                             </Button>
+                        </Grid>
+                        <Border Style="{StaticResource AboutDividerStyle}" />
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Automatic issue reporting prompts" Style="{StaticResource AboutRowTitleStyle}" />
+                            <ToggleSwitch x:Name="AutoReportToggle"
+                                          Grid.Column="1"
+                                          OnContent="" OffContent="" MinWidth="0"
+                                          Toggled="AutoReportToggle_Toggled"
+                                          ToolTipService.ToolTip="Suggest an anonymized GitHub issue after an app error"
+                                          AutomationProperties.Name="Automatic issue reporting prompts"
+                                          AutomationProperties.AutomationId="AutoReportToggle" />
                         </Grid>
                     </StackPanel>
                 </Border>

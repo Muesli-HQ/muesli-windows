@@ -162,7 +162,12 @@ public sealed class WinUiMeetingContext : IDisposable
             if (IsRecording || IsPaused) throw new InvalidOperationException("A meeting is already active.");
             await RefreshSettingsAsync(cancellationToken);
             _title = title;
-            await StartCoreAsync(processId, cancellationToken);
+            try { await StartCoreAsync(processId, cancellationToken); }
+            catch (Exception exception)
+            {
+                DiagnosticIncidentPrompts.Record(DiagnosticIncident.MeetingStartFailed, "start_meeting_recording", _settings.FinalMeetingModelId, exception);
+                throw;
+            }
             return true;
         });
 
@@ -254,10 +259,11 @@ public sealed class WinUiMeetingContext : IDisposable
                 _settings.SaveMeetingRecordings,
                 cancellationToken);
         }
-        catch (MeetingSessionRecoverableException)
+        catch (MeetingSessionRecoverableException exception)
         {
             FinalizationFailed = true;
             RaiseChanged();
+            DiagnosticIncidentPrompts.Record(DiagnosticIncident.MeetingProcessingFailed, "meeting_stop_processing", _settings.FinalMeetingModelId, exception);
             throw;
         }
         FinalizationFailed = false;

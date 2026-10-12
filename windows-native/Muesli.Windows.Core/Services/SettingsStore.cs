@@ -510,6 +510,8 @@ public sealed record MuesliSettings
     public string CleanupSource { get; init; } = "local";
     /// <summary>macOS app_context: send the focused app, nearby text and selection with hosted cleanup.</summary>
     public bool EnableAppContext { get; init; }
+    /// <summary>macOS enable_automatic_diagnostic_issue_prompts: offer an anonymized issue after a hard failure.</summary>
+    public bool EnableAutomaticDiagnosticIssuePrompts { get; init; }
     /// <summary>macOS active_transcript_cleanup_prompt_id: the preset hosted cleanup sends.</summary>
     public string ActiveCleanupPromptId { get; init; } = CleanupPrompts.DefaultId;
     /// <summary>macOS custom_transcript_cleanup_prompts.</summary>
