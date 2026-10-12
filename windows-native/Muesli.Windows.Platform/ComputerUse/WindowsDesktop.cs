@@ -48,6 +48,7 @@ public sealed class WindowsDesktop : ICuaDesktop
         var pointer = Win32Desktop.CursorPosition();
         var foreground = Win32Desktop.ForegroundWindow();
         _broughtForward = false;
+        Win32Desktop.LockForeground(true);
         try
         {
             return call.Name switch
@@ -82,6 +83,7 @@ public sealed class WindowsDesktop : ICuaDesktop
         }
         finally
         {
+            Win32Desktop.LockForeground(false);
             // The pointer goes back where the user left it; move_cursor exists to leave it on a hover target.
             if (call.Name != "move_cursor" && Win32Desktop.CursorPosition() != pointer) Win32Desktop.SetCursor(pointer);
             // Chrome raises its own window when a link or tab is pressed through UI Automation; a
@@ -212,6 +214,7 @@ public sealed class WindowsDesktop : ICuaDesktop
         _target = window;
         _touched.Add(window.Id);
         _broughtForward = true;
+        Win32Desktop.LockForeground(false);
         return Win32Desktop.Activate(window.Id) ? null : CuaResult.Fail($"Windows did not let Muesli bring {window.AppName} to the front.");
     }
 
@@ -574,12 +577,24 @@ public sealed class WindowsDesktop : ICuaDesktop
         return CuaResult.Ok($"Switched to the tab \"{title}\".");
     }
 
-    /// <summary>The browser's own tabs; tabs drawn inside the web page are left out.</summary>
+    /// <summary>The browser's own tabs. Web pages are skipped, which keeps their tabs out and the
+    /// walk fast (a YouTube page has thousands of nodes).</summary>
     private AutomationElement[] Tabs(CuaWindow window)
     {
-        var pages = Documents(window).Select(page => page.BoundingRectangle).ToList();
-        return Root(window).FindAllDescendants(condition => condition.ByControlType(ControlType.TabItem))
-            .Where(tab => !pages.Any(page => page.Contains(tab.BoundingRectangle))).ToArray();
+        var tabs = new List<AutomationElement>();
+        var walker = _observer.Automation.TreeWalkerFactory.GetControlViewWalker();
+        void Visit(AutomationElement parent, int depth)
+        {
+            if (depth > 30) return;
+            for (var child = walker.GetFirstChild(parent); child is not null; child = walker.GetNextSibling(child))
+            {
+                var type = child.Properties.ControlType.ValueOrDefault;
+                if (type == ControlType.TabItem) tabs.Add(child);
+                else if (type != ControlType.Document) Visit(child, depth + 1);
+            }
+        }
+        Visit(Root(window), 0);
+        return tabs.ToArray();
     }
 
     private AutomationElement[] Documents(CuaWindow window) =>

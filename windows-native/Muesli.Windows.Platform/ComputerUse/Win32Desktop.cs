@@ -184,6 +184,19 @@ public static class Win32Desktop
 
     public static long ForegroundWindow() => GetForegroundWindow().ToInt64();
 
+    /// <summary>
+    /// Stops other apps from taking the foreground (Chrome raises itself when a tab opens or a
+    /// link is pressed) until unlocked. Windows only grants this to a process allowed to set the
+    /// foreground, which the zero-distance mouse nudge provides. Returns false when refused.
+    /// </summary>
+    public static bool LockForeground(bool locked)
+    {
+        if (locked) WindowsInput.NudgeMouse();
+        return LockSetForegroundWindow(locked ? 1u : 2u);
+    }
+
+    [DllImport("user32.dll")] private static extern bool LockSetForegroundWindow(uint code);
+
     public static void SetCursor(CuaRect point) => SetCursorPos((int)point.X, (int)point.Y);
 
     /// <summary>Un-minimizes a window without taking focus, so it can be read and drawn; true when it was minimized.</summary>
