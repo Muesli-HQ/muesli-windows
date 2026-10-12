@@ -105,7 +105,6 @@ Each module ends with a test that proves the feature works on this PC before the
   Windows Settings, WhatsApp (read; sending asks first), copying between Chrome and Notepad, Muesli
   settings and the dictation shortcut by voice, and clarifying questions. The spoken path needs a
   person at the microphone.
-- **Not built:** the on-device Gemma planner (optional), and Computer Use entries in the Timeline,
-  which needs a history schema change.
+- **Not built:** the on-device Gemma planner (optional).
 - **ChatGPT sign-in** uses the same sign-in flow and endpoint as macOS, with the same risk that
   OpenAI may change it.

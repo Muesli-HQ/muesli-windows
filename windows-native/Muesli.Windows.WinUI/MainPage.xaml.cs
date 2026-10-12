@@ -358,6 +358,18 @@ public sealed partial class MainPage : Page
     }
 
     /// <summary>
+    /// macOS openInsights(section:): a stat card opens Insights at its section, and the back
+    /// link returns to the page the card was on.
+    /// </summary>
+    public void OpenInsights(string section, string from)
+    {
+        DismissSearchQuery();
+        _selectedTag = "insights";
+        RefreshNavigationVisuals();
+        ContentFrame.Navigate(typeof(Pages.InsightsPage), $"{section}|{from}");
+    }
+
+    /// <summary>
     /// The shell's search field is the app's single search entry point (P2-05): pages no longer
     /// carry their own. While results are shown the rail selection moves to a sentinel so no
     /// destination is falsely highlighted (P2-07), and clearing the query returns to whichever

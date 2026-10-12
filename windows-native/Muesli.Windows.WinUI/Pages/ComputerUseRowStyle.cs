@@ -2,6 +2,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Muesli.Windows.WinUI.Services;
 
 namespace Muesli.Windows.WinUI.Pages;
 
@@ -27,6 +29,38 @@ public static class ComputerUseRowStyle
     public static string Chevron(bool expanded) => expanded ? "" : "";
 
     public static string ChevronName(bool expanded) => expanded ? "Hide steps" : "Show steps";
+
+    private static readonly Dictionary<string, ImageSource?> AppIcons = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>macOS TargetApplicationIconView: the app's own icon, cached per executable.</summary>
+    public static ImageSource? AppIcon(DictationTargetApp? app)
+    {
+        if (app?.ExePath is not { Length: > 0 } path) return null;
+        if (AppIcons.TryGetValue(path, out var cached)) return cached;
+        ImageSource? source = null;
+        try
+        {
+            using var icon = System.Drawing.Icon.ExtractAssociatedIcon(path);
+            if (icon is not null)
+            {
+                using var bitmap = icon.ToBitmap();
+                // Kept open: the BitmapImage decodes from it lazily, and it is cached with the image.
+                var png = new MemoryStream();
+                bitmap.Save(png, System.Drawing.Imaging.ImageFormat.Png);
+                png.Position = 0;
+                var image = new BitmapImage();
+                image.SetSource(png.AsRandomAccessStream());
+                source = image;
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException) { }
+        return AppIcons[path] = source;
+    }
+
+    /// <summary>macOS shows app.dashed when the app is known but its icon is not.</summary>
+    public static Visibility AppIconFallback(DictationTargetApp? app) => Show(app is not null && AppIcon(app) is null);
+
+    public static string DictatedInto(DictationTargetApp? app) => app is null ? "" : $"Dictated into {app.Name}";
 
     /// <summary>True when a tap landed on a button or on selectable step text, which own the tap
     /// instead of the row.</summary>

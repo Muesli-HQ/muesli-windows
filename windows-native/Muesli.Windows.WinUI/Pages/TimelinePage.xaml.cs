@@ -22,11 +22,15 @@ public sealed partial class TimelinePage : Page
     public TimelinePage()
     {
         InitializeComponent();
-        ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
+        ViewModel.PropertyChanged += (_, _) =>
+        {
+            UpdateEmptyState();
+            UpdateFilterPills();
+        };
         Loaded += (_, _) =>
         {
             UpdateEmptyState();
-            UpdateSortPill();
+            UpdateFilterPills();
         };
     }
 
@@ -73,34 +77,26 @@ public sealed partial class TimelinePage : Page
         return new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x1F, color.R, color.G, color.B));
     }
 
+    /// <summary>macOS StatsHeaderView.onSelect: each card opens its Insights section.</summary>
     private void StatCard_Click(object sender, RoutedEventArgs e) =>
-        (App.Window as MainWindow)?.ShellPage?.NavigateTo("insights");
+        (App.Window as MainWindow)?.ShellPage?.OpenInsights((sender as FrameworkElement)?.Tag as string ?? "words", "timeline");
 
-    private void SortItem_Click(object sender, RoutedEventArgs e)
+    private void DateFilterMenu_Opening(object sender, object e) =>
+        HistoryFilterBar.FillDateMenu(DateFilterMenu, HistoryFormat.DateFilters, ViewModel.DateFilterIndex, index => ViewModel.DateFilterIndex = index);
+
+    private void AppFilterMenu_Opening(object sender, object e) =>
+        HistoryFilterBar.FillAppMenu(AppFilterMenu, ViewModel.Apps, ViewModel.AppFilter, app => ViewModel.AppFilter = app);
+
+    private void UpdateFilterPills()
     {
-        if (sender is RadioMenuFlyoutItem { Tag: string tag } && int.TryParse(tag, out var index))
-        {
-            ViewModel.SortIndex = index;
-            UpdateSortPill();
-        }
+        HistoryFilterBar.StyleDatePill(DateFilterButton, DateFilterIcon, DateFilterLabel,
+            ViewModel.DateFilterIndex > 0 ? HistoryFormat.DateFilters[ViewModel.DateFilterIndex] : null);
+        HistoryFilterBar.StyleAppPill(AppFilterButton, AppFilterIcon, AppFilterGlyph, AppFilterLabel, ViewModel.AppFilter);
     }
 
-    /// <summary>
-    /// The macOS filter menu: a bare tertiary funnel at the default, an accent pill naming the
-    /// choice otherwise.
-    /// </summary>
-    private void UpdateSortPill()
+    private void ToggleText_Click(object sender, RoutedEventArgs e)
     {
-        var oldest = ViewModel.SortIndex == 1;
-        NewestFirstItem.IsChecked = !oldest;
-        OldestFirstItem.IsChecked = oldest;
-        SortLabel.Text = "Oldest first";
-        SortLabel.Visibility = oldest ? Visibility.Visible : Visibility.Collapsed;
-        var tone = (Brush)Application.Current.Resources[oldest ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush"];
-        SortIcon.Foreground = tone;
-        SortLabel.Foreground = tone;
-        if (oldest) SortButton.Background = (Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
-        else SortButton.ClearValue(Control.BackgroundProperty);
+        if (Tagged(sender) is { } entry) entry.Body.IsExpanded = !entry.Body.IsExpanded;
     }
 
     private void UpdateEmptyState()
@@ -112,8 +108,8 @@ public sealed partial class TimelinePage : Page
         EmptyState.Visibility = ViewModel.HasEntries ? Visibility.Collapsed : Visibility.Visible;
         TimelineList.Visibility = ViewModel.HasEntries ? Visibility.Visible : Visibility.Collapsed;
 
-        EmptyStateTitle.Text = "No timeline activity yet";
-        EmptyStateBody.Text = "Saved dictations and completed meetings will appear here.";
+        // macOS TimelineView.emptyState.
+        EmptyStateTitle.Text = ViewModel.EmptyStateTitle;
     }
 
     /// <summary>

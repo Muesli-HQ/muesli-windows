@@ -34,6 +34,11 @@ public sealed partial class InsightsPage : Page
                 {
                     BringSharePreviewIntoView();
                 }
+
+                if (args.PropertyName is nameof(ViewModel.HasData))
+                {
+                    ScrollToSection();
+                }
             };
         ActualThemeChanged += (_, _) => ApplyHeroTint();
         Loaded += (_, _) =>
@@ -237,8 +242,40 @@ public sealed partial class InsightsPage : Page
         }
     }
 
+    /// <summary>The card that opened this page (macOS InsightsSection) and the page to go back to.</summary>
+    private string? _section;
+    private string _returnTag = "timeline";
+
+    protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        if (e.Parameter is not string parameter || parameter.Split('|') is not [var section, var from]) return;
+        _section = section;
+        _returnTag = from == "dictations" ? "dictations" : "timeline";
+        var label = _returnTag == "dictations" ? "Back to Dictations" : "Back to Timeline";
+        BackLabel.Text = label;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(BackButton, label);
+        // macOS opens the activity chart on meetings when the meetings card was clicked.
+        if (section == "meetings") ActivityModeBar.SelectedItem = ActivityModeBar.Items[1];
+    }
+
+    /// <summary>macOS scrolls to the section once the snapshot has loaded.</summary>
+    private void ScrollToSection()
+    {
+        if (!ViewModel.HasData || _section is not { } section) return;
+        _section = null;
+        FrameworkElement target = section switch
+        {
+            "pace" => BreakdownCard,
+            "streak" => StreaksCard,
+            _ => ActivityCard,
+        };
+        DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            target.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = true, VerticalAlignmentRatio = 0, VerticalOffset = -24 }));
+    }
+
     private void BackToTimeline_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
-        Frame?.Navigate(typeof(TimelinePage));
+        (App.Window as MainWindow)?.ShellPage?.NavigateTo(_returnTag);
     }
 }

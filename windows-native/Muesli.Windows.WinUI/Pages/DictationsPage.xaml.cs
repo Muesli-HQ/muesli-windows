@@ -27,12 +27,16 @@ public sealed partial class DictationsPage : Page
     {
         InitializeComponent();
         Unloaded += (_, _) => ViewModel.Dispose();
-        ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
+        ViewModel.PropertyChanged += (_, _) =>
+        {
+            UpdateEmptyState();
+            UpdateFilterPills();
+        };
         Loaded += (_, _) =>
         {
             ApplyResponsiveLayout(ActualWidth);
             UpdateEmptyState();
-            UpdateSortPill();
+            UpdateFilterPills();
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
     }
@@ -52,30 +56,26 @@ public sealed partial class DictationsPage : Page
 
     public static string RecordGlyph(bool isRecording) => isRecording ? "" : "";
 
+    /// <summary>macOS StatsHeaderView.onSelect: each card opens its Insights section.</summary>
     private void StatCard_Click(object sender, RoutedEventArgs e) =>
-        (App.Window as MainWindow)?.ShellPage?.NavigateTo("insights");
+        (App.Window as MainWindow)?.ShellPage?.OpenInsights((sender as FrameworkElement)?.Tag as string ?? "words", "dictations");
 
-    private void SortItem_Click(object sender, RoutedEventArgs e)
+    private void DateFilterMenu_Opening(object sender, object e) =>
+        HistoryFilterBar.FillDateMenu(DateFilterMenu, ViewModel.DateFilters, ViewModel.DateFilterIndex, index => ViewModel.DateFilterIndex = index);
+
+    private void AppFilterMenu_Opening(object sender, object e) =>
+        HistoryFilterBar.FillAppMenu(AppFilterMenu, ViewModel.Apps, ViewModel.AppFilter, app => ViewModel.AppFilter = app);
+
+    private void UpdateFilterPills()
     {
-        if (sender is RadioMenuFlyoutItem { Tag: string tag } && int.TryParse(tag, out var index))
-        {
-            ViewModel.SortIndex = index;
-            UpdateSortPill();
-        }
+        HistoryFilterBar.StyleDatePill(DateFilterButton, DateFilterIcon, DateFilterLabel,
+            ViewModel.DateFilterIndex > 0 && ViewModel.DateFilterIndex < ViewModel.DateFilters.Count ? ViewModel.DateFilters[ViewModel.DateFilterIndex] : null);
+        HistoryFilterBar.StyleAppPill(AppFilterButton, AppFilterIcon, AppFilterGlyph, AppFilterLabel, ViewModel.AppFilter);
     }
 
-    /// <summary>macOS filter menu: a bare tertiary funnel at the default, an accent pill otherwise.</summary>
-    private void UpdateSortPill()
+    private void ToggleText_Click(object sender, RoutedEventArgs e)
     {
-        var oldest = ViewModel.SortIndex == 1;
-        NewestFirstItem.IsChecked = !oldest;
-        OldestFirstItem.IsChecked = oldest;
-        SortLabel.Visibility = oldest ? Visibility.Visible : Visibility.Collapsed;
-        var tone = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[oldest ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush"];
-        SortIcon.Foreground = tone;
-        SortLabel.Foreground = tone;
-        if (oldest) SortButton.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
-        else SortButton.ClearValue(Control.BackgroundProperty);
+        if (Tagged(sender) is { } item) item.Body.IsExpanded = !item.Body.IsExpanded;
     }
 
     /// <summary>
@@ -100,8 +100,13 @@ public sealed partial class DictationsPage : Page
         // The list is rebuilt on every reload, so the tracked selection owner is stale.
         _selectedRowList = null;
 
-        EmptyStateTitle.Text = "No dictations yet";
-        EmptyStateBody.Text = "Your first completed dictation will be stored here.";
+        // macOS DictationsView empty state: the filter hint, else the push-to-talk prompt.
+        if (ViewModel.HasItems) return;
+        EmptyStateTitle.Text = ViewModel.EmptyStateTitle;
+        var hotkey = App.Settings.Load().Hotkey;
+        EmptyStateBody.Text = ViewModel.IsFiltered
+            ? "Try another source, app, or time range"
+            : $"Hold {(string.IsNullOrWhiteSpace(hotkey) ? "your shortcut" : hotkey)} to dictate";
     }
 
     /// <summary>

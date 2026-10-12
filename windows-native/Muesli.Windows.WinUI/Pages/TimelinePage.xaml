@@ -53,7 +53,7 @@
 
                 <!-- macOS StatsHeaderView: four cards, each a button that opens Insights. -->
                 <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="16">
-                    <Button Grid.Column="0" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                    <Button Grid.Column="0" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click" Tag="streak"
                             ToolTipService.ToolTip="Open streak insights" AutomationProperties.Name="Current streak">
                         <StackPanel Spacing="8">
                             <!-- A flame path: the icon font has none. -->
@@ -64,7 +64,7 @@
                             <TextBlock Text="day streak" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
                     </Button>
-                    <Button Grid.Column="1" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                    <Button Grid.Column="1" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click" Tag="words"
                             ToolTipService.ToolTip="Open word activity insights" AutomationProperties.Name="Words dictated">
                         <StackPanel Spacing="8">
                             <FontIcon Glyph="&#xE8D2;" FontSize="20" Foreground="{ThemeResource MuesliAccentBrush}" />
@@ -72,7 +72,7 @@
                             <TextBlock Text="words dictated" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
                     </Button>
-                    <Button Grid.Column="2" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                    <Button Grid.Column="2" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click" Tag="pace"
                             ToolTipService.ToolTip="Open speaking pace insights" AutomationProperties.Name="Average pace">
                         <StackPanel Spacing="8">
                             <FontIcon Glyph="&#xEC4A;" FontSize="20" Foreground="{ThemeResource MuesliSuccessBrush}" />
@@ -80,7 +80,7 @@
                             <TextBlock Text="avg WPM" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
                     </Button>
-                    <Button Grid.Column="3" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                    <Button Grid.Column="3" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click" Tag="meetings"
                             ToolTipService.ToolTip="Open meeting insights" AutomationProperties.Name="Meetings">
                         <StackPanel Spacing="8">
                             <FontIcon Glyph="&#xE716;" FontSize="20" Foreground="{ThemeResource MuesliAccentBrush}" />
@@ -91,26 +91,38 @@
                 </Grid>
 
                 <!--
-                    No page-level search (the sidebar owns it). macOS ends the filter row with a
-                    borderless funnel menu that becomes an accent pill only when it is not the
-                    default; the filter Windows carries there is the sort order.
+                    macOS filterBar: the destination-app menu (once any app is known) and the date
+                    menu, a bare funnel that becomes an accent capsule once a range is chosen. No
+                    page-level search (the sidebar owns it) and no record-source picker: Windows
+                    has one capture source, so a second option would be invented.
                 -->
-                <Grid x:Name="TimelineToolbar" ColumnDefinitions="*,Auto" Margin="0,-4,0,-8">
-                    <Button x:Name="SortButton" Grid.Column="1"
+                <Grid x:Name="TimelineToolbar" ColumnDefinitions="Auto,*,Auto" Margin="0,-4,0,-8">
+                    <Button x:Name="AppFilterButton"
                             Style="{StaticResource MuesliGhostButtonStyle}"
-                            Padding="8,3" MinHeight="0" CornerRadius="12"
-                            ToolTipService.ToolTip="Sort"
-                            AutomationProperties.Name="Sort timeline"
-                            AutomationProperties.AutomationId="TimelineSort">
+                            Padding="8,4" MinHeight="0" CornerRadius="12"
+                            Visibility="{x:Bind local:TimelinePage.BoolToVisibility(ViewModel.ShowAppFilter), Mode=OneWay}"
+                            AutomationProperties.Name="Destination application filter"
+                            AutomationProperties.AutomationId="TimelineAppFilter">
                         <StackPanel Orientation="Horizontal" Spacing="5">
-                            <FontIcon x:Name="SortIcon" Glyph="&#xE71C;" FontSize="12" />
-                            <TextBlock x:Name="SortLabel" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" />
+                            <Image x:Name="AppFilterIcon" Width="16" Height="16" Visibility="Collapsed" />
+                            <FontIcon x:Name="AppFilterGlyph" Glyph="&#xF0E2;" FontSize="11" />
+                            <TextBlock x:Name="AppFilterLabel" Text="Apps" FontSize="11" FontWeight="Medium" VerticalAlignment="Center" MaxWidth="180" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <Button.Flyout>
-                            <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                <RadioMenuFlyoutItem x:Name="NewestFirstItem" Text="Newest first" GroupName="TimelineSort" Click="SortItem_Click" Tag="0" />
-                                <RadioMenuFlyoutItem x:Name="OldestFirstItem" Text="Oldest first" GroupName="TimelineSort" Click="SortItem_Click" Tag="1" />
-                            </MenuFlyout>
+                            <MenuFlyout x:Name="AppFilterMenu" Placement="BottomEdgeAlignedLeft" Opening="AppFilterMenu_Opening" />
+                        </Button.Flyout>
+                    </Button>
+                    <Button x:Name="DateFilterButton" Grid.Column="2"
+                            Style="{StaticResource MuesliGhostButtonStyle}"
+                            Padding="0,3" MinHeight="0" CornerRadius="12"
+                            AutomationProperties.Name="Date filter"
+                            AutomationProperties.AutomationId="TimelineDateFilter">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon x:Name="DateFilterIcon" Glyph="&#xE71C;" FontSize="11" />
+                            <TextBlock x:Name="DateFilterLabel" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="DateFilterMenu" Placement="BottomEdgeAlignedRight" Opening="DateFilterMenu_Opening" />
                         </Button.Flyout>
                     </Button>
                 </Grid>
@@ -175,19 +187,29 @@
                                                                                    Foreground="{ThemeResource MuesliAccentBrush}" />
                                                                     </Border>
                                                                     <TextBlock Grid.Column="1"
-                                                                               Text="{x:Bind TitleLabel}"
+                                                                               Text="{x:Bind Body.Shown, Mode=OneWay}"
                                                                                FontFamily="{StaticResource MuesliFontFamily}"
                                                                                FontSize="15"
                                                                                LineHeight="21"
                                                                                Foreground="{ThemeResource MuesliTextPrimaryBrush}"
                                                                                TextWrapping="Wrap"
-                                                                               MaxLines="3"
+                                                                               MaxLines="{x:Bind Body.MaxLines, Mode=OneWay}"
                                                                                TextTrimming="CharacterEllipsis" />
                                                                     <TextBlock Grid.Column="2" Margin="8,3,0,0" VerticalAlignment="Top"
                                                                                FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="12"
                                                                                Text="{x:Bind Run.StatusLabel}"
                                                                                Foreground="{x:Bind local:ComputerUseRowStyle.StatusBrush(Run.Status)}" />
                                                                 </Grid>
+                                                                <!-- macOS "Show more" / "Show less" under long text. -->
+                                                                <Button Style="{StaticResource MuesliGhostButtonStyle}" Padding="0" MinHeight="0" MinWidth="0"
+                                                                        HorizontalAlignment="Left" Background="Transparent" BorderThickness="0"
+                                                                        Tag="{x:Bind}" Click="ToggleText_Click"
+                                                                        Visibility="{x:Bind local:ComputerUseRowStyle.Show(Body.CanExpand)}"
+                                                                        AutomationProperties.Name="{x:Bind Body.ToggleName, Mode=OneWay}"
+                                                                        AutomationProperties.AutomationId="TimelineExpandButton">
+                                                                    <TextBlock Text="{x:Bind Body.ToggleLabel, Mode=OneWay}" FontSize="12" FontWeight="Medium"
+                                                                               Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                                </Button>
                                                                 <StackPanel Spacing="8"
                                                                             Visibility="{x:Bind local:ComputerUseRowStyle.Show(Run.IsExpanded), Mode=OneWay, FallbackValue=Collapsed}">
                                                                     <Rectangle Height="1" Opacity="0.5" Fill="{ThemeResource MuesliBorderSoftBrush}" />
@@ -250,14 +272,25 @@
                                                                            TextTrimming="CharacterEllipsis"
                                                                            MaxLines="2" />
                                                             </StackPanel>
+                                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="20" VerticalAlignment="Top"
+                                                                        Visibility="{x:Bind local:TimelinePage.InvertBoolToVisibility(IsMeeting)}">
+                                                            <!-- macOS TargetApplicationIconView: where the dictation was pasted. -->
+                                                            <Grid Width="20" Height="20" VerticalAlignment="Top" Margin="0,1,0,0"
+                                                                  Visibility="{x:Bind local:ComputerUseRowStyle.Show(HasTargetApp)}"
+                                                                  ToolTipService.ToolTip="{x:Bind local:ComputerUseRowStyle.DictatedInto(TargetApp)}"
+                                                                  AutomationProperties.Name="{x:Bind local:ComputerUseRowStyle.DictatedInto(TargetApp)}">
+                                                                <Image Source="{x:Bind local:ComputerUseRowStyle.AppIcon(TargetApp)}" Stretch="Uniform" />
+                                                                <Border CornerRadius="4" Background="{ThemeResource MuesliSurfacePrimaryBrush}"
+                                                                        Visibility="{x:Bind local:ComputerUseRowStyle.AppIconFallback(TargetApp)}">
+                                                                    <FontIcon Glyph="&#xECAA;" FontSize="14" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                                </Border>
+                                                            </Grid>
                                                             <StackPanel x:Name="RowActions"
-                                                                        Grid.Column="2"
                                                                         Orientation="Horizontal"
                                                                         Spacing="2"
                                                                         Margin="-8,-4,-8,0"
                                                                         Opacity="{x:Bind local:ComputerUseRowStyle.ActionsOpacity(HasRun)}"
-                                                                        IsHitTestVisible="{x:Bind HasRun}"
-                                                                        Visibility="{x:Bind local:TimelinePage.InvertBoolToVisibility(IsMeeting)}">
+                                                                        IsHitTestVisible="{x:Bind HasRun}">
                                                                 <Button Style="{StaticResource TimelineRowActionStyle}"
                                                                         Tag="{x:Bind}"
                                                                         Click="ToggleRun_Click"
@@ -293,6 +326,7 @@
                                                                     <FontIcon Glyph="&#xE74D;" FontSize="12" Foreground="{ThemeResource MuesliErrorBrush}" Opacity="0.6" />
                                                                 </Button>
                                                             </StackPanel>
+                                                            </StackPanel>
                                                         </Grid>
                                                         <Rectangle Height="1" Margin="20,0" VerticalAlignment="Bottom"
                                                                    Fill="{ThemeResource MuesliBorderSoftBrush}" />
@@ -305,10 +339,10 @@
                         </ListView.ItemTemplate>
                     </ListView>
                     <Border x:Name="EmptyState" MinHeight="260">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
                             <FontIcon Glyph="&#xE823;" FontSize="40" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
                             <TextBlock x:Name="EmptyStateTitle" Text="No activity yet" FontSize="18" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextSecondaryBrush}" HorizontalAlignment="Center" />
-                            <TextBlock x:Name="EmptyStateBody" Text="Saved dictations and completed meetings will appear here." FontSize="13" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateBody" Text="Try another source, app, or time range" FontSize="13" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextAlignment="Center" />
                         </StackPanel>
                     </Border>
                 </Grid>

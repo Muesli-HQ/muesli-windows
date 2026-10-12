@@ -77,14 +77,14 @@
                 -->
                 <Grid x:Name="HeaderGrid" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" RowSpacing="14">
                     <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                        <Button Click="BackToTimeline_Click"
+                        <Button x:Name="BackButton" Click="BackToTimeline_Click"
                                 Style="{StaticResource MuesliGhostButtonStyle}"
                                 Padding="6,4" Margin="-6,0,0,0"
                                 AutomationProperties.Name="Back to Timeline"
                                 AutomationProperties.AutomationId="InsightsBackButton">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon Glyph="&#xE76B;" FontSize="11" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
-                                <TextBlock Text="Back to Timeline" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                <TextBlock x:Name="BackLabel" Text="Back to Timeline" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
                             </StackPanel>
                         </Button>
                         <Rectangle Width="1" Height="18" Fill="{ThemeResource MuesliBorderSoftBrush}" VerticalAlignment="Center" />
@@ -230,7 +230,7 @@
                     </Grid>
                 </Border>
 
-                <Border Style="{StaticResource InsightPanelStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Daily activity" AutomationProperties.AutomationId="InsightsDailyActivityCard">
+                <Border x:Name="ActivityCard" Style="{StaticResource InsightPanelStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Daily activity" AutomationProperties.AutomationId="InsightsDailyActivityCard">
                     <StackPanel Spacing="18">
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Spacing="4">
@@ -319,7 +319,7 @@
                 </Border>
 
                 <!-- macOS usagePanel: one panel, the word balance on the left and an inset OVERVIEW box on the right. -->
-                <Border Style="{StaticResource InsightPanelStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Dictation and meeting breakdown" AutomationProperties.AutomationId="InsightsBreakdownCard">
+                <Border x:Name="BreakdownCard" Style="{StaticResource InsightPanelStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Dictation and meeting breakdown" AutomationProperties.AutomationId="InsightsBreakdownCard">
                     <Grid x:Name="UsageGrid" ColumnDefinitions="*,300" RowDefinitions="Auto,Auto" ColumnSpacing="20">
                         <StackPanel Spacing="20">
                             <StackPanel Spacing="4">
@@ -371,7 +371,7 @@
                 </Border>
 
                 <!-- macOS streakPanel: three accent counts separated by hairlines. -->
-                <Border Style="{StaticResource InsightPanelStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Insights streaks" AutomationProperties.AutomationId="InsightsStreaksCard">
+                <Border x:Name="StreaksCard" Style="{StaticResource InsightPanelStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}" AutomationProperties.Name="Insights streaks" AutomationProperties.AutomationId="InsightsStreaksCard">
                     <StackPanel Spacing="18">
                         <StackPanel Spacing="4">
                             <TextBlock Text="STREAKS" Style="{StaticResource InsightPanelTitleStyle}" />

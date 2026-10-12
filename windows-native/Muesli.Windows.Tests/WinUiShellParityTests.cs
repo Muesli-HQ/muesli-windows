@@ -111,6 +111,50 @@ public sealed class WinUiShellParityTests
     }
 
     [Fact]
+    public void HistoryFiltersHeadingsAndLongTextFollowMacOs()
+    {
+        var now = new DateTime(2026, 10, 12, 12, 0, 0);
+        Assert.Equal(["All time"], HistoryFormat.AvailableDateFilters(null, now));
+        Assert.Equal(["All time", "Last 2 days", "Last week"], HistoryFormat.AvailableDateFilters(now.AddDays(-5), now));
+        Assert.Equal(6, HistoryFormat.AvailableDateFilters(now.AddDays(-40), now).Count);
+        Assert.Equal(now.AddDays(-7), HistoryFormat.DateFilterStart(2, now));
+        Assert.Null(HistoryFormat.DateFilterStart(0, now));
+
+        Assert.Equal("TODAY", HistoryFormat.DayHeading(now, now));
+        Assert.Equal("YESTERDAY", HistoryFormat.DayHeading(now.AddDays(-1), now));
+
+        var text = new ExpandableText(new string('a', 200));
+        Assert.True(text.CanExpand);
+        Assert.Equal(161, text.Shown.Length);
+        Assert.Equal(3, text.MaxLines);
+        text.IsExpanded = true;
+        Assert.Equal(200, text.Shown.Length);
+        Assert.Equal("Show less", text.ToggleLabel);
+        Assert.True(new ExpandableText("a\nb\nc\nd").CanExpand);
+        Assert.False(new ExpandableText("short").CanExpand);
+    }
+
+    [Fact]
+    public void DictationTargetAppsGoWithTheirDictation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "muesli-apps-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var notepad = new DictationTargetApp("Notepad", "notepad", null);
+            DictationTargetApps.Record(root, "d1", notepad);
+            DictationTargetApps.Record(root, "d2", new DictationTargetApp("Google Chrome", "chrome", null));
+            DictationTargetApps.Record(root, "d3", notepad with { Name = "Notepad 2" });
+            Assert.Equal(["Google Chrome", "Notepad"], DictationTargetApps.Distinct(DictationTargetApps.LoadAll(root).OrderBy(pair => pair.Key).Select(pair => pair.Value)).Select(app => app.Name));
+            DictationTargetApps.Remove(root, "d1");
+            Assert.False(DictationTargetApps.LoadAll(root).ContainsKey("d1"));
+            DictationTargetApps.Clear(root);
+            Assert.Empty(DictationTargetApps.LoadAll(root));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public void WindowsPermissionRowsDoNotReuseMacTccLabels()
     {
         var rows = WindowsPermissionStatus.Build(true, true, "Granted", "WASAPI capture verified");
@@ -131,8 +175,10 @@ public sealed class WinUiShellParityTests
         Assert.Contains("ComputerUseThinking", settings);
 
         var timeline = File.ReadAllText(Path.Combine(winUi, "Pages", "TimelinePage.xaml"));
-        // Timeline is one chronological mixed feed: no source filter and no kind segmented control.
-        Assert.Contains("TimelineSort", timeline);
+        // Timeline is one chronological mixed feed with the macOS app and date filters, but no
+        // source filter (Windows has one source) and no kind segmented control.
+        Assert.Contains("TimelineDateFilter", timeline);
+        Assert.Contains("TimelineAppFilter", timeline);
         Assert.DoesNotContain("TimelineFilterAll", timeline);
         Assert.DoesNotContain("From iPhone", timeline);
         Assert.DoesNotContain("This Mac", timeline);

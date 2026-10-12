@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Muesli.Windows.Services;
 using Muesli.Windows.Core.Contracts;
+using Muesli.Windows.Core.Insights;
 using Muesli.Windows.WinUI.Services;
 
 namespace Muesli.Windows.WinUI.ViewModels;
@@ -65,10 +66,22 @@ public partial class TimelinePageViewModel : ObservableObject
     [ObservableProperty]
     public partial IReadOnlyList<TimelineGroup> Groups { get; private set; } = [];
 
+    /// <summary>macOS timeline date filter: every <see cref="HistoryFormat.DateFilters"/> range is offered.</summary>
     [ObservableProperty]
-    public partial int SortIndex { get; set; }
+    public partial int DateFilterIndex { get; set; }
+
+    /// <summary>macOS TargetApplicationFilterMenu: only dictations pasted into this app.</summary>
+    [ObservableProperty]
+    public partial DictationTargetApp? AppFilter { get; set; }
+
+    /// <summary>The apps dictations were pasted into, for the app filter.</summary>
+    public IReadOnlyList<DictationTargetApp> Apps { get; private set; } = [];
+
+    public bool ShowAppFilter => Apps.Count > 0 || AppFilter is not null;
 
     public bool HasEntries => Entries.Count > 0;
+
+    public string EmptyStateTitle => AppFilter is { } app ? $"No dictations for {app.Name}" : "No activity yet";
 
     public string ResultCountLabel => $"{Entries.Count:N0} {(Entries.Count == 1 ? "item" : "items")}";
     /// <summary>
@@ -92,39 +105,32 @@ public partial class TimelinePageViewModel : ObservableObject
 
     partial void OnSnapshotChanged(WinUiLibrarySnapshot value) => NotifyDerived();
 
-    partial void OnSortIndexChanged(int value) => ApplyFilterAndSort();
+    partial void OnDateFilterIndexChanged(int value) => ApplyFilterAndSort();
+
+    partial void OnAppFilterChanged(DictationTargetApp? value) => ApplyFilterAndSort();
 
     partial void OnEntriesChanged(IReadOnlyList<WinUiTimelineEntry> value) => NotifyDerived();
 
     /// <summary>
-    /// Sort order only. P2-05 removed this page's own search field — the shell's single search
-    /// entry point routes cross-library queries to <c>SearchPage</c>. The redundant kind filter is
-    /// gone too: Timeline is one chronological mixed feed, matching macOS.
+    /// One chronological mixed feed, newest first, narrowed by the macOS date and app filters.
+    /// P2-05 removed this page's own search field — the shell's single search entry point routes
+    /// cross-library queries to <c>SearchPage</c>.
     /// </summary>
     private void ApplyFilterAndSort()
     {
-        var query = Snapshot.Timeline.AsEnumerable();
-        Entries = SortIndex == 1
-            ? query.OrderBy(item => item.Timestamp).ToList()
-            : query.OrderByDescending(item => item.Timestamp).ToList();
+        Apps = DictationTargetApps.Distinct(Snapshot.Timeline.Select(item => item.TargetApp));
+        var start = HistoryFormat.DateFilterStart(DateFilterIndex, DateTime.Now);
+        var query = Snapshot.Timeline.Where(item => start is null || item.Timestamp.ToLocalTime() >= start);
+        if (AppFilter is { } app)
+            query = query.Where(item => !item.IsMeeting && DictationTargetApps.Same(item.TargetApp, app));
+        Entries = query.OrderByDescending(item => item.Timestamp).ToList();
 
         Groups = Entries
             .GroupBy(item => item.Timestamp.ToLocalTime().Date)
             .Select(group => new TimelineGroup(
-                FormatDateHeading(group.Key),
+                HistoryFormat.DayHeading(group.Key, DateTime.Today),
                 group.ToList()))
             .ToList();
-    }
-
-    private static string FormatDateHeading(DateTime date)
-    {
-        var localDate = date.Date;
-        var today = DateTime.Today;
-        return localDate == today
-            ? "TODAY"
-            : localDate == today.AddDays(-1)
-                ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
     }
 
     private void NotifyDerived()
@@ -132,6 +138,9 @@ public partial class TimelinePageViewModel : ObservableObject
         OnPropertyChanged(nameof(Entries));
         OnPropertyChanged(nameof(Groups));
         OnPropertyChanged(nameof(HasEntries));
+        OnPropertyChanged(nameof(Apps));
+        OnPropertyChanged(nameof(ShowAppFilter));
+        OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(ResultCountLabel));
         OnPropertyChanged(nameof(DictationWordsLabel));
         OnPropertyChanged(nameof(AveragePaceLabel));
@@ -148,6 +157,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     private readonly WinUiDictationContext _dictation;
     private readonly IUiDispatcher _dispatcher;
     private IReadOnlyList<DictationListItem> _allItems = [];
+    private IReadOnlyList<PersistedDictation> _allDictations = [];
 
     public DictationsPageViewModel(
         WinUiLibraryContext library,
@@ -175,8 +185,24 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial IReadOnlyList<DictationGroup> Groups { get; private set; } = [];
 
+    /// <summary>macOS DictationsView date filter; only ranges the history can fill are offered.</summary>
     [ObservableProperty]
-    public partial int SortIndex { get; set; }
+    public partial int DateFilterIndex { get; set; }
+
+    [ObservableProperty]
+    public partial IReadOnlyList<string> DateFilters { get; private set; } = [HistoryFormat.DateFilters[0]];
+
+    /// <summary>macOS TargetApplicationFilterMenu: only dictations pasted into this app.</summary>
+    [ObservableProperty]
+    public partial DictationTargetApp? AppFilter { get; set; }
+
+    public IReadOnlyList<DictationTargetApp> Apps { get; private set; } = [];
+
+    public bool ShowAppFilter => Apps.Count > 0 || AppFilter is not null;
+
+    public bool IsFiltered => DateFilterIndex > 0 || AppFilter is not null;
+
+    public string EmptyStateTitle => AppFilter is { } app ? $"No dictations for {app.Name}" : "No dictations yet";
 
     [ObservableProperty]
     public partial string StatusMessage { get; private set; } = "";
@@ -205,7 +231,8 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string DictationStatus { get; private set; } = "Ready";
 
-    public string RecordButtonLabel => IsRecording ? "Stop Dictation" : "Start Dictation";
+    /// <summary>macOS voiceNoteButton: records, transcribes and saves without pasting anywhere.</summary>
+    public string RecordButtonLabel => IsRecording ? "Stop Voice Note" : "Record Voice Note";
     public bool CanToggleDictation => IsRecording || !IsDictationBusy;
     public bool HasActiveRuntimeStatus => IsRecording || IsDictationBusy;
 
@@ -224,11 +251,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         _allItems.Any(item => string.Equals(item.Id, id, StringComparison.Ordinal));
 
     [RelayCommand]
-    private void Refresh()
-    {
-        Reload();
-        ShowStatus("Dictation history refreshed.");
-    }
+    private void Refresh() => Reload();
 
     [RelayCommand(CanExecute = nameof(CanToggleDictation))]
     private async Task ToggleDictationAsync()
@@ -260,10 +283,10 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     private async Task CopyAsync(DictationListItem? item, CancellationToken cancellationToken)
     {
         if (item is null) return;
+        // macOS copies silently; only a failure is reported.
         try
         {
             await _clipboard.SetTextAsync(item.Text, cancellationToken);
-            ShowStatus("Dictation copied to the clipboard.");
         }
         catch (Exception exception)
         {
@@ -278,7 +301,6 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         try
         {
             await _clipboard.SetTextAsync(run.TraceText(item.Text), cancellationToken);
-            ShowStatus("CUA trace copied to the clipboard.");
         }
         catch (Exception exception)
         {
@@ -290,13 +312,10 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     private async Task DeleteAsync(DictationListItem? item, CancellationToken cancellationToken)
     {
         if (item is null) return;
-        // Row actions are revealed on hover, so the confirmation has to repeat which record is
-        // about to go: the dialog is the last point at which the user can tell that the pointer
-        // was over the row they meant.
+        // macOS DictationRowView's alert, word for word.
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete this dictation permanently?\n\n{item.TimeLabel} · “{Snippet(item.Text)}”\n\n" +
-            "This removes its saved transcript from this profile.",
-            "Delete dictation",
+            "Are you sure you want to delete this dictation? This cannot be undone.",
+            "Delete Dictation",
             cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
 
@@ -305,7 +324,6 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
             if (_library.DeleteDictation(item.Id))
             {
                 Reload();
-                ShowStatus("Dictation deleted.");
             }
             else
             {
@@ -322,65 +340,67 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     private ComputerUseRun? LoadRun(PersistedDictation item) =>
         item.ModelProfile == ComputerUseConfiguration.HistoryLabel ? ComputerUseRun.Load(_library.Profile.RootDirectory, item.Id) : null;
 
-    /// <summary>One line of the transcript, short enough to stay readable inside a dialog.</summary>
-    private static string Snippet(string text)
-    {
-        var single = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        return single.Length <= 90 ? single : single[..90].TrimEnd() + "…";
-    }
-
     partial void OnItemsChanged(IReadOnlyList<DictationListItem> value)
     {
         OnPropertyChanged(nameof(HasItems));
         OnPropertyChanged(nameof(ResultCountLabel));
     }
 
-    partial void OnSortIndexChanged(int value) => ApplyFilterAndSort();
+    partial void OnDateFilterIndexChanged(int value) => ApplyFilterAndSort();
+
+    partial void OnAppFilterChanged(DictationTargetApp? value) => ApplyFilterAndSort();
 
     private void Reload()
     {
         var snapshot = _library.ReadSnapshot();
-        _allItems = snapshot.Dictations.Select(item => DictationListItem.From(item) with { Run = LoadRun(item) }).ToList();
-        DictationWordsLabel = snapshot.DictationWords.ToString("N0");
-        CurrentStreakLabel = snapshot.CurrentStreak.ToString("N0");
-        // P2-01: the pace is read from the shared snapshot calculation rather than recomputed
-        // here, which is how this page came to disagree with Timeline and Insights.
-        AveragePaceLabel = snapshot.AverageWordsPerMinute == 0
-            ? "—"
-            : snapshot.AverageWordsPerMinute.ToString("N0");
+        _allDictations = snapshot.Dictations;
+        _allItems = snapshot.Dictations.Select(item => DictationListItem.From(item) with
+        {
+            Run = LoadRun(item),
+            TargetApp = snapshot.TargetApps.GetValueOrDefault(item.Id),
+        }).ToList();
+        Apps = DictationTargetApps.Distinct(_allItems.Select(item => item.TargetApp));
+        var filters = HistoryFormat.AvailableDateFilters(
+            _allItems.Count == 0 ? null : _allItems.Min(item => item.Timestamp.ToLocalTime()), DateTime.Now);
+        if (!filters.SequenceEqual(DateFilters, StringComparer.Ordinal)) DateFilters = filters;
+        if (DateFilterIndex >= DateFilters.Count) DateFilterIndex = 0;
         ApplyFilterAndSort();
     }
 
     /// <summary>
-    /// Sort order only. P2-05 removed this page's own search field in favour of the shell's
-    /// single search entry point, so the text predicate that used to live here went with it.
-    /// Ordering is unchanged.
+    /// Newest first, narrowed by the macOS date and app filters. P2-05 removed this page's own
+    /// search field in favour of the shell's single search entry point.
     /// </summary>
     private void ApplyFilterAndSort()
     {
-        IEnumerable<DictationListItem> query = _allItems;
-
-        Items = SortIndex == 1
-            ? query.OrderBy(item => item.Timestamp).ToList()
-            : query.OrderByDescending(item => item.Timestamp).ToList();
+        var start = HistoryFormat.DateFilterStart(DateFilterIndex, DateTime.Now);
+        Items = _allItems
+            .Where(item => start is null || item.Timestamp.ToLocalTime() >= start)
+            .Where(item => AppFilter is null || DictationTargetApps.Same(item.TargetApp, AppFilter))
+            .OrderByDescending(item => item.Timestamp)
+            .ToList();
 
         Groups = Items
             .GroupBy(item => item.Timestamp.ToLocalTime().Date)
             .Select(group => new DictationGroup(
-                FormatDateHeading(group.Key),
+                HistoryFormat.DayHeading(group.Key, DateTime.Today),
                 group.ToList()))
             .ToList();
-    }
 
-    private static string FormatDateHeading(DateTime date)
-    {
-        var localDate = date.Date;
-        var today = DateTime.Today;
-        return localDate == today
-            ? "TODAY"
-            : localDate == today.AddDays(-1)
-                ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
+        // macOS filteredDictationStats: the cards describe the dictations the filters show, with
+        // the same word, streak and pace rules as Timeline and Insights (LibraryMetrics, P2-01).
+        var shown = Items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+        var dictations = _allDictations.Where(item => shown.Contains(item.Id)).ToList();
+        var words = dictations.Sum(item => LibraryMetrics.CountWords(item.Text));
+        var pace = LibraryMetrics.AverageWordsPerMinute(words, dictations.Sum(item => Math.Max(0, item.DurationMs)));
+        DictationWordsLabel = words.ToString("N0");
+        CurrentStreakLabel = LibraryMetrics.CurrentStreakDays(dictations.Select(item => item.Timestamp.Date), DateTime.Today).ToString("N0");
+        AveragePaceLabel = pace == 0 ? "—" : pace.ToString("N0");
+
+        OnPropertyChanged(nameof(Apps));
+        OnPropertyChanged(nameof(ShowAppFilter));
+        OnPropertyChanged(nameof(IsFiltered));
+        OnPropertyChanged(nameof(EmptyStateTitle));
     }
 
     private void ShowStatus(string message, bool isError = false)
@@ -417,6 +437,13 @@ public sealed record DictationListItem(
     public ComputerUseRun? Run { get; init; }
     public bool IsComputerUse => ModelLabel == ComputerUseConfiguration.HistoryLabel;
     public bool HasRun => Run is not null;
+
+    /// <summary>The app the dictation was pasted into, when known.</summary>
+    public DictationTargetApp? TargetApp { get; init; }
+    public bool HasTargetApp => TargetApp is not null;
+
+    /// <summary>The text with macOS "Show more".</summary>
+    public ExpandableText Body => field ??= new(Text);
 
     public static DictationListItem From(PersistedDictation item) => new(
         item.Id,
@@ -1101,23 +1128,8 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     /// a meeting at least a day old, "Last week" needs three days, and so on. Reproducing that
     /// keeps the filter truthful instead of offering ranges that are guaranteed empty.
     /// </summary>
-    private static IReadOnlyList<string> BuildTimeRangeOptions(IReadOnlyList<PersistedMeeting> meetings)
-    {
-        var options = new List<string> { "All time" };
-        var oldest = meetings.Select(meeting => meeting.CreatedAt).DefaultIfEmpty().Min();
-        if (oldest == default)
-        {
-            return options;
-        }
-
-        var days = (DateTime.Now.Date - oldest.Date).Days;
-        if (days >= 1) options.Add("Last 2 days");
-        if (days >= 3) options.Add("Last week");
-        if (days >= 8) options.Add("Last 2 weeks");
-        if (days >= 15) options.Add("Last month");
-        if (days >= 31) options.Add("Last 3 months");
-        return options;
-    }
+    private static IReadOnlyList<string> BuildTimeRangeOptions(IReadOnlyList<PersistedMeeting> meetings) =>
+        HistoryFormat.AvailableDateFilters(meetings.Count == 0 ? null : meetings.Min(meeting => meeting.CreatedAt), DateTime.Now);
 
     private void ApplyFilterAndSort()
     {
@@ -1144,15 +1156,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
             : query.OrderByDescending(item => item.Timestamp).ToList();
     }
 
-    private static DateTime? TimeRangeThreshold(int index) => index switch
-    {
-        1 => DateTime.Now.AddDays(-2),
-        2 => DateTime.Now.AddDays(-7),
-        3 => DateTime.Now.AddDays(-14),
-        4 => DateTime.Now.AddMonths(-1),
-        5 => DateTime.Now.AddMonths(-3),
-        _ => null
-    };
+    private static DateTime? TimeRangeThreshold(int index) => HistoryFormat.DateFilterStart(index, DateTime.Now);
 
     private void UpdateRuntimeState()
     {

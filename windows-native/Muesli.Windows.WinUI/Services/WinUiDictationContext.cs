@@ -486,14 +486,24 @@ public sealed class WinUiDictationContext : IDisposable
             }
 
             stageStarted.Restart();
+            var dictationId = $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}";
             _library.History.AppendDictation(new PersistedDictation(
-                $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}",
+                dictationId,
                 DateTime.Now,
                 text,
                 result.DurationMs,
                 _coordinator.ModelId));
             persisted = true;
             persistenceMs = stageStarted.ElapsedMilliseconds;
+            // macOS records the destination app on each dictation (the row's app icon and filter).
+            if (DictationTargetApps.Capture(_pasteTarget) is { } targetApp)
+            {
+                try { DictationTargetApps.Record(_library.Profile.RootDirectory, dictationId, targetApp); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    _log.Error("The dictation's destination app could not be saved.", exception);
+                }
+            }
 
             if (_pasteTarget != IntPtr.Zero)
             {
