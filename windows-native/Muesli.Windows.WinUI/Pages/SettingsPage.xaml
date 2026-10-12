@@ -953,7 +953,7 @@
                                           AutomationProperties.AutomationId="AccentColorPicker">
                                     <ComboBoxItem AutomationProperties.Name="Default">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <Ellipse Width="12" Height="12" Fill="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Center" />
+                                            <Ellipse Width="12" Height="12" Fill="{ThemeResource MuesliDefaultAccentBrush}" VerticalAlignment="Center" />
                                             <TextBlock Text="Default" />
                                         </StackPanel>
                                     </ComboBoxItem>
