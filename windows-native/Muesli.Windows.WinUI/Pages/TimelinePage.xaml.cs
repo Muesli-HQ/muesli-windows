@@ -27,11 +27,26 @@ public sealed partial class TimelinePage : Page
             UpdateEmptyState();
             UpdateFilterPills();
         };
+        // No Refresh button (macOS has none): the feed reloads whenever history changes.
         Loaded += (_, _) =>
         {
             UpdateEmptyState();
             UpdateFilterPills();
+            App.Dictation.Changed += OnHistoryChanged;
+            App.ComputerUse.Changed += OnHistoryChanged;
+            App.Meetings.Changed += OnHistoryChanged;
         };
+        Unloaded += (_, _) =>
+        {
+            App.Dictation.Changed -= OnHistoryChanged;
+            App.ComputerUse.Changed -= OnHistoryChanged;
+            App.Meetings.Changed -= OnHistoryChanged;
+        };
+    }
+
+    private void OnHistoryChanged(object? sender, EventArgs e)
+    {
+        if (!App.Dictation.IsRecording && !App.Dictation.IsBusy) ViewModel.Refresh();
     }
 
     public static Visibility BoolToVisibility(bool value) =>

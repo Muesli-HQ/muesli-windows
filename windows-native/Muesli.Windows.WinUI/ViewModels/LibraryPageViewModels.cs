@@ -95,8 +95,7 @@ public partial class TimelinePageViewModel : ObservableObject
         ? "—"
         : $"{Snapshot.AverageWordsPerMinute:N0}";
 
-    [RelayCommand]
-    private void Refresh()
+    public void Refresh()
     {
         Snapshot = _library.ReadSnapshot();
         ApplyFilterAndSort();
@@ -250,8 +249,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         !string.IsNullOrWhiteSpace(id) &&
         _allItems.Any(item => string.Equals(item.Id, id, StringComparison.Ordinal));
 
-    [RelayCommand]
-    private void Refresh() => Reload();
+    public void Refresh() => Reload();
 
     [RelayCommand(CanExecute = nameof(CanToggleDictation))]
     private async Task ToggleDictationAsync()

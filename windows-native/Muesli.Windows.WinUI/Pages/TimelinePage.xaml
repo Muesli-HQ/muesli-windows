@@ -39,17 +39,7 @@
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="20">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Text="Timeline" Style="{StaticResource MuesliPageTitleStyle}" />
-                    <Button Grid.Column="1"
-                            Style="{StaticResource MuesliGhostButtonStyle}"
-                            Command="{x:Bind ViewModel.RefreshCommand}"
-                            AutomationProperties.AutomationId="TimelineRefreshButton"
-                            AutomationProperties.Name="Refresh timeline"
-                            ToolTipService.ToolTip="Refresh timeline">
-                        <FontIcon Glyph="&#xE72C;" FontSize="15" />
-                    </Button>
-                </Grid>
+                <TextBlock Text="Timeline" Style="{StaticResource MuesliPageTitleStyle}" />
 
                 <!-- macOS StatsHeaderView: four cards, each a button that opens Insights. -->
                 <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="16">

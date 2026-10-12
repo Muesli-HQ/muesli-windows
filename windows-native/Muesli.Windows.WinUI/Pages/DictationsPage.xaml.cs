@@ -26,7 +26,12 @@ public sealed partial class DictationsPage : Page
     public DictationsPage()
     {
         InitializeComponent();
-        Unloaded += (_, _) => ViewModel.Dispose();
+        // No Refresh button (macOS has none): the list reloads when a Computer Use run lands.
+        Unloaded += (_, _) =>
+        {
+            ViewModel.Dispose();
+            App.ComputerUse.Changed -= OnComputerUseChanged;
+        };
         ViewModel.PropertyChanged += (_, _) =>
         {
             UpdateEmptyState();
@@ -35,11 +40,14 @@ public sealed partial class DictationsPage : Page
         Loaded += (_, _) =>
         {
             ApplyResponsiveLayout(ActualWidth);
+            App.ComputerUse.Changed += OnComputerUseChanged;
             UpdateEmptyState();
             UpdateFilterPills();
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
     }
+
+    private void OnComputerUseChanged(object? sender, EventArgs e) => ViewModel.Refresh();
 
     public static Visibility BoolToVisibility(bool value) =>
         value ? Visibility.Visible : Visibility.Collapsed;

@@ -39,16 +39,7 @@
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="20">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Text="Dictations" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" Style="{StaticResource MuesliGhostButtonStyle}"
-                            Command="{x:Bind ViewModel.RefreshCommand}"
-                            AutomationProperties.AutomationId="DictationsRefreshButton"
-                            AutomationProperties.Name="Refresh dictations"
-                            ToolTipService.ToolTip="Refresh dictations">
-                        <FontIcon Glyph="&#xE72C;" FontSize="15" />
-                    </Button>
-                </Grid>
+                <TextBlock Text="Dictations" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" />
 
                 <!--
                     Visibility is bound as well as IsOpen: a closed InfoBar collapses its own
