@@ -142,7 +142,7 @@ public sealed class WinUiComputerUseContext : IDisposable
         _running = true;
         Report("Transcribing your command…");
         string? command;
-        try { command = await _dictation.StopWithoutPersistingAsync(CancellationToken.None); }
+        try { command = await _dictation.StopWithoutPersistingAsync(CancellationToken.None, reportResult: false); }
         catch (Exception exception)
         {
             _running = false;

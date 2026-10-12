@@ -52,12 +52,18 @@ public sealed class ResponsesPlanner : ICuaPlanner
     public async Task<CuaPlan> PlanAsync(CuaPlannerRequest request, CancellationToken cancellationToken)
     {
         var body = RequestBody(request, _model, _reasoningEffort);
+        // Overload bursts on the ChatGPT backend can outlast a few seconds: back off 2, 4, 8, 16 s
+        // (planning time does not count against the run's timeout).
         for (var attempt = 0; ; attempt++)
         {
             try { return await Send(body, cancellationToken); }
-            catch (CuaPlannerException exception) when (exception.Transient && attempt < 2)
+            catch (CuaPlannerException exception) when (exception.Transient && attempt < 4)
             {
-                await Task.Delay(attempt == 0 ? 1000 : 4000, cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(2 << attempt), cancellationToken);
+            }
+            catch (CuaPlannerException exception) when (exception.Transient)
+            {
+                throw new CuaPlannerException("ChatGPT is overloaded right now. Try again in a minute.");
             }
         }
     }
@@ -119,7 +125,7 @@ public sealed class ResponsesPlanner : ICuaPlanner
                 case "error" or "response.failed":
                     var reason = ErrorMessage(data) ?? "The model reported an error.";
                     // "Our servers are currently overloaded. Please try again later." passes in seconds.
-                    throw new CuaPlannerException($"The planner failed. {reason}",
+                    throw new CuaPlannerException(reason,
                         transient: reason.Contains("overloaded", StringComparison.OrdinalIgnoreCase) || reason.Contains("try again", StringComparison.OrdinalIgnoreCase));
                 case "response.output_text.delta":
                     text.Append(json["delta"]?.GetValue<string>());

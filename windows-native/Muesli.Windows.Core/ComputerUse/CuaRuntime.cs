@@ -119,7 +119,8 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
             }
             catch (Exception exception)
             {
-                return End(CuaRunStatus.Failed, $"The planner failed: {exception.Message}", step);
+                // Planner errors are already worded for the user; anything else is unexpected.
+                return End(CuaRunStatus.Failed, exception is CuaPlannerException ? exception.Message : $"The planner failed: {exception.Message}", step);
             }
             finally { actionTime.Start(); }
 

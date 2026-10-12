@@ -150,7 +150,10 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
     }
 
-    public async Task<string> StopWithoutPersistingAsync(CancellationToken cancellationToken = default)
+    /// <param name="reportResult">False when the caller reports the outcome itself (Computer Use):
+    /// a leftover "Local test captured" would otherwise read as a dictation result on the pill
+    /// and hide the run's own message.</param>
+    public async Task<string> StopWithoutPersistingAsync(CancellationToken cancellationToken = default, bool reportResult = true)
     {
         ThrowIfDisposed();
         if (!_coordinator.IsRecording) return "";
@@ -160,7 +163,7 @@ public sealed class WinUiDictationContext : IDisposable
         {
             var result = await _coordinator.StopForOnboardingTestAsync(cancellationToken);
             var text = result.Text?.Trim() ?? "";
-            Status = string.IsNullOrWhiteSpace(text) ? "No speech detected" : "Local test captured";
+            Status = !reportResult ? "Ready" : string.IsNullOrWhiteSpace(text) ? "No speech detected" : "Local test captured";
             RaiseChanged();
             return text;
         }
