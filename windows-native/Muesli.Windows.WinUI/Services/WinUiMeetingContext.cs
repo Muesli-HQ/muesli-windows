@@ -554,7 +554,8 @@ public sealed class WinUiMeetingContext : IDisposable
             summarySettings,
             cancellationToken,
             manualNotes: meeting.ManualNotes,
-            previousMeetingNotes: _library.Predecessor(meeting.Id) is { } predecessor ? MeetingContinuation.CarriedNotes(predecessor) : null);
+            previousMeetingNotes: _library.Predecessor(meeting.Id) is { } predecessor ? MeetingContinuation.CarriedNotes(predecessor) : null,
+            participantNames: MeetingParticipants.Load(_library.Profile.RootDirectory, meeting.Id).Select(person => person.Name));
         // Title/notes generation can take minutes; apply generated fields onto the latest saved copy
         // so a title, notes, or folder edited meanwhile in the detail page are not overwritten.
         var latest = _library.FindMeeting(meeting.Id) ?? meeting;

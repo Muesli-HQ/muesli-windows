@@ -1,7 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
+using Muesli.Windows.Services;
 using Muesli.Windows.WinUI.ViewModels;
 
 namespace Muesli.Windows.WinUI.Pages;
@@ -88,6 +90,7 @@ public sealed partial class MeetingDetailPage : Page
         ViewModel.Load(_meetingId);
         SyncTabBar();
         UpdateMode();
+        ShowPeople(MeetingParticipants.Load(App.Library.Profile.RootDirectory, _meetingId));
     }
 
     /// <summary>
@@ -201,6 +204,78 @@ public sealed partial class MeetingDetailPage : Page
     private void FolderPill_Click(object sender, RoutedEventArgs e) =>
         MeetingFolderMenu.Show(FolderPill, ViewModel.FolderId, includeUnfiled: false,
             ViewModel.MoveToFolder, ViewModel.CreateFolderAndMove);
+
+    public static Visibility EmailVisibility(string? email, string displayName) =>
+        BoolToVisibilityStatic(!string.IsNullOrEmpty(email) && email != displayName);
+
+    public static string RemoveLabel(string displayName) => $"Remove {displayName}";
+
+    private static Visibility BoolToVisibilityStatic(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>macOS MeetingParticipantsView label, count, and popover list.</summary>
+    private void ShowPeople(IReadOnlyList<MeetingParticipant> people)
+    {
+        var description = people.Count == 1 ? "1 person" : $"{people.Count} people";
+        PeopleLabel.Text = people.Count == 0 ? "Add people" : people[0].DisplayName;
+        PeopleMore.Text = $"+{people.Count - 1}";
+        PeopleMore.Visibility = BoolToVisibilityStatic(people.Count > 1);
+        var help = people.Count == 0 ? "Add people to this meeting" : $"Show {description}";
+        ToolTipService.SetToolTip(PeopleButton, help);
+        AutomationProperties.SetName(PeopleButton, people.Count == 0 ? help : $"{description} in this meeting");
+        PeopleCount.Text = people.Count == 0 ? "" : description;
+        PeopleEmpty.Visibility = BoolToVisibilityStatic(people.Count == 0);
+        PeopleList.ItemsSource = people;
+    }
+
+    private void AddPerson_Click(object sender, RoutedEventArgs e)
+    {
+        AddPersonForm.Visibility = Visibility.Visible;
+        PersonNameBox.Focus(FocusState.Programmatic);
+    }
+
+    private void CancelPerson_Click(object sender, RoutedEventArgs e) => ClosePersonForm();
+
+    private void PeopleFlyout_Closed(object? sender, object e) => ClosePersonForm();
+
+    private void ClosePersonForm()
+    {
+        AddPersonForm.Visibility = Visibility.Collapsed;
+        PersonNameBox.Text = PersonEmailBox.Text = "";
+    }
+
+    private void PersonBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != global::Windows.System.VirtualKey.Enter) return;
+        e.Handled = true;
+        SavePerson_Click(sender, e);
+    }
+
+    private void SavePerson_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(PersonNameBox.Text) && string.IsNullOrWhiteSpace(PersonEmailBox.Text))
+        {
+            PersonNameBox.Focus(FocusState.Programmatic);
+            return;
+        }
+        UpdatePeople(() => MeetingParticipants.Add(App.Library.Profile.RootDirectory, _meetingId, PersonNameBox.Text, PersonEmailBox.Text));
+        ClosePersonForm();
+    }
+
+    private void RemovePerson_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string id })
+            UpdatePeople(() => MeetingParticipants.Remove(App.Library.Profile.RootDirectory, _meetingId, id));
+    }
+
+    private async void UpdatePeople(Func<IReadOnlyList<MeetingParticipant>> change)
+    {
+        try { ShowPeople(change()); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            PeopleFlyout.Hide();
+            await App.Dialogs.ShowWarningAsync(exception.Message, "Couldn't Update People");
+        }
+    }
 
     /// <summary>macOS folderPill: folder.fill in accent once filed, folder.badge.plus otherwise.</summary>
     private void UpdateFolderPill()

@@ -121,6 +121,7 @@ public sealed class WinUiLibraryContext : IDisposable
         if (meeting is null) return false;
         meetings.Remove(meeting);
         History.SaveMeetings(meetings, afterExplicitDeletion: true);
+        MeetingParticipants.RemoveMeeting(Profile.RootDirectory, id);
         // macOS deletes the saved recording with the meeting. Only Muesli-owned capture files under
         // recordings/<id> are touched; imported originals are never deleted.
         var cleanup = new CaptureStorageService(Profile.CaptureDirectory).DeleteOwnedMeetingAudio(

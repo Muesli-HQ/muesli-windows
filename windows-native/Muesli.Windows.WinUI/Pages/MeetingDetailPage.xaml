@@ -443,6 +443,7 @@
                             CornerRadius="10"
                             Padding="8">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                            <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
                             <Button x:Name="FolderPill"
                                     Style="{StaticResource MeetingFolderPillStyle}"
                                     Click="FolderPill_Click"
@@ -456,6 +457,84 @@
                                     <FontIcon Glyph="&#xE70D;" FontSize="8" />
                                 </StackPanel>
                             </Button>
+                            <!-- macOS MeetingParticipantsView: "Add people", or the first name and +N. -->
+                            <Border Width="1" Height="20" Background="{ThemeResource MuesliBorderBrush}" VerticalAlignment="Center" />
+                            <Button x:Name="PeopleButton"
+                                    Style="{StaticResource MeetingPillButtonStyle}"
+                                    Padding="10,0" Height="28" MaxWidth="220" CornerRadius="6"
+                                    Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                    AutomationProperties.AutomationId="MeetingPeopleButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE716;" FontSize="12" />
+                                    <TextBlock x:Name="PeopleLabel" Text="Add people" FontSize="12" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock x:Name="PeopleMore" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" Visibility="Collapsed" />
+                                </StackPanel>
+                                <Button.Flyout>
+                                    <Flyout x:Name="PeopleFlyout" Placement="BottomEdgeAlignedLeft" Closed="PeopleFlyout_Closed">
+                                        <StackPanel Width="316" Spacing="12">
+                                            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                                                <TextBlock Text="People" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                <TextBlock x:Name="PeopleCount" Grid.Column="1" FontSize="12" VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                <Button x:Name="AddPersonButton" Grid.Column="3"
+                                                        Style="{StaticResource MeetingPillButtonStyle}"
+                                                        Padding="9,0" Height="28" CornerRadius="6"
+                                                        Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                                        Click="AddPerson_Click"
+                                                        AutomationProperties.AutomationId="MeetingAddPersonButton">
+                                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                                        <FontIcon Glyph="&#xE8FA;" FontSize="12" />
+                                                        <TextBlock Text="Add person" FontSize="12" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </Grid>
+                                            <Border Height="1" Background="{ThemeResource MuesliBorderBrush}" />
+                                            <StackPanel x:Name="AddPersonForm" Spacing="8" Visibility="Collapsed">
+                                                <TextBox x:Name="PersonNameBox" PlaceholderText="Name" KeyDown="PersonBox_KeyDown"
+                                                         AutomationProperties.Name="Person name" AutomationProperties.AutomationId="MeetingPersonNameBox" />
+                                                <TextBox x:Name="PersonEmailBox" PlaceholderText="Email (optional)" InputScope="EmailSmtpAddress" KeyDown="PersonBox_KeyDown"
+                                                         AutomationProperties.Name="Person email" AutomationProperties.AutomationId="MeetingPersonEmailBox" />
+                                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                                    <Button Content="Cancel" Style="{StaticResource MuesliSecondaryButtonStyle}" Click="CancelPerson_Click" />
+                                                    <Button Content="Add" Style="{StaticResource MuesliPrimaryButtonStyle}" Click="SavePerson_Click"
+                                                            AutomationProperties.AutomationId="MeetingSavePersonButton" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <TextBlock x:Name="PeopleEmpty" Text="No one has been added yet." FontSize="13" Margin="0,8"
+                                                       Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                            <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                                                <ItemsControl x:Name="PeopleList">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="services:MeetingParticipant">
+                                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                                <FontIcon Glyph="&#xE77B;" FontSize="18" VerticalAlignment="Center"
+                                                                          Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{x:Bind DisplayName}" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                                                    <TextBlock Text="{x:Bind Email}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                                                               Visibility="{x:Bind local:MeetingDetailPage.EmailVisibility(Email, DisplayName)}" />
+                                                                </StackPanel>
+                                                                <Button Grid.Column="2" Width="24" Height="24" Padding="0" MinWidth="0" MinHeight="0"
+                                                                        Style="{StaticResource MuesliGhostButtonStyle}"
+                                                                        Tag="{x:Bind Id}" Click="RemovePerson_Click"
+                                                                        ToolTipService.ToolTip="{x:Bind local:MeetingDetailPage.RemoveLabel(DisplayName)}"
+                                                                        AutomationProperties.Name="{x:Bind local:MeetingDetailPage.RemoveLabel(DisplayName)}">
+                                                                    <FontIcon Glyph="&#xE711;" FontSize="9" />
+                                                                </Button>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+                            </StackPanel>
                             <Border x:Name="DetailTabWell" Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource MuesliSegmentedContainerStyle}">
                                 <SelectorBar x:Name="DetailTabBar"
                                              SelectionChanged="DetailTabBar_SelectionChanged"
