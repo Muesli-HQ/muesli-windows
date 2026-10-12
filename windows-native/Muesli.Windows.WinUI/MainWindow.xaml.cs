@@ -233,5 +233,5 @@ public sealed partial class MainWindow : Window
 
     public MainPage? ShellPage => RootFrame.Content as MainPage;
 
-    public void StartFeatureTour() => ShellPage?.StartFeatureTour();
+    public void StartFeatureTour(bool invite) => ShellPage?.StartFeatureTour(invite);
 }

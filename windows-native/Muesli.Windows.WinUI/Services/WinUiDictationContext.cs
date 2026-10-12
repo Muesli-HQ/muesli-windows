@@ -23,6 +23,7 @@ public sealed class WinUiDictationContext : IDisposable
     private IntPtr _pasteTarget;
     private string? _captureTraceId;
     private volatile bool _auxiliarySession;
+    private volatile Action<string, string?>? _shortcutTest;
     private int _disposed;
 
     // WPF dispatched every shortcut callback with DispatcherPriority.Send, so shortcut down, up,
@@ -174,6 +175,18 @@ public sealed class WinUiDictationContext : IDisposable
         {
             _auxiliarySession = false;
         }
+    }
+
+    /// <summary>
+    /// macOS dictationTestCallback: while set, the real shortcut records a setup test that is
+    /// transcribed and handed back (text, or an error) but never saved or pasted.
+    /// </summary>
+    public void BeginShortcutTest(Action<string, string?> result) => _shortcutTest = result;
+
+    public void EndShortcutTest()
+    {
+        _shortcutTest = null;
+        if (IsRecording && !_auxiliarySession) _ = CancelAsync();
     }
 
     public Task CancelAsync()
@@ -392,7 +405,10 @@ public sealed class WinUiDictationContext : IDisposable
 
         // Capture the paste target before any indicator work: the floating pill must never become
         // the foreground window that the transcript is pasted into.
-        _pasteTarget = shouldPasteToActiveApp ? _paste.CaptureForegroundWindow() : IntPtr.Zero;
+        // A setup test and macOS voice notes keep the text in Muesli instead of pasting it.
+        _pasteTarget = shouldPasteToActiveApp && _shortcutTest is null && !OnboardingFlow.IsVoiceNotesOnly(current.OnboardingUseCase)
+            ? _paste.CaptureForegroundWindow()
+            : IntPtr.Zero;
         _coordinator.SoundFeedback.Enabled = current.SoundEnabled;
         Status = "Listening";
         RaiseChanged();
@@ -435,6 +451,29 @@ public sealed class WinUiDictationContext : IDisposable
         {
             // A setup test or Computer Use command is stopped by its owner, never saved or pasted.
             _log.Info("Dictation stop ignored for an auxiliary capture.");
+            return;
+        }
+        if (_shortcutTest is { } test)
+        {
+            _hotkeyState.Reset();
+            Status = "Transcribing locally…";
+            RaiseChanged();
+            try
+            {
+                var tested = await _coordinator.StopForOnboardingTestAsync(CancellationToken.None);
+                var heard = TranscriptionEngineArtifactsFilter.Apply(tested.Text ?? "").Trim();
+                _dispatcher.TryEnqueue(() => test(heard, null));
+            }
+            catch (Exception exception)
+            {
+                _dispatcher.TryEnqueue(() => test("", exception.Message));
+            }
+            finally
+            {
+                _pasteTarget = IntPtr.Zero;
+                Status = "Ready";
+                RaiseChanged();
+            }
             return;
         }
         var totalStarted = Stopwatch.StartNew();

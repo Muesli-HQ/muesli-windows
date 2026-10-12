@@ -7,23 +7,49 @@ namespace Muesli.Windows.Tests;
 public sealed class WinUiShellParityTests
 {
     [Fact]
-    public void FeatureTourCatalogKeepsSixBeatsAndFloatingIndicator()
+    public void FeatureTourIsOfferedOncePerReleaseAfterSetup()
     {
-        Assert.Equal(2, FeatureTourCatalog.CurrentVersion);
-        Assert.Equal(6, FeatureTourCatalog.Steps.Count);
-        Assert.Contains(FeatureTourCatalog.Steps, step => step.TargetName == "FloatingIndicator");
-        Assert.Equal(
-            new[] { "dictations", "FloatingIndicator", "models", "meetings", "settings", "about" },
-            FeatureTourCatalog.Steps.Select(step => step.TargetName).ToArray());
+        var tour = FeatureTourCatalog.Latest;
+        Assert.Equal("0.3", tour.DisplayVersion);
+        Assert.All(tour.Steps, step => Assert.False(string.IsNullOrWhiteSpace(step.TargetId)));
+
+        // Fresh install: setup is not done, so only the launch is recorded.
+        var (fresh, recorded) = FeatureTourPresentationPolicy.AutomaticTour(new MuesliSettings(), "0.3.0", tour);
+        Assert.False(fresh);
+        Assert.Equal("0.3.0", recorded.FeatureTourLastLaunchedVersion);
+        // Finishing setup on this release does not tour the new user on the next launch.
+        Assert.False(FeatureTourPresentationPolicy.AutomaticTour(recorded with { OnboardingCompleted = true }, "0.3.0", tour).Present);
+        // An existing install from before launch markers, or an upgrade, is offered it once.
+        Assert.True(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.3.0", null, null, true, tour));
+        Assert.True(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.3.1", "0.2.9", null, true, tour));
+        Assert.False(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.3.1", "0.2.9", "0.3.0", true, tour));
+        Assert.False(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.2.9", null, null, true, tour));
+        Assert.True(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.3.0", "0.3.0-beta", "0.2.0", true, tour));
     }
 
     [Fact]
-    public void OnboardingCatalogMatchesSevenResumableSteps()
+    public void FeatureTourTargetsExistInTheirPages()
     {
-        Assert.Equal(7, OnboardingStepCatalog.Steps.Count);
-        Assert.Equal(OnboardingProgress.LastStep, OnboardingStepCatalog.Steps[^1].Step);
-        Assert.Equal("Welcome to Muesli", OnboardingStepCatalog.Get(0).Title);
-        Assert.Equal("You are ready", OnboardingStepCatalog.Get(99).Title);
+        var winUi = Path.Combine(FindRepositoryRoot(), "windows-native", "Muesli.Windows.WinUI", "Pages");
+        var xaml = string.Concat(Directory.GetFiles(winUi, "*.xaml").Select(File.ReadAllText));
+        Assert.All(FeatureTourCatalog.Latest.Steps, step => Assert.Contains($"AutomationProperties.AutomationId=\"{step.TargetId}\"", xaml));
+    }
+
+    /// <summary>macOS OnboardingFlow.orderedSteps, minus the calendar step Windows has no source for.</summary>
+    [Fact]
+    public void OnboardingStepsFollowTheChosenUseCase()
+    {
+        Assert.Equal([0, 1, 2, 3, 4], OnboardingFlow.OrderedSteps(OnboardingFlow.Parse("dictation")));
+        Assert.Equal([0, 1, 3, 5], OnboardingFlow.OrderedSteps(OnboardingFlow.Parse("meetings")));
+        Assert.Equal([0, 1, 2, 3, 4, 5], OnboardingFlow.OrderedSteps(OnboardingFlow.Parse("everything")));
+        Assert.Equal(3, OnboardingFlow.NormalizedStep(2, OnboardingFlow.Parse("meetings")));
+
+        var dictation = OnboardingFlow.Parse("dictation");
+        Assert.Equal(dictation, OnboardingFlow.Toggle(dictation, OnboardingCapabilities.Dictation));
+        Assert.Equal("dictation_and_meetings", OnboardingFlow.Format(OnboardingFlow.Toggle(dictation, OnboardingCapabilities.Meetings)));
+        Assert.True(OnboardingFlow.IsVoiceNotesOnly("voice_notes"));
+        Assert.False(OnboardingFlow.IsVoiceNotesOnly("voice_notes_and_dictation"));
+        Assert.False(OnboardingFlow.CanGoBack(OnboardingFlow.DictationTest, dictation, dictationTestSucceeded: true));
     }
 
     [Fact]

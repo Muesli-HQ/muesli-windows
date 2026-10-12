@@ -192,6 +192,8 @@ public partial class App : Application
         Dictation = new WinUiDictationContext(Library, Settings, UiDispatcher);
         DictionarySuggestions = new WinUiDictionarySuggestionService(Library, Settings, UiDispatcher, Dictation);
         ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation, UiDispatcher);
+        // macOS: ChatGPT meeting summaries use the same sign-in as Computer Use.
+        MeetingSummaryService.ChatGptCredentials = token => ComputerUse.ChatGpt.GetAccessTokenAsync(token);
         ComputerUse.ConfirmActionAsync = ConfirmComputerUseActionAsync;
         ComputerUse.AskAsync = AskComputerUseQuestionAsync;
         ComputerUse.CaptureStarted = () => ((MainWindow)Window).HideDashboard();
@@ -234,7 +236,7 @@ public partial class App : Application
             Meetings.PauseAsync,
             Meetings.ResumeAsync,
             () => ShowOnboarding(explicitResume: true),
-            ShowFeatureTour,
+            () => ShowFeatureTour(),
             Path.Combine(AppContext.BaseDirectory, "Assets", "TrayIconLightTaskbar.ico"));
         Dictation.Changed += (_, _) => Tray.Refresh();
         Meetings.Changed += (_, _) =>
@@ -424,9 +426,11 @@ public partial class App : Application
     {
         ArgumentNullException.ThrowIfNull(window);
 
+        var closed = false;
         void Apply(string? theme)
         {
-            if (window.Content is FrameworkElement root)
+            // A save just before Close (setup's Finish) queues this after the window is gone.
+            if (!closed && window.Content is FrameworkElement root)
             {
                 root.RequestedTheme = ResolveTheme(theme);
             }
@@ -437,7 +441,11 @@ public partial class App : Application
 
         Apply(Settings.Load().Theme);
         Settings.Changed += OnSettingsChanged;
-        window.Closed += (_, _) => Settings.Changed -= OnSettingsChanged;
+        window.Closed += (_, _) =>
+        {
+            closed = true;
+            Settings.Changed -= OnSettingsChanged;
+        };
     }
 
     /// <summary>
@@ -489,12 +497,13 @@ public partial class App : Application
         app.ShowOnboardingCore(explicitResume);
     }
 
-    public static void ShowFeatureTour()
+    /// <summary>"What's New in Muesli": replays the walkthrough; a new release offers it with an invitation first.</summary>
+    public static void ShowFeatureTour(bool invite = false)
     {
         if (Window is MainWindow mainWindow)
         {
             mainWindow.ShowDashboard();
-            mainWindow.StartFeatureTour();
+            mainWindow.StartFeatureTour(invite);
         }
     }
 
@@ -555,6 +564,9 @@ public partial class App : Application
     private void StartFirstRunFlows()
     {
         var settings = Settings.Load();
+        var version = typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+        var (presentTour, launched) = FeatureTourPresentationPolicy.AutomaticTour(settings, version, FeatureTourCatalog.Latest);
+        Settings.Save(launched);
         if (!settings.OnboardingCompleted)
         {
             var progress = new OnboardingProgressStore(Library.Profile.OnboardingProgressPath).Load();
@@ -565,9 +577,9 @@ public partial class App : Application
             return;
         }
 
-        if (settings.LastCompletedFeatureTourVersion < FeatureTourCatalog.CurrentVersion)
+        if (presentTour)
         {
-            ShowFeatureTour();
+            ShowFeatureTour(invite: true);
         }
     }
 
@@ -606,7 +618,17 @@ public partial class App : Application
         {
             var finished = _onboarding?.Completed == true;
             _onboarding = null;
-            if (finished) ShowFeatureTour();
+            if (!finished)
+            {
+                // Closing setup defers it; the tray's "Resume setup" picks up at the saved step.
+                store.Save(store.Load() with { Deferred = true });
+                return;
+            }
+            // macOS skips the feature tour after a fresh setup and opens the workflow that was chosen.
+            var useCase = OnboardingFlow.Parse(Settings.Load().OnboardingUseCase);
+            // Open the dashboard once the setup window has finished closing.
+            UiDispatcher.TryEnqueue(() =>
+                (Window as MainWindow)?.ShowDashboard(useCase == OnboardingCapabilities.Meetings ? "meetings" : "dictations"));
         };
         _onboarding.Activate();
     }

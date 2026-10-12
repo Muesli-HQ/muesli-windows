@@ -748,6 +748,18 @@
                                              AutomationProperties.AutomationId="CustomLlmApiKeyBox" />
                                 <TextBlock Text="Protected by Windows Credential Manager. Leave empty for keyless local servers." Style="{StaticResource RowHelpStyle}" />
                             </StackPanel>
+                            <!-- macOS: ChatGPT summaries use the same ChatGPT sign-in as Computer Use. -->
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowChatGptSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowChatGptSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="ChatGPT account" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Use your ChatGPT Plus or Pro subscription. The same sign-in powers Computer Use." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        Command="{x:Bind ViewModel.ToggleChatGptSignInCommand}"
+                                        Content="{x:Bind ViewModel.ComputerUseSignInLabel, Mode=OneWay}"
+                                        AutomationProperties.AutomationId="SummaryChatGptSignIn" />
+                            </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAISettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
@@ -770,7 +782,6 @@
                                              AutomationProperties.Name="OpenAI API key"
                                              AutomationProperties.AutomationId="OpenAIApiKeyBox" />
                                 <TextBlock Text="Protected by Windows Credential Manager. Clear the field and save to remove the key." Style="{StaticResource RowHelpStyle}" />
-                                <TextBlock Text="{x:Bind ViewModel.ChatGptSubscriptionNotice, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
                             </StackPanel>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}">

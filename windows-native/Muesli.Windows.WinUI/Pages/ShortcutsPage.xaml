@@ -206,6 +206,7 @@
                                       IsOn="{x:Bind ViewModel.HandsFreeEnabled, Mode=OneWay}"
                                       Toggled="HandsFree_Toggled"
                                       AutomationProperties.Name="Hands-free dictation enabled"
+                                      AutomationProperties.AutomationId="HandsFreeToggle"
                                       AutomationProperties.HelpText="Double-tap the dictation shortcut to lock recording hands-free." />
                     </Grid>
                 </Border>

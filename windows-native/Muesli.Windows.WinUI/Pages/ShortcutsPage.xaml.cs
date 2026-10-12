@@ -121,23 +121,8 @@ public sealed partial class ShortcutsPage : Page
             button.Focus(FocusState.Programmatic);
             return;
         }
-        if (e.Key is VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl or
-            VirtualKey.Shift or VirtualKey.LeftShift or VirtualKey.RightShift or
-            VirtualKey.Menu or VirtualKey.LeftMenu or VirtualKey.RightMenu or
-            VirtualKey.LeftWindows or VirtualKey.RightWindows)
-        {
-            return;
-        }
-
-        var label = KeyLabel(e.Key);
-        if (label is null) return;
-        var parts = new List<string>();
-        if (IsDown(VirtualKey.Control)) parts.Add("Ctrl");
-        if (IsDown(VirtualKey.Shift)) parts.Add("Shift");
-        if (IsDown(VirtualKey.Menu)) parts.Add("Alt");
-        if (IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows)) parts.Add("Win");
-        parts.Add(label);
-        ViewModel.ApplyCapturedGesture(string.Join('+', parts));
+        if (CaptureGesture(e.Key) is not { } gesture) return;
+        ViewModel.ApplyCapturedGesture(gesture);
         ApplyCaptureChrome();
         button.Focus(FocusState.Programmatic);
     }
@@ -165,6 +150,31 @@ public sealed partial class ShortcutsPage : Page
         Application.Current.Resources[key] is Brush brush
             ? brush
             : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+
+    /// <summary>
+    /// The gesture for a key press with the modifiers held now ("Ctrl+Shift+D"), or null while
+    /// only a modifier is down or the key cannot be a shortcut. Onboarding captures with this too.
+    /// </summary>
+    internal static string? CaptureGesture(VirtualKey key)
+    {
+        if (key is VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl or
+            VirtualKey.Shift or VirtualKey.LeftShift or VirtualKey.RightShift or
+            VirtualKey.Menu or VirtualKey.LeftMenu or VirtualKey.RightMenu or
+            VirtualKey.LeftWindows or VirtualKey.RightWindows)
+        {
+            return null;
+        }
+
+        var label = KeyLabel(key);
+        if (label is null) return null;
+        var parts = new List<string>();
+        if (IsDown(VirtualKey.Control)) parts.Add("Ctrl");
+        if (IsDown(VirtualKey.Shift)) parts.Add("Shift");
+        if (IsDown(VirtualKey.Menu)) parts.Add("Alt");
+        if (IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows)) parts.Add("Win");
+        parts.Add(label);
+        return string.Join('+', parts);
+    }
 
     private static bool IsDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);

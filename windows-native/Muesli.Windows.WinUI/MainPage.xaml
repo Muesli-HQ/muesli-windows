@@ -45,6 +45,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" MinHeight="0" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <StackPanel x:Name="NavigationHeader" Grid.Row="0" Margin="16,18,16,16">
@@ -269,16 +270,15 @@
                                 <TextBlock Grid.Column="1" Text="Dictionary" VerticalAlignment="Center" />
                             </Grid>
                         </Button>
+                    </StackPanel>
+                </ScrollViewer>
                 <!--
-                    P1-05 — Models, Shortcuts, Settings, and About are the last group of ONE
-                    contiguous list, exactly like the macOS sidebar
-                    (docs/ui-reference/macos-current-2026-08-27/01-timeline.png). They used to be
-                    pinned to a third grid row, which left a dead band under the last nav item
-                    at tall window sizes and detached them from the list they belong to. They keep
-                    their automation ids, accessible names, click handlers, and order in
-                    AllNavItems()/VisibleNavItems(), so keyboard traversal is unchanged.
+                    macOS SidebarView (since 2026-09-29): the main list scrolls, and Models,
+                    Shortcuts, Settings, and About stay pinned below it so a long Meetings folder
+                    tree never pushes them out of the window. They keep their automation ids,
+                    accessible names, click handlers, and order in AllNavItems()/VisibleNavItems().
                 -->
-                <StackPanel Margin="0,10,0,4">
+                <StackPanel Grid.Row="2" Margin="0,6,0,12">
                     <Button x:Name="ModelsNav"
                             Style="{StaticResource MuesliSidebarButtonStyle}"
                             Tag="models"
@@ -327,9 +327,7 @@
                             <TextBlock Grid.Column="1" Text="About" VerticalAlignment="Center" />
                         </Grid>
                     </Button>
-                        </StackPanel>
-                    </StackPanel>
-                </ScrollViewer>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -346,41 +344,135 @@
                    AutomationProperties.AutomationId="ContentFrame" />
         </Grid>
 
-        <Grid x:Name="TourOverlay"
-              Grid.ColumnSpan="2"
-              Visibility="Collapsed"
-              Background="{ThemeResource MuesliOverlayBrush}"
-              TabFocusNavigation="Cycle"
-              AutomationProperties.AutomationId="FeatureTourOverlay">
+        <!--
+            macOS FeatureTourOverlay: the page is dimmed except for a hole around the highlighted
+            control, which stays clickable through the hole. The callout sits beside it.
+        -->
+        <Canvas x:Name="TourOverlay"
+                Grid.ColumnSpan="2"
+                Visibility="Collapsed"
+                TabFocusNavigation="Cycle"
+                SizeChanged="TourOverlay_SizeChanged"
+                AutomationProperties.AutomationId="FeatureTourOverlay">
+            <Path x:Name="TourDim" Fill="#B8000000">
+                <Path.Data>
+                    <GeometryGroup FillRule="EvenOdd">
+                        <RectangleGeometry x:Name="TourDimBounds" />
+                        <RectangleGeometry x:Name="TourDimHole" />
+                    </GeometryGroup>
+                </Path.Data>
+            </Path>
+            <Border x:Name="TourSpotlightRing"
+                    BorderThickness="2"
+                    CornerRadius="10"
+                    BorderBrush="{ThemeResource MuesliAccentBrush}"
+                    IsHitTestVisible="False" />
             <Border x:Name="TourCard"
-                    Style="{StaticResource MuesliCardStyle}"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Bottom"
-                    Margin="40"
-                    MaxWidth="520"
-                    Padding="22">
-                <StackPanel Spacing="12">
-                    <TextBlock x:Name="TourStepLabel" Style="{StaticResource MuesliSectionLabelStyle}" />
-                    <TextBlock x:Name="TourTitle"
-                               FontFamily="{StaticResource MuesliFontFamilySemiBold}"
-                               FontSize="20"
-                               FontWeight="SemiBold"
-                               TextWrapping="Wrap"
-                               Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
-                    <TextBlock x:Name="TourBody"
-                               TextWrapping="Wrap"
-                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                        <Button Content="Skip tour"
+                    Width="380"
+                    Padding="20"
+                    CornerRadius="8"
+                    Background="{ThemeResource MuesliBackgroundRaisedBrush}"
+                    BorderBrush="{ThemeResource MuesliBorderBrush}"
+                    BorderThickness="1"
+                    SizeChanged="TourCard_SizeChanged">
+                <StackPanel Spacing="16">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                        <FontIcon x:Name="TourGlyph" FontSize="19" VerticalAlignment="Top" Foreground="{ThemeResource MuesliAccentBrush}" />
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock x:Name="TourEyebrow" FontSize="10" FontWeight="Bold" Foreground="{ThemeResource MuesliAccentBrush}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="TourTitle"
+                                       FontFamily="{StaticResource MuesliFontFamilySemiBold}"
+                                       FontSize="18"
+                                       FontWeight="Bold"
+                                       TextWrapping="Wrap"
+                                       Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Column="2"
+                                Style="{StaticResource MuesliGhostButtonStyle}"
+                                Padding="6"
+                                VerticalAlignment="Top"
+                                Click="TourSkip_Click"
+                                ToolTipService.ToolTip="End walkthrough"
+                                AutomationProperties.Name="End walkthrough">
+                            <FontIcon Glyph="&#xE711;" FontSize="12" />
+                        </Button>
+                    </Grid>
+                    <TextBlock x:Name="TourBody" TextWrapping="Wrap" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="12">
+                        <TextBlock x:Name="TourStepLabel" VerticalAlignment="Center" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        <Button Grid.Column="1"
+                                Content="Skip"
+                                Style="{StaticResource MuesliGhostButtonStyle}"
                                 Click="TourSkip_Click"
                                 AutomationProperties.AutomationId="FeatureTourSkip"
                                 AutomationProperties.Name="Skip feature tour" />
+                        <Button x:Name="TourBackButton"
+                                Grid.Column="3"
+                                Content="Back"
+                                Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                Click="TourBack_Click"
+                                AutomationProperties.AutomationId="FeatureTourBack" />
                         <Button x:Name="TourNextButton"
+                                Grid.Column="4"
                                 Content="Next"
                                 Style="{StaticResource MuesliPrimaryButtonStyle}"
                                 Click="TourNext_Click"
                                 AutomationProperties.AutomationId="FeatureTourNext"
                                 AutomationProperties.Name="Next feature tour step" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Canvas>
+
+        <!-- macOS FeatureTourInvitationView: offered once per release, after setup is done. -->
+        <Grid x:Name="TourInvitation"
+              Grid.ColumnSpan="2"
+              Visibility="Collapsed"
+              Background="#A8000000"
+              TabFocusNavigation="Cycle"
+              AutomationProperties.AutomationId="FeatureTourInvitation">
+            <Border MaxWidth="460"
+                    Margin="16"
+                    Padding="24"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    CornerRadius="8"
+                    Background="{ThemeResource MuesliBackgroundRaisedBrush}"
+                    BorderBrush="{ThemeResource MuesliBorderBrush}"
+                    BorderThickness="1">
+                <StackPanel Spacing="20">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                        <FontIcon Glyph="&#xE734;" FontSize="20" VerticalAlignment="Top" Foreground="{ThemeResource MuesliAccentBrush}" />
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock x:Name="TourInvitationVersion" FontSize="10" FontWeight="Bold" Foreground="{ThemeResource MuesliAccentBrush}" />
+                            <TextBlock Text="Want a quick tour of what’s new?"
+                                       FontFamily="{StaticResource MuesliFontFamilySemiBold}"
+                                       FontSize="21"
+                                       FontWeight="Bold"
+                                       TextWrapping="Wrap"
+                                       Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Column="2"
+                                Style="{StaticResource MuesliGhostButtonStyle}"
+                                Padding="6"
+                                VerticalAlignment="Top"
+                                Click="TourInvitationSkip_Click"
+                                ToolTipService.ToolTip="Skip walkthrough"
+                                AutomationProperties.Name="Skip walkthrough">
+                            <FontIcon Glyph="&#xE711;" FontSize="12" />
+                        </Button>
+                    </Grid>
+                    <TextBlock x:Name="TourInvitationBody" TextWrapping="Wrap" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                        <Button Content="Skip"
+                                Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                Click="TourInvitationSkip_Click"
+                                AutomationProperties.AutomationId="FeatureTourInvitationSkip" />
+                        <Button x:Name="TourAcceptButton"
+                                Content="Take the Tour"
+                                Style="{StaticResource MuesliPrimaryButtonStyle}"
+                                Click="TourAccept_Click"
+                                AutomationProperties.AutomationId="FeatureTourAccept" />
                     </StackPanel>
                 </StackPanel>
             </Border>

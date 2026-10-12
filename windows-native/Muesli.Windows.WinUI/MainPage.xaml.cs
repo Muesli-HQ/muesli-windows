@@ -19,7 +19,6 @@ public sealed partial class MainPage : Page
 {
     public MainPageViewModel ViewModel { get; } = new(App.Library);
 
-    private int _tourIndex = -1;
     private bool _meetingFoldersExpanded = true;
     private bool _compactRail;
     /// <summary>
@@ -286,12 +285,6 @@ public sealed partial class MainPage : Page
                 RefreshNavigationVisuals();
             });
         });
-    }
-
-    public void StartFeatureTour()
-    {
-        _tourIndex = 0;
-        RenderTourStep();
     }
 
     private void NavButton_Click(object sender, RoutedEventArgs e)
@@ -564,89 +557,6 @@ public sealed partial class MainPage : Page
         RebuildMeetingFolders();
         RefreshNavigationVisuals();
         if (ContentFrame.Content is Pages.MeetingsPage page) page.ViewModel.Refresh();
-    }
-
-    private void TourNext_Click(object sender, RoutedEventArgs e)
-    {
-        if (_tourIndex < 0) return;
-        if (_tourIndex >= FeatureTourCatalog.Steps.Count - 1)
-        {
-            CompleteTour();
-            return;
-        }
-
-        _tourIndex++;
-        RenderTourStep();
-    }
-
-    private void TourSkip_Click(object sender, RoutedEventArgs e) => CompleteTour();
-
-    private void TourEscape_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        if (_tourIndex < 0)
-        {
-            return;
-        }
-
-        CompleteTour();
-        args.Handled = true;
-    }
-
-    private void RenderTourStep()
-    {
-        if (_tourIndex < 0 || _tourIndex >= FeatureTourCatalog.Steps.Count)
-        {
-            TourOverlay.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        var step = FeatureTourCatalog.Steps[_tourIndex];
-        TourStepLabel.Text = $"TOUR · {_tourIndex + 1} OF {FeatureTourCatalog.Steps.Count}";
-        TourTitle.Text = step.Title;
-        TourBody.Text = step.Body;
-        TourNextButton.Content = _tourIndex == FeatureTourCatalog.Steps.Count - 1 ? "Done" : "Next";
-        TourOverlay.Visibility = Visibility.Visible;
-        ApplyTourOverlayChrome();
-        if (!string.Equals(step.TargetName, "FloatingIndicator", StringComparison.Ordinal))
-        {
-            NavigateTo(step.TargetName);
-        }
-
-        _ = TourNextButton.Focus(FocusState.Programmatic);
-    }
-
-    private void ApplyTourOverlayChrome()
-    {
-        if (new AccessibilitySettings().HighContrast)
-        {
-            // High Contrast dictionaries may only alias SystemColor* brushes, and those brushes
-            // cannot take Opacity. An opaque window-text scrim would hide the page, so the tour
-            // card uses a transparent overlay and a strong system border instead.
-            TourOverlay.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            TourCard.BorderThickness = new Thickness(2, 2, 2, 2);
-            TourCard.BorderBrush = Brush("MuesliBorderStrongBrush");
-            return;
-        }
-
-        TourOverlay.ClearValue(Panel.BackgroundProperty);
-        TourCard.ClearValue(Border.BorderThicknessProperty);
-        TourCard.ClearValue(Border.BorderBrushProperty);
-    }
-
-    private void CompleteTour()
-    {
-        _tourIndex = -1;
-        TourOverlay.Visibility = Visibility.Collapsed;
-        var current = App.Settings.Load() with
-        {
-            LastCompletedFeatureTourVersion = FeatureTourCatalog.CurrentVersion
-        };
-        App.Settings.Save(current);
-
-        VisibleNavItems()
-            .FirstOrDefault(button =>
-                string.Equals(button.Tag?.ToString(), _selectedTag, StringComparison.OrdinalIgnoreCase))
-            ?.Focus(FocusState.Programmatic);
     }
 
     private void RefreshGreeting()

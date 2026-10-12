@@ -13,6 +13,12 @@ public static class MeetingSummaryService
         Timeout = TimeSpan.FromSeconds(90)
     };
 
+    /// <summary>
+    /// The signed-in ChatGPT account (token, account id) for the <c>chatgpt</c> provider. The app
+    /// sets it to the Computer Use sign-in; null means nobody is signed in.
+    /// </summary>
+    public static Func<CancellationToken, Task<(string Token, string AccountId)>>? ChatGptCredentials { get; set; }
+
     private static readonly string[] BuiltIns =
     [
         "Auto",
@@ -218,6 +224,7 @@ public static class MeetingSummaryService
         {
             var summary = provider switch
             {
+                "chatgpt" => await SummarizeWithChatGptAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
                 "openai" => await SummarizeWithOpenAIAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
                 "openrouter" => await SummarizeWithOpenRouterAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
                 "ollama" => await SummarizeWithOllamaAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
@@ -227,7 +234,7 @@ public static class MeetingSummaryService
             };
             return new SummaryGenerationResult(
                 summary,
-                provider is "openai" or "openrouter" or "ollama" or "lmstudio" or "custom" ? provider : "local",
+                provider is "chatgpt" or "openai" or "openrouter" or "ollama" or "lmstudio" or "custom" ? provider : "local",
                 false,
                 null);
         }
@@ -322,6 +329,76 @@ public static class MeetingSummaryService
         return string.IsNullOrWhiteSpace(text)
             ? throw new SummaryProviderException("empty-response")
             : text.Trim();
+    }
+
+    /// <summary>
+    /// macOS summarizeWithChatGPT: the ChatGPT account's Codex Responses endpoint, which only
+    /// streams, so the text is read from the output_text deltas.
+    /// </summary>
+    private static async Task<string> SummarizeWithChatGptAsync(
+        string transcript,
+        string meetingTitle,
+        MuesliSettings settings,
+        HttpClient httpClient,
+        CancellationToken cancellationToken,
+        string? manualNotes)
+    {
+        if (ChatGptCredentials is not { } credentials) throw new SummaryProviderException("not-signed-in");
+        (string Token, string AccountId) signIn;
+        try { signIn = await credentials(cancellationToken); }
+        catch (Exception exception) when (exception is not OperationCanceledException) { throw new SummaryProviderException("not-signed-in"); }
+
+        var body = new
+        {
+            model = Muesli.Windows.ComputerUse.ResponsesPlanner.DefaultModel,
+            store = false,
+            stream = true,
+            instructions = EffectiveSystemPrompt(settings),
+            input = new object[]
+            {
+                new { role = "user", content = new object[] { new { type = "input_text", text = SummaryUserPrompt(transcript, meetingTitle, manualNotes) } } }
+            },
+            reasoning = new { effort = "low" }
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://chatgpt.com/backend-api/codex/responses");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", signIn.Token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        if (!string.IsNullOrEmpty(signIn.AccountId)) request.Headers.Add("ChatGPT-Account-Id", signIn.AccountId);
+        request.Headers.Add("originator", "muesli");
+        request.Headers.Add("session_id", Guid.NewGuid().ToString());
+        request.Content = JsonContent(body);
+
+        using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode) throw new SummaryProviderException($"http-{(int)response.StatusCode}");
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var text = await ReadResponsesStreamTextAsync(stream, cancellationToken);
+        return string.IsNullOrWhiteSpace(text) ? throw new SummaryProviderException("empty-response") : text.Trim();
+    }
+
+    /// <summary>Concatenates a Responses event stream's output text.</summary>
+    internal static async Task<string> ReadResponsesStreamTextAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(stream);
+        var text = new StringBuilder();
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
+            var data = line[5..].Trim();
+            if (data == "[DONE]") break;
+            try
+            {
+                using var json = JsonDocument.Parse(data);
+                var type = json.RootElement.TryGetProperty("type", out var kind) ? kind.GetString() : null;
+                if (type is "error" or "response.failed") throw new SummaryProviderException("provider-error");
+                if (type == "response.output_text.delta" && json.RootElement.TryGetProperty("delta", out var delta))
+                    text.Append(delta.GetString());
+            }
+            catch (JsonException)
+            {
+                // Keep-alive comments and partial lines carry no text.
+            }
+        }
+        return text.ToString();
     }
 
     /// <summary>
@@ -1276,7 +1353,7 @@ public static class MeetingSummaryService
     {
         if (meeting.TitleIsManual) return meeting.Title;
         var fallback = MeetingTitleService.Generate(meeting.Transcript, meeting.CreatedAt, meeting.Title, meeting.ManualNotes);
-        if (settings.MeetingSummaryProvider.Trim().ToLowerInvariant() is not ("openai" or "openrouter" or "ollama" or "lmstudio" or "custom")) return fallback;
+        if (settings.MeetingSummaryProvider.Trim().ToLowerInvariant() is not ("chatgpt" or "openai" or "openrouter" or "ollama" or "lmstudio" or "custom")) return fallback;
         var result = await CreateSummaryResultAsync(meeting.Transcript, meeting.Title, settings with
         {
             MeetingSummaryPromptOverride = "Write a concise 3–7 word meeting title. Prioritize the user's written notes when choosing the topic. Return only the title, without quotes, Markdown, or explanation."

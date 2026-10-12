@@ -47,6 +47,8 @@ public sealed partial class SettingsPage : Page
             // partially realised tree before Loaded and cached an incomplete list.
             _valueControls = null;
             ApplyResponsiveLayout(ActualWidth);
+            // The SelectorBar re-selects its default tab while loading, after OnNavigatedTo.
+            if (_requestedSection is { } requested) SelectSection(requested);
             UpdateSections();
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
@@ -71,9 +73,17 @@ public sealed partial class SettingsPage : Page
             _ => -1
         };
         if (index < 0 || index >= SectionBar.Items.Count) return;
+        _requestedSection = index;
+        SelectSection(index);
+        UpdateSections();
+    }
+
+    private int? _requestedSection;
+
+    private void SelectSection(int index)
+    {
         SectionBar.SelectedItem = SectionBar.Items[index];
         ViewModel.SectionIndex = index;
-        UpdateSections();
     }
 
     /// <summary>

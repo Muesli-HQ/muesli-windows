@@ -344,17 +344,36 @@ public sealed class Phase7NotesTests
         Assert.All(SummaryProviderDisclosure.Available, info =>
         {
             Assert.False(string.IsNullOrWhiteSpace(info.Disclosure));
-            Assert.Equal(info.SendsTranscriptOffMachine, info.RequiresApiKey);
+            // ChatGPT is the one cloud provider that signs in instead of taking a key.
+            Assert.Equal(info.SendsTranscriptOffMachine && info.Id != SummaryProviderDisclosure.ChatGpt, info.RequiresApiKey);
         });
         Assert.Contains("ollama", SummaryProviderDisclosure.AvailableIds);
     }
 
     [Fact]
-    public void ChatGptSubscriptionIsNotOfferedAndItsBlockerIsRecorded()
+    public async Task ChatGptSummariesNeedASignInAndReadTheStreamedText()
     {
-        Assert.DoesNotContain(SummaryProviderDisclosure.ChatGptSubscription, SummaryProviderDisclosure.AvailableIds);
-        Assert.Contains("no published OAuth client",
-            SummaryProviderDisclosure.ChatGptSubscriptionBlocker, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(SummaryProviderDisclosure.ChatGpt, SummaryProviderDisclosure.AvailableIds);
+        Assert.True(SummaryProviderDisclosure.LeavesMachine(SummaryProviderDisclosure.ChatGpt));
+
+        var previous = MeetingSummaryService.ChatGptCredentials;
+        MeetingSummaryService.ChatGptCredentials = null;
+        try
+        {
+            var result = await MeetingSummaryService.CreateSummaryResultAsync(
+                "We agreed to ship on Friday.", "Planning", new MuesliSettings { MeetingSummaryProvider = "chatgpt" });
+            Assert.True(result.UsedLocalFallback);
+            Assert.Equal("not-signed-in", result.SafeFailureReason);
+        }
+        finally
+        {
+            MeetingSummaryService.ChatGptCredentials = previous;
+        }
+
+        var events = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"## Notes\"}\n\n" +
+                     "data: {\"type\":\"response.output_text.delta\",\"delta\":\" ship Friday\"}\n\ndata: [DONE]\n";
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(events));
+        Assert.Equal("## Notes ship Friday", await MeetingSummaryService.ReadResponsesStreamTextAsync(stream, CancellationToken.None));
     }
 
     [Fact]

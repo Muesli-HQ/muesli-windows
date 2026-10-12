@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -8,1037 +7,701 @@ using Muesli.Windows.WinUI.Services;
 
 namespace Muesli.Windows.WinUI.ViewModels;
 
-public sealed record OnboardingLiveChoice(string? Id, string Label)
+/// <summary>A row on the model step (macOS modelCard).</summary>
+public sealed partial class OnboardingModelCard(TranscriptionModelDefinition model, bool recommended) : ObservableObject
 {
-    public static OnboardingLiveChoice Off { get; } = new(null, "Off");
-    public override string ToString() => Label;
+    public TranscriptionModelDefinition Model { get; } = model;
+    public string Title => Model.DisplayName;
+    public string Size => Model.SizeLabel;
+    public string Description => Model.Summary;
+    public bool IsRecommended { get; } = recommended;
+    [ObservableProperty] public partial bool IsSelected { get; set; }
 }
 
-public sealed record OnboardingStepNavItem(int Index, string Number, string Title, bool IsCurrent, bool IsComplete)
-{
-    public bool ShowCurrentNumber => IsCurrent && !IsComplete;
-    public bool ShowUpcomingNumber => !IsCurrent && !IsComplete;
-}
+/// <summary>A dot in the bottom bar; the current step is filled with the accent.</summary>
+public sealed record OnboardingDot(bool IsCurrent);
 
-public sealed record OnboardingPermissionItem(
-    string Name,
-    string Status,
-    bool Granted,
-    string Help,
-    bool CanOpenSettings,
-    bool IsLast)
-{
-    public bool ShowGrant => !Granted && CanOpenSettings;
-    public bool ShowGranted => Granted;
-    public bool ShowUnavailable => !Granted && !CanOpenSettings;
-}
-
-public sealed partial class OnboardingModelRoleItem : ObservableObject
-{
-    public OnboardingModelRoleItem(string role, string id, bool isLive)
-    {
-        Role = role;
-        Id = id;
-        IsLive = isLive;
-    }
-
-    public string Role { get; }
-    public string Id { get; }
-    public bool IsLive { get; }
-
-    [ObservableProperty] public partial string Heading { get; set; } = "";
-    [ObservableProperty] public partial string StatusText { get; set; } = "";
-    [ObservableProperty] public partial bool IsBusy { get; set; }
-    [ObservableProperty] public partial bool IsReady { get; set; }
-    [ObservableProperty] public partial bool CanPrepare { get; set; }
-    [ObservableProperty] public partial bool CanVerify { get; set; }
-    [ObservableProperty] public partial bool CanRetry { get; set; }
-    [ObservableProperty] public partial bool CanCancel { get; set; }
-    [ObservableProperty] public partial int? ProgressPercent { get; set; }
-
-    public double ProgressValue => ProgressPercent ?? 0;
-    public bool IsProgressIndeterminate => IsBusy && ProgressPercent is null;
-    public string ProgressLabel => ProgressPercent is int value ? $"{value}%" : StatusText;
-    public bool HasActions => CanPrepare || CanVerify || CanRetry || CanCancel;
-    public string AccessibleName => $"{Role} model {Id}. {StatusText}";
-
-    public void NotifyProgressBindings()
-    {
-        OnPropertyChanged(nameof(ProgressValue));
-        OnPropertyChanged(nameof(IsProgressIndeterminate));
-        OnPropertyChanged(nameof(ProgressLabel));
-        OnPropertyChanged(nameof(HasActions));
-        OnPropertyChanged(nameof(AccessibleName));
-    }
-}
-
+/// <summary>
+/// macOS OnboardingView on Windows: welcome and use case, model, dictation shortcut, microphone,
+/// a test with the real shortcut, then meeting summaries. Calendar is left out because Windows has
+/// no calendar source. Each choice is saved as it is made so setup can resume where it stopped.
+/// </summary>
 public partial class OnboardingViewModel : ObservableObject, IDisposable
 {
-    private static readonly string[] HotkeyPresets =
+    /// <summary>macOS onboarding candidates: Parakeet Unified first, then the multilingual options.</summary>
+    private static readonly string[] OnboardingModelIds =
     [
-        "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-        "Ctrl+Shift+Space", "Ctrl+Alt+Space", "Ctrl+Shift+D", "Ctrl+Alt+D"
-    ];
-
-    private static readonly string[] IndicatorPositions =
-    [
-        "Top Left", "Top Center", "Top Right",
-        "Middle Left", "Middle Right",
-        "Bottom Left", "Bottom Center", "Bottom Right", "Custom"
+        "parakeet-unified-en-int8", TranscriptionModelCatalog.DefaultModelId, "whisper-tiny-multilingual",
+        "whisper-small-multilingual", "cohere-transcribe-int8-en"
     ];
 
     private readonly WinUiSettingsContext _settings;
-    private readonly IStartupRegistrationService _startup;
     private readonly WinUiDictationContext _dictation;
     private readonly WinUiModelsContext _models;
+    private readonly WinUiComputerUseContext _computerUse;
     private readonly OnboardingProgressStore _progressStore;
     private readonly WindowsMicrophoneAccessService _microphone = new();
-    private readonly StreamingModelLifecycleService _liveLifecycle;
-    private readonly ObservableCollection<OnboardingModelRoleItem> _modelRoles = [];
     private OnboardingProgress _progress;
-    private MuesliSettings _draft;
-    private bool _isRendering;
+    private string? _downloadingModelId;
+    private bool _testing;
+    private bool _finished;
     private bool _disposed;
-    private (string Id, bool Live)? _activeModelOperation;
-    private CancellationTokenSource? _pipelineCancellation;
+    private int _permissionGeneration;
 
     public OnboardingViewModel(
         WinUiSettingsContext settings,
-        IStartupRegistrationService startup,
         WinUiDictationContext dictation,
         WinUiModelsContext models,
+        WinUiComputerUseContext computerUse,
         OnboardingProgressStore progressStore)
     {
         _settings = settings;
-        _startup = startup;
         _dictation = dictation;
         _models = models;
+        _computerUse = computerUse;
         _progressStore = progressStore;
-        _draft = settings.Load();
         _progress = progressStore.Load();
-        _liveLifecycle = new StreamingModelLifecycleService(
-            () => SelectedLiveModel?.Id,
-            _ => Task.CompletedTask);
-        _models.ModelChanged += OnOfflineModelChanged;
-        _liveLifecycle.ModelChanged += OnLiveModelChanged;
+        var current = settings.Load();
 
-        Microphones = _dictation.ListMicrophones()
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        UserName = current.UserName;
+        UseCase = OnboardingFlow.Parse(current.OnboardingUseCase);
+        Hotkey = string.IsNullOrWhiteSpace(current.Hotkey) ? "F8" : current.Hotkey;
+        var selectedId = OnboardingModelIds.Contains(current.DictationModelId, StringComparer.OrdinalIgnoreCase) && _progress.Step > 0
+            ? current.DictationModelId
+            : OnboardingModelIds[0];
+        ModelCards = OnboardingModelIds
+            .Select(id => TranscriptionModelCatalog.Get(id))
+            .OfType<TranscriptionModelDefinition>()
+            .Select((model, index) => new OnboardingModelCard(model, index == 0))
             .ToList();
-        if (Microphones.Count == 0)
-        {
-            Microphones = [AudioCaptureService.SystemDefaultMicrophone];
-        }
+        SelectModel(selectedId);
+        ShowMoreModels = !ModelCards[0].IsSelected;
+        SummaryBackend = current.MeetingSummaryProvider is SummaryProviderDisclosure.OpenAI or SummaryProviderDisclosure.OpenRouter or SummaryProviderDisclosure.Ollama
+            ? current.MeetingSummaryProvider
+            : SummaryProviderDisclosure.ChatGpt;
+        ChatGptSignedIn = computerUse.ChatGpt.IsSignedIn;
 
-        DictationModels = TranscriptionModelCatalog.Models;
-        MeetingModels = TranscriptionModelCatalog.Models;
-        LiveModels = [OnboardingLiveChoice.Off, .. StreamingModelCatalog.Models.Select(model => new OnboardingLiveChoice(model.Id, model.PickerLabel))];
-        Hotkeys = EnsureHotkeyPreset(_draft.Hotkey);
-        SummaryProviders = SummaryProviderDisclosure.Available;
-        IndicatorPositionChoices = IndicatorPositions;
-
-        ApplyDraftToFields();
-        _progress = OnboardingProgressReconciler.Reconcile(
-            _progress,
-            ToSelection(_draft),
-            id => OfflineReady(id),
-            id => LiveReady(id));
-        _ = RefreshStartupAvailabilityAsync();
-        Render();
+        _models.ModelChanged += OnModelChanged;
+        _dictation.Changed += OnDictationChanged;
+        Step = OnboardingFlow.NormalizedStep(Math.Clamp(_progress.Step, 0, OnboardingProgress.LastStep), UseCase);
+        EnterStep();
     }
 
+    public event EventHandler<bool>? Completed;
+
+    public IReadOnlyList<OnboardingModelCard> ModelCards { get; }
+    public OnboardingModelCard RecommendedModel => ModelCards[0];
+    public IReadOnlyList<OnboardingModelCard> OtherModels => ModelCards.Skip(1).ToList();
+
     [ObservableProperty] public partial int Step { get; private set; }
-    [ObservableProperty] public partial string StepLabel { get; private set; } = "";
-    [ObservableProperty] public partial string Title { get; private set; } = "";
-    [ObservableProperty] public partial string Description { get; private set; } = "";
-    [ObservableProperty] public partial string Status { get; private set; } = "";
-    [ObservableProperty] public partial bool StatusIsError { get; private set; }
     [ObservableProperty] public partial string UserName { get; set; } = "";
-    [ObservableProperty] public partial IReadOnlyList<string> Microphones { get; private set; } = [];
-    [ObservableProperty] public partial string? SelectedMicrophone { get; set; }
-    [ObservableProperty] public partial IReadOnlyList<TranscriptionModelDefinition> DictationModels { get; private set; } = [];
-    [ObservableProperty] public partial TranscriptionModelDefinition? SelectedDictationModel { get; set; }
-    [ObservableProperty] public partial IReadOnlyList<TranscriptionModelDefinition> MeetingModels { get; private set; } = [];
-    [ObservableProperty] public partial TranscriptionModelDefinition? SelectedMeetingModel { get; set; }
-    [ObservableProperty] public partial IReadOnlyList<OnboardingLiveChoice> LiveModels { get; private set; } = [];
-    [ObservableProperty] public partial OnboardingLiveChoice SelectedLiveModel { get; set; } = OnboardingLiveChoice.Off;
-    [ObservableProperty] public partial IReadOnlyList<string> Hotkeys { get; private set; } = [];
-    [ObservableProperty] public partial string SelectedHotkey { get; set; } = "F8";
-    [ObservableProperty] public partial IReadOnlyList<SummaryProviderInfo> SummaryProviders { get; private set; } = [];
-    [ObservableProperty] public partial SummaryProviderInfo? SelectedSummaryProvider { get; set; }
-    [ObservableProperty] public partial IReadOnlyList<string> IndicatorPositionChoices { get; private set; } = [];
-    [ObservableProperty] public partial string SelectedIndicatorPosition { get; set; } = "Middle Right";
-    [ObservableProperty] public partial bool StartAtLogin { get; set; }
-    [ObservableProperty] public partial bool ShowIndicator { get; set; } = true;
-    [ObservableProperty] public partial bool IsStartupAvailable { get; private set; } = true;
-    [ObservableProperty] public partial string StartupAvailabilityNotice { get; private set; } = "";
-    [ObservableProperty] public partial bool CanGoBack { get; private set; }
-    [ObservableProperty] public partial bool CanGoNext { get; private set; }
-    [ObservableProperty] public partial bool CanFinish { get; private set; }
-    [ObservableProperty] public partial bool IsBusy { get; private set; }
-    [ObservableProperty] public partial bool IsPipelineRunning { get; private set; }
-    [ObservableProperty] public partial IReadOnlyList<OnboardingStepNavItem> StepNavItems { get; private set; } = [];
-    [ObservableProperty] public partial IReadOnlyList<OnboardingPermissionItem> Permissions { get; private set; } = [];
-    [ObservableProperty] public partial string MicrophonePolicyHint { get; private set; } = "";
-    [ObservableProperty] public partial string CloudKeyStatus { get; private set; } = "";
+    [ObservableProperty] public partial OnboardingCapabilities UseCase { get; private set; }
+    [ObservableProperty] public partial bool ShowMoreModels { get; set; }
+    [ObservableProperty] public partial OnboardingModelCard? SelectedModel { get; private set; }
+    [ObservableProperty] public partial string Hotkey { get; private set; } = "F8";
+    [ObservableProperty] public partial bool IsRecordingHotkey { get; private set; }
+    [ObservableProperty] public partial string HotkeyError { get; private set; } = "";
 
-    public ObservableCollection<OnboardingModelRoleItem> ModelRoles => _modelRoles;
-    public int StepCount => OnboardingProgress.LastStep + 1;
-    public int ProgressMaximum => OnboardingProgress.LastStep;
-    public double ProgressValue => Step;
-    public string SummaryDisclosure => SummaryProviderDisclosure.DisclosureFor(SelectedSummaryProvider?.Id, _draft.OllamaEndpoint);
-    public bool ShowStartupNotice => !IsStartupAvailable && !string.IsNullOrWhiteSpace(StartupAvailabilityNotice);
-    public bool ShowStatus => !string.IsNullOrWhiteSpace(Status);
-    public bool ShowName => Step == 0;
-    public bool ShowMicrophone => Step == 1;
-    public bool ShowModels => Step == 2;
-    public bool ShowHotkey => Step == 3;
-    public bool ShowPipeline => Step == 4;
-    public bool ShowOptional => Step == 5;
-    public bool ShowReady => Step == 6;
-    public bool MicrophoneReady => _progress.MicrophoneVerified;
-    public bool ModelsReady => _progress.ModelsVerified;
-    public bool HotkeyReady => _progress.HotkeyVerified;
-    public bool PipelineReady => _progress.PipelineVerified;
-    public string MicrophoneGateLabel => _progress.MicrophoneVerified ? "ready" : "needs test";
-    public string ModelsGateLabel => _progress.ModelsVerified ? "ready" : "needs preparation";
-    public string HotkeyGateLabel => _progress.HotkeyVerified ? "ready" : "needs check";
-    public string PipelineGateLabel => _progress.PipelineVerified ? "passed" : "needs successful transcript";
-    public string PipelineActionLabel => IsPipelineRunning ? "Cancel dictation test" : "Record 3-second dictation test";
+    // Model download (macOS modelDownloadIndicator)
+    [ObservableProperty] public partial bool IsDownloading { get; private set; }
+    [ObservableProperty] public partial double? DownloadProgress { get; private set; }
+    [ObservableProperty] public partial string DownloadStatus { get; private set; } = "";
+    [ObservableProperty] public partial string DownloadError { get; private set; } = "";
+    [ObservableProperty] public partial bool IsModelReady { get; private set; }
 
-    /// <summary>
-    /// P8-05: the live-dictation card used to open by repeating the step subtitle verbatim. These
-    /// two read back the choices the test will actually use, so the card states the real
-    /// configuration instead of restating the heading above it.
-    /// </summary>
-    public string PipelineMicrophoneLabel =>
-        string.IsNullOrWhiteSpace(SelectedMicrophone)
-            ? AudioCaptureService.SystemDefaultMicrophone
-            : SelectedMicrophone;
+    // Permissions
+    [ObservableProperty] public partial bool MicrophoneGranted { get; private set; }
+    [ObservableProperty] public partial bool IsGrantingMicrophone { get; private set; }
+    [ObservableProperty] public partial bool IsCheckingMicrophone { get; private set; }
+    [ObservableProperty] public partial bool IsConfirmingGrant { get; private set; }
+    [ObservableProperty] public partial string MicrophoneError { get; private set; } = "";
 
-    /// <inheritdoc cref="PipelineMicrophoneLabel" />
-    public string PipelineModelLabel =>
-        SelectedDictationModel?.DisplayName
-        ?? (string.IsNullOrWhiteSpace(_draft.DictationModelId) ? "not selected" : _draft.DictationModelId);
+    // Dictation test
+    [ObservableProperty] public partial bool IsTestRecording { get; private set; }
+    [ObservableProperty] public partial bool IsTestTranscribing { get; private set; }
+    [ObservableProperty] public partial string TestResult { get; private set; } = "";
+    [ObservableProperty] public partial string TestError { get; private set; } = "";
+
+    // Meeting summaries
+    [ObservableProperty] public partial string SummaryBackend { get; private set; } = SummaryProviderDisclosure.ChatGpt;
+    [ObservableProperty] public partial bool ChatGptSignedIn { get; private set; }
+    [ObservableProperty] public partial bool IsSigningIn { get; private set; }
+    [ObservableProperty] public partial string SignInError { get; private set; } = "";
+    [ObservableProperty] public partial string ApiKey { get; set; } = "";
+
+    public bool ShowWelcome => Step == OnboardingFlow.Welcome;
+    public bool ShowModel => Step == OnboardingFlow.Model;
+    public bool ShowHotkey => Step == OnboardingFlow.Hotkey;
+    public bool ShowPermissions => Step == OnboardingFlow.Permissions;
+    public bool ShowDictationTest => Step == OnboardingFlow.DictationTest;
+    public bool ShowMeetingSummary => Step == OnboardingFlow.MeetingSummary;
+
+    public bool VoiceNotesSelected => UseCase.HasFlag(OnboardingCapabilities.VoiceNotes);
+    public bool DictationSelected => UseCase.HasFlag(OnboardingCapabilities.Dictation);
+    public bool MeetingsSelected => UseCase.HasFlag(OnboardingCapabilities.Meetings);
+    public bool EverythingSelected => UseCase == OnboardingCapabilities.Everything;
+    private bool VoiceNotesOnly => VoiceNotesSelected && !DictationSelected;
+
+    public IReadOnlyList<OnboardingDot> Dots =>
+        OnboardingFlow.OrderedSteps(UseCase).Select(step => new OnboardingDot(step == Step)).ToList();
+    public bool CanGoBack => OnboardingFlow.CanGoBack(Step, UseCase, TestResult.Length > 0);
+    private bool IsLastStep => OnboardingFlow.OrderedSteps(UseCase)[^1] == Step;
+
+    /// <summary>macOS primaryButton titles.</summary>
+    public string PrimaryLabel => Step switch
+    {
+        OnboardingFlow.Model => SelectedModelIsReady ? "Continue" : "Download & Continue",
+        _ when IsLastStep => "Finish",
+        _ => "Continue"
+    };
+    public bool PrimaryEnabled => Step switch
+    {
+        OnboardingFlow.Welcome => UserName.Trim().Length > 0,
+        OnboardingFlow.Permissions => MicrophoneGranted,
+        OnboardingFlow.DictationTest => TestResult.Length > 0,
+        _ => true
+    };
+    public bool ShowSkip => Step is OnboardingFlow.DictationTest && TestResult.Length == 0 || Step == OnboardingFlow.MeetingSummary;
+
+    // Download indicator
+    public bool ShowDownloadIndicator => IsDownloading || DownloadError.Length > 0;
+    public string DownloadIndicatorTitle => DownloadError.Length > 0
+        ? "Download failed"
+        : DownloadProgress is >= 1 ? $"Preparing {SelectedModel?.Title}" : $"Downloading {SelectedModel?.Title}";
+    public string DownloadIndicatorDetail => DownloadError.Length > 0
+        ? DownloadError
+        : DownloadStatus.Length > 0 ? DownloadStatus : "Downloading…";
+    public double DownloadPercent => (DownloadProgress ?? 0) * 100;
+    public bool IsDownloadIndeterminate => DownloadProgress is null;
+
+    // Hotkey step
+    public string HotkeyLabel => string.Join(" + ", Hotkey.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+    public string HotkeyButtonLabel => IsRecordingHotkey ? "Press a key…" : "Change Shortcut";
+
+    // Permission step
+    public string PermissionButtonLabel => IsConfirmingGrant || MicrophoneGranted
+        ? "Granted"
+        : IsCheckingMicrophone ? "Checking…" : IsGrantingMicrophone ? "Open Settings" : "Grant Permission";
+    public bool PermissionButtonEnabled => !IsConfirmingGrant && !MicrophoneGranted && !IsCheckingMicrophone;
+    public bool ShowMicrophoneRequest => !MicrophoneGranted || IsConfirmingGrant;
+    public bool ShowAllGranted => MicrophoneGranted && !IsConfirmingGrant;
+
+    // Dictation test step
+    public string TestTitle => VoiceNotesOnly ? "Test Voice Note" : "Test Dictation";
+    public bool ShowTestPreparing => !IsModelReady;
+    public bool ShowTestReady => IsModelReady;
+    public string TestSubtitle => !IsModelReady
+        ? $"Preparing {SelectedModel?.Title} for your first test.\n{(VoiceNotesOnly ? "Voice note test" : "Dictation")} will unlock when the model is ready."
+        : VoiceNotesOnly
+            ? $"Hold {HotkeyLabel} to record a voice note, then release.\nYour words should appear below."
+            : $"Hold {HotkeyLabel} and say something, then release.\nYour words should appear below.";
+    public string TestPlaceholder => TestResult.Length > 0 ? TestResult : "Your transcription will appear here...";
+    public bool HasTestResult => TestResult.Length > 0;
+    public bool ShowTestHint => !IsTestRecording && !IsTestTranscribing && TestResult.Length == 0;
+    public string TestHint => $"Hold {HotkeyLabel} to start";
+    public string ListeningText => IsTestTranscribing ? "Transcribing…" : $"Listening... release {HotkeyLabel} when done";
+    public bool ShowListening => IsTestRecording || IsTestTranscribing;
+    public string TestPreparingStatus => DownloadError.Length > 0
+        ? DownloadError
+        : DownloadStatus.Length > 0 ? DownloadStatus : $"Preparing {SelectedModel?.Title}...";
+
+    // Meeting summary step
+    public bool ChatGptSelected => SummaryBackend == SummaryProviderDisclosure.ChatGpt;
+    public bool OpenAISelected => SummaryBackend == SummaryProviderDisclosure.OpenAI;
+    public bool OpenRouterSelected => SummaryBackend == SummaryProviderDisclosure.OpenRouter;
+    public bool OllamaSelected => SummaryBackend == SummaryProviderDisclosure.Ollama;
+    public bool ShowKeyEntry => OpenAISelected || OpenRouterSelected;
+    public bool ShowChatGptSignIn => ChatGptSelected && !ChatGptSignedIn && !IsSigningIn;
+    public bool ShowChatGptSignedIn => ChatGptSelected && ChatGptSignedIn;
+    public bool ShowChatGptSigningIn => ChatGptSelected && IsSigningIn;
+    public string KeyPlaceholder => OpenRouterSelected ? "sk-or-..." : "sk-...";
+    public string KeyCaption => OpenRouterSelected
+        ? "Paste an OpenRouter API key. It is kept in Windows Credential Manager."
+        : "Paste an OpenAI API key. It is kept in Windows Credential Manager.";
+    public string KeyStatus => ApiKey.Trim().Length == 0 ? "No API key" : "Key entered";
+    public bool HasKey => ApiKey.Trim().Length > 0;
+
+    partial void OnUserNameChanged(string value)
+    {
+        Save(settings => settings with { UserName = value.Trim() });
+        OnPropertyChanged(nameof(PrimaryEnabled));
+    }
+
+    partial void OnApiKeyChanged(string value)
+    {
+        OnPropertyChanged(nameof(KeyStatus));
+        OnPropertyChanged(nameof(HasKey));
+    }
+
+    [RelayCommand]
+    private void ToggleCapability(string name)
+    {
+        var capability = Enum.Parse<OnboardingCapabilities>(name);
+        var updated = capability == OnboardingCapabilities.Everything
+            ? UseCase == OnboardingCapabilities.Everything ? OnboardingCapabilities.Dictation : OnboardingCapabilities.Everything
+            : OnboardingFlow.Toggle(UseCase, capability);
+        UseCase = updated;
+        Save(settings => settings with { OnboardingUseCase = OnboardingFlow.Format(updated) });
+        foreach (var property in new[] { nameof(VoiceNotesSelected), nameof(DictationSelected), nameof(MeetingsSelected), nameof(EverythingSelected), nameof(Dots) })
+            OnPropertyChanged(property);
+    }
+
+    [RelayCommand]
+    private void ChooseModel(OnboardingModelCard? card)
+    {
+        if (card is null) return;
+        SelectModel(card.Model.Id);
+    }
+
+    [RelayCommand]
+    private void ToggleMoreModels() => ShowMoreModels = !ShowMoreModels;
 
     [RelayCommand]
     private void Back()
     {
-        if (_progress.Step <= 0) return;
-        PersistDraft();
-        CancelActiveOperations();
-        _progress = _progress with { Step = _progress.Step - 1 };
-        PersistProgress();
-        Render();
+        var steps = OnboardingFlow.OrderedSteps(UseCase);
+        var index = steps.IndexOf(Step);
+        if (index <= 0 || !CanGoBack) return;
+        GoTo(steps[index - 1]);
     }
 
     [RelayCommand]
-    private void Next()
+    private async Task PrimaryAsync()
     {
-        if (_progress.Step >= OnboardingProgress.LastStep) return;
-        PersistDraft();
-        CancelActiveOperations();
-        _progress = _progress with { Step = _progress.Step + 1 };
-        PersistProgress();
-        Render();
-    }
-
-    [RelayCommand]
-    private void Skip()
-    {
-        PersistDraft();
-        CancelActiveOperations();
-        _progress = _progress with { Deferred = true, LastStatus = "Setup paused. Resume anytime from About or the tray." };
-        PersistProgress();
-        Completed?.Invoke(this, false);
-    }
-
-    [RelayCommand]
-    private async Task FinishAsync()
-    {
-        PersistDraft();
-        if (!(_progress.MicrophoneVerified && _progress.ModelsVerified && _progress.HotkeyVerified && _progress.PipelineVerified))
+        if (!PrimaryEnabled) return;
+        switch (Step)
         {
-            ApplyStatus("Complete each required check before finishing setup.", isError: true);
-            return;
+            case OnboardingFlow.Model:
+                StartDownload();
+                break;
+            case OnboardingFlow.Hotkey:
+                ApplyHotkey();
+                break;
+            case OnboardingFlow.MeetingSummary:
+                SaveSummaryChoice();
+                break;
         }
-
-        CancelActiveOperations();
-        _progress = _progress with { Completed = true, Deferred = false, LastStatus = "Setup finished." };
-        PersistProgress();
-        var current = _settings.Load() with
-        {
-            OnboardingCompleted = true,
-            LastCompletedFeatureTourVersion = 0,
-            UserName = _draft.UserName,
-            MicrophoneName = NormalizeMicrophone(_draft.MicrophoneName),
-            DictationModelId = _draft.DictationModelId,
-            FinalMeetingModelId = _draft.FinalMeetingModelId,
-            LiveMeetingModelId = _draft.LiveMeetingModelId,
-            Hotkey = _draft.Hotkey,
-            StartAtLogin = StartAtLogin,
-            ShowFloatingIndicator = ShowIndicator,
-            IndicatorAnchor = SelectedIndicatorPosition,
-            MeetingSummaryProvider = SelectedSummaryProvider?.Id ?? _draft.MeetingSummaryProvider
-        };
-        _settings.Save(current);
-        _dictation.PrepareMicrophone();
-        if (IsStartupAvailable)
-        {
-            try { await _startup.SetEnabledAsync(StartAtLogin); }
-            catch (Exception exception) { ApplyStatus(exception.Message, isError: true); }
-        }
-        Completed?.Invoke(this, true);
+        if (IsLastStep) await FinishAsync();
+        else Next();
     }
 
     [RelayCommand]
-    private async Task TestMicrophoneAsync()
+    private async Task SkipAsync()
     {
-        IsBusy = true;
+        if (Step == OnboardingFlow.MeetingSummary && !ChatGptSignedIn && ChatGptSelected)
+        {
+            // macOS falls back to its default; Windows keeps summaries on this PC until a provider is set up.
+            Save(settings => settings with { MeetingSummaryProvider = SummaryProviderDisclosure.Local });
+        }
+        else if (Step == OnboardingFlow.MeetingSummary)
+        {
+            SaveSummaryChoice();
+        }
+        if (IsLastStep) await FinishAsync();
+        else Next();
+    }
+
+    [RelayCommand]
+    private void ToggleHotkeyRecording()
+    {
+        IsRecordingHotkey = !IsRecordingHotkey;
+        HotkeyError = "";
+    }
+
+    /// <summary>Called by the window with the captured gesture ("Ctrl+Shift+D", "F8", …).</summary>
+    public void ApplyCapturedHotkey(string gesture)
+    {
+        IsRecordingHotkey = false;
         try
         {
-            var probe = await _microphone.ProbeAsync(ProbeMicrophoneName());
-            _progress = _progress with
-            {
-                MicrophoneVerified = probe.IsUsable,
-                VerifiedMicrophone = probe.IsUsable ? SelectedMicrophone ?? "" : "",
-                LastStatus = probe.IsUsable
-                    ? "Microphone capture verified. No audio was retained."
-                    : $"Microphone test failed: {probe.Failure}"
-            };
-            PersistProgress();
-            MicrophonePolicyHint = string.Join(" ", new[] { probe.PolicyHint, probe.Message }.Where(text => !string.IsNullOrWhiteSpace(text)));
-            ApplyStatus(probe.IsUsable
-                ? $"{probe.PolicyHint} {probe.Message}".Trim()
-                : MicrophonePolicyHint,
-                isError: !probe.IsUsable);
-            RefreshPermissions(microphoneChecked: true, microphoneGranted: probe.IsUsable, probe.IsUsable ? "Capture verified" : probe.Failure.ToString(), MicrophonePolicyHint);
-            NotifyReadyBindings();
-        }
-        catch (Exception exception) { ApplyStatus($"Microphone test failed: {exception.Message}", isError: true); }
-        finally { IsBusy = false; }
-    }
-
-    [RelayCommand]
-    private void OpenMicrophonePrivacy()
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo("ms-settings:privacy-microphone") { UseShellExecute = true });
-            ApplyStatus("Windows microphone privacy opened. Re-run the capture test after changing access; the policy hint is not a grant.");
-        }
-        catch (Exception exception)
-        {
-            ApplyStatus(exception.Message, isError: true);
-        }
-    }
-
-    [RelayCommand]
-    private void OpenPermissionSettings(OnboardingPermissionItem? item)
-    {
-        if (item?.CanOpenSettings == true)
-        {
-            OpenMicrophonePrivacy();
-        }
-    }
-
-    [RelayCommand]
-    private void CheckHotkey()
-    {
-        try
-        {
-            var parsed = HotkeyGestureParser.Parse(SelectedHotkey);
+            var parsed = HotkeyGestureParser.Parse(gesture);
             if (HotkeyGestureParser.IsEscape(parsed.VirtualKey))
-            {
-                _progress = _progress with { HotkeyVerified = false, VerifiedHotkey = "", LastStatus = "Escape is reserved for pausing setup." };
-                ApplyStatus(_progress.LastStatus, isError: true);
-                PersistProgress();
-                NotifyReadyBindings();
-                return;
-            }
-
-            var previous = _settings.Load();
-            var advisoryAvailable = false;
-            try { advisoryAvailable = HotkeyConflictProbe.IsAdvisoryRegistrationAvailable(parsed.DisplayName); }
-            catch (Exception exception)
-            {
-                advisoryAvailable = false;
-                ApplyStatus($"Advisory shortcut probe failed ({exception.Message}); the live dictation hook remains decisive.");
-            }
-
-            _settings.Save(previous with { Hotkey = parsed.DisplayName });
-            var usable = false;
-            try
-            {
-                _dictation.RegisterHotkey();
-                usable = _dictation.IsHotkeyRegistered;
-            }
-            finally
-            {
-                if (!usable)
-                {
-                    _settings.Save(previous);
-                    _dictation.RegisterHotkey();
-                }
-            }
-
-            SelectedHotkey = parsed.DisplayName;
-            _progress = _progress with
-            {
-                HotkeyVerified = usable,
-                VerifiedHotkey = usable ? parsed.DisplayName : "",
-                LastStatus = usable
-                    ? advisoryAvailable
-                        ? $"Shortcut {parsed.DisplayName} passed the dictation-hook test; the advisory probe also found no common conflict."
-                        : $"Shortcut {parsed.DisplayName} passed the dictation-hook test. Windows advisory registration was unavailable, but did not veto the real hook."
-                    : "Windows reports this shortcut is currently in use. Choose another preset and retry."
-            };
-            ApplyStatus(_progress.LastStatus, isError: !usable);
+                throw new InvalidOperationException("Escape is reserved for cancelling an active dictation.");
+            var computerUse = HotkeyGestureParser.Parse(_settings.Load().ComputerUseHotkey).DisplayName;
+            if (parsed.DisplayName.Equals(computerUse, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"{computerUse} is the Computer Use shortcut. Choose a different one.");
+            if (!HotkeyConflictProbe.IsAdvisoryRegistrationAvailable(parsed.DisplayName))
+                throw new InvalidOperationException("Windows reports that this shortcut is already registered by another app.");
+            Hotkey = parsed.DisplayName;
+            HotkeyError = "";
+            Save(settings => settings with { Hotkey = parsed.DisplayName });
+            _dictation.RegisterHotkey();
         }
         catch (Exception exception)
         {
-            _progress = _progress with { HotkeyVerified = false, LastStatus = exception.Message };
-            ApplyStatus(exception.Message, isError: true);
-        }
-        PersistProgress();
-        NotifyReadyBindings();
-    }
-
-    [RelayCommand]
-    private async Task RunPipelineTestAsync()
-    {
-        if (IsPipelineRunning)
-        {
-            _pipelineCancellation?.Cancel();
-            ApplyStatus("Cancelling the local setup test…");
-            return;
-        }
-
-        if (_dictation.IsRecording || _dictation.IsBusy)
-        {
-            ApplyStatus("Dictation is already active. Finish or cancel it before running the setup test.", isError: true);
-            return;
-        }
-
-        var dictationId = SelectedDictationModel?.Id ?? _draft.DictationModelId;
-        var snapshot = _models.Snapshots().FirstOrDefault(item => item.Model.Id.Equals(dictationId, StringComparison.OrdinalIgnoreCase));
-        if (snapshot is null || snapshot.Status is not (TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected))
-        {
-            ApplyStatus($"{SelectedDictationModel?.DisplayName ?? dictationId} must be prepared before this test.", isError: true);
-            return;
-        }
-
-        PersistDraft();
-        _pipelineCancellation = new CancellationTokenSource();
-        var token = _pipelineCancellation.Token;
-        IsPipelineRunning = true;
-        IsBusy = true;
-        OnPropertyChanged(nameof(PipelineActionLabel));
-        ApplyStatus("Recording a local setup test…");
-        try
-        {
-            await _dictation.StartAuxiliaryAsync(ProbeMicrophoneName());
-            await Task.Delay(TimeSpan.FromSeconds(3), token);
-            var text = await _dictation.StopWithoutPersistingAsync(token);
-            var passed = !string.IsNullOrWhiteSpace(text);
-            _progress = _progress with
-            {
-                PipelineVerified = passed,
-                LastStatus = passed ? "Pipeline test passed" : "Pipeline test needs another attempt"
-            };
-            PersistProgress();
-            ApplyStatus(passed ? $"Test transcript (not saved): {text}" : "No speech was detected. Try again.", isError: !passed);
-        }
-        catch (OperationCanceledException)
-        {
-            if (_dictation.IsRecording) await _dictation.CancelAsync();
-            _progress = _progress with { PipelineVerified = false, LastStatus = "Pipeline test cancelled. Record another non-retained test when ready." };
-            PersistProgress();
-            ApplyStatus(_progress.LastStatus);
-        }
-        catch (Exception exception)
-        {
-            if (_dictation.IsRecording) await _dictation.CancelAsync();
-            ApplyStatus(exception.Message, isError: true);
-        }
-        finally
-        {
-            _pipelineCancellation?.Dispose();
-            _pipelineCancellation = null;
-            IsPipelineRunning = false;
-            IsBusy = false;
-            OnPropertyChanged(nameof(PipelineActionLabel));
-            NotifyReadyBindings();
+            HotkeyError = exception.Message;
         }
     }
 
-    [RelayCommand]
-    private async Task PrepareModelAsync(OnboardingModelRoleItem? item) =>
-        await RunModelOperationAsync(item, "Prepare", (role, progress, token) =>
-            role.IsLive
-                ? _liveLifecycle.PrepareAsync(role.Id, progress, token)
-                : _models.PrepareAsync(role.Id, progress, token));
-
-    [RelayCommand]
-    private async Task VerifyModelAsync(OnboardingModelRoleItem? item) =>
-        await RunModelOperationAsync(item, "Verify", (role, progress, token) =>
-            role.IsLive
-                ? _liveLifecycle.VerifyAsync(role.Id, progress, token)
-                : _models.VerifyAsync(role.Id, progress, token));
-
-    [RelayCommand]
-    private async Task RetryModelAsync(OnboardingModelRoleItem? item) =>
-        await RunModelOperationAsync(item, "Retry", (role, progress, token) =>
-            role.IsLive
-                ? _liveLifecycle.RetryAsync(role.Id, token)
-                : _models.RetryAsync(role.Id, token));
-
-    [RelayCommand]
-    private void CancelModel(OnboardingModelRoleItem? item)
-    {
-        if (item is null) return;
-        if (_activeModelOperation is { } active &&
-            active.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase) &&
-            active.Live == item.IsLive)
-        {
-            if (item.IsLive) _liveLifecycle.Cancel(item.Id);
-            else _models.Cancel(item.Id);
-            item.StatusText = "Cancelling model operation…";
-            item.NotifyProgressBindings();
-            ApplyStatus($"Cancelling {item.Role} model operation…");
-        }
-    }
-
-    [RelayCommand]
-    private void OpenSummaryProviderSettings()
-    {
-        PersistDraft();
-        if (App.Window is MainWindow mainWindow)
-        {
-            mainWindow.ShowDashboard("settings");
-            ApplyStatus("Settings is open for summary-provider keys. Return here to continue setup. Keys can only be added in Settings.");
-        }
-        else
-        {
-            ApplyStatus("Open Settings to configure summary-provider keys. Setup stays on this step.");
-        }
-    }
+    public void CancelHotkeyRecording() => IsRecordingHotkey = false;
 
     /// <summary>
-    /// Saves the chosen anchor. It does not open a mock indicator: the real
-    /// indicator is driven by dictation state and by the "Show floating
-    /// indicator" setting, and setup must not stage a window that is not the live one.
+    /// Windows asks for microphone access the first time an app records, so "Grant Permission"
+    /// records a short, discarded sample. If access is off, the button opens Windows Settings.
     /// </summary>
-    /// <remarks>
-    /// The button used to read "Preview floating indicator" while the status it produced said no
-    /// preview exists — the control promised something the command deliberately refuses to fake.
-    /// The label now states what actually happens (P8-05's status-language class).
-    /// </remarks>
     [RelayCommand]
-    private void PreviewIndicator()
+    private async Task GrantMicrophoneAsync()
     {
-        PersistDraft();
-        ApplyStatus($"Indicator position saved as {SelectedIndicatorPosition}. Turn on “Show floating indicator” above to see the real indicator; it also appears while you dictate.");
+        if (IsGrantingMicrophone && !MicrophoneGranted)
+        {
+            OpenMicrophoneSettings();
+            return;
+        }
+        IsGrantingMicrophone = true;
+        await CheckMicrophoneAsync();
     }
 
     [RelayCommand]
-    private void ResetIndicatorPosition()
+    private void OpenMicrophoneSettings()
     {
-        SelectedIndicatorPosition = "Middle Right";
-        _draft = _draft with { IndicatorAnchor = "Middle Right", IndicatorLeft = null, IndicatorTop = null };
-        _settings.Save(_draft);
-        ApplyStatus("Custom indicator position cleared. Anchor is Middle Right.");
+        IsGrantingMicrophone = true;
+        try { Process.Start(new ProcessStartInfo("ms-settings:privacy-microphone") { UseShellExecute = true }); }
+        catch (Exception exception) { MicrophoneError = exception.Message; }
+        NotifyPermission();
     }
 
+    /// <summary>macOS polls permissions; Windows re-checks when the user comes back to setup.</summary>
     public void NotifyActivated()
     {
-        if (Step == 1)
-        {
-            ApplyStatus("Microphone permissions may have changed; run the non-retained capture test to refresh this gate.");
-        }
+        if (Step == OnboardingFlow.Permissions && IsGrantingMicrophone && !MicrophoneGranted && !IsCheckingMicrophone)
+            _ = CheckMicrophoneAsync();
     }
 
-    public event EventHandler<bool>? Completed;
+    [RelayCommand]
+    private async Task SignInWithChatGptAsync()
+    {
+        IsSigningIn = true;
+        SignInError = "";
+        NotifySummary();
+        await _computerUse.SignInToChatGptAsync();
+        ChatGptSignedIn = _computerUse.ChatGpt.IsSignedIn;
+        if (!ChatGptSignedIn) SignInError = "ChatGPT sign-in did not finish. Try again.";
+        IsSigningIn = false;
+        NotifySummary();
+    }
+
+    [RelayCommand]
+    private void ChooseSummaryBackend(string backend)
+    {
+        SummaryBackend = backend;
+        ApiKey = "";
+        NotifySummary();
+    }
+
+    [RelayCommand]
+    private void RetryDownload()
+    {
+        DownloadError = "";
+        StartDownload();
+    }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        CancelActiveOperations();
-        _models.ModelChanged -= OnOfflineModelChanged;
-        _liveLifecycle.ModelChanged -= OnLiveModelChanged;
-        _liveLifecycle.Dispose();
-        _pipelineCancellation?.Dispose();
+        _models.ModelChanged -= OnModelChanged;
+        _dictation.Changed -= OnDictationChanged;
+        StopTest();
     }
 
-    partial void OnSelectedMicrophoneChanged(string? value)
+    private void Next()
     {
-        if (_isRendering) return;
-        ApplySelectionChange(_draft with { MicrophoneName = NormalizeMicrophone(value) });
+        var steps = OnboardingFlow.OrderedSteps(UseCase);
+        var index = steps.IndexOf(Step);
+        if (index >= 0 && index < steps.Count - 1) GoTo(steps[index + 1]);
     }
 
-    partial void OnSelectedDictationModelChanged(TranscriptionModelDefinition? value)
+    private void GoTo(int step)
     {
-        if (_isRendering || value is null) return;
-        ApplySelectionChange(_draft with { DictationModelId = value.Id });
+        StopTest();
+        IsRecordingHotkey = false;
+        Step = step;
+        _progress = _progress with { Step = step, Deferred = false };
+        _progressStore.Save(_progress);
+        EnterStep();
     }
 
-    partial void OnSelectedMeetingModelChanged(TranscriptionModelDefinition? value)
+    private void EnterStep()
     {
-        if (_isRendering || value is null) return;
-        ApplySelectionChange(_draft with { FinalMeetingModelId = value.Id });
-    }
-
-    partial void OnSelectedLiveModelChanged(OnboardingLiveChoice value)
-    {
-        if (_isRendering) return;
-        ApplySelectionChange(_draft with { LiveMeetingModelId = value.Id });
-    }
-
-    partial void OnSelectedHotkeyChanged(string value)
-    {
-        if (_isRendering || string.IsNullOrWhiteSpace(value)) return;
-        ApplySelectionChange(_draft with { Hotkey = value });
-    }
-
-    partial void OnSelectedSummaryProviderChanged(SummaryProviderInfo? value)
-    {
-        if (_isRendering || value is null) return;
-        _draft = _draft with { MeetingSummaryProvider = value.Id };
-        _settings.Save(_draft);
-        OnPropertyChanged(nameof(SummaryDisclosure));
-        RefreshCloudKeyStatus();
-    }
-
-    partial void OnSelectedIndicatorPositionChanged(string value)
-    {
-        if (_isRendering || string.IsNullOrWhiteSpace(value)) return;
-        _draft = _draft with { IndicatorAnchor = value };
-        _settings.Save(_draft);
-    }
-
-    partial void OnStartAtLoginChanged(bool value)
-    {
-        if (_isRendering) return;
-        _draft = _draft with { StartAtLogin = value };
-        _settings.Save(_draft);
-    }
-
-    partial void OnShowIndicatorChanged(bool value)
-    {
-        if (_isRendering) return;
-        _draft = _draft with { ShowFloatingIndicator = value };
-        _settings.Save(_draft);
-    }
-
-    partial void OnUserNameChanged(string value)
-    {
-        if (_isRendering) return;
-        _draft = _draft with { UserName = value.Trim() };
-        _settings.Save(_draft);
-    }
-
-    private void ApplyDraftToFields()
-    {
-        _isRendering = true;
-        try
+        if (Step == OnboardingFlow.Permissions) _ = PreflightMicrophoneAsync();
+        if (Step == OnboardingFlow.DictationTest)
         {
-            UserName = _draft.UserName;
-            SelectedMicrophone = string.IsNullOrWhiteSpace(_draft.MicrophoneName)
-                ? AudioCaptureService.SystemDefaultMicrophone
-                : _draft.MicrophoneName;
-            if (!Microphones.Contains(SelectedMicrophone, StringComparer.OrdinalIgnoreCase))
-            {
-                Microphones = Microphones.Append(SelectedMicrophone).ToList();
-            }
-            SelectedDictationModel = TranscriptionModelCatalog.Get(_draft.DictationModelId);
-            SelectedMeetingModel = TranscriptionModelCatalog.Get(_draft.FinalMeetingModelId);
-            SelectedLiveModel = LiveModels.FirstOrDefault(choice => string.Equals(choice.Id, _draft.LiveMeetingModelId, StringComparison.OrdinalIgnoreCase))
-                ?? OnboardingLiveChoice.Off;
-            SelectedHotkey = string.IsNullOrWhiteSpace(_draft.Hotkey) ? "F8" : _draft.Hotkey;
-            SelectedSummaryProvider = SummaryProviderDisclosure.For(_draft.MeetingSummaryProvider);
-            SelectedIndicatorPosition = IndicatorPositions.Contains(_draft.IndicatorAnchor) ? _draft.IndicatorAnchor : "Middle Right";
-            StartAtLogin = _draft.StartAtLogin;
-            ShowIndicator = _draft.ShowFloatingIndicator;
-            RefreshCloudKeyStatus();
+            if (!SelectedModelIsReady && _downloadingModelId is null) StartDownload();
+            StartTestIfReady();
         }
-        finally { _isRendering = false; }
+        if (Step == OnboardingFlow.MeetingSummary) ChatGptSignedIn = _computerUse.ChatGpt.IsSignedIn;
+        foreach (var property in new[]
+                 {
+                     nameof(ShowWelcome), nameof(ShowModel), nameof(ShowHotkey), nameof(ShowPermissions),
+                     nameof(ShowDictationTest), nameof(ShowMeetingSummary), nameof(Dots), nameof(CanGoBack)
+                 })
+            OnPropertyChanged(property);
+        NotifyPrimary();
+        NotifyTest();
+        NotifySummary();
     }
 
-    private void PersistDraft()
+    private async Task FinishAsync()
     {
-        _draft = _draft with
+        if (_finished) return;
+        _finished = true;
+        StopTest();
+        _progress = _progress with { Completed = true, Deferred = false, LastStatus = "" };
+        _progressStore.Save(_progress);
+        Save(settings => settings with
         {
-            UserName = UserName.Trim(),
-            MicrophoneName = NormalizeMicrophone(SelectedMicrophone),
-            DictationModelId = SelectedDictationModel?.Id ?? _draft.DictationModelId,
-            FinalMeetingModelId = SelectedMeetingModel?.Id ?? _draft.FinalMeetingModelId,
-            LiveMeetingModelId = SelectedLiveModel.Id,
-            Hotkey = SelectedHotkey,
-            StartAtLogin = StartAtLogin,
-            ShowFloatingIndicator = ShowIndicator,
-            IndicatorAnchor = SelectedIndicatorPosition,
-            MeetingSummaryProvider = SelectedSummaryProvider?.Id ?? _draft.MeetingSummaryProvider
-        };
-        _settings.Save(_draft);
+            OnboardingCompleted = true,
+            OnboardingUseCase = OnboardingFlow.Format(UseCase),
+            UserName = UserName.Trim()
+        });
+        _dictation.PrepareMicrophone();
+        await Task.CompletedTask;
+        Completed?.Invoke(this, true);
     }
 
-    private void PersistProgress() => _progressStore.Save(_progress);
-
-    private void Render()
+    private void SelectModel(string id)
     {
-        Step = _progress.Step;
-        var definition = OnboardingStepCatalog.Get(Step);
-        StepLabel = $"SETUP · {Step + 1} OF {StepCount}";
-        Title = definition.Title;
-        Description = definition.Description;
-        Status = _progress.LastStatus;
-        StatusIsError = LooksLikeError(Status);
-        CanGoBack = Step > 0;
-        CanGoNext = Step < OnboardingProgress.LastStep;
-        CanFinish = Step == OnboardingProgress.LastStep;
-        StepNavItems = OnboardingStepCatalog.Steps
-            .Select(step => new OnboardingStepNavItem(
-                step.Step,
-                $"{step.Step + 1}",
-                step.Title,
-                step.Step == Step,
-                step.Step < Step))
-            .ToList();
-        RefreshPermissionsFromProgress();
-        RefreshModelRoles();
-        RefreshCloudKeyStatus();
-        OnPropertyChanged(nameof(ShowName));
-        OnPropertyChanged(nameof(ShowMicrophone));
-        OnPropertyChanged(nameof(ShowModels));
-        OnPropertyChanged(nameof(ShowHotkey));
-        OnPropertyChanged(nameof(ShowPipeline));
-        OnPropertyChanged(nameof(ShowOptional));
-        OnPropertyChanged(nameof(ShowReady));
-        OnPropertyChanged(nameof(ShowStatus));
-        OnPropertyChanged(nameof(ShowStartupNotice));
-        OnPropertyChanged(nameof(ProgressValue));
-        OnPropertyChanged(nameof(PipelineActionLabel));
-        OnPropertyChanged(nameof(SummaryDisclosure));
-        NotifyReadyBindings();
+        foreach (var card in ModelCards) card.IsSelected = card.Model.Id.Equals(id, StringComparison.OrdinalIgnoreCase);
+        SelectedModel = ModelCards.FirstOrDefault(card => card.IsSelected) ?? ModelCards[0];
+        SelectedModel.IsSelected = true;
+        DownloadError = "";
+        RefreshModelReady();
+        NotifyPrimary();
     }
 
-    private void NotifyReadyBindings()
-    {
-        OnPropertyChanged(nameof(MicrophoneReady));
-        OnPropertyChanged(nameof(ModelsReady));
-        OnPropertyChanged(nameof(HotkeyReady));
-        OnPropertyChanged(nameof(PipelineReady));
-        OnPropertyChanged(nameof(MicrophoneGateLabel));
-        OnPropertyChanged(nameof(ModelsGateLabel));
-        OnPropertyChanged(nameof(HotkeyGateLabel));
-        OnPropertyChanged(nameof(PipelineGateLabel));
-        OnPropertyChanged(nameof(PipelineMicrophoneLabel));
-        OnPropertyChanged(nameof(PipelineModelLabel));
-    }
+    private bool SelectedModelIsReady =>
+        SelectedModel is { } card &&
+        _models.Snapshots().FirstOrDefault(snapshot => snapshot.Model.Id.Equals(card.Model.Id, StringComparison.OrdinalIgnoreCase)) is { } snapshot &&
+        snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
 
-    private void ApplySelectionChange(MuesliSettings draft)
+    /// <summary>macOS startDownload: select the model for dictation (and meetings), then download in the background.</summary>
+    private void StartDownload()
     {
-        var before = ToSelection(_draft);
-        var after = ToSelection(draft);
-        if (before == after) return;
-        _draft = draft;
-        _settings.Save(_draft);
-        _progress = OnboardingProgressReconciler.InvalidateForSelectionChange(_progress, before, after);
-        PersistProgress();
-        RefreshModelRoles();
-        ApplyStatus(_progress.LastStatus);
-        NotifyReadyBindings();
-    }
-
-    private static OnboardingSelection ToSelection(MuesliSettings draft) =>
-        new(draft.MicrophoneName, draft.DictationModelId, draft.FinalMeetingModelId, draft.LiveMeetingModelId, draft.Hotkey);
-
-    private void RefreshModelRoles()
-    {
-        var desired = SelectedModelRoles().ToList();
-        for (var index = _modelRoles.Count - 1; index >= 0; index--)
+        if (SelectedModel is not { } card) return;
+        var id = card.Model.Id;
+        Save(settings => settings with { DictationModelId = id, FinalMeetingModelId = id });
+        if (SelectedModelIsReady || _downloadingModelId is not null) return;
+        _downloadingModelId = id;
+        IsDownloading = true;
+        DownloadProgress = null;
+        DownloadStatus = "";
+        DownloadError = "";
+        NotifyDownload();
+        var progress = new Progress<ModelDownloadProgress>(value => App.UiDispatcher.TryEnqueue(() =>
         {
-            var existing = _modelRoles[index];
-            if (!desired.Any(role => role.Id.Equals(existing.Id, StringComparison.OrdinalIgnoreCase) && role.Live == existing.IsLive))
-            {
-                _modelRoles.RemoveAt(index);
-            }
-        }
-
-        foreach (var role in desired)
+            if (_downloadingModelId != id) return;
+            DownloadProgress = value.Percent is int percent ? percent / 100d : null;
+            DownloadStatus = value.DisplayText;
+            NotifyDownload();
+        }));
+        _ = Task.Run(async () =>
         {
-            var item = _modelRoles.FirstOrDefault(existing =>
-                existing.Id.Equals(role.Id, StringComparison.OrdinalIgnoreCase) && existing.IsLive == role.Live);
-            if (item is null)
-            {
-                item = new OnboardingModelRoleItem(role.Role, role.Id, role.Live);
-                _modelRoles.Add(item);
-            }
-
-            ApplySnapshot(item);
-        }
-
-        RefreshCurrentModelGate(announce: false);
-    }
-
-    private IEnumerable<(string Id, bool Live, string Role)> SelectedModelRoles()
-    {
-        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var dictationId = SelectedDictationModel?.Id ?? _draft.DictationModelId;
-        var meetingId = SelectedMeetingModel?.Id ?? _draft.FinalMeetingModelId;
-        var liveId = SelectedLiveModel?.Id;
-        if (ids.Add(dictationId)) yield return (dictationId, false, "Dictation");
-        if (ids.Add(meetingId)) yield return (meetingId, false, "Final meeting/import");
-        if (!string.IsNullOrWhiteSpace(liveId) && ids.Add($"live:{liveId}"))
-            yield return (liveId!, true, "Live preview");
-    }
-
-    private void ApplySnapshot(OnboardingModelRoleItem item)
-    {
-        if (item.IsLive)
-        {
-            var snapshot = _liveLifecycle.Snapshot(item.Id);
-            item.Heading = $"{item.Role}: {snapshot.Model.PickerLabel}";
-            item.StatusText = snapshot.StatusText;
-            item.IsBusy = snapshot.IsBusy || (_activeModelOperation?.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase) == true && _activeModelOperation?.Live == true);
-            item.IsReady = snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
-            item.CanPrepare = snapshot.CanPrepare && _activeModelOperation is null;
-            item.CanVerify = snapshot.CanVerify && _activeModelOperation is null;
-            item.CanRetry = snapshot.CanRetry && _activeModelOperation is null;
-            item.CanCancel = snapshot.CanCancel || (_activeModelOperation?.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase) == true && _activeModelOperation?.Live == true);
-            if (!item.IsBusy) item.ProgressPercent = null;
-        }
-        else
-        {
-            var snapshot = _models.Snapshots().First(entry => entry.Model.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase));
-            item.Heading = $"{item.Role}: {snapshot.Model.PickerLabel}";
-            item.StatusText = snapshot.StatusText;
-            item.IsBusy = snapshot.IsBusy || (_activeModelOperation?.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase) == true && _activeModelOperation?.Live == false);
-            item.IsReady = snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
-            item.CanPrepare = snapshot.CanPrepare && _activeModelOperation is null;
-            item.CanVerify = snapshot.CanVerify && _activeModelOperation is null;
-            item.CanRetry = snapshot.CanRetry && _activeModelOperation is null;
-            item.CanCancel = snapshot.CanCancel || (_activeModelOperation?.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase) == true && _activeModelOperation?.Live == false);
-            if (!item.IsBusy) item.ProgressPercent = null;
-        }
-
-        item.NotifyProgressBindings();
-    }
-
-    private void RefreshCurrentModelGate(bool announce)
-    {
-        var roles = SelectedModelRoles().ToList();
-        var ready = roles.Count > 0 && roles.All(role => role.Live ? LiveReady(role.Id) : OfflineReady(role.Id));
-        _progress = _progress with
-        {
-            ModelsVerified = ready,
-            VerifiedDictationModelId = ready ? SelectedDictationModel?.Id ?? "" : "",
-            VerifiedFinalModelId = ready ? SelectedMeetingModel?.Id ?? "" : "",
-            VerifiedLiveModelId = ready ? SelectedLiveModel?.Id : null,
-            LastStatus = announce
-                ? ready
-                    ? "Selected model roles verified"
-                    : "A selected model role is not ready. Prepare, verify, or retry it."
-                : _progress.LastStatus
-        };
-        PersistProgress();
-        NotifyReadyBindings();
-    }
-
-    private bool OfflineReady(string id)
-    {
-        var snapshot = _models.Snapshots().FirstOrDefault(entry => entry.Model.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-        return snapshot is not null && snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
-    }
-
-    private bool LiveReady(string id)
-    {
-        var snapshot = _liveLifecycle.Snapshot(id);
-        return snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
-    }
-
-    private async Task RunModelOperationAsync(
-        OnboardingModelRoleItem? item,
-        string action,
-        Func<OnboardingModelRoleItem, IProgress<ModelDownloadProgress>, CancellationToken, Task> operation)
-    {
-        if (item is null) return;
-        if (_activeModelOperation is not null)
-        {
-            ApplyStatus("Another model operation is already in progress. Cancel it or wait for it to finish.", isError: true);
-            return;
-        }
-
-        PersistDraft();
-        _activeModelOperation = (item.Id, item.IsLive);
-        IsBusy = true;
-        item.IsBusy = true;
-        item.CanPrepare = item.CanVerify = item.CanRetry = false;
-        item.CanCancel = true;
-        item.NotifyProgressBindings();
-        RefreshModelRoles();
-        var progress = new Progress<ModelDownloadProgress>(value =>
-        {
+            string error = "";
+            try { await _models.PrepareAsync(id, progress, CancellationToken.None); }
+            catch (Exception exception) { error = exception.Message; }
             App.UiDispatcher.TryEnqueue(() =>
             {
-                item.StatusText = value.DisplayText;
-                item.ProgressPercent = value.Percent;
-                item.IsBusy = true;
-                item.NotifyProgressBindings();
-                ApplyStatus($"{item.Role}: {value.DisplayText}");
+                _downloadingModelId = null;
+                IsDownloading = false;
+                DownloadError = error;
+                RefreshModelReady();
+                NotifyDownload();
+                StartTestIfReady();
             });
         });
+    }
+
+    private void RefreshModelReady()
+    {
+        IsModelReady = SelectedModelIsReady;
+        NotifyTest();
+    }
+
+    private void ApplyHotkey()
+    {
+        Save(settings => settings with { Hotkey = Hotkey });
+        _dictation.RegisterHotkey();
+    }
+
+    private void SaveSummaryChoice()
+    {
+        var backend = SummaryBackend;
+        Save(settings => settings with { MeetingSummaryProvider = backend });
+        var key = ApiKey.Trim();
+        if (key.Length == 0) return;
+        var current = _settings.Load();
         try
         {
-            await operation(item, progress, CancellationToken.None);
-            RefreshCurrentModelGate(announce: true);
-            ApplySnapshot(item);
-            ApplyStatus(item.StatusText, isError: !item.IsReady);
-        }
-        catch (OperationCanceledException)
-        {
-            item.StatusText = "Cancelled. You can retry safely.";
-            ApplyStatus(item.StatusText);
+            _settings.SaveProviderKeys(
+                backend == SummaryProviderDisclosure.OpenAI ? key : current.ResolvedOpenAIApiKey,
+                backend == SummaryProviderDisclosure.OpenRouter ? key : current.ResolvedOpenRouterApiKey);
         }
         catch (Exception exception)
         {
-            item.StatusText = exception.Message;
-            ApplyStatus(exception.Message, isError: true);
+            SignInError = exception.Message;
+        }
+    }
+
+    private async Task PreflightMicrophoneAsync()
+    {
+        // A grant from an earlier run shows straight away, as macOS reads the current status.
+        if (MicrophoneGranted || !_settings.Load().OnboardingCompleted && !IsGrantingMicrophone) return;
+        await CheckMicrophoneAsync();
+    }
+
+    private async Task CheckMicrophoneAsync()
+    {
+        IsCheckingMicrophone = true;
+        MicrophoneError = "";
+        NotifyPermission();
+        var generation = ++_permissionGeneration;
+        try
+        {
+            var current = _settings.Load();
+            var probe = await _microphone.ProbeAsync(current.MicrophoneName);
+            if (generation != _permissionGeneration) return;
+            if (probe.IsUsable)
+            {
+                MicrophoneGranted = true;
+                IsConfirmingGrant = true;
+                NotifyPermission();
+                await Task.Delay(900);
+                IsConfirmingGrant = false;
+                NotifyPermission();
+                if (Step == OnboardingFlow.Permissions && generation == _permissionGeneration)
+                {
+                    if (IsLastStep) await FinishAsync();
+                    else Next();
+                }
+                return;
+            }
+            MicrophoneError = probe.Failure == MicrophoneProbeFailure.Denied
+                ? "Microphone access is off for Muesli. Turn it on in Windows Settings, then come back."
+                : string.IsNullOrWhiteSpace(probe.Message) ? "Muesli could not record from the microphone." : probe.Message;
+        }
+        catch (Exception exception)
+        {
+            MicrophoneError = exception.Message;
         }
         finally
         {
-            _activeModelOperation = null;
-            IsBusy = false;
-            RefreshModelRoles();
-            PersistProgress();
+            IsCheckingMicrophone = false;
+            NotifyPermission();
         }
     }
 
-    private void RefreshPermissionsFromProgress()
+    private void StartTestIfReady()
     {
-        RefreshPermissions(
-            microphoneChecked: _progress.MicrophoneVerified,
-            microphoneGranted: _progress.MicrophoneVerified,
-            _progress.MicrophoneVerified ? "Capture verified" : "Not checked yet",
-            string.IsNullOrWhiteSpace(MicrophonePolicyHint)
-                ? "A short non-retained WASAPI capture is the real microphone check."
-                : MicrophonePolicyHint);
-    }
-
-    private void RefreshPermissions(bool microphoneChecked, bool microphoneGranted, string microphoneStatus, string microphoneHelp)
-    {
-        var rows = WindowsPermissionStatus.Build(microphoneChecked, microphoneGranted, microphoneStatus, microphoneHelp);
-        Permissions = rows.Select((row, index) => new OnboardingPermissionItem(
-            row.Name,
-            row.Status,
-            row.Granted,
-            row.Help,
-            CanOpenSettings: string.Equals(row.Name, "Microphone", StringComparison.OrdinalIgnoreCase),
-            IsLast: index == rows.Count - 1)).ToList();
-    }
-
-    private void RefreshCloudKeyStatus()
-    {
-        var current = _settings.Load();
-        var openAi = string.IsNullOrWhiteSpace(current.ResolvedOpenAIApiKey) ? "not configured" : "configured securely";
-        var openRouter = string.IsNullOrWhiteSpace(current.ResolvedOpenRouterApiKey) ? "not configured" : "configured securely";
-        CloudKeyStatus = $"OpenAI key: {openAi}. OpenRouter key: {openRouter}. Keys can only be added in Settings.";
-    }
-
-    private async Task RefreshStartupAvailabilityAsync()
-    {
-        try
+        if (Step != OnboardingFlow.DictationTest || !IsModelReady || _testing) return;
+        _testing = true;
+        _dictation.BeginShortcutTest((text, error) =>
         {
-            StartAtLogin = await _startup.IsEnabledAsync();
-            IsStartupAvailable = true;
-            StartupAvailabilityNotice = "";
-        }
-        catch (Exception exception)
-        {
-            IsStartupAvailable = false;
-            StartAtLogin = false;
-            StartupAvailabilityNotice =
-                "Launch at sign-in is unavailable: this build is running without package identity, " +
-                $"so the Windows startup task cannot be read ({exception.GetType().Name}). " +
-                "Install the packaged build to manage it here.";
-        }
-        OnPropertyChanged(nameof(ShowStartupNotice));
+            IsTestTranscribing = false;
+            if (error is not null) TestError = error;
+            else if (text.Length == 0) TestError = "No speech detected. Try again.";
+            else
+            {
+                TestError = "";
+                TestResult = text;
+                // macOS moves on to meeting summaries by itself after a successful test.
+                if (MeetingsSelected)
+                {
+                    var heard = text;
+                    _ = Task.Delay(900).ContinueWith(_ => App.UiDispatcher.TryEnqueue(() =>
+                    {
+                        if (Step == OnboardingFlow.DictationTest && TestResult == heard) Next();
+                    }));
+                }
+            }
+            NotifyTest();
+            NotifyPrimary();
+            OnPropertyChanged(nameof(CanGoBack));
+        });
     }
 
-    private void ApplyStatus(string message, bool isError = false)
+    private void StopTest()
     {
-        Status = message;
-        StatusIsError = isError || LooksLikeError(message);
-        OnPropertyChanged(nameof(ShowStatus));
+        if (!_testing) return;
+        _testing = false;
+        _dictation.EndShortcutTest();
+        IsTestRecording = false;
+        IsTestTranscribing = false;
     }
 
-    private static bool LooksLikeError(string? message)
+    private void OnDictationChanged(object? sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(message)) return false;
-        return message.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("error", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("denied", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("not ready", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("in use", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("could not", StringComparison.OrdinalIgnoreCase);
+        if (!_testing) return;
+        var wasRecording = IsTestRecording;
+        IsTestRecording = _dictation.IsRecording;
+        if (wasRecording && !IsTestRecording) IsTestTranscribing = true;
+        if (IsTestRecording) TestError = "";
+        NotifyTest();
     }
 
-    private string? ProbeMicrophoneName()
+    private void OnModelChanged(object? sender, string modelId) => App.UiDispatcher.TryEnqueue(() =>
     {
-        var selected = SelectedMicrophone;
-        if (string.IsNullOrWhiteSpace(selected) ||
-            selected.Equals("Automatic", StringComparison.OrdinalIgnoreCase) ||
-            selected.Equals(AudioCaptureService.SystemDefaultMicrophone, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
+        RefreshModelReady();
+        NotifyPrimary();
+        StartTestIfReady();
+    });
 
-        return selected;
-    }
+    private void Save(Func<MuesliSettings, MuesliSettings> change) => _settings.Save(change(_settings.Load()));
 
-    private static string? NormalizeMicrophone(string? name)
+    private void NotifyPrimary()
     {
-        if (string.IsNullOrWhiteSpace(name) ||
-            name.Equals("Automatic", StringComparison.OrdinalIgnoreCase) ||
-            name.Equals(AudioCaptureService.SystemDefaultMicrophone, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        return name;
+        OnPropertyChanged(nameof(PrimaryLabel));
+        OnPropertyChanged(nameof(PrimaryEnabled));
+        OnPropertyChanged(nameof(ShowSkip));
     }
 
-    private IReadOnlyList<string> EnsureHotkeyPreset(string hotkey)
+    private void NotifyDownload()
     {
-        var list = HotkeyPresets.ToList();
-        if (!string.IsNullOrWhiteSpace(hotkey) &&
-            !list.Any(option => option.Equals(hotkey, StringComparison.OrdinalIgnoreCase)))
-        {
-            list.Add(hotkey);
-        }
-
-        return list;
+        foreach (var property in new[]
+                 {
+                     nameof(ShowDownloadIndicator), nameof(DownloadIndicatorTitle), nameof(DownloadIndicatorDetail),
+                     nameof(DownloadPercent), nameof(IsDownloadIndeterminate), nameof(TestPreparingStatus)
+                 })
+            OnPropertyChanged(property);
     }
 
-    private void CancelActiveOperations()
+    private void NotifyPermission()
     {
-        if (_activeModelOperation is { } active)
-        {
-            if (active.Live) _liveLifecycle.Cancel(active.Id);
-            else _models.Cancel(active.Id);
-            _activeModelOperation = null;
-        }
-
-        if (IsPipelineRunning)
-        {
-            _pipelineCancellation?.Cancel();
-        }
+        foreach (var property in new[]
+                 {
+                     nameof(PermissionButtonLabel), nameof(PermissionButtonEnabled), nameof(ShowMicrophoneRequest),
+                     nameof(ShowAllGranted)
+                 })
+            OnPropertyChanged(property);
+        NotifyPrimary();
     }
 
-    private void OnOfflineModelChanged(object? sender, string modelId) =>
-        App.UiDispatcher.TryEnqueue(RefreshModelRoles);
+    private void NotifyTest()
+    {
+        foreach (var property in new[]
+                 {
+                     nameof(TestTitle), nameof(ShowTestPreparing), nameof(ShowTestReady), nameof(TestSubtitle),
+                     nameof(TestPlaceholder), nameof(HasTestResult), nameof(ShowTestHint), nameof(TestHint),
+                     nameof(ListeningText), nameof(ShowListening), nameof(TestPreparingStatus)
+                 })
+            OnPropertyChanged(property);
+    }
 
-    private void OnLiveModelChanged(object? sender, string modelId) =>
-        App.UiDispatcher.TryEnqueue(RefreshModelRoles);
+    private void NotifySummary()
+    {
+        foreach (var property in new[]
+                 {
+                     nameof(ChatGptSelected), nameof(OpenAISelected), nameof(OpenRouterSelected), nameof(OllamaSelected),
+                     nameof(ShowKeyEntry), nameof(ShowChatGptSignIn), nameof(ShowChatGptSignedIn), nameof(ShowChatGptSigningIn),
+                     nameof(KeyPlaceholder), nameof(KeyCaption), nameof(KeyStatus), nameof(HasKey)
+                 })
+            OnPropertyChanged(property);
+    }
+
+    partial void OnHotkeyChanged(string value)
+    {
+        OnPropertyChanged(nameof(HotkeyLabel));
+        NotifyTest();
+    }
+
+    partial void OnIsRecordingHotkeyChanged(bool value) => OnPropertyChanged(nameof(HotkeyButtonLabel));
 }

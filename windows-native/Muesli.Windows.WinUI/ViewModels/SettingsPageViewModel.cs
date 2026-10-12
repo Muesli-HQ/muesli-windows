@@ -141,6 +141,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string DetectionStatus { get; private set; } = "";
     [NotifyPropertyChangedFor(nameof(ShowOllamaSettings))]
     [NotifyPropertyChangedFor(nameof(ShowOpenAISettings))]
+    [NotifyPropertyChangedFor(nameof(ShowChatGptSettings))]
     [NotifyPropertyChangedFor(nameof(ShowOpenRouterSettings))]
     [NotifyPropertyChangedFor(nameof(ShowLmStudioSettings))]
     [NotifyPropertyChangedFor(nameof(ShowCustomHttpSettings))]
@@ -167,6 +168,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public IReadOnlyList<SummaryProviderInfo> SummaryProviders { get; } = SummaryProviderDisclosure.Available;
 
     public bool ShowOllamaSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.Ollama;
+    public bool ShowChatGptSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.ChatGpt;
     public bool ShowOpenAISettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenAI;
     public bool ShowOpenRouterSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenRouter;
     public bool ShowLmStudioSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.LmStudio;
@@ -177,8 +179,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             OllamaEndpoint,
             LmStudioEndpoint,
             CustomLlmEndpoint);
-    public string ChatGptSubscriptionNotice { get; } =
-        "ChatGPT subscription sign-in is not available on Windows. Cloud providers in the list above send transcript text to the selected destination.";
 
     // P5-04: the "Sync" tab held nothing but an unavailable-on-Windows notice. Its single honest
     // statement now sits in the General tab's DATA section, next to the permission row that already
@@ -248,7 +248,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseEfforts),
         nameof(CaptureStatus), nameof(DetectionStatus), nameof(IsStartupAvailable),
         nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp),
-        nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings),
+        nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings), nameof(ShowChatGptSettings),
         nameof(ShowOpenRouterSettings), nameof(ShowGeneral), nameof(ShowDictation),
         nameof(ShowComputerUse), nameof(ShowMeetings), nameof(ShowAppearance)
     ];

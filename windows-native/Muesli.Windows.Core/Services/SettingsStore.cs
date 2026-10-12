@@ -219,6 +219,7 @@ public sealed class SettingsStore
             ComputerUseReasoningEffort = settings.ComputerUseReasoningEffort?.Trim().ToLowerInvariant() ?? "",
             ComputerUseTimeoutSeconds = Math.Clamp(settings.ComputerUseTimeoutSeconds, 1, 600),
             ComputerUseHotkey = DefaultIfBlank(settings.ComputerUseHotkey, ComputerUseConfiguration.DefaultHotkey).Trim(),
+            OnboardingUseCase = OnboardingFlow.Format(OnboardingFlow.Parse(settings.OnboardingUseCase)),
             ComputerUsePlannerTimeoutSeconds = Math.Clamp(settings.ComputerUsePlannerTimeoutSeconds, 5, 120),
             ComputerUsePerActionTimeoutSeconds = Math.Clamp(settings.ComputerUsePerActionTimeoutSeconds, 1, 30),
             ComputerUseMaximumActionCount = Math.Clamp(settings.ComputerUseMaximumActionCount, 1, 20),
@@ -466,6 +467,12 @@ public sealed record MuesliSettings
     public string? LegacyDictationModelProfileForMigration { get; init; }
     public bool OnboardingCompleted { get; init; }
     public int LastCompletedFeatureTourVersion { get; init; }
+    /// <summary>macOS onboarding_use_case: what setup was answered with (see <see cref="OnboardingFlow"/>).</summary>
+    public string OnboardingUseCase { get; init; } = OnboardingFlow.DefaultUseCase;
+    /// <summary>macOS featureTour.lastLaunchedVersion: the app version that last ran.</summary>
+    public string? FeatureTourLastLaunchedVersion { get; init; }
+    /// <summary>macOS featureTour.lastPresentedVersion: the newest What's New tour already offered.</summary>
+    public string? FeatureTourLastPresentedVersion { get; init; }
     public bool EnableDoubleTapDictation { get; init; }
     public int HotkeyTriggerThresholdMs { get; init; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
     public string RecordingColorHex { get; init; } = "1e1e2e";
