@@ -55,6 +55,7 @@ public partial class App : Application
     public static WinUiDictionarySuggestionService DictionarySuggestions { get; private set; } = null!;
 
     public static WinUiComputerUseContext ComputerUse { get; private set; } = null!;
+    public static WinUiQuillContext Quill { get; private set; } = null!;
 
     public static WinUiMeetingDetectionService MeetingDetection { get; private set; } = null!;
 
@@ -192,6 +193,7 @@ public partial class App : Application
         Dictation = new WinUiDictationContext(Library, Settings, UiDispatcher);
         DictionarySuggestions = new WinUiDictionarySuggestionService(Library, Settings, UiDispatcher, Dictation);
         ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation, UiDispatcher);
+        Quill = new WinUiQuillContext(Settings, Dictation, ComputerUse, UiDispatcher);
         // macOS: ChatGPT meeting summaries use the same sign-in as Computer Use.
         MeetingSummaryService.ChatGptCredentials = token => ComputerUse.ChatGpt.GetAccessTokenAsync(token);
         ComputerUse.ConfirmActionAsync = ConfirmComputerUseActionAsync;
@@ -199,6 +201,7 @@ public partial class App : Application
         ComputerUse.CaptureStarted = () => ((MainWindow)Window).HideDashboard();
         ComputerUse.RegisterVoiceShortcut();
         RegisterMeetingShortcut();
+        Quill.RegisterShortcut();
         MeetingDetection = new WinUiMeetingDetectionService();
         _meetingNotifications = new WinUiMeetingNotificationService(
             UiDispatcher,
@@ -210,7 +213,7 @@ public partial class App : Application
         Clipboard = new WinUiClipboardService();
         FilePickers = new WinUiFilePickerService(() => WindowHandle);
         Share = new WinUiShareService(() => WindowHandle);
-        IndicatorHost = new WinUiIndicatorHost(Dictation, Meetings, ComputerUse, UiDispatcher);
+        IndicatorHost = new WinUiIndicatorHost(Dictation, Meetings, ComputerUse, Quill, UiDispatcher);
         IndicatorHost.Start();
         _meetingNotifications.UseWpfHost(IndicatorHost);
         LiveTranscript = new MeetingLiveTranscriptWindow(Meetings, UiDispatcher, Clipboard);
@@ -314,6 +317,7 @@ public partial class App : Application
                 MeetingDetection.Dispose();
                 ComputerUse.Dispose();
                 MeetingHotkey.Dispose();
+                Quill.Dispose();
                 Meetings.Dispose();
                 DictionarySuggestions.Dispose();
                 Dictation.Dispose();

@@ -358,8 +358,21 @@ public static class MeetingSummaryService
         MuesliSettings settings,
         HttpClient httpClient,
         CancellationToken cancellationToken,
-        string? manualNotes)
+        string? manualNotes) =>
+        await CompleteWithChatGptAsync(EffectiveSystemPrompt(settings), SummaryUserPrompt(transcript, meetingTitle, manualNotes),
+            httpClient, cancellationToken);
+
+    /// <summary>
+    /// One instruction + user turn through the signed-in ChatGPT account (summaries and Quill).
+    /// Throws <see cref="SummaryProviderException"/> with a safe reason on any failure.
+    /// </summary>
+    public static async Task<string> CompleteWithChatGptAsync(
+        string instructions,
+        string userText,
+        HttpClient? httpClient,
+        CancellationToken cancellationToken)
     {
+        httpClient ??= Http;
         if (ChatGptCredentials is not { } credentials) throw new SummaryProviderException("not-signed-in");
         (string Token, string AccountId) signIn;
         try { signIn = await credentials(cancellationToken); }
@@ -370,10 +383,10 @@ public static class MeetingSummaryService
             model = Muesli.Windows.ComputerUse.ResponsesPlanner.DefaultModel,
             store = false,
             stream = true,
-            instructions = EffectiveSystemPrompt(settings),
+            instructions,
             input = new object[]
             {
-                new { role = "user", content = new object[] { new { type = "input_text", text = SummaryUserPrompt(transcript, meetingTitle, manualNotes) } } }
+                new { role = "user", content = new object[] { new { type = "input_text", text = userText } } }
             },
             reasoning = new { effort = "low" }
         };

@@ -12,7 +12,7 @@ public sealed partial class ShortcutsPage : Page
 {
     private bool _ready;
 
-    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey, App.ComputerUse.RegisterVoiceShortcut, App.RegisterMeetingShortcut);
+    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey, App.ComputerUse.RegisterVoiceShortcut, App.RegisterMeetingShortcut, App.Quill.RegisterShortcut);
 
     /// <summary>
     /// Re-installs the global push-to-talk hook from the saved gesture. Returns null when the hook
@@ -105,6 +105,21 @@ public sealed partial class ShortcutsPage : Page
         Frame?.Navigate(typeof(SettingsPage), "computer-use");
     }
 
+    private void Quill_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || QuillToggle.IsOn == ViewModel.QuillEnabled) return;
+        ViewModel.SetQuillEnabled(QuillToggle.IsOn);
+        // Refused (not signed in): put the switch back, since the OneWay binding saw no change.
+        QuillToggle.IsOn = ViewModel.QuillEnabled;
+    }
+
+    private void ChangeQuillShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.BeginCapture("quill");
+        ApplyCaptureChrome();
+        Focus(FocusState.Programmatic);
+    }
+
     private void MeetingShortcut_Toggled(object sender, RoutedEventArgs e)
     {
         if (!_ready || MeetingShortcutToggle.IsOn == ViewModel.MeetingShortcutEnabled) return;
@@ -128,7 +143,8 @@ public sealed partial class ShortcutsPage : Page
 
         e.Handled = true;
         var button = ViewModel.IsCapturingComputerUse ? ChangeComputerUseButton
-            : ViewModel.IsCapturingMeeting ? ChangeMeetingButton : ChangePushToTalkButton;
+            : ViewModel.IsCapturingMeeting ? ChangeMeetingButton
+            : ViewModel.IsCapturingQuill ? ChangeQuillButton : ChangePushToTalkButton;
         if (e.Key == VirtualKey.Escape)
         {
             ViewModel.CancelCapture();
@@ -155,7 +171,10 @@ public sealed partial class ShortcutsPage : Page
     {
         var computerUse = ViewModel.IsCapturingComputerUse;
         var meeting = ViewModel.IsCapturingMeeting;
-        var push = ViewModel.IsCapturing && !computerUse && !meeting;
+        var quill = ViewModel.IsCapturingQuill;
+        var push = ViewModel.IsCapturing && !computerUse && !meeting && !quill;
+        QuillKeycapWell.BorderBrush = ThemeBrush(quill ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        QuillKeycapWell.Background = ThemeBrush(quill ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
         MeetingKeycapWell.BorderBrush = ThemeBrush(meeting ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
         MeetingKeycapWell.Background = ThemeBrush(meeting ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
         PushKeycapWell.BorderBrush = ThemeBrush(push ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");

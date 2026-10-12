@@ -62,6 +62,18 @@ internal static class WindowsInputInterop
     private const int SwRestore = 9;
     private const int UnicodeTextBatchLength = 256;
 
+    /// <summary>Ctrl+C, for apps that expose no UI Automation text selection.</summary>
+    internal static bool SendCopy()
+    {
+        const ushort vkC = 0x43;
+        var inputs = new[]
+        {
+            KeyboardInput(VkControl, 0), KeyboardInput(vkC, 0),
+            KeyboardInput(vkC, KeyeventfKeyup), KeyboardInput(VkControl, KeyeventfKeyup)
+        };
+        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>()) == inputs.Length;
+    }
+
     internal static bool SendPaste(string? shortcut)
     {
         var inputs = shortcut switch

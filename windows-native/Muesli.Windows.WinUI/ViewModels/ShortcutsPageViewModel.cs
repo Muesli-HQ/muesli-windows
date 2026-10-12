@@ -23,7 +23,8 @@ public partial class ShortcutsPageViewModel(
     WinUiSettingsContext settingsContext,
     Func<string?>? reapplyHotkey = null,
     Func<string?>? reapplyComputerUseHotkey = null,
-    Func<string?>? reapplyMeetingHotkey = null) : ObservableObject
+    Func<string?>? reapplyMeetingHotkey = null,
+    Func<string?>? reapplyQuillHotkey = null) : ObservableObject
 {
     private MuesliSettings _settings = new();
     private string _captureTarget = "push";
@@ -38,6 +39,10 @@ public partial class ShortcutsPageViewModel(
     [ObservableProperty] public partial bool MeetingShortcutEnabled { get; private set; }
     public bool IsCapturingComputerUse => IsCapturing && _captureTarget == "computer-use";
     public bool IsCapturingMeeting => IsCapturing && _captureTarget == "meeting";
+    public bool IsCapturingQuill => IsCapturing && _captureTarget == "quill";
+    [ObservableProperty] public partial IReadOnlyList<string> QuillHotkeyParts { get; private set; } = SplitHotkey(new MuesliSettings().QuillHotkey);
+    [ObservableProperty] public partial string QuillCapturePrompt { get; private set; } = "Change…";
+    [ObservableProperty] public partial bool QuillEnabled { get; private set; }
     [ObservableProperty] public partial bool IsCapturing { get; private set; }
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
     [ObservableProperty] public partial bool IsStatusOpen { get; set; }
@@ -91,8 +96,9 @@ public partial class ShortcutsPageViewModel(
     /// P5-02. No Windows global shortcut exists for Quill; say that in Windows terms rather than
     /// describing it as "this macOS command".
     /// </summary>
-    public string QuillUnavailableReason =>
-        "Not available on Windows yet.";
+    public string QuillState => !App.ComputerUse.ChatGpt.IsSignedIn
+        ? "Sign in to ChatGPT in Settings first. Quill rewrites with your ChatGPT account."
+        : QuillEnabled ? "Hold, speak, release. Your instruction is transcribed on this PC." : "Turn it on to use the shortcut.";
 
     public void Load()
     {
@@ -104,6 +110,9 @@ public partial class ShortcutsPageViewModel(
         HoldThresholdMs = _settings.HotkeyTriggerThresholdMs;
         PushToTalkEnabled = _settings.PushToTalkEnabled;
         MeetingShortcutEnabled = _settings.MeetingRecordingShortcutEnabled;
+        QuillEnabled = _settings.QuillEnabled;
+        QuillHotkeyParts = SplitHotkey(HotkeyGestureParser.Parse(_settings.QuillHotkey).DisplayName);
+        OnPropertyChanged(nameof(QuillState));
         MeetingHotkeyParts = SplitHotkey(HotkeyGestureParser.Parse(_settings.MeetingRecordingHotkey).DisplayName);
         RefreshComputerUseConfiguration();
         RefreshDefaults();
@@ -118,6 +127,25 @@ public partial class ShortcutsPageViewModel(
         var failure = reapplyHotkey?.Invoke();
         if (!enabled) ShowStatus("Push to Talk is turned off.");
         else ShowStatus(failure is null ? $"Push to Talk is on: {Hotkey}." : $"Push to Talk could not start: {failure}", failure is not null);
+    }
+
+    /// <summary>Turns Quill on or off. It needs ChatGPT, so it stays off until the user signs in.</summary>
+    public void SetQuillEnabled(bool enabled)
+    {
+        if (enabled && !App.ComputerUse.ChatGpt.IsSignedIn)
+        {
+            QuillEnabled = false;
+            ShowStatus("Sign in to ChatGPT in Settings first. Quill rewrites with your ChatGPT account.", isError: true);
+            return;
+        }
+        _settings = _settings with { QuillEnabled = enabled };
+        settingsContext.Save(_settings);
+        QuillEnabled = enabled;
+        OnPropertyChanged(nameof(QuillState));
+        var failure = reapplyQuillHotkey?.Invoke();
+        var keys = HotkeyGestureParser.Parse(_settings.QuillHotkey).DisplayName;
+        if (!enabled) ShowStatus("Quill disabled.");
+        else ShowStatus(failure is null ? $"Quill is on. Highlight text, hold {keys} and say how to change it." : $"Quill could not start: {failure}", failure is not null);
     }
 
     /// <summary>Turns the meeting recording shortcut on or off; off removes its hook.</summary>
@@ -146,13 +174,16 @@ public partial class ShortcutsPageViewModel(
             ComputerUseEnabled = false,
             MeetingRecordingHotkey = new MuesliSettings().MeetingRecordingHotkey,
             MeetingRecordingShortcutEnabled = false,
+            QuillHotkey = new MuesliSettings().QuillHotkey,
+            QuillEnabled = false,
             HotkeyTriggerThresholdMs = HotkeyTriggerTiming.DefaultThresholdMilliseconds,
         };
         settingsContext.Save(_settings);
         Load();
         var dictationFailure = reapplyHotkey?.Invoke();
         var meetingFailure = reapplyMeetingHotkey?.Invoke();
-        var failure = reapplyComputerUseHotkey?.Invoke() ?? dictationFailure ?? meetingFailure;
+        var quillFailure = reapplyQuillHotkey?.Invoke();
+        var failure = reapplyComputerUseHotkey?.Invoke() ?? dictationFailure ?? meetingFailure ?? quillFailure;
         ShowStatus(failure is null ? "Shortcuts reset to defaults." : $"Shortcuts reset, but one is not listening yet: {failure}", failure is not null);
     }
 
@@ -211,6 +242,7 @@ public partial class ShortcutsPageViewModel(
         IsCapturing = true;
         if (target == "computer-use") ComputerUseCapturePrompt = "Press shortcut…";
         else if (target == "meeting") MeetingCapturePrompt = "Press shortcut…";
+        else if (target == "quill") QuillCapturePrompt = "Press shortcut…";
         else CapturePrompt = "Press shortcut…";
         IsStatusOpen = false;
     }
@@ -221,6 +253,7 @@ public partial class ShortcutsPageViewModel(
         CapturePrompt = "Change…";
         ComputerUseCapturePrompt = "Change…";
         MeetingCapturePrompt = "Change…";
+        QuillCapturePrompt = "Change…";
     }
 
     public void ApplyCapturedGesture(string gesture)
@@ -238,7 +271,8 @@ public partial class ShortcutsPageViewModel(
             {
                 ("push", "dictation", _settings.Hotkey),
                 ("computer-use", "Computer Use", _settings.ComputerUseHotkey),
-                ("meeting", "meeting recording", _settings.MeetingRecordingHotkey)
+                ("meeting", "meeting recording", _settings.MeetingRecordingHotkey),
+                ("quill", "Quill", _settings.QuillHotkey)
             })
             {
                 var other = HotkeyGestureParser.Parse(value).DisplayName;
@@ -248,6 +282,22 @@ public partial class ShortcutsPageViewModel(
             if (!HotkeyConflictProbe.IsAdvisoryRegistrationAvailable(parsed.DisplayName))
             {
                 throw new InvalidOperationException("Windows reports that this shortcut is already registered by another app.");
+            }
+
+            if (_captureTarget == "quill")
+            {
+                _settings = _settings with { QuillHotkey = parsed.DisplayName };
+                settingsContext.Save(_settings);
+                QuillHotkeyParts = SplitHotkey(parsed.DisplayName);
+                var quillFailure = _settings.QuillEnabled ? reapplyQuillHotkey?.Invoke() : null;
+                ShowStatus(
+                    !_settings.QuillEnabled
+                        ? $"Quill shortcut changed to {parsed.DisplayName}. Turn Quill on to use it."
+                        : quillFailure is null
+                            ? $"Quill shortcut changed to {parsed.DisplayName}."
+                            : $"{parsed.DisplayName} was saved, but it is not listening yet: {quillFailure}",
+                    isError: quillFailure is not null);
+                return;
             }
 
             if (meeting)
@@ -336,6 +386,8 @@ public partial class ShortcutsPageViewModel(
             && HotkeyGestureParser.Parse(_settings.ComputerUseHotkey).DisplayName == HotkeyGestureParser.Parse(ComputerUseConfiguration.DefaultHotkey).DisplayName
             && !_settings.ComputerUseEnabled
             && !_settings.MeetingRecordingShortcutEnabled
+            && !_settings.QuillEnabled
+            && HotkeyGestureParser.Parse(_settings.QuillHotkey).DisplayName == HotkeyGestureParser.Parse(new MuesliSettings().QuillHotkey).DisplayName
             && HotkeyGestureParser.Parse(_settings.MeetingRecordingHotkey).DisplayName == HotkeyGestureParser.Parse(new MuesliSettings().MeetingRecordingHotkey).DisplayName
             && _settings.HotkeyTriggerThresholdMs == HotkeyTriggerTiming.DefaultThresholdMilliseconds;
 

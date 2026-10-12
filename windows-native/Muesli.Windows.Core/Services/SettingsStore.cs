@@ -203,6 +203,7 @@ public sealed class SettingsStore
             PasteShortcut = settings.PasteShortcut is "ctrl-shift-v" or "shift-insert" ? settings.PasteShortcut : "ctrl-v",
             MeetingRecordingHotkey = DefaultIfBlank(settings.MeetingRecordingHotkey, "Ctrl+Alt+R").Trim(),
             MeetingRecordingFormat = settings.MeetingRecordingFormat == "m4a" ? "m4a" : "wav",
+            QuillHotkey = DefaultIfBlank(settings.QuillHotkey, "F9").Trim(),
             DictationModelId = NormalizePersistedModelId(settings.DictationModelId),
             FinalMeetingModelId = NormalizePersistedModelId(settings.FinalMeetingModelId),
             LiveTranscriptOwnership = NormalizeOwnership(settings.LiveTranscriptOwnership),
@@ -482,6 +483,9 @@ public sealed record MuesliSettings
     /// <summary>macOS meeting_shortcut: off by default, so no key is taken until the user opts in.</summary>
     public bool MeetingRecordingShortcutEnabled { get; init; }
     public string MeetingRecordingHotkey { get; init; } = "Ctrl+Alt+R";
+    /// <summary>macOS Quill: off by default; the rewrite needs a ChatGPT sign-in.</summary>
+    public bool QuillEnabled { get; init; }
+    public string QuillHotkey { get; init; } = "F9";
     public bool PauseMediaDuringDictation { get; init; }
     public bool MuteAudioDuringDictation { get; init; }
     /// <summary>Keys sent to paste dictated text: "ctrl-v", "ctrl-shift-v" or "shift-insert".</summary>

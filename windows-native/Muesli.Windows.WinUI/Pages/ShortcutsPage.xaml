@@ -168,22 +168,39 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Quill: no Windows runtime yet, so the card says so instead of offering a dead control. -->
+                <!-- Quill: hold to speak an editing instruction; ChatGPT rewrites the selection. -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Quill shortcut">
                     <StackPanel Spacing="16">
-                        <StackPanel Spacing="4">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE70F;" FontSize="15" Foreground="{ThemeResource MuesliAccentBrush}" AutomationProperties.AccessibilityView="Raw" />
-                                <TextBlock Text="Quill" Style="{StaticResource ShortcutTitleStyle}" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <StackPanel Spacing="4">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE70F;" FontSize="15" Foreground="{ThemeResource MuesliAccentBrush}" AutomationProperties.AccessibilityView="Raw" />
+                                    <TextBlock Text="Quill" Style="{StaticResource ShortcutTitleStyle}" />
+                                </StackPanel>
+                                <TextBlock Text="Highlight text, hold to speak an editing instruction, then release to replace" Style="{StaticResource ShortcutCaptionStyle}" />
                             </StackPanel>
-                            <TextBlock Text="Highlight text, hold to speak an editing instruction, then release to replace" Style="{StaticResource ShortcutCaptionStyle}" />
-                        </StackPanel>
+                            <ToggleSwitch x:Name="QuillToggle" Grid.Column="1"
+                                          Style="{StaticResource ShortcutToggleStyle}"
+                                          IsOn="{x:Bind ViewModel.QuillEnabled, Mode=OneWay}"
+                                          Toggled="Quill_Toggled"
+                                          AutomationProperties.Name="Quill enabled"
+                                          AutomationProperties.AutomationId="QuillToggle" />
+                        </Grid>
                         <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Opacity="0.7">
-                            <Border Style="{StaticResource ShortcutBadgeStyle}">
-                                <TextBlock Text="None" Style="{StaticResource ShortcutBadgeTextStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="12">
+                            <Border x:Name="QuillKeycapWell" Style="{StaticResource ShortcutBadgeStyle}"
+                                    AutomationProperties.Name="Current Quill shortcut"
+                                    AutomationProperties.LiveSetting="Polite">
+                                <TextBlock Text="{x:Bind local:ShortcutsPage.Keys(ViewModel.QuillHotkeyParts), Mode=OneWay}" Style="{StaticResource ShortcutBadgeTextStyle}" />
                             </Border>
-                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.QuillUnavailableReason, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
+                            <Button x:Name="ChangeQuillButton" Grid.Column="1"
+                                    Click="ChangeQuillShortcut_Click"
+                                    Content="{x:Bind ViewModel.QuillCapturePrompt, Mode=OneWay}"
+                                    Style="{StaticResource ShortcutLinkStyle}"
+                                    AutomationProperties.Name="Change Quill shortcut"
+                                    AutomationProperties.AutomationId="ChangeQuillShortcutButton"
+                                    ToolTipService.ToolTip="Press to capture a new Windows shortcut. Escape cancels." />
+                            <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.QuillState, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
                         </Grid>
                     </StackPanel>
                 </Border>
