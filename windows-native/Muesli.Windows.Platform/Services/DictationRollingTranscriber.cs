@@ -8,9 +8,12 @@ namespace Muesli.Windows.Services;
 internal sealed class DictationRollingTranscriber
 {
     private const int SampleRate = 16000;
-    private const int ChunkSamples = SampleRate * 16;
-    private const int EarliestBoundary = SampleRate * 8;
-    private const int LatestBoundary = SampleRate * 15;
+    // Audio left in the tail at release is decoded while the user waits, so the chunk length
+    // caps stop latency: CPU Parakeet at RTF ~0.3 turns a 16 s tail into ~5 s of silence.
+    // ponytail: fixed 6 s window; revisit if boundary word splits show up in the dictation corpus.
+    private const int ChunkSamples = SampleRate * 6;
+    private const int EarliestBoundary = SampleRate * 3;
+    private const int LatestBoundary = SampleRate * 11 / 2;
     private readonly Func<byte[], Task<TranscriptionResult>> _decode;
     private readonly Func<string, Task<TranscriptionResult>> _fallback;
     private readonly object _gate = new();

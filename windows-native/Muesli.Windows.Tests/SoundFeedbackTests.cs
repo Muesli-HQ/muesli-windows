@@ -131,7 +131,7 @@ public sealed class SoundFeedbackTests
         Assert.Contains("ViewModel.SoundEnabled", xaml, StringComparison.Ordinal);
         Assert.Contains("SoundEnabled", viewModel, StringComparison.Ordinal);
         Assert.Contains("public bool SoundEnabled", settings, StringComparison.Ordinal);
-        Assert.Contains("_sounds.Enabled = settings.SoundEnabled", dictation, StringComparison.Ordinal);
+        Assert.Contains("_coordinator.SoundFeedback.Enabled = current.SoundEnabled", dictation, StringComparison.Ordinal);
         // Auxiliary (Computer Use / setup) sessions are sound-kind aware on the active shell.
         Assert.Contains("DictationSessionKind.Auxiliary", dictation, StringComparison.Ordinal);
     }

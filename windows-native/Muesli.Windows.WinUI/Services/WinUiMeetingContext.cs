@@ -242,6 +242,27 @@ public sealed class WinUiMeetingContext : IDisposable
         return meeting;
     }
 
+    /// <summary>
+    /// Asks how to discard the active recording, then discards it. Every user-facing discard
+    /// (Meetings page, floating pill) goes through here so audio and notes are never deleted
+    /// without confirmation. Returns the outcome status, or null when the user keeps recording.
+    /// </summary>
+    public async Task<string?> ConfirmAndDiscardAsync(IAppDialogService dialogs, bool hasNotes)
+    {
+        var resumed = IsResumingFinishedMeeting;
+        var choice = resumed
+            ? await dialogs.ConfirmAsync("Discard only this resumed recording? The original meeting and your written notes will be kept.",
+                "Discard resumed recording", "Discard new recording", "Cancel")
+            : hasNotes
+            ? await dialogs.ChooseAsync("Discard the audio recording? You can keep your written notes as a note-only meeting.",
+                "Discard recording", "Keep notes", "Delete draft", "Cancel")
+            : await dialogs.ConfirmAsync("Discard this audio recording?", "Discard recording", "Discard", "Cancel");
+        if (choice is not (AppDialogChoice.Primary or AppDialogChoice.Secondary)) return null;
+        var keepNotes = resumed || hasNotes && choice == AppDialogChoice.Primary;
+        await CancelAsync(keepNotes);
+        return resumed ? "Resumed recording discarded. Original meeting kept." : keepNotes ? "Recording discarded. Written notes saved." : "Recording discarded";
+    }
+
     public async Task CancelAsync(bool keepNotes = false)
     {
         ThrowIfDisposed();

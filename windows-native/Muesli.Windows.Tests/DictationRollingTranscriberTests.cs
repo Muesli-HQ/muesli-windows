@@ -24,7 +24,7 @@ public sealed class DictationRollingTranscriberTests
         using var directory = new TestDirectory();
         var recording = directory.File("recording.wav");
         using (var writer = new WaveFileWriter(recording, new WaveFormat(16000, 16, 1)))
-            writer.Write(new byte[21 * 16000 * 2]);
+            writer.Write(new byte[7 * 16000 * 2]);
         var firstDecoded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
         var fallbackCalls = 0;
@@ -41,17 +41,17 @@ public sealed class DictationRollingTranscriberTests
                 return Task.FromResult(new TranscriptionResult("fallback"));
             });
 
-        rolling.Feed(null, new LivePcmSamplesEventArgs(LiveTranscriptChannel.Microphone, new float[16 * 16000], 0));
+        rolling.Feed(null, new LivePcmSamplesEventArgs(LiveTranscriptChannel.Microphone, new float[6 * 16000], 0));
         await firstDecoded.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, calls); // Recognition ran while recording was still active.
-        rolling.Feed(null, new LivePcmSamplesEventArgs(LiveTranscriptChannel.Microphone, new float[5 * 16000], 16 * 16000));
+        rolling.Feed(null, new LivePcmSamplesEventArgs(LiveTranscriptChannel.Microphone, new float[16000], 6 * 16000));
 
         var result = await rolling.FinishAsync(recording);
 
         Assert.Equal("part 1 part 2", result.Text);
         Assert.StartsWith("ASR during capture:", result.Diagnostic);
         Assert.Equal(0, fallbackCalls);
-        Assert.Equal(21_000, result.DurationMs);
+        Assert.Equal(7_000, result.DurationMs);
     }
 
     [Fact]
@@ -71,9 +71,9 @@ public sealed class DictationRollingTranscriberTests
     [Fact]
     public async Task ChunkBoundaryPrefersARealPauseOverABriefQuietConsonant()
     {
-        var samples = Enumerable.Repeat(0.3f, 16 * 16000).ToArray();
-        Array.Clear(samples, 10 * 16000 + 3200, 6400); // 400 ms pause.
-        Array.Clear(samples, 12 * 16000 + 3600, 400); // 25 ms consonant gap.
+        var samples = Enumerable.Repeat(0.3f, 6 * 16000).ToArray();
+        Array.Clear(samples, 4 * 16000 + 3200, 6400); // 400 ms pause.
+        Array.Clear(samples, 5 * 16000 + 1600, 400); // 25 ms consonant gap.
         var firstChunk = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var rolling = new DictationRollingTranscriber(
             wav =>
@@ -88,6 +88,6 @@ public sealed class DictationRollingTranscriberTests
         var boundaryMs = await firstChunk.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await rolling.DrainAsync();
 
-        Assert.InRange(boundaryMs, 10_200, 10_600);
+        Assert.InRange(boundaryMs, 4_200, 4_600);
     }
 }
