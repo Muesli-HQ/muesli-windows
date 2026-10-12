@@ -220,10 +220,16 @@ public sealed partial class InsightsPage : Page
         UsageGrid.RowSpacing = stacked ? 20 : 0;
         Grid.SetRow(OverviewBox, stacked ? 1 : 0);
         Grid.SetColumn(OverviewBox, stacked ? 0 : 1);
+
+        // Models and Apps sit side by side while each keeps 260 wide, then stack.
+        HabitsGrid.ColumnDefinitions[1].Width = stacked ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        HabitsGrid.ColumnSpacing = stacked ? 0 : 28;
+        Grid.SetRow(AppsRanking, stacked ? 1 : 0);
+        Grid.SetColumn(AppsRanking, stacked ? 0 : 1);
     }
 
     private void UpdateActivitySubtitle() =>
-        ActivitySubtitle.Text = ViewModel.ActivityModeIndex == 1 ? "Meetings recorded each day" : "Words captured each day";
+        ActivitySubtitle.Text = ViewModel.ActivityModeIndex == 1 ? "Meetings recorded each day" : "Words dictated each day";
 
     private void RangeBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {

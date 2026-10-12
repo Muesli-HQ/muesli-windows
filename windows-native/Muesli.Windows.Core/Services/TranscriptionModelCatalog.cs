@@ -305,6 +305,26 @@ public static class TranscriptionModelCatalog
 
     public static string NormalizeId(string? modelId) => Get(modelId).Id;
 
+    /// <summary>
+    /// A readable name for a model id stored on a dictation, including the ids older builds
+    /// recorded: the sherpa folder name ("parakeet-tdt-0.6b-v3-int8") or a bare Whisper size
+    /// ("base", "medium.en"). Anything else is shown as stored.
+    /// </summary>
+    public static string DisplayNameFor(string? modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId)) return "";
+        if (TryGet(modelId, out var model)) return model.DisplayName;
+        var byFolder = Models.FirstOrDefault(candidate => candidate.DirectoryName.EndsWith(modelId, StringComparison.OrdinalIgnoreCase));
+        if (byFolder is not null) return byFolder.DisplayName;
+        var size = modelId.Trim().ToLowerInvariant();
+        var english = size.EndsWith(".en", StringComparison.Ordinal);
+        if (english) size = size[..^3];
+        if (size is "large-v3-turbo" or "turbo") return "Whisper Large-v3 Turbo";
+        return size is "tiny" or "base" or "small" or "medium" or "large" or "large-v2" or "large-v3"
+            ? $"Whisper {char.ToUpperInvariant(size[0])}{size[1..]}{(english ? " English" : "")}"
+            : modelId;
+    }
+
     public static long CacheSizeBytes()
     {
         var genericBytes = Directory.Exists(ModelCacheDirectory)

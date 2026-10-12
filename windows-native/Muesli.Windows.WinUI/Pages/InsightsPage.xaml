@@ -235,11 +235,11 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Spacing="4">
                                 <TextBlock Text="DAILY ACTIVITY" Style="{StaticResource InsightPanelTitleStyle}" />
-                                <TextBlock x:Name="ActivitySubtitle" Text="Words captured each day" Style="{StaticResource InsightPanelSubtitleStyle}" />
+                                <TextBlock x:Name="ActivitySubtitle" Text="Words dictated each day" Style="{StaticResource InsightPanelSubtitleStyle}" />
                             </StackPanel>
                             <Border Grid.Column="1" Style="{StaticResource MuesliSegmentedContainerStyle}" VerticalAlignment="Top">
                                 <SelectorBar x:Name="ActivityModeBar" SelectionChanged="ActivityModeBar_SelectionChanged" AutomationProperties.Name="Daily activity measure" AutomationProperties.AutomationId="InsightsActivityModePicker">
-                                    <SelectorBarItem Text="Words" Tag="0" IsSelected="True" AutomationProperties.Name="Show words activity" />
+                                    <SelectorBarItem Text="Dictated" Tag="0" IsSelected="True" AutomationProperties.Name="Show dictated words activity" />
                                     <SelectorBarItem Text="Meetings" Tag="1" AutomationProperties.Name="Show meetings activity" />
                                 </SelectorBar>
                             </Border>
@@ -403,6 +403,127 @@
                             </StackPanel>
                         </Grid>
                         <TextBlock Text="Dictate today to start a new streak." Style="{StaticResource InsightCaptionStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.IsStreakBroken), Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- macOS attributionPanel: the models and apps you dictate with in the selected period. -->
+                <Border x:Name="HabitsCard" Style="{StaticResource InsightPanelStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}"
+                        AutomationProperties.Name="Your dictation habits" AutomationProperties.AutomationId="InsightsHabitsCard">
+                    <StackPanel Spacing="20">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="YOUR DICTATION HABITS" Style="{StaticResource InsightPanelTitleStyle}" />
+                            <TextBlock Text="Sessions in the selected time period" Style="{StaticResource InsightPanelSubtitleStyle}" />
+                        </StackPanel>
+                        <Grid x:Name="HabitsGrid" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="28" RowSpacing="24">
+                        <StackPanel Spacing="12" MinWidth="260">
+                            <TextBlock Text="Models" FontSize="15" FontWeight="SemiBold" />
+                            <TextBlock Text="No dictations in this period" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                       Visibility="{x:Bind InvertBoolToVisibility(ViewModel.HasModels), Mode=OneWay}" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.TopModels, Mode=OneWay}" AutomationProperties.Name="Models">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:InsightsUsageItem">
+                                        <StackPanel Spacing="5" Margin="0,0,0,12" AutomationProperties.Name="{x:Bind Name}">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                <Grid Width="22" Height="22" Visibility="{x:Bind local:ComputerUseRowStyle.Show(IsApp)}">
+                                                    <Image Source="{x:Bind local:ComputerUseRowStyle.AppIcon(App)}" Stretch="Uniform" />
+                                                    <Border CornerRadius="5" Background="{ThemeResource MuesliSurfacePrimaryBrush}"
+                                                            Visibility="{x:Bind local:ComputerUseRowStyle.AppIconFallback(App)}">
+                                                        <FontIcon Glyph="&#xECAA;" FontSize="14" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                    </Border>
+                                                </Grid>
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Name}" FontSize="13" MaxLines="1" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind Name}" />
+                                                <TextBlock Grid.Column="2" Text="{x:Bind Detail}" FontSize="11" VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                            </Grid>
+                                            <ProgressBar Value="{x:Bind Percent}" Maximum="100" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Expander Header="{x:Bind ViewModel.MoreModelsLabel, Mode=OneWay}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                      Visibility="{x:Bind BoolToVisibility(ViewModel.HasMoreModels), Mode=OneWay}">
+                                <ItemsControl ItemsSource="{x:Bind ViewModel.MoreModels, Mode=OneWay}">
+                                    <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:InsightsUsageItem">
+                                        <StackPanel Spacing="5" Margin="0,0,0,12" AutomationProperties.Name="{x:Bind Name}">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                <Grid Width="22" Height="22" Visibility="{x:Bind local:ComputerUseRowStyle.Show(IsApp)}">
+                                                    <Image Source="{x:Bind local:ComputerUseRowStyle.AppIcon(App)}" Stretch="Uniform" />
+                                                    <Border CornerRadius="5" Background="{ThemeResource MuesliSurfacePrimaryBrush}"
+                                                            Visibility="{x:Bind local:ComputerUseRowStyle.AppIconFallback(App)}">
+                                                        <FontIcon Glyph="&#xECAA;" FontSize="14" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                    </Border>
+                                                </Grid>
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Name}" FontSize="13" MaxLines="1" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind Name}" />
+                                                <TextBlock Grid.Column="2" Text="{x:Bind Detail}" FontSize="11" VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                            </Grid>
+                                            <ProgressBar Value="{x:Bind Percent}" Maximum="100" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+                        </StackPanel>
+                            <Grid x:Name="AppsRanking" Grid.Column="1">
+                        <StackPanel Spacing="12" MinWidth="260">
+                            <TextBlock Text="Apps" FontSize="15" FontWeight="SemiBold" />
+                            <TextBlock Text="No dictations in this period" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                       Visibility="{x:Bind InvertBoolToVisibility(ViewModel.HasApps), Mode=OneWay}" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.TopApps, Mode=OneWay}" AutomationProperties.Name="Apps">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:InsightsUsageItem">
+                                        <StackPanel Spacing="5" Margin="0,0,0,12" AutomationProperties.Name="{x:Bind Name}">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                <Grid Width="22" Height="22" Visibility="{x:Bind local:ComputerUseRowStyle.Show(IsApp)}">
+                                                    <Image Source="{x:Bind local:ComputerUseRowStyle.AppIcon(App)}" Stretch="Uniform" />
+                                                    <Border CornerRadius="5" Background="{ThemeResource MuesliSurfacePrimaryBrush}"
+                                                            Visibility="{x:Bind local:ComputerUseRowStyle.AppIconFallback(App)}">
+                                                        <FontIcon Glyph="&#xECAA;" FontSize="14" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                    </Border>
+                                                </Grid>
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Name}" FontSize="13" MaxLines="1" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind Name}" />
+                                                <TextBlock Grid.Column="2" Text="{x:Bind Detail}" FontSize="11" VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                            </Grid>
+                                            <ProgressBar Value="{x:Bind Percent}" Maximum="100" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Expander Header="{x:Bind ViewModel.MoreAppsLabel, Mode=OneWay}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                      Visibility="{x:Bind BoolToVisibility(ViewModel.HasMoreApps), Mode=OneWay}">
+                                <ItemsControl ItemsSource="{x:Bind ViewModel.MoreApps, Mode=OneWay}">
+                                    <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:InsightsUsageItem">
+                                        <StackPanel Spacing="5" Margin="0,0,0,12" AutomationProperties.Name="{x:Bind Name}">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                <Grid Width="22" Height="22" Visibility="{x:Bind local:ComputerUseRowStyle.Show(IsApp)}">
+                                                    <Image Source="{x:Bind local:ComputerUseRowStyle.AppIcon(App)}" Stretch="Uniform" />
+                                                    <Border CornerRadius="5" Background="{ThemeResource MuesliSurfacePrimaryBrush}"
+                                                            Visibility="{x:Bind local:ComputerUseRowStyle.AppIconFallback(App)}">
+                                                        <FontIcon Glyph="&#xECAA;" FontSize="14" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                    </Border>
+                                                </Grid>
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Name}" FontSize="13" MaxLines="1" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind Name}" />
+                                                <TextBlock Grid.Column="2" Text="{x:Bind Detail}" FontSize="11" VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                            </Grid>
+                                            <ProgressBar Value="{x:Bind Percent}" Maximum="100" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+                        </StackPanel>
+                            </Grid>
+                        </Grid>
+                        <TextBlock Text="{x:Bind ViewModel.UsageNote, Mode=OneWay}" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
                     </StackPanel>
                 </Border>
 

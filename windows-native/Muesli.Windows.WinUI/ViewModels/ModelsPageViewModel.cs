@@ -82,7 +82,9 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
 
     public string RoleDescription => RoleIndex == 0
         ? "Choose the model used for push-to-talk dictation."
-        : "Choose the final model used for recordings and imported meetings.";
+        : "Choose the final model used for recordings and imported meetings. Live captions during a meeting use the live preview model in Settings.";
+
+    public string RoleSectionTitle => RoleIndex == 0 ? "DICTATION" : "LIVE MEETINGS";
 
     private string RoleLabel => RoleIndex == 1 ? "meetings" : "dictation";
 
@@ -93,6 +95,7 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
             CategoryIndex = value;
         }
         OnPropertyChanged(nameof(RoleDescription));
+        OnPropertyChanged(nameof(RoleSectionTitle));
         _resetVariantSelection = true;
         Reload();
     }
@@ -105,15 +108,13 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
         }
         OnPropertyChanged(nameof(IsCleanupCategory));
         OnPropertyChanged(nameof(RoleDescription));
+        OnPropertyChanged(nameof(RoleSectionTitle));
         _resetVariantSelection = true;
         Reload();
     }
 
     partial void OnItemsChanged(IReadOnlyList<ModelFamilyCardItem> value) =>
         OnPropertyChanged(nameof(HasItems));
-
-    [RelayCommand]
-    private void Refresh() => Reload();
 
     [RelayCommand]
     private void SetActive(ModelVariantItem? item)
@@ -156,8 +157,8 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
     {
         if (item is null || item.IsSelectedForAnyRole) return;
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete the local files for {item.DisplayName}? You can download them again later.",
-            "Delete transcription model",
+            "The downloaded model files will be removed from this PC. You can download the model again later.",
+            $"Delete \"{item.DisplayName}\"?",
             cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
         try

@@ -26,7 +26,7 @@ public sealed class WinUiShellQualificationTests
         // Insights-only control, so it is the page sentinel.
         ("insights", "NavInsights", "InsightsShareButton"),
         ("dictionary", "NavDictionary", "DictionaryAddButton"),
-        ("models", "NavModels", "ModelsRefreshButton"),
+        ("models", "NavModels", "ModelsRolePicker"),
         ("shortcuts", "NavShortcuts", "ChangePushToTalkButton"),
         ("settings", "NavSettings", "SettingsSaveButton"),
         // Prompt 7 moved the raw diagnostics dump into a collapsed Expander ("keep technical
@@ -102,8 +102,8 @@ public sealed class WinUiShellQualificationTests
             session.CaptureReference("winui-populated-dictations", "dictations", "DictationHistoryList");
             session.NavigateTo("meetings", "NavMeetings", "MeetingHistoryList");
             session.CaptureReference("winui-populated-meetings", "meetings", "MeetingHistoryList");
-            session.NavigateTo("models", "NavModels", "ModelsRefreshButton");
-            session.CaptureReference("winui-populated-models", "models", "ModelsRefreshButton");
+            session.NavigateTo("models", "NavModels", "ModelsRolePicker");
+            session.CaptureReference("winui-populated-models", "models", "ModelsRolePicker");
             session.NavigateTo("shortcuts", "NavShortcuts", "ChangePushToTalkButton");
             session.CaptureReference("winui-populated-shortcuts", "shortcuts", "ChangePushToTalkButton");
             session.NavigateTo("dictionary", "NavDictionary", "DictionaryEntryList");
@@ -175,8 +175,8 @@ public sealed class WinUiShellQualificationTests
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-dictations", "dictations", "DictationHistoryList");
         session.NavigateTo("meetings", "NavMeetings", "MeetingHistoryList");
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-meetings", "meetings", "MeetingHistoryList");
-        session.NavigateTo("models", "NavModels", "ModelsRefreshButton");
-        session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-models", "models", "ModelsRefreshButton");
+        session.NavigateTo("models", "NavModels", "ModelsRolePicker");
+        session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-models", "models", "ModelsRolePicker");
         session.NavigateTo("shortcuts", "NavShortcuts", "ChangePushToTalkButton");
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-shortcuts", "shortcuts", "ChangePushToTalkButton");
         session.NavigateTo("dictionary", "NavDictionary", "DictionaryEntryList");
