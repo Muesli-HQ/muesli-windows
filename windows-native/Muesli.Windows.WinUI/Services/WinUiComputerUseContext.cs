@@ -29,6 +29,7 @@ public sealed class WinUiComputerUseContext : IDisposable
         _settings = settings;
         _dictation = dictation;
         ChatGpt = new ChatGptAuth(settings.Secrets, _http);
+        _dictation.Changed += OnDictationChanged;
         Status = "Press Ctrl+Shift+F8, say what to do, then press it again.";
         if (File.Exists(TraceFilePath)) Diagnostics = File.ReadAllText(TraceFilePath);
     }
@@ -79,6 +80,15 @@ public sealed class WinUiComputerUseContext : IDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         if (_listening) await StopListeningAndRunAsync();
         else await StartListeningAsync();
+    }
+
+    /// <summary>Escape reaches the dictation hook first and cancels the shared capture; without this
+    /// the run would keep "listening" (and the pill recording) with no microphone.</summary>
+    private void OnDictationChanged(object? sender, EventArgs e)
+    {
+        if (!_listening || _dictation.IsRecording) return;
+        _listening = false;
+        Report("Computer Use stopped.");
     }
 
     public async Task CancelAsync()
@@ -230,6 +240,7 @@ public sealed class WinUiComputerUseContext : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _dictation.Changed -= OnDictationChanged;
         _sessionCancellation?.Cancel();
         _sessionCancellation?.Dispose();
         _http.Dispose();
