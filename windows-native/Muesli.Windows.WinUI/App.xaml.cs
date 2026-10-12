@@ -190,6 +190,7 @@ public partial class App : Application
         Dictation = new WinUiDictationContext(Library, Settings, UiDispatcher);
         ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation, UiDispatcher);
         ComputerUse.ConfirmActionAsync = ConfirmComputerUseActionAsync;
+        ComputerUse.AskAsync = AskComputerUseQuestionAsync;
         ComputerUse.CaptureStarted = () => ((MainWindow)Window).HideDashboard();
         ComputerUse.RegisterVoiceShortcut();
         MeetingDetection = new WinUiMeetingDetectionService();
@@ -529,6 +530,21 @@ public partial class App : Application
             window.Activate();
         }, token);
         using var registration = token.Register(() => UiDispatcher.TryEnqueue(() => _computerUseConfirmation?.Close()));
+        return await result.Task.WaitAsync(token);
+    }
+
+    private async Task<string?> AskComputerUseQuestionAsync(string question, IReadOnlyList<string> options, CancellationToken token)
+    {
+        var result = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ComputerUseQuestionWindow? window = null;
+        await UiDispatcher.EnqueueAsync(() =>
+        {
+            window = new ComputerUseQuestionWindow(question, options);
+            TrackTheme(window);
+            window.Closed += (_, _) => result.TrySetResult(window.Answer);
+            window.Activate();
+        }, token);
+        using var registration = token.Register(() => UiDispatcher.TryEnqueue(() => window?.Close()));
         return await result.Task.WaitAsync(token);
     }
 

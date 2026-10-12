@@ -39,6 +39,8 @@ public sealed record CuaRuntimeOptions
     public TimeSpan SettleDelay { get; init; } = TimeSpan.FromMilliseconds(400);
     /// <summary>Asks the user to approve a risky action. Without it, the run stops instead.</summary>
     public Func<string, CancellationToken, Task<bool>>? Confirm { get; init; }
+    /// <summary>Asks the user a question with optional suggested answers; null means they did not answer.</summary>
+    public Func<string, IReadOnlyList<string>, CancellationToken, Task<string?>>? Ask { get; init; }
     /// <summary>Muesli's own settings, for "change my dictation model" commands.</summary>
     public CuaMuesliSettings? Settings { get; init; }
     public Action<string>? OnStatus { get; init; }
@@ -157,6 +159,22 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
                     history.Add(new CuaToolOutcome(step, call, CuaResultStatus.Executed, $"Captured state of {state.AppName} - {state.WindowTitle}."));
                     observed = true;
                     break; // Element numbers changed; later calls in this step would point at the old state.
+                }
+                if (tool.Name == "ask_user")
+                {
+                    var question = call.String("question") ?? "";
+                    Trace("question", "Question", question, step);
+                    if (_options.Ask is null) return End(CuaRunStatus.NeedsConfirmation, question, step);
+                    Status("Waiting for your answer");
+                    actionTime.Stop();
+                    string? answer;
+                    try { answer = await _options.Ask(question, call.Strings("options").Take(4).ToArray(), cancellationToken); }
+                    catch (OperationCanceledException) { return End(CuaRunStatus.Cancelled, "Cancelled.", step); }
+                    finally { actionTime.Start(); }
+                    if (string.IsNullOrWhiteSpace(answer)) return End(CuaRunStatus.Cancelled, "You did not answer, so nothing more was done.", step);
+                    Trace("answer", "Answer", answer, step);
+                    history.Add(new CuaToolOutcome(step, call, CuaResultStatus.Executed, $"The user answered: {answer.Trim()}"));
+                    continue;
                 }
                 if (tool.Name == "wait_for")
                 {

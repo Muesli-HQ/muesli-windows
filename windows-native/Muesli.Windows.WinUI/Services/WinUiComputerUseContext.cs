@@ -37,6 +37,8 @@ public sealed class WinUiComputerUseContext : IDisposable
     public Action? CaptureStarted { get; set; }
     /// <summary>Asks the user to approve a risky step; returns false when declined.</summary>
     public Func<string, CancellationToken, Task<bool>>? ConfirmActionAsync { get; set; }
+    /// <summary>Asks the user a question the run needs answered; returns null when they stop the run.</summary>
+    public Func<string, IReadOnlyList<string>, CancellationToken, Task<string?>>? AskAsync { get; set; }
     public event EventHandler? Changed;
     public string Status { get; private set; }
     public bool IsListening => _listening;
@@ -150,6 +152,7 @@ public sealed class WinUiComputerUseContext : IDisposable
         var options = new CuaRuntimeOptions
         {
             Confirm = ConfirmActionAsync,
+            Ask = AskAsync,
             Settings = new CuaMuesliSettings(_settings.Load, saved => _dispatcher.EnqueueAsync(() => _settings.Save(saved), CancellationToken.None).GetAwaiter().GetResult()),
             OnStatus = status => Report(status),
         };

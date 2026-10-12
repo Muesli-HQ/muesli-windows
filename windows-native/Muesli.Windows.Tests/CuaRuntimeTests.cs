@@ -105,6 +105,28 @@ public sealed class CuaRuntimeTests
     }
 
     [Fact]
+    public async Task AskUserPassesTheAnswerBackAndNoAnswerStops()
+    {
+        var ask = Call("ask_user", new { question = "Which Mom?", options = new[] { "Mom (mobile)", "Mom (work)" } });
+        IReadOnlyList<string>? offered = null;
+        var planner = new ScriptedPlanner([ask], [Call("finish", new { reason = "ok" })]);
+        var answered = await new CuaRuntime(new FakeDesktop(), planner, Fast with
+        {
+            Ask = (_, options, _) => { offered = options; return Task.FromResult<string?>("Mom (mobile)"); },
+        }).RunAsync("text mom", default);
+
+        Assert.Equal(CuaRunStatus.Done, answered.Status);
+        Assert.Equal(["Mom (mobile)", "Mom (work)"], offered);
+        Assert.Contains(planner.Requests[1].History, outcome => outcome.Message == "The user answered: Mom (mobile)");
+
+        var silent = await new CuaRuntime(new FakeDesktop(), new ScriptedPlanner([ask]), Fast with
+        {
+            Ask = (_, _, _) => Task.FromResult<string?>(null),
+        }).RunAsync("text mom", default);
+        Assert.Equal(CuaRunStatus.Cancelled, silent.Status);
+    }
+
+    [Fact]
     public void PillStatusNamesTheStep()
     {
         var state = FakeDesktop.State(0);
