@@ -527,6 +527,19 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
+                                    <TextBlock Text="Screen OCR context" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.OcrContextHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.EnableDictationOcrContext, Mode=TwoWay}"
+                                              IsEnabled="{x:Bind ViewModel.EnableAppContext, Mode=OneWay}"
+                                              AutomationProperties.Name="Screen OCR context"
+                                              AutomationProperties.AutomationId="OcrContextToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                <StackPanel MinWidth="0">
                                     <TextBlock Text="Pause media during dictation" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Pauses music and videos while you dictate, then resumes them." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>

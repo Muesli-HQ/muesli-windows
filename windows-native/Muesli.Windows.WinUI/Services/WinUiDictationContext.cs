@@ -69,6 +69,23 @@ public sealed class WinUiDictationContext : IDisposable
     public event EventHandler<float>? RecordingLevelChanged;
 
     public bool IsRecording => _coordinator.IsRecording;
+
+    /// <summary>
+    /// macOS DictationContextCapture.capture: Accessibility text, plus OCR of the target window when
+    /// on. macOS skips OCR while a meeting records, and so does this.
+    /// </summary>
+    private Task<string?> ReadAppContextAsync(IntPtr window, bool includeOcr) => Task.Run(async () =>
+    {
+        string? context = null;
+        try { context = FocusedTextSelection.ReadAppContext(window); } catch (Exception) { }
+        if (!includeOcr) return context;
+        try { return ScreenOcr.Append(context, await ScreenOcr.ReadWindowAsync(window)); }
+        catch (Exception exception)
+        {
+            _log.Error("Dictation screen OCR failed; continuing without it.", exception);
+            return context;
+        }
+    });
     public bool IsBusy => _coordinator.IsBusy || _coordinator.IsTranscribing;
     public bool IsTranscribing => _coordinator.IsTranscribing;
     public bool IsHotkeyRegistered { get; private set; }
@@ -428,7 +445,7 @@ public sealed class WinUiDictationContext : IDisposable
         // Read while the target app still has focus; only hosted cleanup with app context uses it.
         _appContext = _pasteTarget != IntPtr.Zero && current.EnableLocalCleanup && current.EnableAppContext &&
             MeetingSummaryService.IsHostedProvider(current.CleanupSource)
-            ? Task.Run(() => { try { return FocusedTextSelection.ReadAppContext(_pasteTarget); } catch (Exception) { return null; } })
+            ? ReadAppContextAsync(_pasteTarget, current.EnableDictationOcrContext && App.Meetings?.IsRecording != true)
             : null;
         _coordinator.SoundFeedback.Enabled = current.SoundEnabled;
         Status = "Listening";

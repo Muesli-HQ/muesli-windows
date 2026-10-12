@@ -103,7 +103,13 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public string CleanupPresetPreview => _cleanupPresets[Math.Clamp(CleanupPresetIndex, 0, _cleanupPresets.Count - 1)].Prompt;
     /// <summary>Presets shape the prompt sent to a cloud source; the local model keeps its own.</summary>
     public bool ShowCleanupPreset => EnableLocalCleanup && CleanupSourceIndex > 0;
+    [NotifyPropertyChangedFor(nameof(OcrContextHelp))]
     [ObservableProperty] public partial bool EnableAppContext { get; set; }
+    [ObservableProperty] public partial bool EnableDictationOcrContext { get; set; }
+    /// <summary>macOS dictationOCRContextDescription.</summary>
+    public string OcrContextHelp => EnableAppContext
+        ? "Also read the text visible in the window you're dictating into, on this PC, and add it to the app context."
+        : "Turn on App context first.";
     private static readonly string[] CleanupSources = ["local", "chatgpt", "openai", "openrouter", "ollama", "lmstudio", "custom"];
 
     /// <summary>Says where the dictation goes, so a cloud choice is never a surprise.</summary>
@@ -338,6 +344,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CleanupPresetNames));
         CleanupPresetIndex = Math.Max(0, _cleanupPresets.ToList().FindIndex(preset => preset.Id == _source.ActiveCleanupPromptId));
         EnableAppContext = _source.EnableAppContext;
+        EnableDictationOcrContext = _source.EnableDictationOcrContext;
         ComputerUseEnabled = _source.ComputerUseEnabled;
         ShowFloatingIndicator = _source.ShowFloatingIndicator;
         SoundEnabled = _source.SoundEnabled;
@@ -434,6 +441,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             CleanupSource = CleanupSources[Math.Clamp(CleanupSourceIndex, 0, CleanupSources.Length - 1)],
             ActiveCleanupPromptId = _cleanupPresets[Math.Clamp(CleanupPresetIndex, 0, _cleanupPresets.Count - 1)].Id,
             EnableAppContext = EnableAppContext,
+            // macOS turns OCR off with app context.
+            EnableDictationOcrContext = EnableAppContext && EnableDictationOcrContext,
             ComputerUseEnabled = enableComputerUse,
             ShowFloatingIndicator = ShowFloatingIndicator,
             SoundEnabled = SoundEnabled,
