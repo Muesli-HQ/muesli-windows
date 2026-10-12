@@ -93,6 +93,19 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial IReadOnlyList<string> MeetingTemplates { get; private set; } = [];
     [ObservableProperty] public partial bool RemoveFillerWords { get; set; }
     [ObservableProperty] public partial bool EnableLocalCleanup { get; set; }
+    [NotifyPropertyChangedFor(nameof(CleanupSourceHelp))]
+    [ObservableProperty] public partial int CleanupSourceIndex { get; set; }
+    [ObservableProperty] public partial bool EnableAppContext { get; set; }
+    private static readonly string[] CleanupSources = ["local", "chatgpt", "openai", "openrouter", "ollama", "lmstudio", "custom"];
+
+    /// <summary>Says where the dictation goes, so a cloud choice is never a surprise.</summary>
+    public string CleanupSourceHelp => CleanupSourceIndex switch
+    {
+        <= 0 => "Runs the cleanup model from Models on this PC. Nothing leaves your computer.",
+        1 => "Sends each dictation to your signed-in ChatGPT account. Adds a moment before pasting.",
+        4 or 5 => "Sends each dictation to the local server set under Meetings > Meeting Summaries.",
+        _ => "Sends each dictation to this provider, using the key and model set under Meetings > Meeting Summaries."
+    };
     [ObservableProperty] public partial bool ComputerUseEnabled { get; set; }
     [ObservableProperty] public partial bool ShowFloatingIndicator { get; set; }
     [ObservableProperty] public partial bool SoundEnabled { get; set; }
@@ -262,7 +275,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(IsStatusError), nameof(Permissions), nameof(Microphones), nameof(DictationModels),
         nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseEfforts), nameof(IndicatorPositions),
         nameof(CaptureStatus), nameof(DetectionStatus), nameof(IsStartupAvailable),
-        nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp),
+        nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp), nameof(CleanupSourceHelp),
         nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings), nameof(ShowChatGptSettings),
         nameof(ShowOpenRouterSettings), nameof(ShowGeneral), nameof(ShowDictation),
         nameof(ShowComputerUse), nameof(ShowMeetings), nameof(ShowAppearance)
@@ -311,6 +324,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         MuteAudioDuringDictation = _source.MuteAudioDuringDictation;
         MeetingSummaryRetryCount = MeetingSummaryRetryPolicy.Clamp(_source.MeetingSummaryRetryCount);
         EnableLocalCleanup = _source.EnableLocalCleanup;
+        CleanupSourceIndex = Math.Max(0, Array.IndexOf(CleanupSources, _source.CleanupSource));
+        EnableAppContext = _source.EnableAppContext;
         ComputerUseEnabled = _source.ComputerUseEnabled;
         ShowFloatingIndicator = _source.ShowFloatingIndicator;
         SoundEnabled = _source.SoundEnabled;
@@ -404,6 +419,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             PauseMediaDuringDictation = PauseMediaDuringDictation,
             MuteAudioDuringDictation = MuteAudioDuringDictation,
             EnableLocalCleanup = EnableLocalCleanup,
+            CleanupSource = CleanupSources[Math.Clamp(CleanupSourceIndex, 0, CleanupSources.Length - 1)],
+            EnableAppContext = EnableAppContext,
             ComputerUseEnabled = enableComputerUse,
             ShowFloatingIndicator = ShowFloatingIndicator,
             SoundEnabled = SoundEnabled,

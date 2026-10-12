@@ -249,23 +249,41 @@ public static class MeetingSummaryService
 
         async Task<SummaryGenerationResult> SummarizeOnceAsync()
         {
-            var summary = provider switch
-            {
-                "chatgpt" => await SummarizeWithChatGptAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
-                "openai" => await SummarizeWithOpenAIAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
-                "openrouter" => await SummarizeWithOpenRouterAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
-                "ollama" => await SummarizeWithOllamaAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
-                "lmstudio" => await SummarizeWithLmStudioAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
-                "custom" => await SummarizeWithCustomLlmAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
-                _ => CreateLocalSummary(localInput, meetingTitle, settings)
-            };
+            var summary = IsHostedProvider(provider)
+                ? await CompleteAsync(provider, EffectiveSystemPrompt(settings), SummaryUserPrompt(transcript, meetingTitle, manualNotes),
+                    settings, httpClient, cancellationToken)
+                : CreateLocalSummary(localInput, meetingTitle, settings);
             return new SummaryGenerationResult(
                 summary,
-                provider is "chatgpt" or "openai" or "openrouter" or "ollama" or "lmstudio" or "custom" ? provider : "local",
+                IsHostedProvider(provider) ? provider : "local",
                 false,
                 null);
         }
     }
+
+    public static bool IsHostedProvider(string provider) =>
+        provider is "chatgpt" or "openai" or "openrouter" or "ollama" or "lmstudio" or "custom";
+
+    /// <summary>
+    /// One system + user turn through a configured provider (summaries, dictation cleanup). Throws
+    /// <see cref="SummaryProviderException"/> with a safe reason on any failure.
+    /// </summary>
+    public static Task<string> CompleteAsync(
+        string provider,
+        string systemPrompt,
+        string userPrompt,
+        MuesliSettings settings,
+        HttpClient? httpClient = null,
+        CancellationToken cancellationToken = default) => provider switch
+    {
+        "chatgpt" => SummarizeWithChatGptAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
+        "openai" => SummarizeWithOpenAIAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
+        "openrouter" => SummarizeWithOpenRouterAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
+        "ollama" => SummarizeWithOllamaAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
+        "lmstudio" => SummarizeWithLmStudioAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
+        "custom" => SummarizeWithCustomLlmAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
+        _ => throw new SummaryProviderException("unsupported-provider")
+    };
 
     /// <summary>Waits between summary retries; tests replace it to run without real delays.</summary>
     public static Func<TimeSpan, CancellationToken, Task> RetryDelay { get; set; } = Task.Delay;
@@ -298,12 +316,11 @@ public static class MeetingSummaryService
     }
 
     private static async Task<string> SummarizeWithOpenAIAsync(
-        string transcript,
-        string meetingTitle,
+        string systemPrompt,
+        string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken,
-        string? manualNotes)
+        CancellationToken cancellationToken)
     {
         var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -322,8 +339,8 @@ public static class MeetingSummaryService
             model,
             input = new object[]
             {
-                new { role = "system", content = EffectiveSystemPrompt(settings) },
-                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle, manualNotes) }
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt }
             },
             reasoning = new { effort = "low" },
             text = new { verbosity = "low" },
@@ -353,14 +370,12 @@ public static class MeetingSummaryService
     /// streams, so the text is read from the output_text deltas.
     /// </summary>
     private static async Task<string> SummarizeWithChatGptAsync(
-        string transcript,
-        string meetingTitle,
+        string systemPrompt,
+        string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken,
-        string? manualNotes) =>
-        await CompleteWithChatGptAsync(EffectiveSystemPrompt(settings), SummaryUserPrompt(transcript, meetingTitle, manualNotes),
-            httpClient, cancellationToken);
+        CancellationToken cancellationToken) =>
+        await CompleteWithChatGptAsync(systemPrompt, userPrompt, httpClient, cancellationToken);
 
     /// <summary>
     /// One instruction + user turn through the signed-in ChatGPT account (summaries and Quill).
@@ -436,12 +451,11 @@ public static class MeetingSummaryService
     /// message.content. No credential is involved, so nothing here may be stored or logged as one.
     /// </summary>
     private static async Task<string> SummarizeWithOllamaAsync(
-        string transcript,
-        string meetingTitle,
+        string systemPrompt,
+        string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken,
-        string? manualNotes)
+        CancellationToken cancellationToken)
     {
         var endpoint = string.IsNullOrWhiteSpace(settings.OllamaEndpoint)
             ? "http://localhost:11434"
@@ -459,8 +473,8 @@ public static class MeetingSummaryService
             stream = false,
             messages = new object[]
             {
-                new { role = "system", content = EffectiveSystemPrompt(settings) },
-                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle, manualNotes) }
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt }
             }
         };
 
@@ -493,12 +507,11 @@ public static class MeetingSummaryService
     /// credential, so nothing here may be stored or logged as one.
     /// </summary>
     private static Task<string> SummarizeWithLmStudioAsync(
-        string transcript,
-        string meetingTitle,
+        string systemPrompt,
+        string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken,
-        string? manualNotes)
+        CancellationToken cancellationToken)
     {
         var endpoint = string.IsNullOrWhiteSpace(settings.LmStudioEndpoint)
             ? "http://localhost:1234"
@@ -515,15 +528,14 @@ public static class MeetingSummaryService
         }
 
         return SummarizeWithChatCompletionsAsync(
-            transcript,
-            meetingTitle,
+            systemPrompt,
+            userPrompt,
             settings,
             new Uri(baseUri, "/v1/chat/completions"),
             model,
             apiKey: "",
             httpClient,
-            cancellationToken,
-            manualNotes);
+            cancellationToken);
     }
 
     /// <summary>
@@ -533,12 +545,11 @@ public static class MeetingSummaryService
     /// key, endpoint, or response body is ever logged or placed in a safe failure reason.
     /// </summary>
     private static Task<string> SummarizeWithCustomLlmAsync(
-        string transcript,
-        string meetingTitle,
+        string systemPrompt,
+        string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken,
-        string? manualNotes)
+        CancellationToken cancellationToken)
     {
         if (!TryResolveCustomLlmUri(settings.CustomLlmEndpoint, out var uri))
         {
@@ -558,27 +569,25 @@ public static class MeetingSummaryService
         }
 
         return SummarizeWithChatCompletionsAsync(
-            transcript,
-            meetingTitle,
+            systemPrompt,
+            userPrompt,
             settings,
             uri,
             model,
             apiKey ?? "",
             httpClient,
-            cancellationToken,
-            manualNotes);
+            cancellationToken);
     }
 
     private static async Task<string> SummarizeWithChatCompletionsAsync(
-        string transcript,
-        string meetingTitle,
+        string systemPrompt,
+        string userPrompt,
         MuesliSettings settings,
         Uri uri,
         string model,
         string apiKey,
         HttpClient httpClient,
-        CancellationToken cancellationToken,
-        string? manualNotes)
+        CancellationToken cancellationToken)
     {
         var body = new
         {
@@ -586,8 +595,8 @@ public static class MeetingSummaryService
             stream = false,
             messages = new object[]
             {
-                new { role = "system", content = EffectiveSystemPrompt(settings) },
-                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle, manualNotes) }
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt }
             },
             max_tokens = 2500
         };
@@ -645,12 +654,11 @@ public static class MeetingSummaryService
     }
 
     private static async Task<string> SummarizeWithOpenRouterAsync(
-        string transcript,
-        string meetingTitle,
+        string systemPrompt,
+        string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken,
-        string? manualNotes)
+        CancellationToken cancellationToken)
     {
         var apiKey = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -671,8 +679,8 @@ public static class MeetingSummaryService
             model,
             messages = new object[]
             {
-                new { role = "system", content = EffectiveSystemPrompt(settings) },
-                new { role = "user", content = SummaryUserPrompt(transcript, meetingTitle, manualNotes) }
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt }
             },
             max_tokens = 2500
         };

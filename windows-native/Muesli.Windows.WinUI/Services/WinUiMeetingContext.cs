@@ -536,7 +536,7 @@ public sealed class WinUiMeetingContext : IDisposable
         SaveMeeting(meeting);
         var transcript = await _pipeline.PrepareImportedTranscriptAsync(
             meeting.Transcript,
-            _settings.EnableLocalCleanup,
+            _settings.EnableLocalCleanup && _settings.CleanupSource == "local",
             _library.LoadDictionary(),
             cancellationToken,
             removeFillerWords: _settings.RemoveFillerWords);

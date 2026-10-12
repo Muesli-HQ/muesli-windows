@@ -12,6 +12,7 @@ public sealed class WinUiDictationContext : IDisposable
     private readonly IUiDispatcher _dispatcher;
     private readonly AppLogService _log = new();
     private readonly DictationMediaControl _media;
+    private Task<string?>? _appContext;
     private readonly NativeTranscriptionClient _transcription;
     private readonly DictationCoordinator _coordinator;
     private readonly TranscriptionPipelineService _pipeline;
@@ -423,6 +424,11 @@ public sealed class WinUiDictationContext : IDisposable
         _pasteTarget = shouldPasteToActiveApp && _shortcutTest is null && !OnboardingFlow.IsVoiceNotesOnly(current.OnboardingUseCase)
             ? _paste.CaptureForegroundWindow()
             : IntPtr.Zero;
+        // Read while the target app still has focus; only hosted cleanup with app context uses it.
+        _appContext = _pasteTarget != IntPtr.Zero && current.EnableLocalCleanup && current.EnableAppContext &&
+            MeetingSummaryService.IsHostedProvider(current.CleanupSource)
+            ? Task.Run(() => { try { return FocusedTextSelection.ReadAppContext(_pasteTarget); } catch (Exception) { return null; } })
+            : null;
         _coordinator.SoundFeedback.Enabled = current.SoundEnabled;
         Status = "Listening";
         RaiseChanged();
@@ -531,9 +537,20 @@ public sealed class WinUiDictationContext : IDisposable
 
             var settings = _settings.Load();
             var stageStarted = Stopwatch.StartNew();
+            var hostedCleanup = settings.EnableLocalCleanup && MeetingSummaryService.IsHostedProvider(settings.CleanupSource);
+            if (hostedCleanup)
+            {
+                Status = "Cleaning up…";
+                RaiseChanged();
+                var appContext = _appContext is { } pending ? await pending : null;
+                recognized = await HostedTranscriptCleanup.CleanAsync(recognized, appContext,
+                    (system, user, token) => MeetingSummaryService.CompleteAsync(settings.CleanupSource, system, user, settings, null, token),
+                    (message, exception) => _log.Error(message, exception),
+                    _operationCancellation.Token);
+            }
             var text = await _pipeline.PrepareDictationTextAsync(
                 recognized,
-                settings.EnableLocalCleanup,
+                settings.EnableLocalCleanup && !hostedCleanup,
                 settings.RemoveFillerWords,
                 _library.LoadDictionary());
             pipelineMs = stageStarted.ElapsedMilliseconds;

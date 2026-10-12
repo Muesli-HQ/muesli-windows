@@ -430,14 +430,34 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Local transcript cleanup" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Polish transcripts on this machine. Dictation cleanup never sends text to a cloud service." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="AI transcript cleanup" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Fix misspellings, fillers, 'scratch that' and dictated lists. If cleanup fails, the original transcript is pasted." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               Style="{StaticResource SettingsToggleStyle}"
                                               IsOn="{x:Bind ViewModel.EnableLocalCleanup, Mode=TwoWay}"
-                                              AutomationProperties.Name="Local transcript cleanup"
+                                              AutomationProperties.Name="AI transcript cleanup"
                                               AutomationProperties.AutomationId="LocalCleanupToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.EnableLocalCleanup), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.EnableLocalCleanup), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Cleanup source" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.CleanupSourceHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.CleanupSourceIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Cleanup source"
+                                          AutomationProperties.AutomationId="CleanupSourcePicker">
+                                    <ComboBoxItem Content="Local model" />
+                                    <ComboBoxItem Content="ChatGPT" />
+                                    <ComboBoxItem Content="OpenAI" />
+                                    <ComboBoxItem Content="OpenRouter" />
+                                    <ComboBoxItem Content="Ollama" />
+                                    <ComboBoxItem Content="LM Studio" />
+                                    <ComboBoxItem Content="Custom endpoint" />
+                                </ComboBox>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -459,6 +479,18 @@
                                     <ComboBoxItem Content="Ctrl + Shift + V" />
                                     <ComboBoxItem Content="Shift + Insert" />
                                 </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="App context" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="With a cloud cleanup source, also send the app you're in, its window title, nearby text and any selection, to get names and formatting right." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.EnableAppContext, Mode=TwoWay}"
+                                              AutomationProperties.Name="App context"
+                                              AutomationProperties.AutomationId="AppContextToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10">

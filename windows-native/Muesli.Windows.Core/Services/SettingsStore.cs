@@ -204,6 +204,7 @@ public sealed class SettingsStore
             MeetingRecordingHotkey = DefaultIfBlank(settings.MeetingRecordingHotkey, "Ctrl+Alt+R").Trim(),
             MeetingRecordingFormat = settings.MeetingRecordingFormat == "m4a" ? "m4a" : "wav",
             QuillHotkey = DefaultIfBlank(settings.QuillHotkey, "F9").Trim(),
+            CleanupSource = MeetingSummaryService.IsHostedProvider(settings.CleanupSource ?? "") ? settings.CleanupSource! : "local",
             DictationModelId = NormalizePersistedModelId(settings.DictationModelId),
             FinalMeetingModelId = NormalizePersistedModelId(settings.FinalMeetingModelId),
             LiveTranscriptOwnership = NormalizeOwnership(settings.LiveTranscriptOwnership),
@@ -496,6 +497,13 @@ public sealed record MuesliSettings
     public string IndicatorStyle { get; init; } = "classic";
     public bool RemoveFillerWords { get; init; } = true;
     public bool EnableLocalCleanup { get; init; }
+    /// <summary>
+    /// macOS cleanup_source: "local" runs the downloaded cleanup model; a summary provider id
+    /// ("chatgpt", "openai", ...) sends the dictation to that provider with its saved key and model.
+    /// </summary>
+    public string CleanupSource { get; init; } = "local";
+    /// <summary>macOS app_context: send the focused app, nearby text and selection with hosted cleanup.</summary>
+    public bool EnableAppContext { get; init; }
     public bool StartAtLogin { get; init; }
     public bool AutoMeetingDetectionEnabled { get; init; } = true;
     public string MeetingSummaryProvider { get; init; } = "local";
