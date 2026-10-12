@@ -66,6 +66,7 @@ public sealed class WindowsDesktop : ICuaDesktop
                 "press_key" or "hotkey" => PressKey(call),
                 "scroll" => Scroll(call),
                 "drag" => Drag(call),
+                "open_url" => OpenUrl(call, cancellationToken),
                 "page_get_text" => PageText(call),
                 "list_browser_tabs" => ListTabs(call),
                 "activate_browser_tab" => ActivateTab(call),
@@ -494,6 +495,31 @@ public sealed class WindowsDesktop : ICuaDesktop
 
     private static readonly HashSet<string> Browsers = new(StringComparer.OrdinalIgnoreCase)
         { "chrome", "msedge", "brave", "firefox", "opera", "vivaldi" };
+
+    /// <summary>Opens a web address in a new tab of the default browser, with no typing. The browser
+    /// raises itself; the step's foreground restore puts the user's window back.</summary>
+    private CuaResult OpenUrl(CuaToolCall call, CancellationToken cancellationToken)
+    {
+        var text = call.String("url") ?? throw new ArgumentException("open_url needs url.");
+        if (!Uri.TryCreate(text.Contains("://") ? text : "https://" + text, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https"))
+            return CuaResult.Fail("open_url only opens http or https web addresses.");
+        var before = Win32Desktop.ListWindows().Where(window => Browsers.Contains(window.AppId)).ToDictionary(window => window.Id, window => window.Title);
+        Process.Start(new ProcessStartInfo(url.AbsoluteUri) { UseShellExecute = true });
+        // The tab lands in a new window, or retitles an existing one as it starts loading.
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Thread.Sleep(250);
+            var window = Win32Desktop.ListWindows().FirstOrDefault(window => Browsers.Contains(window.AppId)
+                && (!before.TryGetValue(window.Id, out var title) || title != window.Title));
+            if (window is null) continue;
+            Thread.Sleep(400); // The browser raises itself just after the tab appears.
+            _target = window;
+            _touched.Add(window.Id);
+            return CuaResult.Ok($"Opened {url.AbsoluteUri} in a new {window.AppName} tab (window_id {window.Id}).");
+        }
+        return CuaResult.Fail($"Asked Windows to open {url.AbsoluteUri}, but no browser tab appeared within 10 seconds.");
+    }
 
     /// <summary>Reads the page through UI Automation: the whole document, not just what is on
     /// screen, and without bringing the browser forward.</summary>

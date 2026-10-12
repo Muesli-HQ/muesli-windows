@@ -57,6 +57,8 @@ public static class CuaCatalog
             ("to_x", Number("End x.")), ("to_y", Number("End y.")), ("label", Label)),
         Tool("wait_for", "Wait until text appears in the target window (title, element names, values or visible text), for example after a page or dialog starts loading.", false, ["text"],
             ("text", String("Text to wait for.")), ("app_name", App), ("timeout_seconds", Number("At most 15. Default 5."))),
+        Tool("open_url", "Open a web address in a new tab of the user's browser, in the background. Use it for any website, including search result pages such as https://www.youtube.com/results?search_query=...", true, ["url"],
+            ("url", String("http or https address."))),
         Tool("page_get_text", "Read the text of the web page (or document) in a browser window, up to 12,000 characters, including parts scrolled out of view. Use it to read articles, emails or results instead of scrolling.", false, [],
             ("app_name", App), ("window_id", Integer("Optional window id from list_windows or list_browser_tabs."))),
         Tool("list_browser_tabs", "List the tabs of open browser windows (Chrome, Edge, Firefox and others) by title.", false, [], ("app_name", App)),

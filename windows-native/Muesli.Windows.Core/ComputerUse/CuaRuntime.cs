@@ -378,6 +378,7 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
             "set_value" => $"Setting{on}",
             "perform_secondary_action" => $"Opening menu on{on}",
             "move_cursor" => "Moving the pointer",
+            "open_url" => "Opening the page",
             "page_get_text" => "Reading the page",
             "list_browser_tabs" => "Looking at your tabs",
             "activate_browser_tab" => "Switching tabs",
