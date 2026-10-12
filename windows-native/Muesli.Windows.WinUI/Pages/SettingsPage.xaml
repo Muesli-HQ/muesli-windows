@@ -459,6 +459,38 @@
                                     <ComboBoxItem Content="Custom endpoint" />
                                 </ComboBox>
                             </Grid>
+                            <!-- macOS cleanupPromptSettings: preset picker, prompt preview, Manage Presets. -->
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCleanupPreset), Mode=OneWay}" />
+                            <StackPanel Padding="16,10" Spacing="12" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowCleanupPreset), Mode=OneWay}">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                    <TextBlock Text="Cleanup preset" Style="{StaticResource RowTitleStyle}" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Column="1"
+                                              Style="{StaticResource PickerStyle}"
+                                              ItemsSource="{x:Bind ViewModel.CleanupPresetNames, Mode=OneWay}"
+                                              SelectedIndex="{x:Bind ViewModel.CleanupPresetIndex, Mode=TwoWay}"
+                                              AutomationProperties.Name="Cleanup preset"
+                                              AutomationProperties.AutomationId="CleanupPresetPicker" />
+                                </Grid>
+                                <Border Padding="10" CornerRadius="6"
+                                        Background="{ThemeResource MuesliSurfaceBrush}"
+                                        BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="1">
+                                    <TextBlock Text="{x:Bind ViewModel.CleanupPresetPreview, Mode=OneWay}"
+                                               FontFamily="Consolas" FontSize="12" TextWrapping="Wrap" MaxLines="4" TextTrimming="CharacterEllipsis"
+                                               Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                               AutomationProperties.AutomationId="CleanupPresetPreview" />
+                                </Border>
+                                <Button HorizontalAlignment="Right"
+                                        Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                        Padding="12,5" MinHeight="0" CornerRadius="6" FontSize="12"
+                                        Click="ManageCleanupPresets_Click"
+                                        AutomationProperties.Name="Manage cleanup presets"
+                                        AutomationProperties.AutomationId="ManageCleanupPresetsButton">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE9E9;" FontSize="11" />
+                                        <TextBlock Text="Manage Presets…" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 

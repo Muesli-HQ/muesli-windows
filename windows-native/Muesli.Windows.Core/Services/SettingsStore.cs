@@ -205,6 +205,8 @@ public sealed class SettingsStore
             MeetingRecordingFormat = settings.MeetingRecordingFormat == "m4a" ? "m4a" : "wav",
             QuillHotkey = DefaultIfBlank(settings.QuillHotkey, "F9").Trim(),
             CleanupSource = MeetingSummaryService.IsHostedProvider(settings.CleanupSource ?? "") ? settings.CleanupSource! : "local",
+            CustomCleanupPrompts = NormalizeCleanupPrompts(settings.CustomCleanupPrompts),
+            ActiveCleanupPromptId = CleanupPrompts.Resolve(settings.ActiveCleanupPromptId, NormalizeCleanupPrompts(settings.CustomCleanupPrompts)).Id,
             DictationModelId = NormalizePersistedModelId(settings.DictationModelId),
             FinalMeetingModelId = NormalizePersistedModelId(settings.FinalMeetingModelId),
             LiveTranscriptOwnership = NormalizeOwnership(settings.LiveTranscriptOwnership),
@@ -303,6 +305,10 @@ public sealed class SettingsStore
         var candidate = (value ?? "").Trim().ToLowerInvariant();
         return candidate.Length == 64 && candidate.All(Uri.IsHexDigit) ? candidate : "";
     }
+
+    private static IReadOnlyList<CleanupPromptPreset> NormalizeCleanupPrompts(IReadOnlyList<CleanupPromptPreset>? presets) =>
+        (presets ?? []).Where(preset => preset is not null && !string.IsNullOrWhiteSpace(preset.Id) &&
+            !string.IsNullOrWhiteSpace(preset.Name) && !string.IsNullOrWhiteSpace(preset.Prompt)).ToList();
 
     private static IReadOnlyList<DictionarySuggestion> NormalizeDictionarySuggestions(
         IReadOnlyList<DictionarySuggestion>? suggestions) =>
@@ -504,6 +510,10 @@ public sealed record MuesliSettings
     public string CleanupSource { get; init; } = "local";
     /// <summary>macOS app_context: send the focused app, nearby text and selection with hosted cleanup.</summary>
     public bool EnableAppContext { get; init; }
+    /// <summary>macOS active_transcript_cleanup_prompt_id: the preset hosted cleanup sends.</summary>
+    public string ActiveCleanupPromptId { get; init; } = CleanupPrompts.DefaultId;
+    /// <summary>macOS custom_transcript_cleanup_prompts.</summary>
+    public IReadOnlyList<CleanupPromptPreset> CustomCleanupPrompts { get; init; } = [];
     public bool StartAtLogin { get; init; }
     public bool AutoMeetingDetectionEnabled { get; init; } = true;
     public string MeetingSummaryProvider { get; init; } = "local";

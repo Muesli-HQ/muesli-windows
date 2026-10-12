@@ -33,18 +33,20 @@ public static partial class HostedTranscriptCleanup
     /// <summary>
     /// Returns the cleaned dictation, or <paramref name="text"/> unchanged when the provider fails or
     /// replies with something that is not a cleaned transcript. <paramref name="complete"/> takes
-    /// (system prompt, user prompt).
+    /// (system prompt, user prompt); <paramref name="systemPrompt"/> is the active cleanup preset.
     /// </summary>
     public static async Task<string> CleanAsync(
         string text,
         string? appContext,
         Func<string, string, CancellationToken, Task<string>> complete,
         Action<string, Exception?>? log = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? systemPrompt = null)
     {
         if (string.IsNullOrWhiteSpace(text)) return text;
         string raw;
-        try { raw = await complete(DefaultSystemPrompt, FormatInput(text, appContext), cancellationToken); }
+        var instructions = string.IsNullOrWhiteSpace(systemPrompt) ? DefaultSystemPrompt : systemPrompt;
+        try { raw = await complete(instructions, FormatInput(text, appContext), cancellationToken); }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             log?.Invoke("Hosted dictation cleanup failed; pasting the original transcript.", exception);

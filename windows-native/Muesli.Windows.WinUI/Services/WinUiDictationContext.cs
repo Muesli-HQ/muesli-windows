@@ -552,7 +552,8 @@ public sealed class WinUiDictationContext : IDisposable
                 recognized = await HostedTranscriptCleanup.CleanAsync(recognized, appContext,
                     (system, user, token) => MeetingSummaryService.CompleteAsync(settings.CleanupSource, system, user, settings, null, token),
                     (message, exception) => _log.Error(message, exception),
-                    _operationCancellation.Token);
+                    _operationCancellation.Token,
+                    CleanupPrompts.Resolve(settings.ActiveCleanupPromptId, settings.CustomCleanupPrompts).Prompt);
             }
             var text = await _pipeline.PrepareDictationTextAsync(
                 recognized,

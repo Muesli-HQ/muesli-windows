@@ -92,9 +92,17 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string MeetingSummaryTemplate { get; set; } = "Standard Meeting Notes";
     [ObservableProperty] public partial IReadOnlyList<string> MeetingTemplates { get; private set; } = [];
     [ObservableProperty] public partial bool RemoveFillerWords { get; set; }
+    [NotifyPropertyChangedFor(nameof(ShowCleanupPreset))]
     [ObservableProperty] public partial bool EnableLocalCleanup { get; set; }
-    [NotifyPropertyChangedFor(nameof(CleanupSourceHelp))]
+    [NotifyPropertyChangedFor(nameof(CleanupSourceHelp), nameof(ShowCleanupPreset))]
     [ObservableProperty] public partial int CleanupSourceIndex { get; set; }
+    [NotifyPropertyChangedFor(nameof(CleanupPresetPreview))]
+    [ObservableProperty] public partial int CleanupPresetIndex { get; set; }
+    private IReadOnlyList<CleanupPromptPreset> _cleanupPresets = CleanupPrompts.BuiltIns;
+    public IReadOnlyList<string> CleanupPresetNames => _cleanupPresets.Select(preset => preset.Name).ToList();
+    public string CleanupPresetPreview => _cleanupPresets[Math.Clamp(CleanupPresetIndex, 0, _cleanupPresets.Count - 1)].Prompt;
+    /// <summary>Presets shape the prompt sent to a cloud source; the local model keeps its own.</summary>
+    public bool ShowCleanupPreset => EnableLocalCleanup && CleanupSourceIndex > 0;
     [ObservableProperty] public partial bool EnableAppContext { get; set; }
     private static readonly string[] CleanupSources = ["local", "chatgpt", "openai", "openrouter", "ollama", "lmstudio", "custom"];
 
@@ -276,6 +284,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseEfforts), nameof(IndicatorPositions),
         nameof(CaptureStatus), nameof(DetectionStatus), nameof(IsStartupAvailable),
         nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp), nameof(CleanupSourceHelp),
+        nameof(CleanupPresetNames), nameof(CleanupPresetPreview), nameof(ShowCleanupPreset),
         nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings), nameof(ShowChatGptSettings),
         nameof(ShowOpenRouterSettings), nameof(ShowGeneral), nameof(ShowDictation),
         nameof(ShowComputerUse), nameof(ShowMeetings), nameof(ShowAppearance)
@@ -325,6 +334,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         MeetingSummaryRetryCount = MeetingSummaryRetryPolicy.Clamp(_source.MeetingSummaryRetryCount);
         EnableLocalCleanup = _source.EnableLocalCleanup;
         CleanupSourceIndex = Math.Max(0, Array.IndexOf(CleanupSources, _source.CleanupSource));
+        _cleanupPresets = CleanupPrompts.All(_source.CustomCleanupPrompts);
+        OnPropertyChanged(nameof(CleanupPresetNames));
+        CleanupPresetIndex = Math.Max(0, _cleanupPresets.ToList().FindIndex(preset => preset.Id == _source.ActiveCleanupPromptId));
         EnableAppContext = _source.EnableAppContext;
         ComputerUseEnabled = _source.ComputerUseEnabled;
         ShowFloatingIndicator = _source.ShowFloatingIndicator;
@@ -420,6 +432,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             MuteAudioDuringDictation = MuteAudioDuringDictation,
             EnableLocalCleanup = EnableLocalCleanup,
             CleanupSource = CleanupSources[Math.Clamp(CleanupSourceIndex, 0, CleanupSources.Length - 1)],
+            ActiveCleanupPromptId = _cleanupPresets[Math.Clamp(CleanupPresetIndex, 0, _cleanupPresets.Count - 1)].Id,
             EnableAppContext = EnableAppContext,
             ComputerUseEnabled = enableComputerUse,
             ShowFloatingIndicator = ShowFloatingIndicator,

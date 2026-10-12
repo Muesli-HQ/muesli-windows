@@ -59,6 +59,8 @@ public sealed partial class SettingsPage : Page
     /// Lets another page deep-link a Settings section (for example the Shortcuts page's
     /// "Configure in Settings" action for Computer Use).
     /// </summary>
+    private void ManageCleanupPresets_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(CleanupPresetsPage));
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
