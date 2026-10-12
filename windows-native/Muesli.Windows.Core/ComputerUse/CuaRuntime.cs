@@ -84,7 +84,7 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
         var actionTime = Stopwatch.StartNew();
 
         Status("Looking at the screen");
-        var state = desktop.Observe(null, null, true);
+        var state = Observe(null, null, true);
         TraceState(state, null);
 
         for (var step = 1; ; step++)
@@ -154,7 +154,7 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
                 if (tool.Name == "get_app_state")
                 {
                     Status("Looking at the screen");
-                    state = desktop.Observe(call.App, call.Integer("window_id"), true);
+                    state = Observe(call.App, call.Integer("window_id"), true);
                     TraceState(state, step);
                     history.Add(new CuaToolOutcome(step, call, CuaResultStatus.Executed, $"Captured state of {state.AppName} - {state.WindowTitle}."));
                     observed = true;
@@ -228,7 +228,7 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
                 unchangedObservations = 0;
                 Thread.Sleep(_options.SettleDelay);
                 Status("Looking at the screen");
-                state = desktop.Observe(null, null, true);
+                state = Observe(null, null, true);
                 TraceState(state, step);
                 if (stepFailed) continue;
                 var changed = Signature(before) != Signature(state);
@@ -249,6 +249,18 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
         }
     }
 
+    /// <summary>A window that UI Automation cannot read becomes an empty state the planner can
+    /// work around (switch apps, use coordinates) instead of ending the run.</summary>
+    private CuaWindowState Observe(string? app, long? windowId, bool includeScreenshot)
+    {
+        try { return desktop.Observe(app, windowId, includeScreenshot); }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            Trace("observation_failed", "Could not read the window", exception.Message, null);
+            return CuaWindowState.Empty($"Could not read {app ?? "the window"} ({exception.GetType().Name})");
+        }
+    }
+
     private CuaResult WaitFor(CuaToolCall call, CancellationToken cancellationToken)
     {
         var text = call.String("text") ?? "";
@@ -258,7 +270,7 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var state = desktop.Observe(call.App, null, false);
+            var state = Observe(call.App, null, false);
             if (Contains(state, text)) return CuaResult.Ok($"\"{text}\" appeared after {clock.Elapsed.TotalSeconds:0.0}s.");
             if (clock.Elapsed > timeout) return CuaResult.Fail($"\"{text}\" did not appear within {timeout.TotalSeconds:0}s.");
             Thread.Sleep(400);

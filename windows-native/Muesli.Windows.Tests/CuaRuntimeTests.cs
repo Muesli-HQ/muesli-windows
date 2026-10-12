@@ -127,6 +127,16 @@ public sealed class CuaRuntimeTests
     }
 
     [Fact]
+    public async Task AWindowThatCannotBeReadDoesNotEndTheRun()
+    {
+        var planner = new ScriptedPlanner([Call("finish", new { reason = "ok" })]);
+        var result = await new CuaRuntime(new FakeDesktop { ThrowOnObservations = 1 }, planner, Fast).RunAsync("x", default);
+
+        Assert.Equal(CuaRunStatus.Done, result.Status);
+        Assert.StartsWith("Could not read", planner.Requests[0].State.AppName);
+    }
+
+    [Fact]
     public void PillStatusNamesTheStep()
     {
         var state = FakeDesktop.State(0);
@@ -328,8 +338,11 @@ public sealed class CuaRuntimeTests
             ],
             DateTimeOffset.UtcNow);
 
+        public int ThrowOnObservations { get; set; }
+
         public CuaWindowState Observe(string? app, long? windowId, bool includeScreenshot)
         {
+            if (ThrowOnObservations-- > 0) throw new System.ComponentModel.Win32Exception("UIA failed");
             _observations++;
             return TitleAfterObservations is { } change && _observations >= change.After ? State(_version, change.Title) : State(_version);
         }
