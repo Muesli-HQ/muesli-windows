@@ -147,14 +147,59 @@ public sealed class WinUiLibraryContext : IDisposable
         ? sqlite.Store.Meetings.ListFollowUpsLinkedTo(id).Where(link => link.Id == $"meeting_thread_{id}")
             .Select(link => FindMeeting(link.MeetingId)).FirstOrDefault() : null;
 
+    /// <summary>
+    /// The meetings that follow up another (<c>FollowUps</c>) and the meetings that have follow-ups
+    /// (<c>Parents</c>), for the browser's relationship icons.
+    /// </summary>
+    // ponytail: one follow-up query per meeting; a single join if libraries grow into the thousands.
+    public (HashSet<string> FollowUps, HashSet<string> Parents) ThreadLinks(IEnumerable<string> ids)
+    {
+        var followUps = new HashSet<string>(StringComparer.Ordinal);
+        var parents = new HashSet<string>(StringComparer.Ordinal);
+        if (History is not SqliteLibraryHistoryAdapter sqlite) return (followUps, parents);
+        foreach (var id in ids)
+        {
+            foreach (var link in sqlite.Store.Meetings.ListFollowUps(id))
+            {
+                if (link.LinkedMeetingId is not { } child || link.Id != $"meeting_thread_{child}") continue;
+                followUps.Add(child);
+                parents.Add(id);
+            }
+        }
+        return (followUps, parents);
+    }
+
     public IReadOnlyList<PersistedMeeting> RelatedMeetings(string id)
     {
-        if (History is not SqliteLibraryHistoryAdapter sqlite) return [];
         var parent = Predecessor(id);
-        var children = sqlite.Store.Meetings.ListFollowUps(id)
-            .Where(link => link.LinkedMeetingId is { } childId && link.Id == $"meeting_thread_{childId}")
-            .Select(link => FindMeeting(link.LinkedMeetingId!)).OfType<PersistedMeeting>();
+        var children = FollowUps(id);
         return (parent is null ? children : new[] { parent }.Concat(children)).OrderBy(meeting => meeting.CreatedAt).ToList();
+    }
+
+    /// <summary>The direct follow-ups of a meeting, oldest first.</summary>
+    public IReadOnlyList<PersistedMeeting> FollowUps(string id) => History is SqliteLibraryHistoryAdapter sqlite
+        ? sqlite.Store.Meetings.ListFollowUps(id)
+            .Where(link => link.LinkedMeetingId is { } childId && link.Id == $"meeting_thread_{childId}")
+            .Select(link => FindMeeting(link.LinkedMeetingId!)).OfType<PersistedMeeting>()
+            .OrderBy(meeting => meeting.CreatedAt).ToList()
+        : [];
+
+    /// <summary>Every meeting in the thread this one belongs to, root included (macOS threadContext.count).</summary>
+    public int ThreadSize(string id)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { id };
+        var root = id;
+        while (Predecessor(root) is { } parent && seen.Add(parent.Id)) root = parent.Id;
+        var count = 0;
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Stack<string>([root]);
+        while (pending.TryPop(out var current))
+        {
+            if (!visited.Add(current)) continue;
+            count++;
+            foreach (var child in FollowUps(current)) pending.Push(child.Id);
+        }
+        return count;
     }
 
     public int ClearDictations()

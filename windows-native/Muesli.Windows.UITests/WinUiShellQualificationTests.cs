@@ -210,25 +210,18 @@ public sealed class WinUiShellQualificationTests
                      {
                          "ImportAudioButton",
                          "ManageMeetingTemplatesButton",
-                         "MeetingsRefreshButton",
-                         "MeetingsSearchBox",
                          "MeetingsSort",
-                         "MeetingFoldersExpander"
+                         "MeetingsTimeRange"
                      })
             {
                 session.RequireAutomationId(automationId);
             }
 
-            // P3-02: the folder editor ships collapsed so the meeting list stays above the fold at
-            // 720x720, and a collapsed Expander keeps its content out of the UIA tree. Qualify that
-            // it starts closed, then open it and hold the editor to the same requirement as before
-            // — the controls must still be there, one click away, not quietly dropped.
+            // macOS manages folders from the sidebar (create, rename, nest, delete), not from an
+            // editor on the meetings page.
             session.RequireAbsentAutomationId(
                 "MeetingFolderList",
-                "the folder editor is collapsed until the user opens it.");
-            session.ExpandAutomationId("MeetingFoldersExpander");
-            session.RequireAutomationId("MeetingFolderList");
-            session.RequireAutomationId("MeetingFolderName");
+                "folders are managed from the sidebar, as on macOS.");
 
             // An empty profile has no active capture and nothing recoverable. Both panels must
             // stay collapsed rather than showing controls that would act on a session that does

@@ -185,8 +185,17 @@ public sealed class WinUiShellParityTests
 
         var meetings = File.ReadAllText(Path.Combine(winUi, "Pages", "MeetingsPage.xaml"));
         Assert.Contains("PauseMeetingButton", meetings);
-        Assert.Contains("ShowLiveTranscriptButton", meetings);
+        Assert.Contains("OpenMeetingNotesButton", meetings);
         Assert.Contains("MeetingRecoveryPanel", meetings);
+        Assert.DoesNotContain("MeetingsRefreshButton", meetings);
+
+        // The meeting being recorded opens as its notes document (macOS compactQuickNotesHeader).
+        var detail = File.ReadAllText(Path.Combine(winUi, "Pages", "MeetingDetailPage.xaml"));
+        Assert.Contains("MeetingRecordingView", detail);
+        Assert.Contains("ShowLiveTranscriptButton", detail);
+        Assert.Contains("MeetingRecordingNotesEditor", detail);
+        Assert.Contains("MeetingThreadBreadcrumb", detail);
+        Assert.DoesNotContain("MeetingSaveButton", detail);
 
         var main = File.ReadAllText(Path.Combine(winUi, "MainPage.xaml"));
         Assert.Contains("SidebarGreeting", main);

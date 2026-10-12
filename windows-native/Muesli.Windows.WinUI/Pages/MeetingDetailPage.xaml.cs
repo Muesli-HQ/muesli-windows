@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
 using Muesli.Windows.WinUI.ViewModels;
 
@@ -16,20 +17,19 @@ public sealed partial class MeetingDetailPage : Page
         App.Dialogs,
         App.UiDispatcher);
 
+    /// <summary>
+    /// The recording controls and notes while this page shows the meeting being recorded
+    /// (macOS compactQuickNotesHeader); null otherwise.
+    /// </summary>
+    public MeetingsPageViewModel? Recording { get; private set; }
+
+    private string _meetingId = "";
+
     public MeetingDetailPage()
     {
         InitializeComponent();
         ViewModel.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName is nameof(ViewModel.IsStatusError)
-                or nameof(ViewModel.IsWorking)
-                or nameof(ViewModel.IsStatusOpen)
-                or null
-                or "")
-            {
-                UpdateStatusSeverity();
-            }
-
             if (args.PropertyName == nameof(ViewModel.Transcript)) SavedTranscriptFeed.Update(null, ViewModel.Transcript);
 
             if (args.PropertyName == nameof(ViewModel.IsPlaying))
@@ -39,24 +39,20 @@ public sealed partial class MeetingDetailPage : Page
                 if (ViewModel.IsPlaying) Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnRenderingFrame;
             }
 
-            if (args.PropertyName is nameof(ViewModel.ShowNotesTab) or null or "")
-            {
-                SyncTabBar();
-            }
+            if (args.PropertyName is nameof(ViewModel.ShowNotesTab) or null or "") SyncTabBar();
+            if (args.PropertyName is nameof(ViewModel.HasFolder) or null or "") UpdateFolderPill();
         };
         // A folder move or a delete changes what the shell rail's folder rows count. The rail
         // recomputes through the shared builder; this page never counts anything itself.
         ViewModel.LibraryChanged += OnLibraryChanged;
-        // Deleting removes the whole page chrome, and with it the control that had focus, so
-        // WinUI fell back to the first focusable element in the window — the sidebar's collapse
-        // toggle. Put focus on the one action the page still offers instead.
         ViewModel.MeetingRemoved += OnMeetingRemoved;
         ViewModel.RecordingStarted += OnRecordingStarted;
+        App.Meetings.Changed += OnMeetingRuntimeChanged;
         Loaded += (_, _) =>
         {
             ApplyResponsiveLayout(ActualWidth);
             SyncTabBar();
-            UpdateStatusSeverity();
+            UpdateFolderPill();
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
         Unloaded += (_, _) =>
@@ -65,6 +61,8 @@ public sealed partial class MeetingDetailPage : Page
             ViewModel.LibraryChanged -= OnLibraryChanged;
             ViewModel.MeetingRemoved -= OnMeetingRemoved;
             ViewModel.RecordingStarted -= OnRecordingStarted;
+            App.Meetings.Changed -= OnMeetingRuntimeChanged;
+            EndRecordingMode(reload: false);
             ViewModel.Dispose();
         };
     }
@@ -75,32 +73,162 @@ public sealed partial class MeetingDetailPage : Page
     public Visibility InvertBoolToVisibility(bool value) =>
         value ? Visibility.Collapsed : Visibility.Visible;
 
-    /// <summary>The same rule, reachable from a DataTemplate where <c>ViewModel</c> is not in scope.</summary>
-    public static Visibility StaticBoolToVisibility(bool value) =>
-        value ? Visibility.Visible : Visibility.Collapsed;
+    public bool Not(bool value) => !value;
+
+    /// <summary>The progress bar is determinate once an operation reports a fraction.</summary>
+    public bool IsIndeterminate(bool working, double progress) => working && progress <= 0;
+
+    /// <summary>The raw-transcript call to action belongs to the Notes tab.</summary>
+    public Visibility CtaVisibility(bool show, bool notesTab) => BoolToVisibility(show && notesTab);
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        if (e.Parameter is string id && id == App.Meetings.ActiveMeetingId)
+        _meetingId = e.Parameter as string ?? "";
+        ViewModel.Load(_meetingId);
+        SyncTabBar();
+        UpdateMode();
+    }
+
+    /// <summary>
+    /// Recording this meeting, or finishing it: Stop clears the active id before the notes are
+    /// generated, so the page stays on "Finalizing notes" until the runtime is idle.
+    /// </summary>
+    private bool IsRecordingThisMeeting =>
+        (_meetingId.Length > 0 && _meetingId == App.Meetings.ActiveMeetingId
+            && (App.Meetings.IsRecording || App.Meetings.IsPaused || App.Meetings.IsBusy))
+        || (Recording is not null && App.Meetings.IsBusy);
+
+    private void OnMeetingRuntimeChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(UpdateMode);
+
+    /// <summary>
+    /// The meeting being recorded shows its live notes and recording controls; once it stops,
+    /// the page reloads the saved meeting in the standard document view.
+    /// </summary>
+    private void UpdateMode()
+    {
+        if (IsRecordingThisMeeting && Recording is null)
         {
-            DispatcherQueue.TryEnqueue(() => Frame.Navigate(typeof(MeetingsPage)));
+            Recording = new MeetingsPageViewModel(App.Library, App.Meetings, App.MeetingDetection, App.FilePickers,
+                App.Dialogs, App.UiDispatcher, App.ShowLiveTranscript, App.Clipboard);
+            Recording.PropertyChanged += OnRecordingPropertyChanged;
+            Bindings.Update();
+            RecordingModeBar.SelectedItem = RecordingNotesTab;
+            UpdateLiveFeed();
+        }
+        else if (!IsRecordingThisMeeting && Recording is not null)
+        {
+            EndRecordingMode(reload: true);
+        }
+
+        var recording = Recording is not null;
+        RecordingView.Visibility = recording ? Visibility.Visible : Visibility.Collapsed;
+        StandardView.Visibility = recording ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void EndRecordingMode(bool reload)
+    {
+        if (Recording is null) return;
+        Recording.PropertyChanged -= OnRecordingPropertyChanged;
+        Recording.Dispose();
+        Recording = null;
+        if (!reload) return;
+        Bindings.Update();
+        ViewModel.Load(_meetingId);
+        // A discarded recording leaves nothing to show; macOS returns to the browser.
+        if (!ViewModel.HasMeeting)
+        {
+            if (Frame.CanGoBack) Frame.GoBack();
+            else Frame.Navigate(typeof(MeetingsPage));
             return;
         }
-        ViewModel.Load(e.Parameter as string ?? "");
         SyncTabBar();
-        UpdateStatusSeverity();
+        UpdateFolderPill();
     }
+
+    private void OnRecordingPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (Recording is null) return;
+        if (args.PropertyName is nameof(MeetingsPageViewModel.LiveTranscript) or nameof(MeetingsPageViewModel.PartialYou) or nameof(MeetingsPageViewModel.PartialOthers))
+            UpdateLiveFeed();
+        if (args.PropertyName == nameof(MeetingsPageViewModel.ShowLiveTab))
+            RecordingModeBar.SelectedItem = Recording.ShowLiveTab ? RecordingLiveTab : RecordingNotesTab;
+    }
+
+    private void RecordingMode_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        if (Recording is null) return;
+        Recording.ShowLiveTab = sender.SelectedItem == RecordingLiveTab;
+        if (Recording.ShowLiveTab) UpdateLiveFeed();
+    }
+
+    private void UpdateLiveFeed()
+    {
+        if (Recording is null) return;
+        LiveFeed.Update(App.Meetings.LatestLiveSnapshot, Recording.LiveTranscript, App.Meetings.LiveTranscriptPrefix);
+        PreviousNotes.Markdown = App.Meetings.PreviousMeetingNotes;
+        PreviousNotes.Visibility = string.IsNullOrWhiteSpace(PreviousNotes.Markdown) ? Visibility.Collapsed : Visibility.Visible;
+        LiveCopyButton.IsEnabled = LiveFeed.CopyText.Length > 0;
+    }
+
+    private async void CopyLive_Click(object sender, RoutedEventArgs e) =>
+        await Controls.LiveTranscriptFeed.CopyAsync(LiveCopyButton, LiveFeed.CopyText);
 
     private void Back_Click(object sender, RoutedEventArgs e)
     {
         if (Frame.CanGoBack) Frame.GoBack();
     }
 
-    private void OnRecordingStarted(object? sender, EventArgs e) => Frame.Navigate(typeof(MeetingsPage));
+    /// <summary>Resuming records into this meeting; a follow-up opens the new meeting.</summary>
+    private void OnRecordingStarted(object? sender, EventArgs e)
+    {
+        if (App.Meetings.ActiveMeetingId is { } id && id != _meetingId) Frame.Navigate(typeof(MeetingDetailPage), id);
+        else UpdateMode();
+    }
+
     private void RelatedMeeting_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string id }) Frame.Navigate(typeof(MeetingDetailPage), id);
+        if (sender is Button { Tag: string id } && id.Length > 0) Frame.Navigate(typeof(MeetingDetailPage), id);
+    }
+
+    private void TitleEditor_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != global::Windows.System.VirtualKey.Enter) return;
+        e.Handled = true;
+        ViewModel.Title = TitleEditor.Text;
+    }
+
+    private void FolderPill_Click(object sender, RoutedEventArgs e) =>
+        MeetingFolderMenu.Show(FolderPill, ViewModel.FolderId, includeUnfiled: false,
+            ViewModel.MoveToFolder, ViewModel.CreateFolderAndMove);
+
+    /// <summary>macOS folderPill: folder.fill in accent once filed, folder.badge.plus otherwise.</summary>
+    private void UpdateFolderPill()
+    {
+        FolderPillIcon.Glyph = ViewModel.HasFolder ? "" : "";
+        FolderPill.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+            ViewModel.HasFolder ? "MuesliAccentBrush" : "MuesliTextSecondaryBrush"];
+    }
+
+    /// <summary>The Template submenu lists every template with a check on the meeting's, then Manage Templates….</summary>
+    private void MoreActionsMenu_Opening(object? sender, object e)
+    {
+        TemplateMenu.Items.Clear();
+        foreach (var name in ViewModel.TemplateNames)
+        {
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = name,
+                IsChecked = string.Equals(name, ViewModel.SelectedTemplate, StringComparison.OrdinalIgnoreCase),
+                IsEnabled = ViewModel.CanGenerateSummary
+            };
+            item.Click += async (_, _) => await ViewModel.ApplyTemplateAsync(name);
+            TemplateMenu.Items.Add(item);
+        }
+        TemplateMenu.Items.Add(new MenuFlyoutSeparator());
+        var manage = new MenuFlyoutItem { Text = "Manage Templates…" };
+        manage.Click += (_, _) => Frame.Navigate(typeof(MeetingTemplatesPage));
+        TemplateMenu.Items.Add(manage);
     }
 
     private void OnLibraryChanged(object? sender, EventArgs e) =>
@@ -128,21 +256,10 @@ public sealed partial class MeetingDetailPage : Page
         }
     }
 
-    private void UpdateStatusSeverity()
-    {
-        StatusBar.Severity = ViewModel.IsWorking
-            ? InfoBarSeverity.Informational
-            : ViewModel.IsStatusError
-                ? InfoBarSeverity.Error
-                : InfoBarSeverity.Success;
-    }
-
     /// <summary>
-    /// Compact is the 720-wide window with the icon rail (~648 DIP of page). Action rows stack
-    /// instead of clipping. Medium follows the 1008 window; large is 1280 with the expanded rail.
-    /// The tier comes from <see cref="MuesliPageMetrics"/> rather than a private 760 threshold,
-    /// and the reading cap is the shared <c>MuesliPageContentMaxWidth</c> rather than a local 980
-    /// — the two things P1-04 froze.
+    /// Compact is the 720-wide window with the icon rail (~648 DIP of page): the header actions
+    /// drop under the title and the speaker-name editor stacks. The tier and the reading cap come
+    /// from <see cref="MuesliPageMetrics"/> and <c>MuesliPageContentMaxWidth</c>.
     /// </summary>
     private void ApplyResponsiveLayout(double width)
     {
@@ -153,98 +270,25 @@ public sealed partial class MeetingDetailPage : Page
         ContentStack.MaxWidth = compact ? double.PositiveInfinity : ContentMaxWidth;
         ContentStack.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
 
-        HeaderCommands.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
-        HeaderCommands.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
-        ChromeActions.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
-        DetailTabWell.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
-        MoreActionsLabel.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        Grid.SetRow(ChromeActions, compact ? 1 : 0);
+        Grid.SetColumn(ChromeActions, compact ? 0 : 1);
+        Grid.SetColumnSpan(ChromeActions, compact ? 2 : 1);
+        ChromeActions.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Right;
 
-        if (compact)
-        {
-            Grid.SetRow(ChromeActions, 1);
-            Grid.SetColumn(ChromeActions, 0);
-            Grid.SetColumnSpan(ChromeActions, 2);
-            foreach (var button in new[] { SaveButton, CopyTranscriptButton, ExportButton, MoreActionsButton })
-            {
-                button.HorizontalAlignment = HorizontalAlignment.Stretch;
-            }
+        Grid.SetRow(RecordingActions, compact ? 1 : 0);
+        Grid.SetColumn(RecordingActions, compact ? 0 : 1);
+        Grid.SetColumnSpan(RecordingActions, compact ? 2 : 1);
+        RecordingActions.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Right;
 
-            Grid.SetRow(SummaryTemplatePicker, 1);
-            Grid.SetColumn(SummaryTemplatePicker, 0);
-            Grid.SetColumnSpan(SummaryTemplatePicker, 2);
-            SummaryTemplatePicker.HorizontalAlignment = HorizontalAlignment.Stretch;
-            SummaryTemplatePicker.MaxWidth = double.PositiveInfinity;
-            Grid.SetRow(GenerateNotesButton, 1);
-            Grid.SetColumn(GenerateNotesButton, 2);
-            Grid.SetColumnSpan(GenerateNotesButton, 1);
-            GenerateNotesButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-
-            Grid.SetRow(SaveTranscriptButton, 1);
-            Grid.SetColumn(SaveTranscriptButton, 0);
-            Grid.SetColumnSpan(SaveTranscriptButton, 1);
-            SaveTranscriptButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-            Grid.SetRow(RetranscribeButton, 1);
-            Grid.SetColumn(RetranscribeButton, 1);
-            Grid.SetColumnSpan(RetranscribeButton, 2);
-            RetranscribeButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-
-            Grid.SetRow(AliasSourceBox, 0);
-            Grid.SetColumn(AliasSourceBox, 0);
-            Grid.SetColumnSpan(AliasSourceBox, 3);
-            Grid.SetRow(AliasReplacementBox, 1);
-            Grid.SetColumn(AliasReplacementBox, 0);
-            Grid.SetColumnSpan(AliasReplacementBox, 2);
-            Grid.SetRow(AddAliasButton, 1);
-            Grid.SetColumn(AddAliasButton, 2);
-            Grid.SetColumnSpan(AddAliasButton, 1);
-
-            FolderPicker.HorizontalAlignment = HorizontalAlignment.Stretch;
-            FolderPicker.MaxWidth = double.PositiveInfinity;
-            CandidateActions.HorizontalAlignment = HorizontalAlignment.Stretch;
-        }
-        else
-        {
-            Grid.SetRow(ChromeActions, 0);
-            Grid.SetColumn(ChromeActions, 1);
-            Grid.SetColumnSpan(ChromeActions, 1);
-            foreach (var button in new[] { SaveButton, CopyTranscriptButton, ExportButton, MoreActionsButton })
-            {
-                button.HorizontalAlignment = HorizontalAlignment.Left;
-            }
-
-            Grid.SetRow(SummaryTemplatePicker, 0);
-            Grid.SetColumn(SummaryTemplatePicker, 1);
-            Grid.SetColumnSpan(SummaryTemplatePicker, 1);
-            SummaryTemplatePicker.HorizontalAlignment = HorizontalAlignment.Left;
-            SummaryTemplatePicker.MaxWidth = 260;
-            Grid.SetRow(GenerateNotesButton, 0);
-            Grid.SetColumn(GenerateNotesButton, 2);
-            Grid.SetColumnSpan(GenerateNotesButton, 1);
-            GenerateNotesButton.HorizontalAlignment = HorizontalAlignment.Left;
-
-            Grid.SetRow(SaveTranscriptButton, 0);
-            Grid.SetColumn(SaveTranscriptButton, 1);
-            Grid.SetColumnSpan(SaveTranscriptButton, 1);
-            SaveTranscriptButton.HorizontalAlignment = HorizontalAlignment.Left;
-            Grid.SetRow(RetranscribeButton, 0);
-            Grid.SetColumn(RetranscribeButton, 2);
-            Grid.SetColumnSpan(RetranscribeButton, 1);
-            RetranscribeButton.HorizontalAlignment = HorizontalAlignment.Left;
-
-            Grid.SetRow(AliasSourceBox, 0);
-            Grid.SetColumn(AliasSourceBox, 0);
-            Grid.SetColumnSpan(AliasSourceBox, 1);
-            Grid.SetRow(AliasReplacementBox, 0);
-            Grid.SetColumn(AliasReplacementBox, 1);
-            Grid.SetColumnSpan(AliasReplacementBox, 1);
-            Grid.SetRow(AddAliasButton, 0);
-            Grid.SetColumn(AddAliasButton, 2);
-            Grid.SetColumnSpan(AddAliasButton, 1);
-
-            FolderPicker.HorizontalAlignment = HorizontalAlignment.Left;
-            FolderPicker.MaxWidth = 280;
-            CandidateActions.HorizontalAlignment = HorizontalAlignment.Right;
-        }
+        Grid.SetRow(AliasSourceBox, 0);
+        Grid.SetColumn(AliasSourceBox, 0);
+        Grid.SetColumnSpan(AliasSourceBox, compact ? 3 : 1);
+        Grid.SetRow(AliasReplacementBox, compact ? 1 : 0);
+        Grid.SetColumn(AliasReplacementBox, compact ? 0 : 1);
+        Grid.SetColumnSpan(AliasReplacementBox, compact ? 2 : 1);
+        Grid.SetRow(AddAliasButton, compact ? 1 : 0);
+        Grid.SetColumn(AddAliasButton, 2);
+        CandidateActions.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
     }
 
     /// <summary>The shared reading-width cap; the literal is only the fallback if the key is gone.</summary>

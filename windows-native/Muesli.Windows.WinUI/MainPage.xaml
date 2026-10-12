@@ -229,10 +229,10 @@
                                         Style="{StaticResource MuesliSidebarIconButtonStyle}"
                                         FontSize="15"
                                         Click="CreateMeetingFolder_Click"
-                                        AutomationProperties.Name="Create meeting folder"
-                                        ToolTipService.ToolTip="New meeting folder">
+                                        AutomationProperties.Name="New meeting folder"
+                                        ToolTipService.ToolTip="New Meeting Folder">
                                 <Button.Content>
-                                    <FontIcon Glyph="&#xE710;"
+                                    <FontIcon Glyph="&#xE8F4;"
                                               FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                               FontSize="13" />
                                 </Button.Content>

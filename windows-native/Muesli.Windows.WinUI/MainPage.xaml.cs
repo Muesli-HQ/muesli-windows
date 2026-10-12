@@ -492,17 +492,79 @@ public sealed partial class MainPage : Page
         MeetingChevronIcon.Glyph = _meetingFoldersExpanded ? "\uE70D" : "\uE76C";
     }
 
-    private void CreateMeetingFolder_Click(object sender, RoutedEventArgs e)
+    /// <summary>The folder being renamed in place, as macOS SidebarView folderRenameField.</summary>
+    private string? _renamingFolderId;
+
+    /// <summary>macOS createNewFolder: a "New Folder" row opens for renaming and is selected.</summary>
+    private void CreateMeetingFolder_Click(object sender, RoutedEventArgs e) => CreateFolder(null);
+
+    private void CreateFolder(string? parentId)
     {
-        // Folder create/rename/validation lives on the Meetings page. The rail control opens that
-        // page instead of inventing a second persistence path with no name prompt, and then opens
-        // the folder editor on it — the editor is collapsed by default since P3-02, so navigating
-        // alone would leave the "+" pointing at nothing the user can see.
-        NavigateTo("meetings");
-        if (ContentFrame.Content is Pages.MeetingsPage page)
+        try
         {
-            page.RevealFolderEditor();
+            var folder = App.Library.SaveMeetingFolder(null, "New Folder", parentId);
+            if (!_meetingFoldersExpanded) ToggleMeetingFolders_Click(this, new RoutedEventArgs());
+            _renamingFolderId = folder.Id;
+            NavigateTo($"meetings:{folder.Id}");
+            RebuildMeetingFolders();
         }
+        catch (Exception exception) { _ = App.Dialogs.ShowWarningAsync(exception.Message, "Could not create the folder"); }
+    }
+
+    /// <summary>macOS folder context menu: New Subfolder, Rename, Move to Top Level, Delete.</summary>
+    private MenuFlyout FolderMenu(MeetingFolderListItem folder)
+    {
+        var menu = new MenuFlyout();
+        var subfolder = new MenuFlyoutItem { Text = "New Subfolder" };
+        subfolder.Click += (_, _) => CreateFolder(folder.Id);
+        menu.Items.Add(subfolder);
+        var rename = new MenuFlyoutItem { Text = "Rename" };
+        rename.Click += (_, _) => { _renamingFolderId = folder.Id; RebuildMeetingFolders(); };
+        menu.Items.Add(rename);
+        if (folder.ParentName is not null)
+        {
+            var top = new MenuFlyoutItem { Text = "Move to Top Level" };
+            top.Click += (_, _) => { App.Library.MoveMeetingFolder(folder.Id, null); RefreshFolderViews(); };
+            menu.Items.Add(top);
+        }
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var delete = new MenuFlyoutItem { Text = "Delete", Foreground = (Brush)Application.Current.Resources["MuesliErrorBrush"] };
+        delete.Click += async (_, _) => await DeleteFolderAsync(folder);
+        menu.Items.Add(delete);
+        return menu;
+    }
+
+    private async Task DeleteFolderAsync(MeetingFolderListItem folder)
+    {
+        var direct = App.Library.ReadSnapshot().Meetings.Count(meeting => meeting.FolderId == folder.Id);
+        var message = direct > 0
+            ? $"{direct} meeting{(direct == 1 ? "" : "s")} in this folder will be moved to Unfiled. Subfolders will be kept."
+            : "This folder will be permanently removed. Subfolders will be kept.";
+        if (await App.Dialogs.ConfirmAsync(message, $"Delete \u201c{folder.Name}\u201d?") != Muesli.Windows.Core.Contracts.AppDialogChoice.Primary) return;
+        App.Library.DeleteMeetingFolder(folder.Id);
+        if (_selectedTag == $"meetings:{folder.Id}") NavigateTo("meetings");
+        RefreshFolderViews();
+    }
+
+    private void CommitRename(string id, string text)
+    {
+        if (_renamingFolderId != id) return;
+        _renamingFolderId = null;
+        var name = text.Trim();
+        if (name.Length > 0)
+        {
+            try { App.Library.SaveMeetingFolder(id, name); }
+            catch (Exception exception) { _ = App.Dialogs.ShowWarningAsync(exception.Message, "Could not rename the folder"); }
+        }
+        RefreshFolderViews();
+    }
+
+    /// <summary>The rail and an open Meetings page both show folder names and counts.</summary>
+    private void RefreshFolderViews()
+    {
+        RebuildMeetingFolders();
+        RefreshNavigationVisuals();
+        if (ContentFrame.Content is Pages.MeetingsPage page) page.ViewModel.Refresh();
     }
 
     private void Share_Click(object sender, RoutedEventArgs e)
@@ -637,13 +699,41 @@ public sealed partial class MainPage : Page
         foreach (var folder in MeetingFolderListItem.BuildTree(App.Library.ReadSnapshot()))
         {
             var tag = folder.IsAllMeetings ? "meetings" : $"meetings:{folder.Id}";
-            MeetingChildrenHost.Children.Add(CreateFolderButton(folder, tag));
+            if (!folder.IsAllMeetings && folder.Id == _renamingFolderId)
+            {
+                MeetingChildrenHost.Children.Add(RenameField(folder));
+                continue;
+            }
+            var button = CreateFolderButton(folder, tag);
+            if (!folder.IsAllMeetings) button.ContextFlyout = FolderMenu(folder);
+            MeetingChildrenHost.Children.Add(button);
         }
 
         foreach (var child in MeetingChildrenHost.Children.OfType<Button>())
         {
             ApplyNavButtonCompact(child, _compactRail);
         }
+    }
+
+    /// <summary>macOS folderRenameField: the name is edited in place; Enter or leaving the field saves, Escape cancels.</summary>
+    private TextBox RenameField(MeetingFolderListItem folder)
+    {
+        var box = new TextBox
+        {
+            Text = folder.Name,
+            PlaceholderText = "Folder name",
+            FontSize = 13,
+            Margin = new Thickness(8 + Math.Min(folder.Depth, 8) * 12, 2, 8, 2)
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(box, "Folder name");
+        box.Loaded += (_, _) => { box.Focus(FocusState.Programmatic); box.SelectAll(); };
+        box.KeyDown += (_, args) =>
+        {
+            if (args.Key == VirtualKey.Enter) { args.Handled = true; CommitRename(folder.Id, box.Text); }
+            else if (args.Key == VirtualKey.Escape) { args.Handled = true; _renamingFolderId = null; RebuildMeetingFolders(); }
+        };
+        box.LostFocus += (_, _) => CommitRename(folder.Id, box.Text);
+        return box;
     }
 
     private Button CreateFolderButton(MeetingFolderListItem folder, string tag)
