@@ -64,9 +64,19 @@ Each module ends with a test that proves the feature works on this PC before the
 - **Modifiers:** macOS `command` maps to `Ctrl` for shortcuts; `option` maps to `Alt`.
 - **Browser:** no AppleScript on Windows and no default-profile DevTools port in current Chrome, so
   browser tools use UI Automation plus the keyboard (Ctrl+L, Ctrl+T, Ctrl+Tab).
-- **Browser (M5, done):** no browser-specific tools were needed. The planner opens tabs and navigates
-  with ctrl+t / ctrl+l and reads pages through UI Automation (headings are marked). Verified live in
-  Chrome.
+- **Browser (M5, done):** the planner opens tabs and navigates with ctrl+t / ctrl+l. macOS's
+  AppleScript page tools are matched through UI Automation, with no extension and no Chrome setting:
+  `page_get_text` reads the whole page (12,000 characters), `list_browser_tabs` and
+  `activate_browser_tab` find and switch tabs by title, in Chrome, Edge and other browsers. Links
+  inside web tables (Hacker News, mail lists) get their own numbers. macOS's DOM query tool is not
+  ported; the element list covers it.
+- **Background first (beyond macOS):** windows are read and screenshotted where they are (PrintWindow),
+  minimized windows included, and single clicks, set_value, scrolling and tab switches go through UI
+  Automation without the mouse or keyboard. Only typing, keys, coordinate clicks and right/double
+  clicks bring the window forward. The pointer goes back after every step, a window that jumped
+  forward on its own goes back, and at the end of the run the user's window returns and windows it
+  un-minimized go back down (not after launch_app). With no keyboard focus known in a background
+  window, Enter is gated whenever the window has a chat composer.
 - **Writing (M6, done):** no `edit_text` tool. The planner model composes the text itself and replaces
   the selection (or ctrl+a) with `paste_text`. Verified live rewriting a Notepad list.
 - **Settings by voice (M7, done):** `get_muesli_settings` / `set_muesli_setting` over a fixed list of

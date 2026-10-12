@@ -55,9 +55,9 @@ public sealed class ResponsesPlanner : ICuaPlanner
         for (var attempt = 0; ; attempt++)
         {
             try { return await Send(body, cancellationToken); }
-            catch (CuaPlannerException exception) when (exception.Transient && attempt == 0)
+            catch (CuaPlannerException exception) when (exception.Transient && attempt < 2)
             {
-                await Task.Delay(800, cancellationToken);
+                await Task.Delay(attempt == 0 ? 1000 : 4000, cancellationToken);
             }
         }
     }
@@ -117,7 +117,10 @@ public sealed class ResponsesPlanner : ICuaPlanner
             switch (type)
             {
                 case "error" or "response.failed":
-                    throw new CuaPlannerException($"The planner failed. {ErrorMessage(data) ?? "The model reported an error."}");
+                    var reason = ErrorMessage(data) ?? "The model reported an error.";
+                    // "Our servers are currently overloaded. Please try again later." passes in seconds.
+                    throw new CuaPlannerException($"The planner failed. {reason}",
+                        transient: reason.Contains("overloaded", StringComparison.OrdinalIgnoreCase) || reason.Contains("try again", StringComparison.OrdinalIgnoreCase));
                 case "response.output_text.delta":
                     text.Append(json["delta"]?.GetValue<string>());
                     break;

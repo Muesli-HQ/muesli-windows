@@ -314,8 +314,15 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
     /// macOS does not gate this; Windows does.</summary>
     private static bool InMessageBox(CuaElement? element, CuaWindowState state)
     {
-        var words = Words(element is not null ? $"{element.Title} {element.Label}" : $"{state.FocusedElement?.Title} {state.FocusedElement?.Label}").ToHashSet();
-        return !words.Contains("search") && words.Overlaps(["message", "reply", "comment", "chat"]);
+        static bool IsMessageBox(string text)
+        {
+            var words = Words(text).ToHashSet();
+            return !words.Contains("search") && words.Overlaps(["message", "reply", "comment", "chat"]);
+        }
+        if (element is not null) return IsMessageBox($"{element.Title} {element.Label}");
+        if (state.FocusedElement is { } focus) return IsMessageBox($"{focus.Title} {focus.Label}");
+        // A window read in the background reports no focus, so any composer in it may be the one Enter reaches.
+        return state.Elements.Any(candidate => candidate.ActionNames.Contains("set_value") && IsMessageBox($"{candidate.Title} {candidate.Label}"));
     }
 
     private static IEnumerable<string> Words(string text) =>
@@ -371,6 +378,9 @@ public sealed class CuaRuntime(ICuaDesktop desktop, ICuaPlanner planner, CuaRunt
             "set_value" => $"Setting{on}",
             "perform_secondary_action" => $"Opening menu on{on}",
             "move_cursor" => "Moving the pointer",
+            "page_get_text" => "Reading the page",
+            "list_browser_tabs" => "Looking at your tabs",
+            "activate_browser_tab" => "Switching tabs",
             "get_muesli_settings" => "Reading Muesli settings",
             "set_muesli_setting" => "Changing a Muesli setting",
             _ => "Working",

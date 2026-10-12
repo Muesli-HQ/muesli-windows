@@ -159,6 +159,12 @@ public sealed class CuaRuntimeTests
         Assert.Null(CuaRuntime.RiskReason(enter, search));
         Assert.NotNull(CuaRuntime.RiskReason(Call("type_text", new { text = "hi\n" }), chat));
         Assert.Null(CuaRuntime.RiskReason(Call("type_text", new { text = "hi" }), chat));
+
+        // Read in the background: no focus is known, so a composer anywhere in the window counts.
+        var composer = notepad.Elements[1] with { Title = "Type a message", ActionNames = ["click", "set_value"] };
+        var background = notepad with { FocusedElement = null, Elements = [notepad.Elements[0], composer] };
+        Assert.NotNull(CuaRuntime.RiskReason(enter, background));
+        Assert.Null(CuaRuntime.RiskReason(enter, notepad with { FocusedElement = null }));
     }
 
     [Fact]

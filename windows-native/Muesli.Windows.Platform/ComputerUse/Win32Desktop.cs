@@ -47,7 +47,8 @@ public static class Win32Desktop
         if (DwmGetWindowAttribute(handle, DwmwaCloaked, out int cloaked, sizeof(int)) == 0 && cloaked != 0) return null;
         var title = WindowTitle(handle);
         if (title.Length == 0) return null;
-        var frame = WindowFrame(handle);
+        // A minimized window still counts (the user tucked Spotify away); it is shown again only to be read.
+        var frame = IsIconic(handle) ? RestoredFrame(handle) : WindowFrame(handle);
         if (frame is null || frame.Width < 40 || frame.Height < 40) return null;
         var (processId, appId, appName) = Identity(handle);
         if (processId == 0 || processId == OwnProcessId || ExcludedProcesses.Contains(appId)) return null;
@@ -109,6 +110,18 @@ public static class Win32Desktop
         return new CuaRect(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
     }
 
+    private static CuaRect? RestoredFrame(IntPtr handle)
+    {
+        var placement = new WindowPlacement { Length = Marshal.SizeOf<WindowPlacement>() };
+        if (!GetWindowPlacement(handle, ref placement)) return null;
+        var rect = placement.NormalPosition;
+        return new CuaRect(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowPlacement { public int Length, Flags, ShowCommand; public NativePoint MinPosition, MaxPosition; public NativeRect NormalPosition; }
+    [DllImport("user32.dll")] private static extern bool GetWindowPlacement(IntPtr handle, ref WindowPlacement placement);
+
     public static CuaRect CursorPosition() =>
         GetCursorPos(out var point) ? new CuaRect(point.X, point.Y, 0, 0) : new CuaRect(0, 0, 0, 0);
 
@@ -168,6 +181,64 @@ public static class Win32Desktop
     [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr handle);
     [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint attach, uint attachTo, bool attachInput);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
+    public static long ForegroundWindow() => GetForegroundWindow().ToInt64();
+
+    public static void SetCursor(CuaRect point) => SetCursorPos((int)point.X, (int)point.Y);
+
+    /// <summary>Un-minimizes a window without taking focus, so it can be read and drawn; true when it was minimized.</summary>
+    public static bool ShowWithoutActivating(long windowId)
+    {
+        var handle = new IntPtr(windowId);
+        if (!IsIconic(handle)) return false;
+        ShowWindow(handle, SwShowNoActivate);
+        return true;
+    }
+
+    public static void MinimizeWithoutActivating(long windowId) => ShowWindow(new IntPtr(windowId), SwShowMinNoActive);
+
+    private const int SwShowMinNoActive = 7;
+
+    /// <summary>
+    /// Draws a window into a bitmap even when other windows cover it, so observing never steals
+    /// the user's foreground. Returns null when the app does not draw this way (blank result);
+    /// the caller then brings the window forward and copies the screen.
+    /// </summary>
+    public static Bitmap? CaptureWindow(long windowId, CuaRect frame)
+    {
+        var handle = new IntPtr(windowId);
+        if (IsIconic(handle) || !GetWindowRect(handle, out var outer)) return null;
+        var full = new Bitmap(Math.Max(1, outer.Right - outer.Left), Math.Max(1, outer.Bottom - outer.Top));
+        using (var graphics = Graphics.FromImage(full))
+        {
+            var dc = graphics.GetHdc();
+            var printed = PrintWindow(handle, dc, PwRenderFullContent);
+            graphics.ReleaseHdc(dc);
+            if (!printed) { full.Dispose(); return null; }
+        }
+        // PrintWindow includes the invisible resize border; crop to the visible frame.
+        var crop = Rectangle.Intersect(new Rectangle(0, 0, full.Width, full.Height),
+            new Rectangle((int)frame.X - outer.Left, (int)frame.Y - outer.Top, (int)frame.Width, (int)frame.Height));
+        if (crop.Width <= 0 || crop.Height <= 0 || IsBlank(full, crop)) { full.Dispose(); return null; }
+        var bitmap = full.Clone(crop, full.PixelFormat);
+        full.Dispose();
+        return bitmap;
+    }
+
+    /// <summary>GPU-composed apps that ignore PrintWindow come back as one flat colour.</summary>
+    private static bool IsBlank(Bitmap bitmap, Rectangle area)
+    {
+        var first = bitmap.GetPixel(area.X + area.Width / 2, area.Y + area.Height / 2);
+        for (var row = 1; row < 8; row++)
+            for (var column = 1; column < 8; column++)
+                if (bitmap.GetPixel(area.X + area.Width * column / 8, area.Y + area.Height * row / 8) != first) return false;
+        return true;
+    }
+
+    private const int SwShowNoActivate = 4;
+    private const uint PwRenderFullContent = 2;
+    [DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr handle, IntPtr dc, uint flags);
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
 
     /// <summary>Copies the on-screen pixels of a rectangle (the window must be visible).</summary>
     public static Bitmap CaptureScreen(CuaRect frame)

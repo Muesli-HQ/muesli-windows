@@ -41,6 +41,8 @@ public sealed class UiaObserver : IDisposable
 
     public AutomationElement? Element(int index) => _elements.GetValueOrDefault(index);
 
+    public UIA3Automation Automation => _automation;
+
     public CuaWindowState Observe(CuaWindow window, bool includeScreenshot)
     {
         _elements.Clear();
@@ -68,11 +70,11 @@ public sealed class UiaObserver : IDisposable
                 Walk(root, "0", 0, frame, window.ProcessId, candidates, texts, seenText);
         var elements = Number(candidates);
 
-        var focused = FocusedElement(window.ProcessId, frame, out var selectedText, out var documentText);
+        var focused = FocusedElement(window.Id, window.ProcessId, frame, out var selectedText, out var documentText);
         CuaScreenshot? screenshot = null;
         if (includeScreenshot)
         {
-            try { screenshot = Screenshot(frame, elements); }
+            try { screenshot = Screenshot(window.Id, frame, elements); }
             catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception) { }
         }
 
@@ -111,7 +113,7 @@ public sealed class UiaObserver : IDisposable
     private CacheRequest BuildCache()
     {
         var library = _automation.PropertyLibrary;
-        var cache = new CacheRequest { TreeScope = TreeScope.Subtree };
+        var cache = new CacheRequest { TreeScope = TreeScope.Subtree, AutomationElementMode = AutomationElementMode.Full };
         foreach (var property in new PropertyId[]
         {
             library.Element.ControlType, library.Element.Name, library.Element.IsEnabled, library.Element.BoundingRectangle,
@@ -131,22 +133,26 @@ public sealed class UiaObserver : IDisposable
     }
 
     private void Walk(AutomationElement element, string path, int depth, CuaRect window, int processId,
-        List<Candidate> candidates, List<string> texts, HashSet<string> seenText)
+        List<Candidate> candidates, List<string> texts, HashSet<string> seenText, bool web = false)
     {
         if (depth > MaxDepth || candidates.Count >= MaxCandidates) return;
         var type = Get<ControlType>(element, _automation.PropertyLibrary.Element.ControlType);
         // Scrollbars and their buttons waste element slots; the scroll tool covers them.
         if (type == ControlType.ScrollBar) return;
-        bool isRow;
-        try { isRow = Classify(element, type, path, window, processId, candidates, texts, seenText); }
-        catch (Exception exception) when (IsElementGone(exception)) { return; }
+        // A web table row (Hacker News, mail lists) holds the links to click, so it is not folded.
+        var isRow = false;
+        if (!(web && type == ControlType.DataItem))
+        {
+            try { isRow = Classify(element, type, path, window, processId, candidates, texts, seenText); }
+            catch (Exception exception) when (IsElementGone(exception)) { return; }
+        }
         if (isRow) return; // A row's cells are folded into its value.
 
         AutomationElement[] children;
         try { children = element.CachedChildren; }
         catch (Exception exception) when (IsElementGone(exception)) { return; }
         for (var index = 0; index < children.Length; index++)
-            Walk(children[index], $"{path}.{index}", depth + 1, window, processId, candidates, texts, seenText);
+            Walk(children[index], $"{path}.{index}", depth + 1, window, processId, candidates, texts, seenText, web || type == ControlType.Document);
     }
 
     private static readonly HashSet<string> IslandHostClasses = ["Microsoft.UI.Content.DesktopChildSiteBridge", "InputSiteWindowClass"];
@@ -273,10 +279,12 @@ public sealed class UiaObserver : IDisposable
         return cells.Distinct();
     }
 
-    private CuaFocusedElement? FocusedElement(int processId, CuaRect window, out string? selectedText, out string? documentText)
+    private CuaFocusedElement? FocusedElement(long windowId, int processId, CuaRect window, out string? selectedText, out string? documentText)
     {
         selectedText = null;
         documentText = null;
+        // Keyboard focus belongs to the foreground app; a window read in the background has none.
+        if (!Win32Desktop.IsForeground(windowId)) return null;
         try
         {
             var focused = _automation.FocusedElement();
@@ -306,9 +314,11 @@ public sealed class UiaObserver : IDisposable
 
     /// <summary>Window screenshot with every numbered element boxed and labelled, scaled to at most
     /// <see cref="MaxScreenshotWidth"/> wide, as a JPEG data URL.</summary>
-    private static CuaScreenshot Screenshot(CuaRect frame, IReadOnlyList<CuaElement> elements)
+    private static CuaScreenshot Screenshot(long windowId, CuaRect frame, IReadOnlyList<CuaElement> elements)
     {
-        using var capture = Win32Desktop.CaptureScreen(frame);
+        // Drawn in the background where the app allows it; otherwise the window must be in front.
+        using var capture = Win32Desktop.CaptureWindow(windowId, frame)
+                            ?? (Win32Desktop.Activate(windowId) ? Win32Desktop.CaptureScreen(frame) : throw new InvalidOperationException("The window could not be brought forward."));
         var scale = Math.Min(1.0, (double)MaxScreenshotWidth / capture.Width);
         var width = Math.Max(1, (int)Math.Round(capture.Width * scale));
         var height = Math.Max(1, (int)Math.Round(capture.Height * scale));

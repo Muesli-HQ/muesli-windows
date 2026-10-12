@@ -6,12 +6,20 @@ namespace Muesli.Windows.ComputerUse;
 
 /// <summary>
 /// Windows implementation of the Computer Use desktop: resolves the target window, observes it,
-/// and executes desktop tools with UI Automation and synthetic input. Every input action first
-/// brings its target window to the front and refuses apps on the safety deny-list.
+/// and executes desktop tools with UI Automation and synthetic input. It works in the background
+/// where it can: windows are read and drawn without coming forward, and elements are pressed,
+/// set and scrolled through UI Automation. Only keyboard input and coordinate clicks bring the
+/// target to the front; the user's pointer is put back after each step and their window after
+/// the run. Apps on the safety deny-list are refused.
 /// </summary>
 public sealed class WindowsDesktop : ICuaDesktop
 {
     private readonly UiaObserver _observer = new();
+    private readonly long _userWindow = Win32Desktop.ForegroundWindow();
+    private readonly HashSet<long> _touched = [];
+    private readonly HashSet<long> _unminimized = [];
+    private bool _launched;
+    private bool _broughtForward;
     private CuaWindow? _target;
     private IReadOnlyList<(string Name, string Id)>? _startApps;
 
@@ -25,14 +33,21 @@ public sealed class WindowsDesktop : ICuaDesktop
         if (CuaSafety.BlockReason(window.AppId, window.Title) is { } reason)
             return CuaWindowState.Empty(window.AppName) with { AppId = window.AppId, WindowId = window.Id, VisibleText = reason };
         _target = window;
-        // Screenshots copy screen pixels, so the window has to be in front.
-        if (includeScreenshot) Win32Desktop.Activate(window.Id);
+        _touched.Add(window.Id);
+        if (Win32Desktop.ShowWithoutActivating(window.Id))
+        {
+            _unminimized.Add(window.Id);
+            Thread.Sleep(250); // Let it repaint before it is read.
+        }
         return _observer.Observe(window, includeScreenshot);
     }
 
     public CuaResult Execute(CuaToolCall call, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var pointer = Win32Desktop.CursorPosition();
+        var foreground = Win32Desktop.ForegroundWindow();
+        _broughtForward = false;
         try
         {
             return call.Name switch
@@ -51,6 +66,9 @@ public sealed class WindowsDesktop : ICuaDesktop
                 "press_key" or "hotkey" => PressKey(call),
                 "scroll" => Scroll(call),
                 "drag" => Drag(call),
+                "page_get_text" => PageText(call),
+                "list_browser_tabs" => ListTabs(call),
+                "activate_browser_tab" => ActivateTab(call),
                 _ => new CuaResult(CuaResultStatus.Unsupported, $"{call.Name} is not a desktop tool."),
             };
         }
@@ -60,6 +78,16 @@ public sealed class WindowsDesktop : ICuaDesktop
                                               or System.Runtime.InteropServices.COMException)
         {
             return CuaResult.Fail("The element is no longer available; call get_app_state for a fresh state.");
+        }
+        finally
+        {
+            // The pointer goes back where the user left it; move_cursor exists to leave it on a hover target.
+            if (call.Name != "move_cursor" && Win32Desktop.CursorPosition() != pointer) Win32Desktop.SetCursor(pointer);
+            // Chrome raises its own window when a link or tab is pressed through UI Automation; a
+            // background step gives the foreground straight back.
+            var now = Win32Desktop.ForegroundWindow();
+            if (!_broughtForward && now != foreground && _touched.Contains(now) && Win32Desktop.IsAlive(foreground))
+                Win32Desktop.Activate(foreground);
         }
     }
 
@@ -91,6 +119,7 @@ public sealed class WindowsDesktop : ICuaDesktop
     private CuaResult LaunchApp(CuaToolCall call, CancellationToken cancellationToken)
     {
         var app = call.App ?? throw new ArgumentException("launch_app needs app_name or app_id.");
+        _launched = true;
         if (BestWindow(app) is { } existing)
             return Focus(existing) is { } failure ? failure : CuaResult.Ok($"{existing.AppName} was already open and is now in front: \"{existing.Title}\".");
 
@@ -152,7 +181,7 @@ public sealed class WindowsDesktop : ICuaDesktop
 
     private CuaWindow? Resolve(string? app, long? windowId)
     {
-        if (windowId is { } id) return Win32Desktop.Describe(new IntPtr(id));
+        if (windowId is { } id and > 0) return Win32Desktop.Describe(new IntPtr(id)); // Models send 0 for "none".
         if (app is not null) return BestWindow(app);
         if (_target is { } target && Win32Desktop.IsAlive(target.Id)) return Win32Desktop.Describe(new IntPtr(target.Id)) ?? target;
         return Win32Desktop.UserWindow();
@@ -180,15 +209,29 @@ public sealed class WindowsDesktop : ICuaDesktop
     {
         if (CuaSafety.BlockReason(window.AppId, window.Title) is { } reason) return CuaResult.Fail(reason);
         _target = window;
+        _touched.Add(window.Id);
+        _broughtForward = true;
         return Win32Desktop.Activate(window.Id) ? null : CuaResult.Fail($"Windows did not let Muesli bring {window.AppName} to the front.");
     }
 
-    /// <summary>Input goes to the target window: the named app, else the current target.</summary>
-    private CuaWindow PrepareInput(CuaToolCall call)
+    /// <summary>The window a tool acts on (window_id, the named app, else the current target),
+    /// left where it is.</summary>
+    private CuaWindow TargetWindow(CuaToolCall call)
     {
-        var window = (call.App is { } app ? BestWindow(app) : null) ?? _target
+        var window = (call.Number("window_id") is { } id and > 0 ? Win32Desktop.Describe(new IntPtr((long)id)) : null)
+                     ?? (call.App is { } app ? BestWindow(app) : null) ?? _target
                      ?? throw new InvalidOperationException("No target window yet. Call get_app_state or launch_app first.");
         if (!Win32Desktop.IsAlive(window.Id)) throw new InvalidOperationException($"{window.AppName}'s window has closed.");
+        if (CuaSafety.BlockReason(window.AppId, window.Title) is { } reason) throw new InvalidOperationException(reason);
+        _target = window;
+        _touched.Add(window.Id);
+        return window;
+    }
+
+    /// <summary>The target window, brought to the front for mouse or keyboard input.</summary>
+    private CuaWindow PrepareInput(CuaToolCall call)
+    {
+        var window = TargetWindow(call);
         if (Focus(window) is { } failure) throw new InvalidOperationException(failure.Message);
         return window;
     }
@@ -230,32 +273,52 @@ public sealed class WindowsDesktop : ICuaDesktop
         return (shot.WindowFrame.X + x / shot.ScaleX, shot.WindowFrame.Y + y / shot.ScaleY);
     }
 
+    /// <summary>A single left click presses the element through UI Automation (like macOS AXPress),
+    /// which leaves the user's pointer and foreground alone; anything else, or an element with
+    /// nothing to press, is a real click on the window brought to the front.</summary>
     private CuaResult ClickElement(CuaToolCall call)
     {
-        var window = PrepareInput(call);
+        var window = TargetWindow(call);
         var (element, info) = Element(call);
         var button = call.String("button") ?? "left";
         var clicks = call.Integer("clicks") ?? 1;
         var label = Describe(info);
+        if (button == "left" && clicks == 1 && Press(element, label) is { } pressed) return pressed;
+        if (Focus(window) is { } failure) return failure;
         var (x, y) = Center(element, info);
-        if (Win32Desktop.RootWindowAt(x, y) == window.Id)
-        {
-            WindowsInput.Click(x, y, button, clicks);
-            return CuaResult.Ok($"Clicked {label}.");
-        }
-        // Covered or scrolled away: act through UI Automation instead of clicking whatever is on top.
-        if (button == "left" && clicks == 1)
-        {
-            if (element.Patterns.Invoke.TryGetPattern(out var invoke)) { invoke.Invoke(); return CuaResult.Ok($"Pressed {label}."); }
-            if (element.Patterns.Toggle.TryGetPattern(out var toggle)) { toggle.Toggle(); return CuaResult.Ok($"Toggled {label}."); }
-            if (element.Patterns.SelectionItem.TryGetPattern(out var selection)) { selection.Select(); return CuaResult.Ok($"Selected {label}."); }
-            if (element.Patterns.ExpandCollapse.TryGetPattern(out var expand))
+        if (Win32Desktop.RootWindowAt(x, y) != window.Id)
+            return CuaResult.Fail($"{label} is covered by another window or off screen. Scroll it into view or close what covers it.");
+        WindowsInput.Click(x, y, button, clicks);
+        return CuaResult.Ok($"Clicked {label}.");
+    }
+
+    /// <summary>Invokes, toggles, selects or expands the element; null when it supports none of
+    /// these or the app refused, so the caller clicks instead.</summary>
+    private static CuaResult? Press(AutomationElement element, string label)
+    {
+        Func<string>? press = null;
+        if (element.Patterns.Invoke.TryGetPattern(out var invoke)) press = () => { invoke.Invoke(); return $"Pressed {label}."; };
+        else if (element.Patterns.Toggle.TryGetPattern(out var toggle)) press = () => { toggle.Toggle(); return $"Toggled {label}."; };
+        else if (element.Patterns.SelectionItem.TryGetPattern(out var selection)) press = () => { selection.Select(); return $"Selected {label}."; };
+        else if (element.Patterns.ExpandCollapse.TryGetPattern(out var expand))
+            press = () =>
             {
                 if (expand.ExpandCollapseState.ValueOrDefault == ExpandCollapseState.Expanded) expand.Collapse(); else expand.Expand();
-                return CuaResult.Ok($"Expanded or collapsed {label}.");
-            }
+                return $"Expanded or collapsed {label}.";
+            };
+        if (press is null) return null;
+        // A classic button that opens a modal dialog returns from Invoke only when the dialog closes.
+        var task = Task.Run(press);
+        try
+        {
+            return task.Wait(TimeSpan.FromSeconds(3)) ? CuaResult.Ok(task.Result)
+                : CuaResult.Ok($"Pressed {label}; the app is still busy, probably showing a dialog.");
         }
-        return CuaResult.Fail($"{label} is covered by another window or off screen. Scroll it into view or close what covers it.");
+        catch (AggregateException exception) when (exception.InnerException is FlaUI.Core.Exceptions.ElementNotAvailableException
+                                                       or System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     private CuaResult ClickPoint(CuaToolCall call)
@@ -276,7 +339,7 @@ public sealed class WindowsDesktop : ICuaDesktop
 
     private CuaResult SecondaryAction(CuaToolCall call)
     {
-        PrepareInput(call);
+        var window = TargetWindow(call);
         var (element, info) = Element(call);
         var action = (call.String("action_name") ?? call.String("action") ?? throw new ArgumentException("perform_secondary_action needs action_name."))
             .Replace("AX", "", StringComparison.Ordinal).Replace(" ", "_").ToLowerInvariant();
@@ -294,6 +357,7 @@ public sealed class WindowsDesktop : ICuaDesktop
                 scroll.Scroll(ScrollAmount.NoAmount, action.Contains("up") ? ScrollAmount.LargeDecrement : ScrollAmount.LargeIncrement);
                 break;
             case "show_menu" or "showmenu" or "context_menu":
+                if (Focus(window) is { } failure) return failure;
                 var (x, y) = Center(element, info);
                 WindowsInput.Click(x, y, "right");
                 break;
@@ -309,7 +373,7 @@ public sealed class WindowsDesktop : ICuaDesktop
 
     private CuaResult SetValue(CuaToolCall call)
     {
-        PrepareInput(call);
+        TargetWindow(call);
         var (element, info) = Element(call);
         var value = call.String("value") ?? (call.Arguments["value"] is null ? throw new ArgumentException("set_value needs value.") : "");
         if (info.Label.Contains("password", StringComparison.Ordinal)) return CuaResult.Fail("Muesli does not enter passwords.");
@@ -369,9 +433,14 @@ public sealed class WindowsDesktop : ICuaDesktop
 
     private CuaResult Scroll(CuaToolCall call)
     {
-        var window = PrepareInput(call);
+        var window = TargetWindow(call);
         var direction = (call.String("direction") ?? "down").ToLowerInvariant();
         var pages = call.Number("pages") ?? 1;
+        var scrollable = call.ElementIndex is not null ? Element(call).Element : call.Number("x") is null ? LargestScrollable(window) : null;
+        if (scrollable is not null && ScrollInBackground(scrollable, direction, pages))
+            return CuaResult.Ok($"Scrolled {direction} {pages:0.#} page(s).");
+
+        if (Focus(window) is { } failure) return failure;
         var notches = (int)Math.Max(1, Math.Round(pages * 5)) * (direction is "up" or "left" ? -1 : 1);
         double x, y;
         if (call.ElementIndex is not null) (x, y) = Center(Element(call).Element, Element(call).Info);
@@ -394,6 +463,114 @@ public sealed class WindowsDesktop : ICuaDesktop
         return CuaResult.Ok($"Dragged{LabelSuffix(call)}.");
     }
 
+    /// <summary>The biggest scrollable element of the latest state: the page, list or document.</summary>
+    private AutomationElement? LargestScrollable(CuaWindow window)
+    {
+        if (_observer.Latest is not { } state || state.WindowId != window.Id) return null;
+        var best = state.Elements.Where(element => element.ActionNames.Contains("scroll_down") && element.Frame is not null)
+            .MaxBy(element => element.Frame!.Width * element.Frame.Height);
+        return best is null ? null : _observer.Element(best.ElementIndex);
+    }
+
+    private static bool ScrollInBackground(AutomationElement element, string direction, double pages)
+    {
+        try
+        {
+            if (!element.Patterns.Scroll.TryGetPattern(out var scroll)) return false;
+            var horizontal = direction is "left" or "right";
+            if (!(horizontal ? scroll.HorizontallyScrollable : scroll.VerticallyScrollable).ValueOrDefault) return false;
+            var amount = direction is "up" or "left" ? ScrollAmount.LargeDecrement : ScrollAmount.LargeIncrement;
+            for (var page = 0; page < Math.Max(1, (int)Math.Round(pages)); page++)
+                scroll.Scroll(horizontal ? amount : ScrollAmount.NoAmount, horizontal ? ScrollAmount.NoAmount : amount);
+            return true;
+        }
+        catch (Exception exception) when (exception is System.Runtime.InteropServices.COMException or InvalidOperationException
+                                              or FlaUI.Core.Exceptions.PropertyNotSupportedException) { return false; }
+    }
+
+    // ---- Browser ----
+
+    private const int MaxPageText = 12000;
+
+    private static readonly HashSet<string> Browsers = new(StringComparer.OrdinalIgnoreCase)
+        { "chrome", "msedge", "brave", "firefox", "opera", "vivaldi" };
+
+    /// <summary>Reads the page through UI Automation: the whole document, not just what is on
+    /// screen, and without bringing the browser forward.</summary>
+    private CuaResult PageText(CuaToolCall call)
+    {
+        var window = TargetWindow(call);
+        var page = Documents(window).MaxBy(Area)
+                   ?? throw new InvalidOperationException($"{window.AppName} shows no web page or document.");
+        var text = page.Patterns.Text.TryGetPattern(out var pattern)
+            ? pattern.DocumentRange.GetText(MaxPageText)
+            : string.Join("\n", page.FindAllDescendants(condition => condition.ByControlType(ControlType.Text))
+                .Select(line => line.Properties.Name.ValueOrDefault).Where(line => !string.IsNullOrWhiteSpace(line)));
+        // Icons come through as object-replacement or private-use glyphs on lines of their own.
+        text = string.Join("\n", text.Split('\n')
+            .Select(line => new string(line.Where(c => c != '￼' && char.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.PrivateUse).ToArray()).Trim())
+            .Where(line => line.Length > 0));
+        if (text.Length == 0) return CuaResult.Fail("The page has no readable text yet. Wait for it to load or use the screenshot.");
+        if (text.Length > MaxPageText) text = text[..MaxPageText];
+        return CuaResult.Ok($"Text of \"{window.Title}\"{(text.Length >= MaxPageText ? " (first 12,000 characters)" : "")}:\n{text}");
+    }
+
+    private CuaResult ListTabs(CuaToolCall call)
+    {
+        var windows = Win32Desktop.ListWindows()
+            .Where(window => Browsers.Contains(window.AppId) && (call.App is null || Matches(window, call.App) > 0)).ToList();
+        if (windows.Count == 0) return CuaResult.Ok("No browser windows are open.");
+        var lines = new List<string>();
+        foreach (var window in windows)
+        {
+            lines.Add($"window_id {window.Id} ({window.AppName}):");
+            var tabs = Tabs(window);
+            for (var index = 0; index < tabs.Length; index++)
+                lines.Add($"  tab_index {index + 1}: \"{TabTitle(tabs[index])}\"{(IsSelected(tabs[index]) ? " [active]" : "")}");
+        }
+        return CuaResult.Ok(string.Join("\n", lines));
+    }
+
+    private CuaResult ActivateTab(CuaToolCall call)
+    {
+        var window = TargetWindow(call);
+        var index = call.Integer("tab_index") ?? throw new ArgumentException("activate_browser_tab needs tab_index.");
+        var tabs = Tabs(window);
+        if (index < 1 || index > tabs.Length) return CuaResult.Fail($"That window has {tabs.Length} tabs. Call list_browser_tabs again.");
+        var tab = tabs[index - 1];
+        var title = TabTitle(tab);
+        if (Press(tab, $"tab \"{title}\"") is null)
+        {
+            if (Focus(window) is { } failure) return failure;
+            var bounds = tab.BoundingRectangle;
+            WindowsInput.Click(bounds.X + bounds.Width / 2.0, bounds.Y + bounds.Height / 2.0);
+        }
+        return CuaResult.Ok($"Switched to the tab \"{title}\".");
+    }
+
+    /// <summary>The browser's own tabs; tabs drawn inside the web page are left out.</summary>
+    private AutomationElement[] Tabs(CuaWindow window)
+    {
+        var pages = Documents(window).Select(page => page.BoundingRectangle).ToList();
+        return Root(window).FindAllDescendants(condition => condition.ByControlType(ControlType.TabItem))
+            .Where(tab => !pages.Any(page => page.Contains(tab.BoundingRectangle))).ToArray();
+    }
+
+    private AutomationElement[] Documents(CuaWindow window) =>
+        Root(window).FindAllDescendants(condition => condition.ByControlType(ControlType.Document));
+
+    private AutomationElement Root(CuaWindow window) => _observer.Automation.FromHandle(new IntPtr(window.Id));
+
+    private static double Area(AutomationElement element) =>
+        element.BoundingRectangle is var bounds ? (double)bounds.Width * bounds.Height : 0;
+
+    /// <summary>Chrome appends its hover-card details ("- Memory usage - 242 MB") to tab names.</summary>
+    private static string TabTitle(AutomationElement tab) =>
+        System.Text.RegularExpressions.Regex.Replace(tab.Properties.Name.ValueOrDefault ?? "", @" - Memory usage - [\d.,]+\s*[KMG]B$", "");
+
+    private static bool IsSelected(AutomationElement tab) =>
+        tab.Patterns.SelectionItem.TryGetPattern(out var selection) && selection.IsSelected.ValueOrDefault;
+
     private static string Describe(CuaElement info) =>
         info.Title.Length > 0 ? $"{info.Role} \"{info.Title}\" (e{info.ElementIndex})" : $"{info.Role} e{info.ElementIndex}";
 
@@ -401,5 +578,18 @@ public sealed class WindowsDesktop : ICuaDesktop
 
     private static string Truncate(string value, int limit) => value.Length > limit ? value[..(limit - 1)] + "…" : value;
 
-    public void Dispose() => _observer.Dispose();
+    /// <summary>Hands the screen back: windows it un-minimized go back down, and when a window it
+    /// worked in is still in front of the one the user was in, theirs comes back. Not after
+    /// launch_app, whose app the user asked to see.</summary>
+    public void Dispose()
+    {
+        if (!_launched)
+        {
+            foreach (var window in _unminimized.Where(Win32Desktop.IsAlive)) Win32Desktop.MinimizeWithoutActivating(window);
+            var foreground = Win32Desktop.ForegroundWindow();
+            if (_userWindow != 0 && foreground != _userWindow && _touched.Contains(foreground) && Win32Desktop.IsAlive(_userWindow))
+                Win32Desktop.Activate(_userWindow);
+        }
+        _observer.Dispose();
+    }
 }
