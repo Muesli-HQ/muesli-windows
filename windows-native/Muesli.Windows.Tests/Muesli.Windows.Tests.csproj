@@ -44,6 +44,7 @@
   <ItemGroup>
     <!-- Exercise the nonvisual WinUI composition against real shared persistence adapters. -->
     <Compile Include="..\Muesli.Windows.WinUI\Services\WinUiLibraryContext.cs" Link="WinUi\WinUiLibraryContext.cs" />
+    <Compile Include="..\Muesli.Windows.WinUI\Services\ComputerUseRun.cs" Link="WinUi\ComputerUseRun.cs" />
     <Compile Include="..\Muesli.Windows.WinUI\Services\WinUiSettingsContext.cs" Link="WinUi\WinUiSettingsContext.cs" />
     <Compile Include="..\Muesli.Windows.WinUI\Services\WinUiModelsContext.cs" Link="WinUi\WinUiModelsContext.cs" />
   </ItemGroup>

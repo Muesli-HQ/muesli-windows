@@ -9,12 +9,46 @@ namespace Muesli.Windows.WinUI.ViewModels;
 public partial class TimelinePageViewModel : ObservableObject
 {
     private readonly WinUiLibraryContext _library;
+    private readonly IClipboardService _clipboard;
+    private readonly IAppDialogService _dialogs;
 
-    public TimelinePageViewModel(WinUiLibraryContext library)
+    public TimelinePageViewModel(WinUiLibraryContext library, IClipboardService clipboard, IAppDialogService dialogs)
     {
         _library = library;
+        _clipboard = clipboard;
+        _dialogs = dialogs;
         Snapshot = library.ReadSnapshot();
         ApplyFilterAndSort();
+    }
+
+    // macOS TimelineView reuses DictationRowView: copy, copy CUA trace and delete on every dictation row.
+    [RelayCommand]
+    private async Task CopyAsync(WinUiTimelineEntry? entry, CancellationToken cancellationToken)
+    {
+        if (entry is null || entry.IsMeeting) return;
+        try { await _clipboard.SetTextAsync(entry.Title, cancellationToken); }
+        catch (Exception) { }
+    }
+
+    [RelayCommand]
+    private async Task CopyTraceAsync(WinUiTimelineEntry? entry, CancellationToken cancellationToken)
+    {
+        if (entry?.Run is not { } run) return;
+        try { await _clipboard.SetTextAsync(run.TraceText(entry.Title), cancellationToken); }
+        catch (Exception) { }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAsync(WinUiTimelineEntry? entry, CancellationToken cancellationToken)
+    {
+        if (entry is null || entry.IsMeeting) return;
+        var choice = await _dialogs.ConfirmAsync(
+            "Are you sure you want to delete this dictation? This cannot be undone.",
+            "Delete Dictation",
+            cancellationToken);
+        if (choice != AppDialogChoice.Primary) return;
+        _library.DeleteDictation(entry.Id);
+        Refresh();
     }
 
     [ObservableProperty]
@@ -238,17 +272,17 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task CopyStepsAsync(DictationListItem? item, CancellationToken cancellationToken)
+    private async Task CopyTraceAsync(DictationListItem? item, CancellationToken cancellationToken)
     {
-        if (item?.Steps is not { } steps) return;
+        if (item?.Run is not { } run) return;
         try
         {
-            await _clipboard.SetTextAsync(steps, cancellationToken);
-            ShowStatus("Computer Use steps copied to the clipboard.");
+            await _clipboard.SetTextAsync(run.TraceText(item.Text), cancellationToken);
+            ShowStatus("CUA trace copied to the clipboard.");
         }
         catch (Exception exception)
         {
-            ShowStatus($"Could not copy the steps: {WinUiClipboardService.DescribeFailure(exception)}", isError: true);
+            ShowStatus($"Could not copy the trace: {WinUiClipboardService.DescribeFailure(exception)}", isError: true);
         }
     }
 
@@ -285,13 +319,8 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>A Computer Use run's steps, saved beside its history record.</summary>
-    private string? ReadSteps(PersistedDictation item)
-    {
-        if (item.ModelProfile != ComputerUseConfiguration.HistoryLabel) return null;
-        try { return File.ReadAllText(ComputerUseConfiguration.RunStepsPath(_library.Profile.RootDirectory, item.Id)); }
-        catch (IOException) { return null; }
-    }
+    private ComputerUseRun? LoadRun(PersistedDictation item) =>
+        item.ModelProfile == ComputerUseConfiguration.HistoryLabel ? ComputerUseRun.Load(_library.Profile.RootDirectory, item.Id) : null;
 
     /// <summary>One line of the transcript, short enough to stay readable inside a dialog.</summary>
     private static string Snippet(string text)
@@ -311,7 +340,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     private void Reload()
     {
         var snapshot = _library.ReadSnapshot();
-        _allItems = snapshot.Dictations.Select(item => DictationListItem.From(item) with { Steps = ReadSteps(item) }).ToList();
+        _allItems = snapshot.Dictations.Select(item => DictationListItem.From(item) with { Run = LoadRun(item) }).ToList();
         DictationWordsLabel = snapshot.DictationWords.ToString("N0");
         CurrentStreakLabel = snapshot.CurrentStreak.ToString("N0");
         // P2-01: the pace is read from the shared snapshot calculation rather than recomputed
@@ -384,10 +413,10 @@ public sealed record DictationListItem(
 {
     public string TimeLabel => Timestamp.ToLocalTime().ToString("hh:mm tt");
 
-    /// <summary>The steps of a Computer Use run, or null for a dictation.</summary>
-    public string? Steps { get; init; }
+    /// <summary>The run behind a Computer Use command, or null for a dictation.</summary>
+    public ComputerUseRun? Run { get; init; }
     public bool IsComputerUse => ModelLabel == ComputerUseConfiguration.HistoryLabel;
-    public bool HasSteps => Steps is not null;
+    public bool HasRun => Run is not null;
 
     public static DictationListItem From(PersistedDictation item) => new(
         item.Id,

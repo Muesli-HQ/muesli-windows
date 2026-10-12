@@ -92,8 +92,11 @@ Each module ends with a test that proves the feature works on this PC before the
 - **Settings and history (macOS parity):** Settings > Computer Use has the on/off switch, ChatGPT
   sign-in, the planner model (macOS presets), Thinking (the efforts each model supports, with its
   default) and the execution timeout (1–600 s, default 120; planning and questions excluded). Each run
-  is a Dictations row labelled Computer Use: the spoken command, with its steps in an expander and a
-  Copy steps button. Steps live in `computer-use/runs/<id>.txt` and go when the row is deleted.
+  is a history row on Timeline and Dictations drawn like macOS `DictationRowView`: a CUA tag, the
+  spoken command, the final status (Done, Failed, Timed out, Confirm, Cancelled), and a chevron and
+  "Copy CUA trace" button that stay visible; tapping the row opens the step trail. The run lives in
+  `computer-use/runs/<id>.json` and goes when the row is deleted. Timeline dictation rows also gained
+  the macOS copy and delete actions, and tapping one copies it.
 - **Safety beyond macOS:** clicks named Close, Quit or Don't save ask first, and so does Enter (or a
   typed newline) in a chat composer. Keys Computer Use sends are tagged so Muesli's own shortcuts
   ignore them.

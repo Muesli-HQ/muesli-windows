@@ -50,7 +50,7 @@ public static class ComputerUseConfiguration
 
     /// <summary>The steps of one run, kept beside its dictation-history record (screenshots never).</summary>
     public static string RunStepsPath(string profileRoot, string dictationId) =>
-        Path.Combine(Path.GetFullPath(profileRoot), "computer-use", "runs", Path.GetFileName(dictationId) + ".txt");
+        Path.Combine(Path.GetFullPath(profileRoot), "computer-use", "runs", Path.GetFileName(dictationId) + ".json");
 
     public const string Notice =
         "Computer Use sends the screen of the app it works in, and your spoken command, to ChatGPT. " +

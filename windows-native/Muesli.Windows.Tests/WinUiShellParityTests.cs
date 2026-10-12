@@ -1,3 +1,5 @@
+using Muesli.Windows.ComputerUse;
+using Muesli.Windows.WinUI.Services;
 using Muesli.Windows.Services;
 
 namespace Muesli.Windows.Tests;
@@ -66,7 +68,34 @@ public sealed class WinUiShellParityTests
         Assert.Contains("Sign in to ChatGPT", error);
         Assert.True(ComputerUseConfiguration.TryValidate(chatGpt, chatGptSignedIn: true, out _));
         Assert.Contains("sends the screen", ComputerUseConfiguration.Notice);
-        Assert.EndsWith(Path.Combine("computer-use", "runs", "dict_1.txt"), ComputerUseConfiguration.RunStepsPath(@"C:\tmp\profile", "dict_1"));
+        Assert.EndsWith(Path.Combine("computer-use", "runs", "dict_1.json"), ComputerUseConfiguration.RunStepsPath(@"C:\tmp\profile", "dict_1"));
+    }
+
+    [Fact]
+    public void ComputerUseRunRoundTripsAndCopiesLikeMacOs()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "muesli-run-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            ComputerUseRun.Save(root, "dict_1", new CuaRunResult(CuaRunStatus.TimedOut, "Computer Use ran out of time.",
+                [new CuaTraceEvent("command", "Command", "Play a song", null), new CuaTraceEvent("tool_call", "Tool call", "open_url {}", 1)]));
+            var run = ComputerUseRun.Load(root, "dict_1")!;
+            Assert.Equal("timed_out", run.Status);
+            Assert.Equal("Timed out", run.StatusLabel);
+            Assert.Equal(new ComputerUseStep("Step 1", "Tool call", "open_url {}"), run.Steps[1]);
+            Assert.StartsWith("CUA Command\nPlay a song\n\nFinal Status\ntimed_out\n\nFinal Message\nComputer Use ran out of time.\n\nStep Trail\nRun - Command",
+                run.TraceText("Play a song"));
+
+            // A run saved before the steps were structured still shows.
+            File.WriteAllText(Path.Combine(root, "computer-use", "runs", "dict_2.txt"), "Failed\nCommand: Play\n[3] Failed: ChatGPT is busy");
+            var legacy = ComputerUseRun.Load(root, "dict_2")!;
+            Assert.Equal("failed", legacy.Status);
+            Assert.Equal(new ComputerUseStep("Step 3", "Failed", "ChatGPT is busy"), legacy.Steps[1]);
+
+            ComputerUseRun.Delete(root, "dict_2");
+            Assert.Null(ComputerUseRun.Load(root, "dict_2"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     [Fact]

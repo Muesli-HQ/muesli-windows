@@ -144,7 +144,7 @@ public sealed partial class DictationsPage : Page
         container.PointerExited += Row_Hide;
         container.GotFocus += Row_Reveal;
         container.LostFocus += Row_Hide;
-        SetRowActionsVisible(container, false);
+        SetRowActionsVisible(container, item.HasRun);
 
         var duration = string.IsNullOrEmpty(item.DurationLabel) ? "" : $", {item.DurationLabel}";
         AutomationProperties.SetName(container, $"{item.TimeLabel}{duration}. {item.Text}");
@@ -205,6 +205,8 @@ public sealed partial class DictationsPage : Page
             return;
         }
 
+        // macOS keeps the actions of a row with expandable details visible.
+        visible |= container.Content is DictationListItem { HasRun: true };
         actions.Opacity = visible ? 1 : 0;
         actions.IsHitTestVisible = visible;
     }
@@ -217,12 +219,27 @@ public sealed partial class DictationsPage : Page
         }
     }
 
-    private async void CopySteps_Click(object sender, RoutedEventArgs e)
+    private async void CopyTrace_Click(object sender, RoutedEventArgs e)
     {
         if (Tagged(sender) is { } item)
         {
-            await ViewModel.CopyStepsCommand.ExecuteAsync(item);
+            await ViewModel.CopyTraceCommand.ExecuteAsync(item);
         }
+    }
+
+    private void ToggleRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender)?.Run is { } run) run.IsExpanded = !run.IsExpanded;
+    }
+
+    /// <summary>macOS DictationRowView: tapping a Computer Use row opens its steps; tapping any
+    /// other dictation copies it.</summary>
+    private async void Row_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        if (ComputerUseRowStyle.IsOwnTap(e.OriginalSource, sender) ||
+            (sender as FrameworkElement)?.DataContext is not DictationListItem item) return;
+        if (item.Run is { } run) run.IsExpanded = !run.IsExpanded;
+        else await ViewModel.CopyCommand.ExecuteAsync(item);
     }
 
     private async void DeleteDictation_Click(object sender, RoutedEventArgs e)

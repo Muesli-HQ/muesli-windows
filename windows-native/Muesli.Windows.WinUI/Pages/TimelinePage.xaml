@@ -26,6 +26,14 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="UseSystemFocusVisuals" Value="True" />
         </Style>
+        <!-- macOS DictationRowView actions: quiet until the row is hovered (Computer Use rows keep
+             theirs visible, as macOS does for rows with expandable details). -->
+        <Style x:Key="TimelineRowActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Padding" Value="7,5" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+        </Style>
     </Page.Resources>
 
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
@@ -153,18 +161,55 @@
                                                         so trimming works (P2-03).
                                                     -->
                                                     <Grid>
-                                                        <Grid ColumnDefinitions="80,*" ColumnSpacing="20" Padding="20,16">
+                                                        <Grid ColumnDefinitions="80,*,Auto" ColumnSpacing="20" Padding="20,16">
                                                             <TextBlock Text="{x:Bind TimeLabel}" Style="{StaticResource MuesliTimestampStyle}" FontWeight="Medium" VerticalAlignment="Top" Margin="0,2,0,0" />
-                                                            <!-- Dictation: the row is its own text, at reading size, up to three lines. -->
-                                                            <TextBlock Grid.Column="1"
-                                                                       Text="{x:Bind TitleLabel}"
-                                                                       FontSize="15"
-                                                                       LineHeight="21"
-                                                                       Foreground="{ThemeResource MuesliTextPrimaryBrush}"
-                                                                       TextWrapping="Wrap"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       MaxLines="3"
-                                                                       Visibility="{x:Bind local:TimelinePage.InvertBoolToVisibility(IsMeeting)}" />
+                                                            <!-- macOS DictationRowView: a CUA tag before a Computer Use command, its final
+                                                                 status after it, and the step trail below when expanded. -->
+                                                            <StackPanel Grid.Column="1" Spacing="8" MinWidth="0"
+                                                                        Visibility="{x:Bind local:TimelinePage.InvertBoolToVisibility(IsMeeting)}">
+                                                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                                                    <Border Margin="0,3,8,0" VerticalAlignment="Top" CornerRadius="4" Padding="5,2"
+                                                                            Background="{ThemeResource MuesliAccentMutedBrush}"
+                                                                            Visibility="{x:Bind local:ComputerUseRowStyle.Show(IsComputerUse)}">
+                                                                        <TextBlock Text="CUA" FontFamily="Consolas" FontSize="10" FontWeight="Bold"
+                                                                                   Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                                    </Border>
+                                                                    <TextBlock Grid.Column="1"
+                                                                               Text="{x:Bind TitleLabel}"
+                                                                               FontFamily="{StaticResource MuesliFontFamily}"
+                                                                               FontSize="15"
+                                                                               LineHeight="21"
+                                                                               Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                                                                               TextWrapping="Wrap"
+                                                                               MaxLines="3"
+                                                                               TextTrimming="CharacterEllipsis" />
+                                                                    <TextBlock Grid.Column="2" Margin="8,3,0,0" VerticalAlignment="Top"
+                                                                               FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="12"
+                                                                               Text="{x:Bind Run.StatusLabel}"
+                                                                               Foreground="{x:Bind local:ComputerUseRowStyle.StatusBrush(Run.Status)}" />
+                                                                </Grid>
+                                                                <StackPanel Spacing="8"
+                                                                            Visibility="{x:Bind local:ComputerUseRowStyle.Show(Run.IsExpanded), Mode=OneWay, FallbackValue=Collapsed}">
+                                                                    <Rectangle Height="1" Opacity="0.5" Fill="{ThemeResource MuesliBorderSoftBrush}" />
+                                                                    <ItemsControl ItemsSource="{x:Bind Run.Steps}" IsTabStop="False">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate x:DataType="svc:ComputerUseStep">
+                                                                                <StackPanel Spacing="4" Margin="0,0,0,8">
+                                                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                                        <TextBlock Text="{x:Bind StepLabel}" Width="48" FontFamily="Consolas" FontSize="11"
+                                                                                                   Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                                                        <TextBlock Text="{x:Bind Title}" FontSize="12" FontWeight="Medium"
+                                                                                                   Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                                                                    </StackPanel>
+                                                                                    <TextBlock Text="{x:Bind Body}" Margin="56,0,0,0" FontSize="12"
+                                                                                               Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                                                                                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                                </StackPanel>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                </StackPanel>
+                                                            </StackPanel>
                                                             <StackPanel Grid.Column="1" Spacing="8" MinWidth="0"
                                                                         Visibility="{x:Bind local:TimelinePage.BoolToVisibility(IsMeeting)}">
                                                                 <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
@@ -204,6 +249,49 @@
                                                                            TextWrapping="Wrap"
                                                                            TextTrimming="CharacterEllipsis"
                                                                            MaxLines="2" />
+                                                            </StackPanel>
+                                                            <StackPanel x:Name="RowActions"
+                                                                        Grid.Column="2"
+                                                                        Orientation="Horizontal"
+                                                                        Spacing="2"
+                                                                        Margin="-8,-4,-8,0"
+                                                                        Opacity="{x:Bind local:ComputerUseRowStyle.ActionsOpacity(HasRun)}"
+                                                                        IsHitTestVisible="{x:Bind HasRun}"
+                                                                        Visibility="{x:Bind local:TimelinePage.InvertBoolToVisibility(IsMeeting)}">
+                                                                <Button Style="{StaticResource TimelineRowActionStyle}"
+                                                                        Tag="{x:Bind}"
+                                                                        Click="ToggleRun_Click"
+                                                                        Visibility="{x:Bind local:ComputerUseRowStyle.Show(HasRun)}"
+                                                                        ToolTipService.ToolTip="{x:Bind local:ComputerUseRowStyle.ChevronName(Run.IsExpanded), Mode=OneWay}"
+                                                                        AutomationProperties.Name="{x:Bind local:ComputerUseRowStyle.ChevronName(Run.IsExpanded), Mode=OneWay}"
+                                                                        AutomationProperties.AutomationId="TimelineStepsToggle">
+                                                                    <FontIcon Glyph="{x:Bind local:ComputerUseRowStyle.Chevron(Run.IsExpanded), Mode=OneWay}" FontSize="12" />
+                                                                </Button>
+                                                                <Button Style="{StaticResource TimelineRowActionStyle}"
+                                                                        Tag="{x:Bind}"
+                                                                        Click="CopyTrace_Click"
+                                                                        Visibility="{x:Bind local:ComputerUseRowStyle.Show(HasRun)}"
+                                                                        ToolTipService.ToolTip="Copy CUA trace"
+                                                                        AutomationProperties.Name="Copy CUA trace"
+                                                                        AutomationProperties.AutomationId="TimelineCopyTraceButton">
+                                                                    <FontIcon Glyph="&#xE8FD;" FontSize="12" />
+                                                                </Button>
+                                                                <Button Style="{StaticResource TimelineRowActionStyle}"
+                                                                        Tag="{x:Bind}"
+                                                                        Click="CopyDictation_Click"
+                                                                        ToolTipService.ToolTip="Copy dictation"
+                                                                        AutomationProperties.Name="Copy dictation"
+                                                                        AutomationProperties.AutomationId="TimelineCopyButton">
+                                                                    <FontIcon Glyph="&#xE8C8;" FontSize="12" />
+                                                                </Button>
+                                                                <Button Style="{StaticResource TimelineRowActionStyle}"
+                                                                        Tag="{x:Bind}"
+                                                                        Click="DeleteDictation_Click"
+                                                                        ToolTipService.ToolTip="Delete dictation"
+                                                                        AutomationProperties.Name="Delete dictation"
+                                                                        AutomationProperties.AutomationId="TimelineDeleteButton">
+                                                                    <FontIcon Glyph="&#xE74D;" FontSize="12" Foreground="{ThemeResource MuesliErrorBrush}" Opacity="0.6" />
+                                                                </Button>
                                                             </StackPanel>
                                                         </Grid>
                                                         <Rectangle Height="1" Margin="20,0" VerticalAlignment="Bottom"

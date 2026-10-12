@@ -17,7 +17,7 @@ public sealed partial class TimelinePage : Page
     /// </summary>
     private ListView? _selectedRowList;
 
-    public TimelinePageViewModel ViewModel { get; } = new(App.Library);
+    public TimelinePageViewModel ViewModel { get; } = new(App.Library, App.Clipboard, App.Dialogs);
 
     public TimelinePage()
     {
@@ -128,6 +128,16 @@ public sealed partial class TimelinePage : Page
             return;
         }
 
+        var container = args.ItemContainer;
+        container.PointerEntered -= Row_Reveal;
+        container.PointerExited -= Row_Hide;
+        if (!args.InRecycleQueue)
+        {
+            container.PointerEntered += Row_Reveal;
+            container.PointerExited += Row_Hide;
+        }
+        SetRowActionsVisible(container, entry.HasRun);
+
         var detail = entry.HasDetail ? ". " + entry.DetailLabel : "";
         AutomationProperties.SetName(
             args.ItemContainer,
@@ -148,6 +158,15 @@ public sealed partial class TimelinePage : Page
             return;
         }
 
+        // macOS TimelineView rows are DictationRowView: a Computer Use row opens its steps and any
+        // other dictation is copied. Only meetings open a page.
+        if (!entry.IsMeeting)
+        {
+            if (entry.Run is { } run) run.IsExpanded = !run.IsExpanded;
+            else _ = ViewModel.CopyCommand.ExecuteAsync(entry);
+            return;
+        }
+
         if (sender is ListView list)
         {
             if (_selectedRowList is not null && !ReferenceEquals(_selectedRowList, list))
@@ -165,6 +184,47 @@ public sealed partial class TimelinePage : Page
         Frame?.Navigate(
             entry.IsMeeting ? typeof(MeetingDetailPage) : typeof(DictationsPage),
             entry.Id);
+    }
+
+    private void Row_Reveal(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is ContentControl container) SetRowActionsVisible(container, true);
+    }
+
+    private void Row_Hide(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is ContentControl container) SetRowActionsVisible(container, false);
+    }
+
+    /// <summary>Hover-revealed like Dictations; a Computer Use row keeps its actions visible.</summary>
+    private static void SetRowActionsVisible(ContentControl container, bool visible)
+    {
+        if ((container.ContentTemplateRoot as FrameworkElement)?.FindName("RowActions") is not FrameworkElement actions) return;
+        visible |= container.Content is WinUiTimelineEntry { HasRun: true };
+        actions.Opacity = visible ? 1 : 0;
+        actions.IsHitTestVisible = visible;
+    }
+
+    private static WinUiTimelineEntry? Tagged(object sender) => (sender as FrameworkElement)?.Tag as WinUiTimelineEntry;
+
+    private void ToggleRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender)?.Run is { } run) run.IsExpanded = !run.IsExpanded;
+    }
+
+    private async void CopyTrace_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender) is { } entry) await ViewModel.CopyTraceCommand.ExecuteAsync(entry);
+    }
+
+    private async void CopyDictation_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender) is { } entry) await ViewModel.CopyCommand.ExecuteAsync(entry);
+    }
+
+    private async void DeleteDictation_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender) is { } entry) await ViewModel.DeleteCommand.ExecuteAsync(entry);
     }
 
     /// <summary>Prompt 9: real accessible names for record-backed list containers (<see cref="ListItemAutomationNames"/>).</summary>

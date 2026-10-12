@@ -227,13 +227,9 @@ public sealed class WinUiComputerUseContext : IDisposable
     private void SaveRun(string command, int spokenMs, CuaRunResult result)
     {
         var id = $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}";
-        var steps = $"{result.Status}\n" + string.Join("\n",
-            result.Trace.Select(item => $"{(item.Step is { } step ? $"[{step}] " : "")}{item.Title}: {item.Body}"));
         try
         {
-            var path = ComputerUseConfiguration.RunStepsPath(_library.Profile.RootDirectory, id);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, steps);
+            ComputerUseRun.Save(_library.Profile.RootDirectory, id, result);
             _library.History.AppendDictation(new PersistedDictation(id, DateTime.Now, command, spokenMs, ComputerUseConfiguration.HistoryLabel));
         }
         catch (Exception exception)

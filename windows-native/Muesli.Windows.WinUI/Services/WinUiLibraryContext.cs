@@ -64,8 +64,7 @@ public sealed class WinUiLibraryContext : IDisposable
         if (removed)
         {
             History.SaveDictations(dictations, afterExplicitDeletion: true);
-            try { File.Delete(ComputerUseConfiguration.RunStepsPath(Profile.RootDirectory, id)); }
-            catch (IOException) { }
+            ComputerUseRun.Delete(Profile.RootDirectory, id);
         }
 
         return removed;
@@ -238,7 +237,10 @@ public sealed class WinUiLibraryContext : IDisposable
                 item.DurationMs,
                 item.ModelProfile,
                 null,
-                item.Id))
+                item.Id)
+            {
+                Run = item.ModelProfile == ComputerUseConfiguration.HistoryLabel ? ComputerUseRun.Load(Profile.RootDirectory, item.Id) : null,
+            })
             .Concat(meetings.Select(item => new WinUiTimelineEntry(
                 WinUiTimelineKind.Meeting,
                 item.CreatedAt,
@@ -309,6 +311,11 @@ public sealed record WinUiTimelineEntry(
     string Id)
 {
     public bool IsMeeting => Kind == WinUiTimelineKind.Meeting;
+
+    /// <summary>The run behind a Computer Use command, or null for a dictation or meeting.</summary>
+    public ComputerUseRun? Run { get; init; }
+    public bool IsComputerUse => ModelProfile == ComputerUseConfiguration.HistoryLabel;
+    public bool HasRun => Run is not null;
 
     public string KindLabel => IsMeeting ? "Meeting" : "Dictation";
 
