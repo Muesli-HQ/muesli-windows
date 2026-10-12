@@ -102,6 +102,15 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial int ThemeIndex { get; set; }
     [ObservableProperty] public partial int RecordingColorIndex { get; set; }
     [ObservableProperty] public partial int IndicatorStyleIndex { get; set; }
+    [ObservableProperty] public partial int IndicatorPositionIndex { get; set; }
+    [ObservableProperty] public partial IReadOnlyList<string> IndicatorPositions { get; private set; } = IndicatorAnchors;
+    [ObservableProperty] public partial int AutoExportContentIndex { get; set; }
+
+    /// <summary>macOS indicator_position choices; "Custom" appears only after a drag.</summary>
+    public static readonly string[] IndicatorAnchors =
+        ["Top Left", "Top Center", "Top Right", "Middle Left", "Middle Right", "Bottom Left", "Bottom Center", "Bottom Right"];
+    private const string CustomIndicatorPosition = "Custom (drag to reposition)";
+    private static readonly string[] AutoExportContents = ["notes", "transcript", "full-meeting"];
 
     /// <summary>
     /// The recording pill's accent presets, in macOS order. "1e1e2e" is the shared stored value for
@@ -245,7 +254,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [
         nameof(SectionIndex), nameof(HasUnsavedChanges), nameof(StatusMessage), nameof(IsStatusOpen),
         nameof(IsStatusError), nameof(Permissions), nameof(Microphones), nameof(DictationModels),
-        nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseEfforts),
+        nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseEfforts), nameof(IndicatorPositions),
         nameof(CaptureStatus), nameof(DetectionStatus), nameof(IsStartupAvailable),
         nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp),
         nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings), nameof(ShowChatGptSettings),
@@ -299,6 +308,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         Hotkey = _source.Hotkey;
         ThemeIndex = _source.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
         IndicatorStyleIndex = _source.IndicatorStyle == "minimal" ? 1 : 0;
+        var anchor = Array.IndexOf(IndicatorAnchors, _source.IndicatorAnchor);
+        IndicatorPositions = anchor < 0 ? [.. IndicatorAnchors, CustomIndicatorPosition] : IndicatorAnchors;
+        IndicatorPositionIndex = anchor < 0 ? IndicatorAnchors.Length : anchor;
+        AutoExportContentIndex = Math.Max(0, Array.IndexOf(AutoExportContents, _source.AutoExportMarkdownContent));
         RecordingColorIndex = Array.FindIndex(RecordingColors, color => color.Hex == _source.RecordingColorHex);
         Microphones = new[] { "Automatic" }.Concat(_dictation.ListMicrophones()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         SelectedMicrophone = string.IsNullOrWhiteSpace(_source.MicrophoneName) ? "Automatic" : _source.MicrophoneName;
@@ -355,7 +368,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             ? null
             : StreamingModelCatalog.Models.FirstOrDefault(model => model.DisplayName == SelectedLiveModel)?.Id;
         var enableComputerUse = ComputerUseEnabled;
-        var draft = _source with
+        // Fields this page does not edit (indicator drag position, Shortcuts page, tour state) may
+        // have changed since it loaded, so the draft starts from what is on disk now.
+        var current = _settingsContext.Load();
+        var draft = current with
         {
             UserName = UserName.Trim(),
             OpenDashboardOnLaunch = OpenDashboardOnLaunch,
@@ -365,6 +381,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             AutoExportMarkdownEnabled = AutoExportMarkdownEnabled,
             AutoExportMarkdownDirectory = AutoExportMarkdownDirectory.Trim(),
             AutoExportPdfEnabled = AutoExportPdfEnabled,
+            AutoExportMarkdownContent = AutoExportContents[Math.Clamp(AutoExportContentIndex, 0, AutoExportContents.Length - 1)],
             PostMeetingHookEnabled = PostMeetingHookEnabled,
             PostMeetingHookExecutablePath = PostMeetingHookExecutablePath.Trim(),
             PostMeetingHookTimeoutSeconds = Math.Clamp(PostMeetingHookTimeoutSeconds, 1, 600),
@@ -378,6 +395,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             HotkeyTriggerThresholdMs = threshold,
             Theme = theme,
             IndicatorStyle = IndicatorStyleIndex == 1 ? "minimal" : "classic",
+            IndicatorAnchor = IndicatorPositionIndex >= 0 && IndicatorPositionIndex < IndicatorAnchors.Length ? IndicatorAnchors[IndicatorPositionIndex] : current.IndicatorAnchor,
             RecordingColorHex = RecordingColorIndex >= 0 ? RecordingColors[RecordingColorIndex].Hex : _source.RecordingColorHex,
             MicrophoneName = SelectedMicrophone == "Automatic" ? null : SelectedMicrophone,
             DictationModelId = dictationModel,

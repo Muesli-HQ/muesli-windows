@@ -849,6 +849,23 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
+                                    <TextBlock Text="Content" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="What each exported file contains." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.AutoExportContentIndex, Mode=TwoWay}"
+                                          IsEnabled="{x:Bind ViewModel.AutoExportMarkdownEnabled, Mode=OneWay}"
+                                          AutomationProperties.Name="Export content"
+                                          AutomationProperties.AutomationId="AutoExportContentPicker">
+                                    <ComboBoxItem Content="Notes" />
+                                    <ComboBoxItem Content="Transcript" />
+                                    <ComboBoxItem Content="Full Meeting" />
+                                </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
                                     <TextBlock Text="Also export PDF" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="{x:Bind ViewModel.PdfAutoExportHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
@@ -950,6 +967,19 @@
                                     <ComboBoxItem Content="Classic" />
                                     <ComboBoxItem Content="Minimal" />
                                 </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Position" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Where the indicator sits on screen. Drag it to place it anywhere." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.IndicatorPositions, Mode=OneWay}"
+                                          SelectedIndex="{x:Bind ViewModel.IndicatorPositionIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Indicator position"
+                                          AutomationProperties.AutomationId="IndicatorPositionPicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
