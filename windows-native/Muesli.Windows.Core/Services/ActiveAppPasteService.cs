@@ -33,6 +33,21 @@ public sealed class ActiveAppPasteService
 
     public IntPtr CaptureForegroundWindow() => _windows.ForegroundWindow;
 
+    /// <summary>
+    /// macOS pastes into whatever is frontmost when the transcript is ready, so clicking into a text
+    /// box after starting to speak sends the words there. Muesli's own windows (the app, the pill)
+    /// are never a target; then, or when nothing is focused, the window from the start is kept.
+    /// </summary>
+    public IntPtr ResolvePasteTarget(IntPtr startTarget)
+    {
+        var current = _windows.ForegroundWindow;
+        if (current == IntPtr.Zero || current == startTarget || !_windows.Exists(current)) return startTarget;
+        var info = DescribeWindow(current);
+        var isMuesli = info.ProcessId == (uint)Environment.ProcessId ||
+            info.ProcessName.StartsWith("Muesli.Windows", StringComparison.OrdinalIgnoreCase);
+        return isMuesli ? startTarget : current;
+    }
+
     public PasteTargetInfo DescribeWindow(IntPtr targetWindow) =>
         _windows is IWindowDescriptionAdapter description
             ? description.DescribeWindow(targetWindow)

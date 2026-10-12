@@ -510,6 +510,12 @@ public sealed class WinUiDictationContext : IDisposable
         var asrPath = "unavailable";
         DictationLatencyMetrics? latency = null;
         _hotkeyState.Reset();
+        // Paste where the user is now (macOS behavior): a text box clicked after the hotkey wins.
+        if (_pasteTarget != IntPtr.Zero && _paste.ResolvePasteTarget(_pasteTarget) is var target && target != _pasteTarget)
+        {
+            _pasteTarget = target;
+            _appContext = null; // read from the old window; wrong names are worse than none
+        }
         _operationCancellation?.Dispose();
         _operationCancellation = new CancellationTokenSource();
         Status = "Transcribing locally…";
