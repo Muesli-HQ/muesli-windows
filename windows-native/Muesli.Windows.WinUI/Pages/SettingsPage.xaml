@@ -528,7 +528,7 @@
                                         IsEnabled="{x:Bind ViewModel.ComputerUseStopEnabled, Mode=OneWay}"
                                         AutomationProperties.AutomationId="ComputerUseStopButton" />
                                 <Button Command="{x:Bind ViewModel.OpenComputerUseDiagnosticsCommand}"
-                                        Content="Show last run"
+                                        Content="Show recent runs"
                                         AutomationProperties.AutomationId="ComputerUseDiagnosticsButton" />
                                 <Button Command="{x:Bind ViewModel.PreviewComputerUseConfirmationCommand}"
                                         Content="Preview confirmation"
@@ -542,7 +542,7 @@
                                  explicitly opened expander rather than in the normal flow (P5-06). -->
                             <Expander HorizontalAlignment="Stretch"
                                       HorizontalContentAlignment="Stretch"
-                                      Header="Last run"
+                                      Header="Recent runs"
                                       AutomationProperties.AutomationId="ComputerUseDiagnosticsExpander">
                                 <TextBlock Text="{x:Bind ViewModel.ComputerUseDiagnostics, Mode=OneWay}"
                                            FontFamily="Consolas"

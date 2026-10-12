@@ -152,7 +152,7 @@ public sealed class WinUiIndicatorHost : IDisposable
         {
             owner = IndicatorOwnerKind.ComputerUse;
             state = FloatingIndicatorState.Transcribing;
-            status = _computerUse.Status;
+            status = _computerUse.PillText;
         }
         else if (state == FloatingIndicatorState.Idle && _computerUse.Outcome is { } outcome && !ReferenceEquals(outcome, _retiredOutcome))
         {

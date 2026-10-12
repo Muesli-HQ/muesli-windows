@@ -42,11 +42,17 @@ public sealed class WinUiComputerUseContext : IDisposable
     public Func<string, IReadOnlyList<string>, CancellationToken, Task<string?>>? AskAsync { get; set; }
     public event EventHandler? Changed;
     public string Status { get; private set; }
+    /// <summary>The pill line: macOS shows the spoken command while the planner thinks.</summary>
+    public string PillText => Status == "Thinking…" && _command is { Length: > 0 } command ? $"“{command}”" : Status;
+    private string? _command;
     public bool IsListening => _listening;
     public bool IsRunning => _running;
     public bool StopEnabled => _listening || _running;
     public string VoiceButtonText => _listening ? "Stop listening and run" : "Speak a command";
-    public string Diagnostics { get; private set; } = "No Computer Use runs yet.";
+    public string Diagnostics { get; private set; } = NoRuns;
+    private const string NoRuns = "No Computer Use runs yet.";
+    private const string RunSeparator = "\n\n────────\n\n";
+    private const int MaxSavedRuns = 20;
     /// <summary>How the last run (or attempt) ended, for the floating pill; null once a new one starts.</summary>
     public ComputerUseOutcome? Outcome { get; private set; }
     public string TraceFilePath => ComputerUseConfiguration.TracePath(_library.Profile.RootDirectory);
@@ -154,6 +160,7 @@ public sealed class WinUiComputerUseContext : IDisposable
         _running = true;
         _sessionCancellation?.Dispose();
         var cancellation = _sessionCancellation = new CancellationTokenSource();
+        _command = command;
         Report($"Working on: {command}");
         var model = string.IsNullOrWhiteSpace(settings.ComputerUsePlannerModel) ? null : settings.ComputerUsePlannerModel;
         ICuaPlanner planner = ComputerUseConfiguration.UsesApiKey(settings)
@@ -214,8 +221,11 @@ public sealed class WinUiComputerUseContext : IDisposable
     /// screenshots never).</summary>
     private void SaveTrace(CuaRunResult result)
     {
-        Diagnostics = $"{DateTime.Now:g}  {result.Status}\n" + string.Join("\n",
+        var run = $"{DateTime.Now:g}  {result.Status}\n" + string.Join("\n",
             result.Trace.Select(item => $"{(item.Step is { } step ? $"[{step}] " : "")}{item.Title}: {item.Body}"));
+        // Newest first; the oldest runs fall off so the file stays small.
+        Diagnostics = string.Join(RunSeparator, new[] { run }.Concat(Diagnostics.Split(RunSeparator)
+            .Where(previous => previous != NoRuns)).Take(MaxSavedRuns));
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(TraceFilePath)!);
