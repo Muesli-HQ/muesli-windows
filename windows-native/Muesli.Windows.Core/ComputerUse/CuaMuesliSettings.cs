@@ -1,4 +1,5 @@
 using System.Text;
+using Muesli.Windows.Core.Contracts;
 using Muesli.Windows.Services;
 
 namespace Muesli.Windows.ComputerUse;
@@ -8,8 +9,14 @@ namespace Muesli.Windows.ComputerUse;
 /// only registered choice settings cross the planner boundary, never keys, paths, prompts or
 /// free text. Changes go through the app's own load/save so the running app applies them.
 /// </summary>
-public sealed class CuaMuesliSettings(Func<MuesliSettings> load, Action<MuesliSettings> save)
+/// <param name="shortcutFree">True when no other app holds a shortcut (the Shortcuts page's conflict check).</param>
+/// <param name="applyShortcut">Re-registers the dictation shortcut; returns why it failed, or null.</param>
+public sealed class CuaMuesliSettings(Func<MuesliSettings> load, Action<MuesliSettings> save,
+    Func<string, bool>? shortcutFree = null, Func<string?>? applyShortcut = null)
 {
+    private const string ShortcutId = "dictation_shortcut";
+    private const string ComputerUseShortcut = "Ctrl+Shift+F8";
+
     private sealed record Choice(string Id, string Label, string? Unavailable = null);
 
     private sealed record Setting(string Id, string Label, Func<MuesliSettings, string> Get,
@@ -57,11 +64,13 @@ public sealed class CuaMuesliSettings(Func<MuesliSettings> load, Action<MuesliSe
                 $"{choice.Id} = {choice.Label}{(choice.Unavailable is null ? "" : $" [{choice.Unavailable}]")}"));
             text.Append('\n');
         }
+        text.Append($"{ShortcutId} (Push-to-talk dictation shortcut): {current.Hotkey}; any one key with optional Ctrl, Alt, Shift or Win, for example F9 or Ctrl+Space. Not Escape or {ComputerUseShortcut}.\n");
         return text.ToString();
     }
 
     private CuaResult Set(string settingId, string value)
     {
+        if (settingId.Equals(ShortcutId, StringComparison.OrdinalIgnoreCase)) return SetShortcut(value);
         var setting = Settings.FirstOrDefault(s => s.Id.Equals(settingId, StringComparison.OrdinalIgnoreCase));
         if (setting is null) return CuaResult.Fail($"\"{settingId}\" cannot be changed by voice. Call get_muesli_settings for the list.");
         var choices = setting.Choices().ToArray();
@@ -76,5 +85,30 @@ public sealed class CuaMuesliSettings(Func<MuesliSettings> load, Action<MuesliSe
         return setting.Get(load()) == choice.Id
             ? CuaResult.Ok($"{setting.Label} changed to {choice.Label}.")
             : CuaResult.Fail($"{setting.Label} did not save. Nothing was changed.");
+    }
+
+    /// <summary>Same rules as the Shortcuts page; a shortcut Windows will not register is rolled back
+    /// so dictation keeps working.</summary>
+    private CuaResult SetShortcut(string value)
+    {
+        HotkeyGesture gesture;
+        try { gesture = HotkeyGestureParser.Parse(value); }
+        catch (InvalidOperationException) { return CuaResult.Fail($"\"{value}\" is not a shortcut Muesli can use. Use one key with optional Ctrl, Alt, Shift or Win. Nothing was changed."); }
+        var name = gesture.DisplayName;
+        if (HotkeyGestureParser.IsEscape(gesture.VirtualKey) || name.Equals(ComputerUseShortcut, StringComparison.OrdinalIgnoreCase))
+            return CuaResult.Fail($"{name} is reserved. Nothing was changed.");
+        var current = load();
+        if (current.Hotkey.Equals(name, StringComparison.OrdinalIgnoreCase)) return CuaResult.Ok($"The dictation shortcut is already {name}.");
+        if (shortcutFree?.Invoke(name) == false) return CuaResult.Fail($"Another app already uses {name}. Nothing was changed.");
+
+        save(current with { Hotkey = name });
+        if (load().Hotkey != name) return CuaResult.Fail("The dictation shortcut did not save. Nothing was changed.");
+        if (applyShortcut?.Invoke() is { } failure)
+        {
+            save(load() with { Hotkey = current.Hotkey });
+            applyShortcut();
+            return CuaResult.Fail($"Windows would not register {name} ({failure}). The shortcut stays {current.Hotkey}.");
+        }
+        return CuaResult.Ok($"Dictation shortcut changed to {name}.");
     }
 }

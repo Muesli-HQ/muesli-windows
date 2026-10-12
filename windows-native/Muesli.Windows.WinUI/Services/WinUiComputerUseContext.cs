@@ -153,7 +153,8 @@ public sealed class WinUiComputerUseContext : IDisposable
         {
             Confirm = ConfirmActionAsync,
             Ask = AskAsync,
-            Settings = new CuaMuesliSettings(_settings.Load, saved => _dispatcher.EnqueueAsync(() => _settings.Save(saved), CancellationToken.None).GetAwaiter().GetResult()),
+            Settings = new CuaMuesliSettings(_settings.Load, saved => _dispatcher.EnqueueAsync(() => _settings.Save(saved), CancellationToken.None).GetAwaiter().GetResult(),
+                HotkeyConflictProbe.IsAdvisoryRegistrationAvailable, ReapplyDictationShortcut),
             OnStatus = status => Report(status),
         };
         try
@@ -185,6 +186,18 @@ public sealed class WinUiComputerUseContext : IDisposable
             _running = false;
             Report(Status);
         }
+    }
+
+    /// <summary>Re-installs the push-to-talk hook after a voice change, like the Shortcuts page.</summary>
+    private string? ReapplyDictationShortcut()
+    {
+        string? failure = null;
+        _dispatcher.EnqueueAsync(() =>
+        {
+            _dictation.RegisterHotkey();
+            failure = _dictation.IsHotkeyRegistered ? null : _dictation.Status;
+        }, CancellationToken.None).GetAwaiter().GetResult();
+        return failure;
     }
 
     /// <summary>Keeps the latest run's steps for the Settings diagnostics view (typed text included,

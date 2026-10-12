@@ -242,6 +242,26 @@ public sealed class CuaRuntimeTests
     }
 
     [Fact]
+    public void DictationShortcutChangesByVoiceAndRollsBackWhenWindowsRefuses()
+    {
+        var saved = new MuesliSettings { Hotkey = "F8" };
+        string? refuse = null;
+        var settings = new CuaMuesliSettings(() => saved, value => saved = value, name => name != "F10", () => refuse);
+        bool set(string value) => settings.Execute(Call("set_muesli_setting", new { setting = "dictation_shortcut", value })).Succeeded;
+
+        Assert.True(set("ctrl+space"));
+        Assert.Equal("Ctrl+Space", saved.Hotkey);
+        Assert.False(set("Escape"));
+        Assert.False(set("Ctrl+Shift+F8"));
+        Assert.False(set("F10")); // Held by another app.
+        Assert.False(set("banana"));
+        refuse = "hook failed";
+        Assert.False(set("F9"));
+        Assert.Equal("Ctrl+Space", saved.Hotkey);
+        Assert.Contains("dictation_shortcut", settings.Execute(Call("get_muesli_settings", new { })).Message);
+    }
+
+    [Fact]
     public void SettingsRefuseUnknownSettingsAndMissingModels()
     {
         var saved = new MuesliSettings();
