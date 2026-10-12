@@ -190,6 +190,7 @@ public sealed partial class MainPage : Page
         {
             ApplyNavButtonCompact(button, compact);
         }
+        ThemeToggle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
 
         ApplyTourOverlayChrome();
     }
@@ -739,6 +740,26 @@ public sealed partial class MainPage : Page
                     icon.Foreground = selected ? accent : secondary;
                 }
             }
+        }
+        RefreshThemeToggle();
+    }
+
+    /// <summary>macOS darkModeToggle: picks light or dark through the same setting Settings uses.</summary>
+    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not string theme) return;
+        var settings = App.Settings.Load();
+        if (settings.Theme == theme) return;
+        App.Settings.Save(settings with { Theme = theme });
+    }
+
+    private void RefreshThemeToggle()
+    {
+        var dark = ActualTheme != ElementTheme.Light;
+        foreach (var (button, selected) in new[] { (LightThemeButton, !dark), (DarkThemeButton, dark) })
+        {
+            button.Background = selected ? Brush("MuesliSelectedBrush") : null;
+            button.Foreground = selected ? Brush("MuesliAccentBrush") : Brush("MuesliTextTertiaryBrush");
         }
     }
 

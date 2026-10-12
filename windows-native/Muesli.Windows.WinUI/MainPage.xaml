@@ -113,7 +113,7 @@
 
                     <Border x:Name="SearchWell"
                             Height="36"
-                            Margin="-4,18,-4,0"
+                            Margin="-8,18,-8,0"
                             Padding="10,0"
                             Background="{ThemeResource MuesliSurfaceBrush}"
                             BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
@@ -327,6 +327,30 @@
                             <TextBlock Grid.Column="1" Text="About" VerticalAlignment="Center" />
                         </Grid>
                     </Button>
+                    <!-- macOS darkModeToggle: a sun / moon switch under About. -->
+                    <Border x:Name="ThemeToggle"
+                            HorizontalAlignment="Left"
+                            Margin="18,12,0,16"
+                            Padding="2"
+                            CornerRadius="6"
+                            Background="{ThemeResource MuesliBackgroundRaisedBrush}">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button x:Name="LightThemeButton" Tag="light" Click="ThemeToggle_Click"
+                                    Style="{StaticResource MuesliGhostButtonStyle}"
+                                    Width="28" Height="22" MinWidth="0" MinHeight="0" Padding="0" CornerRadius="4"
+                                    AutomationProperties.Name="Light mode" AutomationProperties.AutomationId="SidebarLightMode"
+                                    ToolTipService.ToolTip="Light mode">
+                                <FontIcon Glyph="&#xE706;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="10" />
+                            </Button>
+                            <Button x:Name="DarkThemeButton" Tag="dark" Click="ThemeToggle_Click"
+                                    Style="{StaticResource MuesliGhostButtonStyle}"
+                                    Width="28" Height="22" MinWidth="0" MinHeight="0" Padding="0" CornerRadius="4"
+                                    AutomationProperties.Name="Dark mode" AutomationProperties.AutomationId="SidebarDarkMode"
+                                    ToolTipService.ToolTip="Dark mode">
+                                <FontIcon Glyph="&#xE708;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="10" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Grid>
         </Border>
