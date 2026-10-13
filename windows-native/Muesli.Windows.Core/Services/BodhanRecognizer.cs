@@ -197,6 +197,35 @@ public sealed class BodhanRecognizer : IDisposable
     }
 }
 
+/// <summary>macOS BodhanTranscriptMerger: Bodhan decodes 28 s windows every 27 s, so each chunk's
+/// head repeats the merged tail. Drops the longest repeat (up to 16 words) and returns what the
+/// chunk adds.</summary>
+public static class BodhanTranscriptMerger
+{
+    public const int WindowSeconds = 28;
+    public const int StrideSeconds = 27;
+
+    public static string Append(List<string> merged, string transcript)
+    {
+        var words = transcript.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var overlap = Math.Min(Math.Min(merged.Count, words.Length), 16);
+        while (overlap > 0 && !Enumerable.Range(0, overlap).All(i =>
+            MergeToken(merged[merged.Count - overlap + i]) == MergeToken(words[i])))
+        {
+            overlap--;
+        }
+        var added = words[overlap..];
+        merged.AddRange(added);
+        return string.Join(' ', added);
+    }
+
+    /// <summary>macOS drops punctuation and case; non-spacing marks go too, since the two decodes of
+    /// the shared second often differ only by one (पाँचवा / पाँचवाँ, कुतुहल / कुतूहल).</summary>
+    private static string MergeToken(string token) =>
+        new string(token.Where(c => !char.IsPunctuation(c) && !char.IsSymbol(c)
+            && char.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray()).ToLowerInvariant();
+}
+
 /// <summary>tokenizer.json written from the official IndicCanaryTokenizer at export time.</summary>
 internal sealed class BodhanVocabulary
 {

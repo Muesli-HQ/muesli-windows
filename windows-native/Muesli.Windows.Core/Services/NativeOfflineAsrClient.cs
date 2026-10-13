@@ -204,13 +204,17 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                 EnsureRecognizer();
                 var inference = Stopwatch.StartNew();
                 const int sampleRate = 16000;
-                const int chunkSamples = sampleRate * 25;
+                // Bodhan matches macOS: 28 s windows overlapping by 1 s, so no word is cut at a boundary.
+                var bodhan = _bodhan is not null;
+                var chunkSamples = sampleRate * (bodhan ? BodhanTranscriptMerger.WindowSeconds : 25);
+                var strideSamples = sampleRate * (bodhan ? BodhanTranscriptMerger.StrideSeconds : 25);
+                var mergedWords = new List<string>();
                 var texts = new List<string>();
                 var segments = new List<TranscriptSegment>();
                 var timestampModes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var chunkCount = 0;
                 var throttle = new ThrottledTranscriptionProgress(progress);
-                for (var offset = 0; offset < samples.Length; offset += chunkSamples)
+                for (var offset = 0; offset < samples.Length; offset += strideSamples)
                 {
                     // Decoding is chunked, so cancellation lands within one chunk rather than at the
                     // end of the file. Partial work is discarded: the caller gets no transcript at all.
@@ -220,9 +224,9 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                     var chunk = samples.AsSpan(offset, length).ToArray();
                     OfflineRecognizerResult? result = null;
                     string chunkText;
-                    if (_bodhan is not null)
+                    if (bodhan)
                     {
-                        chunkText = RecognizeBodhan(chunk);
+                        chunkText = BodhanTranscriptMerger.Append(mergedWords, RecognizeBodhan(chunk));
                     }
                     else
                     {
@@ -258,6 +262,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                     }
 
                     chunkCount++;
+                    if (offset + length == samples.Length) break;
                 }
                 inference.Stop();
 
@@ -278,7 +283,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                         $"Audio preprocessing: {preprocessing}",
                         $"Audio duration ms: {durationMs}",
                         $"Inference duration ms: {inferenceMs}",
-                        $"Decode chunks: {chunkCount} (25 second maximum)",
+                        $"Decode chunks: {chunkCount} ({chunkSamples / sampleRate} second maximum, {(chunkSamples - strideSamples) / sampleRate} second overlap)",
                         $"Segments: {segments.Count}",
                         $"Timestamp segmentation: {string.Join(", ", timestampModes)}"),
                     durationMs,

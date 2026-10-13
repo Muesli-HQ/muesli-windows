@@ -36,6 +36,22 @@ public sealed class BodhanRecognizerTests
         Assert.True(BodhanModels.NeedsGpu(Model("bodhan-flex-fp16")));
     }
 
+    [Fact]
+    public void OverlappingChunksDropTheRepeatedBoundaryWordsLikeMacOS()
+    {
+        var merged = new List<string>();
+        Assert.Equal("नमस्ते आज मौसम", BodhanTranscriptMerger.Append(merged, "नमस्ते आज मौसम"));
+        // The repeat ignores punctuation and case; a later, separate repetition is kept.
+        Assert.Equal("अच्छा है। आज", BodhanTranscriptMerger.Append(merged, "आज मौसम, अच्छा है। आज"));
+        Assert.Equal("Done", BodhanTranscriptMerger.Append(merged, "  Done "));
+        Assert.Equal("", BodhanTranscriptMerger.Append(merged, ""));
+        Assert.Equal("नमस्ते आज मौसम अच्छा है। आज Done", string.Join(' ', merged));
+
+        // Measured on the Hindi test audio: the two decodes of the shared second differ by a candrabindu.
+        merged = [.. "ने क्रमशः चौथा पाँचवा और छठा".Split(' ')];
+        Assert.Equal("स्थान हासिल किया", BodhanTranscriptMerger.Append(merged, "चौथा पाँचवाँ और छठा स्थान हासिल किया"));
+    }
+
     /// <summary>
     /// Replays the official PyTorch transcripts saved by tools/bodhan_check.py (ref) through the
     /// exported graphs, exactly as Muesli runs them. MUESLI_BODHAN_CUDA=1 runs on the CUDA pack.
