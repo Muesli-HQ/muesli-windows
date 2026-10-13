@@ -474,8 +474,9 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
         var options = new SessionOptions { IntraOpNumThreads = ThreadCount(candidate.Provider) };
         if (profilePrefix is not null)
         {
-            options.EnableProfiling = true;
+            // The prefix is read when profiling is switched on, so it must be set first.
             options.ProfileOutputPathPrefix = profilePrefix;
+            options.EnableProfiling = true;
         }
 
         if (candidate.IsGpu)
