@@ -259,9 +259,17 @@ public static class BodhanModels
     /// <summary>Graph file suffix: FP16 for CUDA, weight-only 8-bit (MatMulNBits, 32-wide blocks) for the CPU.</summary>
     public static string Precision(TranscriptionModelDefinition model) => NeedsGpu(model) ? "fp16" : "int8";
 
+    // One list per model, like the other models' static lists: a fresh list on every read makes the
+    // Models page language picker reset its items and drop the selection.
+    private static readonly IReadOnlyList<ModelLanguageOption> CoreLanguages = LanguageList(flex: false);
+    private static readonly IReadOnlyList<ModelLanguageOption> FlexLanguages = LanguageList(flex: true);
+
     public static IReadOnlyList<ModelLanguageOption> Languages(TranscriptionModelDefinition model) =>
+        IsFlex(model) ? FlexLanguages : CoreLanguages;
+
+    private static ModelLanguageOption[] LanguageList(bool flex) =>
         LanguageLabels
-            .Where(language => IsFlex(model) || language.Code is not ("hne" or "bgc"))
+            .Where(language => flex || language.Code is not ("hne" or "bgc"))
             .Select(language => new ModelLanguageOption(language.Code, language.Label))
             .Prepend(new ModelLanguageOption(ModelLanguageSupport.AutomaticCode, "Auto-detect"))
             .ToArray();

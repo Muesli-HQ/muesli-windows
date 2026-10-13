@@ -287,7 +287,7 @@ public static class TranscriptionModelCatalog
         new(
             "bodhan-core-int8",
             "Bodhan Core INT8",
-            "Indian-language speech in its native script. Runs on the CPU.",
+            "Runs on the CPU on any PC.",
             "25 Indian languages · automatic",
             "1.7 GB download · ~1.7 GB installed",
             NativeAsrModelKind.Bodhan,
@@ -306,7 +306,7 @@ public static class TranscriptionModelCatalog
         new(
             "bodhan-core-fp16",
             "Bodhan Core FP16",
-            "Indian-language speech in its native script. Needs an NVIDIA GPU with the CUDA pack.",
+            "Faster; needs an NVIDIA GPU with the CUDA pack.",
             "25 Indian languages · automatic",
             "2.5 GB download · ~2.5 GB installed",
             NativeAsrModelKind.Bodhan,
@@ -325,7 +325,7 @@ public static class TranscriptionModelCatalog
         new(
             "bodhan-flex-int8",
             "Bodhan Flex INT8",
-            "Mixed-language dictation with native, mixed or romanized output. Runs on the CPU.",
+            "Runs on the CPU on any PC.",
             "27 Indian languages · automatic",
             "1.7 GB download · ~1.7 GB installed",
             NativeAsrModelKind.Bodhan,
@@ -344,7 +344,7 @@ public static class TranscriptionModelCatalog
         new(
             "bodhan-flex-fp16",
             "Bodhan Flex FP16",
-            "Mixed-language dictation with native, mixed or romanized output. Needs an NVIDIA GPU with the CUDA pack.",
+            "Faster; needs an NVIDIA GPU with the CUDA pack.",
             "27 Indian languages · automatic",
             "2.5 GB download · ~2.5 GB installed",
             NativeAsrModelKind.Bodhan,

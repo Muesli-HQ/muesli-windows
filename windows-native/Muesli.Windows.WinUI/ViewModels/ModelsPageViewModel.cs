@@ -334,14 +334,14 @@ internal static class ModelFamilyCatalog
         "sensevoice" => new ModelFamilyDescriptor(key, "SenseVoice", "Alibaba", "", "", "", first.Id, "qwen-logo"),
         "qwen3-asr" => new ModelFamilyDescriptor(key, "Qwen3-ASR", "Alibaba", "", "", "", first.Id, "qwen-logo"),
         "cohere-transcribe" => new ModelFamilyDescriptor(key, "Cohere Transcribe", "Cohere", "", "", "", first.Id, "cohere-logo"),
-        // macOS card copy. The licence grants no right to Bodhan's logo, so the card uses the
-        // neutral mark and carries the required attribution notice instead.
+        // The licence grants no right to Bodhan's logo, so the card uses a neutral language glyph
+        // and carries the required attribution notice instead.
         "bodhan-core" => new ModelFamilyDescriptor(
             key,
             "Bodhan Core",
             "Bodhan AI / AI4Bharat",
-            "",
-            "Indian-language speech in its native script. English words within Hindi or Tamil are written in that script too. Detects the language automatically, or use the language picker.",
+            "\uE8C1",
+            "Indian-language speech written in its own script, English words included. Pick the language you speak, or Auto-detect.",
             "",
             "bodhan-core-int8",
             ""),
@@ -349,8 +349,8 @@ internal static class ModelFamilyCatalog
             key,
             "Bodhan Flex",
             "Bodhan AI / AI4Bharat",
-            "",
-            "For mixed-language dictation: keeps Hindi or Tamil in its own script and English words in Latin letters. Also formats spoken numbers. Try both models to compare accuracy.",
+            "\uE8C1",
+            "For mixed-language dictation: your language in its own script with English words in Latin letters, or all native or all romanized. Also formats spoken numbers.",
             "",
             "bodhan-flex-int8",
             ""),
