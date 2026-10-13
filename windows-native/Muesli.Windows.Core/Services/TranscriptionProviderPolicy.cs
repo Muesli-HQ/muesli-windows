@@ -30,6 +30,8 @@ public static class TranscriptionProviderPolicy
         NativeAsrModelKind.CohereTranscribe => false,
         // Qwen3-ASR measured 1.8x slower on CUDA, and the CUDA transcript differed from CPU.
         NativeAsrModelKind.Qwen3Asr => false,
+        // Bodhan FP16 graphs only run on CUDA; INT8 graphs never request it.
+        NativeAsrModelKind.Bodhan => true,
         _ => false
     };
 

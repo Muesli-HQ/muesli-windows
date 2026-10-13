@@ -270,9 +270,30 @@
                                                           SelectionChanged="ModelLanguage_SelectionChanged" />
                                             </Grid>
 
+                                            <!-- macOS Bodhan Flex: native script, mixed scripts, or all Latin letters. -->
+                                            <Grid ColumnDefinitions="64,Auto" ColumnSpacing="12"
+                                                  Visibility="{Binding SelectedVariant.IsOutputSelectable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock Text="Output" Style="{StaticResource ModelMetaLabelStyle}" />
+                                                <ComboBox Grid.Column="1"
+                                                          Style="{StaticResource ModelPickerStyle}"
+                                                          ItemsSource="{Binding SelectedVariant.OutputOptions}"
+                                                          DisplayMemberPath="Label"
+                                                          SelectedValuePath="Code"
+                                                          SelectedValue="{Binding SelectedVariant.SelectedOutputCode, Mode=TwoWay}"
+                                                          ToolTipService.ToolTip="Native script, mixed Indic and English scripts, or all Latin letters."
+                                                          AutomationProperties.Name="{Binding SelectedVariant.OutputAccessibleName}"
+                                                          AutomationProperties.AutomationId="BodhanOutputPicker"
+                                                          SelectionChanged="ModelOutput_SelectionChanged" />
+                                            </Grid>
+
                                             <TextBlock Text="{Binding VariantDescription}"
                                                        Style="{StaticResource ModelCaptionStyle}"
                                                        Visibility="{Binding HasVariantDescription, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                            <TextBlock Text="{Binding SelectedVariant.AttributionNotice}"
+                                                       Style="{StaticResource ModelCaptionStyle}"
+                                                       AutomationProperties.AutomationId="ModelAttributionNotice"
+                                                       Visibility="{Binding SelectedVariant.HasAttributionNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                             <StackPanel Spacing="4"
                                                         Visibility="{Binding SelectedVariant.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">

@@ -16,7 +16,7 @@ Selecting a role changes only the setting. It never downloads, verifies, initial
 
 ## Supported offline catalog
 
-The runnable Windows catalog contains twelve sherpa-onnx offline choices aligned with the Windows-compatible portion of the current macOS catalog:
+The runnable Windows catalog contains sixteen offline choices aligned with the Windows-compatible portion of the current macOS catalog: twelve sherpa-onnx models and four Bodhan variants:
 
 - Parakeet v3 INT8
 - Parakeet Unified English INT8
@@ -30,6 +30,15 @@ The runnable Windows catalog contains twelve sherpa-onnx offline choices aligned
 - SenseVoice Small INT8
 - Qwen3-ASR 0.6B INT8
 - Cohere Transcribe INT8 (English selected)
+- Bodhan Core INT8 and FP16
+- Bodhan Flex INT8 and FP16
+
+Bodhan Core and Flex are ONNX ports of Bodhan AI / AI4Bharat's Indic-Transcribe models, exported from the official
+PyTorch code and hosted at `Mvkd2k06/indic-transcribe-core-onnx` and `Mvkd2k06/indic-transcribe-flex-onnx`. They run
+through ONNX Runtime in C# (`BodhanRecognizer`), bound to the same `onnxruntime.dll` sherpa-onnx loads. INT8 runs on
+the CPU; FP16 runs only on CUDA and fails closed without it. Flex's native/mixed/romanized output is the
+`BodhanOutputMode` setting. Each card shows the licence's required notice, "Built with Indic-Transcribe-core/flex
+from Bodhan AI / AI4Bharat."
 
 macOS CoreML, WhisperKit, FluidAudio, and LiteRT identifiers are not Windows runtime choices. The public package ships the CPU sherpa-onnx provider only. An optional, SHA-256-verified NVIDIA CUDA acceleration pack can be downloaded from Models; it needs a user-supplied CUDA 12 / cuDNN 9 runtime and is only reported active after a real warm-up inference proves which provider executed the graph. CUDA-to-CPU provider fallback remains within the same sherpa-onnx engine and the same selected model; there is no cross-engine and no cross-model fallback. See `docs/L11_CUDA_PROVENANCE_GAP.md` and `docs/WINDOWS_GPU_QUALIFICATION.md`.
 
@@ -90,4 +99,4 @@ The headless benchmark accepts `--model <catalog-id>` and requires that model to
 Muesli.exe --benchmark-native --audio <real-audio.wav> --runs 1 --model <catalog-id> --output <report.json>
 ```
 
-This command never downloads a model. `scripts/smoke-transcription-models.ps1` invokes it for all twelve choices and fails if any report lacks successful real-audio inference.
+This command never downloads a model. `scripts/smoke-transcription-models.ps1` invokes it for the fourteen CPU choices and fails if any report lacks successful real-audio inference.

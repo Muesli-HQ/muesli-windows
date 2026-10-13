@@ -23,6 +23,7 @@ public sealed class WinUiSettingsContext
         var settings = _store.Load();
         // Keep the native recognizer language selection in step with the saved choices.
         TranscriptionLanguageSelection.Apply(settings.ModelLanguages);
+        BodhanModels.OutputModeSetting = settings.BodhanOutputMode;
         return settings;
     }
 
@@ -33,6 +34,7 @@ public sealed class WinUiSettingsContext
             throw new InvalidOperationException(warning);
         _store.Save(settings);
         TranscriptionLanguageSelection.Apply(settings.ModelLanguages);
+        BodhanModels.OutputModeSetting = settings.BodhanOutputMode;
         Changed?.Invoke(this, settings);
     }
 

@@ -238,6 +238,7 @@ public sealed class SettingsStore
             DictionarySuggestions = NormalizeDictionarySuggestions(settings.DictionarySuggestions),
             DismissedDictionarySuggestionKeys = settings.DismissedDictionarySuggestionKeys?.Where(key => !string.IsNullOrWhiteSpace(key)).ToArray() ?? [],
             ModelLanguages = NormalizeModelLanguages(settings.ModelLanguages),
+            BodhanOutputMode = BodhanModels.NormalizeOutputMode(settings.BodhanOutputMode),
             ExecutionProvider = NormalizeExecutionProvider(settings.ExecutionProvider),
             CleanupModelId = CleanupModelCatalog.Normalize(settings.CleanupModelId),
             OpenAIModel = DefaultIfBlank(settings.OpenAIModel, "gpt-5.4-mini").Trim(),
@@ -574,6 +575,9 @@ public sealed record MuesliSettings
     /// <summary>Per-model language code selections, keyed by model id. Empty uses each model's default.</summary>
     public IReadOnlyDictionary<string, string> ModelLanguages { get; init; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>macOS bodhan_output_mode: native, mixed or romanized. Only Bodhan Flex honours it.</summary>
+    public string BodhanOutputMode { get; init; } = "mixed";
     [JsonPropertyName("OpenAIApiKey")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string? PlaintextOpenAIApiKeyForMigration { get; init; }

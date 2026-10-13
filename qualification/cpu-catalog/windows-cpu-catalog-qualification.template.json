@@ -176,6 +176,34 @@
       "reviewedBy": "",
       "reviewedAt": "",
       "referenceProvenance": ""
+    },
+    {
+      "id": "bodhan-core-int8-hindi-speech",
+      "modelId": "bodhan-core-int8",
+      "role": "both",
+      "audio": "audio/hindi-speech.wav",
+      "reference": "references/hindi-speech.txt",
+      "languages": ["hi"],
+      "expectedOutcome": "transcript",
+      "requiredProvider": "cpu",
+      "placeholder": true,
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "referenceProvenance": ""
+    },
+    {
+      "id": "bodhan-flex-int8-hindi-speech",
+      "modelId": "bodhan-flex-int8",
+      "role": "both",
+      "audio": "audio/hindi-speech.wav",
+      "reference": "references/hindi-speech.txt",
+      "languages": ["hi"],
+      "expectedOutcome": "transcript",
+      "requiredProvider": "cpu",
+      "placeholder": true,
+      "reviewedBy": "",
+      "reviewedAt": "",
+      "referenceProvenance": ""
     }
   ],
   "missingLanguageFixtures": [
@@ -185,6 +213,8 @@
     "whisper-large-turbo-multilingual advertised multilingual support: no non-English reviewed WAV is checked in",
     "sensevoice-small-int8 advertised Chinese, Japanese, Korean, Cantonese: no reviewed WAVs are checked in",
     "qwen3-asr-0.6b-int8 advertised 30 languages plus Chinese dialects: no reviewed WAVs are checked in",
-    "cohere-transcribe-int8-en supports 14 languages but Windows selects English: no non-English reviewed WAV is checked in"
+    "cohere-transcribe-int8-en supports 14 languages but Windows selects English: no non-English reviewed WAV is checked in",
+    "bodhan-core-int8 advertised 25 Indian languages: no reviewed WAVs are checked in",
+    "bodhan-flex-int8 advertised 27 Indian languages: no reviewed WAVs are checked in"
   ]
 }
