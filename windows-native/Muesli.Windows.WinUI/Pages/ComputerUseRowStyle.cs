@@ -36,11 +36,19 @@ public static class ComputerUseRowStyle
     public static ImageSource? AppIcon(DictationTargetApp? app)
     {
         if (app?.ExePath is not { Length: > 0 } path) return null;
-        if (AppIcons.TryGetValue(path, out var cached)) return cached;
+        // ponytail: theme read when the icon is first drawn; rows bound earlier keep theirs until rebuilt.
+        var dark = App.ResolveTheme(App.Settings.Load().Theme) switch
+        {
+            ElementTheme.Light => false,
+            ElementTheme.Dark => true,
+            _ => Application.Current.RequestedTheme == ApplicationTheme.Dark,
+        };
+        var key = $"{(dark ? "dark" : "light")}|{path}";
+        if (AppIcons.TryGetValue(key, out var cached)) return cached;
         ImageSource? source = null;
         try
         {
-            using var bitmap = PackageLogo(path) ?? IconBitmap(path);
+            using var bitmap = PackageLogo(path, dark) ?? IconBitmap(path);
             if (bitmap is not null)
             {
                 // Kept open: the BitmapImage decodes from it lazily, and it is cached with the image.
@@ -53,7 +61,7 @@ public static class ComputerUseRowStyle
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or System.Xml.XmlException or System.Runtime.InteropServices.COMException) { }
-        return AppIcons[path] = source;
+        return AppIcons[key] = source;
     }
 
     private static System.Drawing.Bitmap? IconBitmap(string path)
@@ -63,8 +71,9 @@ public static class ComputerUseRowStyle
     }
 
     /// <summary>A packaged (MSIX) app's exe icon is often a bare glyph; its real icon is the manifest's
-    /// Square44x44Logo drawn on the manifest BackgroundColor, as Start draws it.</summary>
-    private static System.Drawing.Bitmap? PackageLogo(string exePath)
+    /// Square44x44Logo. Like the Windows 11 taskbar, use the theme's unplated variant, falling back to
+    /// the plated logo on the manifest BackgroundColor.</summary>
+    private static System.Drawing.Bitmap? PackageLogo(string exePath, bool dark)
     {
         var root = Path.GetDirectoryName(exePath);
         while (root is not null && !File.Exists(Path.Combine(root, "AppxManifest.xml"))) root = Path.GetDirectoryName(root);
@@ -81,7 +90,10 @@ public static class ComputerUseRowStyle
         var unqualified = Path.Combine(root, logo.Replace('/', '\\'));
         var stem = Path.Combine(Path.GetDirectoryName(unqualified)!, Path.GetFileNameWithoutExtension(unqualified));
         var ext = Path.GetExtension(unqualified);
-        var file = new[] { $"{stem}.targetsize-48{ext}", $"{stem}.scale-200{ext}", unqualified, $"{stem}.scale-100{ext}" }
+        var unplated = (dark ? new[] { "unplated" } : ["lightunplated", "unplated"])
+            .Select(form => $"{stem}.targetsize-48_altform-{form}{ext}")
+            .FirstOrDefault(File.Exists);
+        var file = unplated ?? new[] { $"{stem}.targetsize-48{ext}", $"{stem}.scale-200{ext}", unqualified, $"{stem}.scale-100{ext}" }
             .FirstOrDefault(File.Exists);
         if (file is null) return null;
 
@@ -91,7 +103,7 @@ public static class ComputerUseRowStyle
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
         var plate = System.Drawing.ColorTranslator.FromHtml(visuals.Attribute("BackgroundColor")?.Value ?? "transparent");
-        if (plate.A > 0)
+        if (unplated is null && plate.A > 0)
         {
             using var brush = new System.Drawing.SolidBrush(plate);
             g.FillRoundedRectangle(brush, new System.Drawing.Rectangle(0, 0, size, size), new System.Drawing.Size(12, 12));
