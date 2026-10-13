@@ -40,10 +40,9 @@ public static class ComputerUseRowStyle
         ImageSource? source = null;
         try
         {
-            using var icon = System.Drawing.Icon.ExtractAssociatedIcon(path);
-            if (icon is not null)
+            using var bitmap = PackageLogo(path) ?? IconBitmap(path);
+            if (bitmap is not null)
             {
-                using var bitmap = icon.ToBitmap();
                 // Kept open: the BitmapImage decodes from it lazily, and it is cached with the image.
                 var png = new MemoryStream();
                 bitmap.Save(png, System.Drawing.Imaging.ImageFormat.Png);
@@ -53,8 +52,53 @@ public static class ComputerUseRowStyle
                 source = image;
             }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or System.Runtime.InteropServices.COMException) { }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or System.Xml.XmlException or System.Runtime.InteropServices.COMException) { }
         return AppIcons[path] = source;
+    }
+
+    private static System.Drawing.Bitmap? IconBitmap(string path)
+    {
+        using var icon = System.Drawing.Icon.ExtractAssociatedIcon(path);
+        return icon?.ToBitmap();
+    }
+
+    /// <summary>A packaged (MSIX) app's exe icon is often a bare glyph; its real icon is the manifest's
+    /// Square44x44Logo drawn on the manifest BackgroundColor, as Start draws it.</summary>
+    private static System.Drawing.Bitmap? PackageLogo(string exePath)
+    {
+        var root = Path.GetDirectoryName(exePath);
+        while (root is not null && !File.Exists(Path.Combine(root, "AppxManifest.xml"))) root = Path.GetDirectoryName(root);
+        if (root is null) return null;
+        var relative = Path.GetRelativePath(root, exePath);
+        var visuals = System.Xml.Linq.XDocument.Load(Path.Combine(root, "AppxManifest.xml")).Descendants()
+            .Where(e => e.Name.LocalName == "Application"
+                && string.Equals(e.Attribute("Executable")?.Value.Replace('/', '\\'), relative, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(e => e.Elements())
+            .FirstOrDefault(e => e.Name.LocalName == "VisualElements");
+        if (visuals?.Attribute("Square44x44Logo")?.Value is not { Length: > 0 } logo) return null;
+
+        // MRT stores qualified variants beside the unqualified name; prefer the sharpest plated one.
+        var unqualified = Path.Combine(root, logo.Replace('/', '\\'));
+        var stem = Path.Combine(Path.GetDirectoryName(unqualified)!, Path.GetFileNameWithoutExtension(unqualified));
+        var ext = Path.GetExtension(unqualified);
+        var file = new[] { $"{stem}.targetsize-48{ext}", $"{stem}.scale-200{ext}", unqualified, $"{stem}.scale-100{ext}" }
+            .FirstOrDefault(File.Exists);
+        if (file is null) return null;
+
+        const int size = 48;
+        var tile = new System.Drawing.Bitmap(size, size);
+        using var g = System.Drawing.Graphics.FromImage(tile);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        var plate = System.Drawing.ColorTranslator.FromHtml(visuals.Attribute("BackgroundColor")?.Value ?? "transparent");
+        if (plate.A > 0)
+        {
+            using var brush = new System.Drawing.SolidBrush(plate);
+            g.FillRoundedRectangle(brush, new System.Drawing.Rectangle(0, 0, size, size), new System.Drawing.Size(12, 12));
+        }
+        using var logoImage = System.Drawing.Image.FromFile(file);
+        g.DrawImage(logoImage, 0, 0, size, size);
+        return tile;
     }
 
     /// <summary>macOS shows app.dashed when the app is known but its icon is not.</summary>
