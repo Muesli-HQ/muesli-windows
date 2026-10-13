@@ -265,7 +265,7 @@
                                                           ItemsSource="{Binding SelectedVariant.LanguageOptions}"
                                                           DisplayMemberPath="Label"
                                                           SelectedValuePath="Code"
-                                                          SelectedValue="{Binding SelectedVariant.SelectedLanguageCode, Mode=TwoWay}"
+                                                          SelectedValue="{Binding SelectedVariant.SelectedLanguageCode, Mode=OneWay}"
                                                           AutomationProperties.Name="{Binding SelectedVariant.LanguageAccessibleName}"
                                                           SelectionChanged="ModelLanguage_SelectionChanged" />
                                             </Grid>
@@ -279,7 +279,7 @@
                                                           ItemsSource="{Binding SelectedVariant.OutputOptions}"
                                                           DisplayMemberPath="Label"
                                                           SelectedValuePath="Code"
-                                                          SelectedValue="{Binding SelectedVariant.SelectedOutputCode, Mode=TwoWay}"
+                                                          SelectedValue="{Binding SelectedVariant.SelectedOutputCode, Mode=OneWay}"
                                                           ToolTipService.ToolTip="Native script, mixed Indic and English scripts, or all Latin letters."
                                                           AutomationProperties.Name="{Binding SelectedVariant.OutputAccessibleName}"
                                                           AutomationProperties.AutomationId="BodhanOutputPicker"

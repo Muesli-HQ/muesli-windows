@@ -56,11 +56,22 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
         if (item is null || !TranscriptionModelCatalog.TryGet(item.Id, out var model)) return;
         var normalized = ModelLanguageSupport.Normalize(model, code);
         var settings = _settings.Load();
-        var map = new Dictionary<string, string>(settings.ModelLanguages, StringComparer.OrdinalIgnoreCase)
-        {
-            [model.Id] = normalized
-        };
+        // A Bodhan language applies to both precisions of that model, like its output setting, so
+        // switching INT8/FP16 keeps it.
+        var ids = model.Kind == NativeAsrModelKind.Bodhan
+            ? TranscriptionModelCatalog.Models
+                .Where(other => other.Kind == NativeAsrModelKind.Bodhan && BodhanModels.IsFlex(other) == BodhanModels.IsFlex(model))
+                .Select(other => other.Id)
+                .ToArray()
+            : [model.Id];
+        var map = new Dictionary<string, string>(settings.ModelLanguages, StringComparer.OrdinalIgnoreCase);
+        foreach (var id in ids) map[id] = normalized;
         _settings.Save(settings with { ModelLanguages = map });
+        foreach (var variant in Items.SelectMany(card => card.Variants).Where(variant => ids.Contains(variant.Id)))
+        {
+            variant.ApplyLanguage(normalized);
+        }
+
         item.ApplyLanguage(normalized);
         ShowStatus($"{model.DisplayName} language set to {ModelLanguageSupport.LabelFor(model, normalized)}.");
     }
