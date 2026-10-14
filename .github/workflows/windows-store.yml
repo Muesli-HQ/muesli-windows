@@ -84,6 +84,7 @@ jobs:
             artifacts/release-rehearsal-report.json
             artifacts/release-hashes.json
             artifacts/msix-smoke-report.json
+            artifacts/store-pri-dump.xml
             artifacts/muesli-win32-manifest.xml
             artifacts/package-content-inventory.json
             artifacts/native-runtime-inventory.json
@@ -98,6 +99,7 @@ jobs:
           path: |
             artifacts/test-results/*.trx
             artifacts/msix-smoke-report.json
+            artifacts/store-pri-dump.xml
             artifacts/native-runtime-inventory.json
 
       - name: Summarize Store artifact
@@ -105,7 +107,7 @@ jobs:
           $report = Get-Content artifacts/store-submission-report.json -Raw | ConvertFrom-Json
           @"
           Store upload package: $($report.package)
-          Product: Muesli: Voice & Meeting Notes (9NL9X2427H2F)
+          Product: $($report.storeIdentity.displayName) ($($report.storeId))
           Version: $($report.version)
           SHA-256: $($report.sha256)
           Windows tests passed: $($report.testCounters.passed); not executed: $($report.testCounters.notExecuted)

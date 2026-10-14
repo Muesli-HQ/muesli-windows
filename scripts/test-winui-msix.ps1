@@ -40,6 +40,7 @@ $report = [ordered]@{
     identity = $null
     nativeInventoryPassed = $false
     nativeInventoryPath = ""
+    priResourceMapName = $null
     launchVerification = "NotPerformed"
     launchReason = ""
     failures = @()
@@ -174,6 +175,23 @@ try {
     # Expand once for the native-runtime inventory against the real payload contents.
     if (Test-Path -LiteralPath $WorkDir) { Remove-Item -LiteralPath $WorkDir -Recurse -Force -ErrorAction SilentlyContinue }
     [System.IO.Compression.ZipFile]::ExtractToDirectory($resolvedMsix, $WorkDir)
+    if ($Store) {
+        # Inspect the compiled PRI, not just the XML manifest. A post-build identity change can
+        # otherwise pass ZIP checks while failing Store validation and resource lookup at runtime.
+        $priPath = Join-Path $WorkDir 'resources.pri'
+        $priDumpPath = Join-Path $root 'artifacts\store-pri-dump.xml'
+        try {
+            if (-not (Test-Path -LiteralPath $priPath)) { throw 'Store package is missing resources.pri.' }
+            $makePri = Get-MuesliMakePriPath
+            & $makePri dump /if $priPath /of $priDumpPath /dt Schema /o | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "MakePri dump failed with exit code $LASTEXITCODE." }
+            [xml]$priDump = Get-Content -LiteralPath $priDumpPath -Raw
+            Assert-MuesliPriResourceMap -Dump $priDump -ExpectedName ([string]$identity.Name)
+            $report.priResourceMapName = [string]$identity.Name
+        } catch {
+            $failures.Add($_.Exception.Message)
+        }
+    }
     $inventoryPath = Join-Path $WorkDir "native-runtime-inventory.json"
     try {
         & (Join-Path $PSScriptRoot "generate-native-runtime-inventory.ps1") `

@@ -250,7 +250,7 @@ $report = [ordered]@{
         "AUD-03 audio-interference policy decision"
     )
     artifacts = @(
-        "msix/$([IO.Path]::GetFileName($msixPath))",
+        (Get-MuesliRelativePath -BasePath $artifactsDir -TargetPath $msixPath).Replace('\', '/'),
         "test-results/windows-tests.trx",
         "msix-smoke-report.json",
         "muesli-win32-manifest.xml",

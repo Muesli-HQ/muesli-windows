@@ -18,8 +18,9 @@ Public Store metadata is checked into `windows-native/store-identity.json`:
 | Package family name | `MuesliHQ.MuesliVoiceMeetingNotes_jjkgdeby5rbtr` |
 
 These values come from [Product identity in Partner Center](https://partner.microsoft.com/en-US/dashboard/products/9NL9X2427H2F/identity).
-The packager writes them into the final Store manifest, including both package and application
-display names. It does not modify the checked-in development manifest or register a Store package
+The packager supplies a temporary Store manifest to MSBuild before resource compilation, including
+both package and application display names. The resulting `resources.pri` therefore uses the Store
+resource-map identity. It does not modify the checked-in development manifest or register a Store package
 on the developer's computer. Local development continues through `scripts/run-windows.ps1`.
 
 ## Build in GitHub Actions
@@ -41,7 +42,8 @@ The job:
 3. Runs the Release Windows product tests and records the TRX, including skipped tests.
 4. Builds the unsigned x64 MSIX and normalizes its payload. Main app and indicator carry their
    .NET runtimes; Windows App SDK and required app-local C++ runtime files are checked explicitly.
-5. Applies the exact Store identity and checks version, architecture, display names, native-runtime
+5. Checks the exact Store identity, version, architecture and display names, and dumps the compiled
+   PRI with MakePri to verify its resource-map name matches the manifest. It also checks native-runtime
    inventory, notices/licenses, and absence of foreign-RID/CUDA/debug artifacts.
 6. Uploads the verified package and its SHA-256/evidence as `windows-store-package-<commit SHA>`.
    Failed runs upload diagnostics separately and never publish a verified package artifact.
@@ -65,7 +67,7 @@ Evidence included with the artifact:
 - `store-submission-report.json`: Store ID/identity, source commit, version, final package SHA-256,
   test counters and explicit outstanding certification/interactive gates.
 - `release-hashes.json` and `package-content-inventory.json`: final hashes and payload inventory.
-- `msix-smoke-report.json`, `native-runtime-inventory.json`, and `muesli-win32-manifest.xml`.
+- `msix-smoke-report.json`, `store-pri-dump.xml`, `native-runtime-inventory.json`, and `muesli-win32-manifest.xml`.
 - `test-results/windows-tests.trx`: actual Windows test outcomes; skipped tests remain visible.
 
 GitHub may trim the shared `artifacts/` prefix in the archive; locate files by name. Verify the MSIX

@@ -7,7 +7,7 @@
     <!-- Carry the Windows App SDK runtime inside the MSIX. A framework-dependent package does not
          install on a clean PC unless the matching Windows App Runtime is already present. -->
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <!-- WindowsAppSDKSelfContained does not bundle the .NET runtime. Website installs must
+    <!-- WindowsAppSDKSelfContained does not bundle the .NET runtime. Packaged installs must
          also work on PCs without .NET 10; carry the managed runtime alongside the app. -->
     <SelfContained>true</SelfContained>
     <RootNamespace>Muesli.Windows.WinUI</RootNamespace>
@@ -21,6 +21,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <!-- Select the temporary Partner Center manifest before resource compilation and packaging.
+       Replacing Identity.Name after resources.pri is generated leaves an invalid resource map.
+       Without this explicit property, normal builds keep Package.appxmanifest unchanged. -->
+  <Target Name="SelectMuesliStoreManifest" BeforeTargets="PrepareForBuild;GetPriIndexName"
+          Condition="'$(MuesliStoreManifest)' != ''">
+    <Error Condition="!Exists('$(MuesliStoreManifest)')" Text="The Store build manifest was not found: $(MuesliStoreManifest)" />
+    <ItemGroup>
+      <AppxManifest Remove="@(AppxManifest)" />
+      <AppxManifest Include="$(MuesliStoreManifest)" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\Muesli.Windows.Core\Muesli.Windows.Core.csproj" />

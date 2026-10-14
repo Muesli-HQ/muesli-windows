@@ -15,6 +15,11 @@ $rehearsal = Get-Content -LiteralPath (Join-Path $artifacts 'release-rehearsal-r
 if (-not $rehearsal.msixSmokePassed -or -not $rehearsal.nativeInventoryPassed -or $rehearsal.dirtyTree) {
     throw 'Store package requires a clean checkout and passing payload/native checks.'
 }
+foreach ($artifact in $rehearsal.artifacts) {
+    if (-not (Test-Path -LiteralPath (Join-Path $artifacts $artifact) -PathType Leaf)) {
+        throw "Release evidence refers to a missing artifact: $artifact"
+    }
+}
 $trxPath = Join-Path $artifacts 'test-results\windows-tests.trx'
 $testCounters = Read-MuesliPassingWindowsTestResults -Path $trxPath
 $report = [ordered]@{

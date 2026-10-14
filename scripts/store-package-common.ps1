@@ -74,3 +74,25 @@ function Read-MuesliPassingWindowsTestResults {
         notExecuted = $notExecuted
     }
 }
+
+function Get-MuesliMakePriPath {
+    # Prefer the SDK restored for this project, then the installed Windows SDK.
+    $roots = @(
+        (Join-Path $env:USERPROFILE '.nuget\packages\microsoft.windows.sdk.buildtools'),
+        'C:\Program Files (x86)\Windows Kits\10\bin'
+    )
+    foreach ($root in $roots) {
+        $tool = Get-ChildItem -LiteralPath $root -Recurse -File -Filter 'makepri.exe' -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+        if ($tool) { return $tool.FullName }
+    }
+    throw 'MakePri.exe was not found; Store resource-map identity cannot be verified.'
+}
+
+function Assert-MuesliPriResourceMap {
+    param([Parameter(Mandatory)][xml]$Dump, [Parameter(Mandatory)][string]$ExpectedName)
+    $names = @($Dump.SelectNodes("//*[local-name()='ResourceMap']") | ForEach-Object { $_.GetAttribute('name') })
+    if ($names -cnotcontains $ExpectedName) {
+        throw "PRI resource-map identity mismatch: expected '$ExpectedName', found '$($names -join ', ')'."
+    }
+}

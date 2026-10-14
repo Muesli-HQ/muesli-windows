@@ -5,6 +5,7 @@ $scripts = Split-Path -Parent $PSScriptRoot
 $root = Split-Path -Parent $scripts
 . (Join-Path $scripts 'store-package-common.ps1')
 . (Join-Path $scripts 'read-release-properties.ps1')
+. (Join-Path $scripts 'release-common.ps1')
 $store = Read-MuesliStoreIdentity -Path (Join-Path $root 'windows-native/store-identity.json')
 $version = "$((Get-MuesliReleaseProperties -Root $root).Version).0"
 $source = Join-Path $root 'windows-native/Muesli.Windows.WinUI/Package.appxmanifest'
@@ -65,6 +66,22 @@ try {
         [IO.File]::WriteAllText($trxPath, $trxText.Replace($mutation[0], $mutation[1]))
         Assert-Rejected { Read-MuesliPassingWindowsTestResults -Path $trxPath } $(if ($mutation[0] -like 'aborted*') { 'aborted' } else { 'passing Windows test run' })
     }
+    # MakePri's schema dump may include library resource maps as well as the application map.
+    [xml]$priDump = '<PriInfo><ResourceMap name="Microsoft.UI.Xaml" /><ResourceMap name="MuesliHQ.MuesliVoiceMeetingNotes" /></PriInfo>'
+    Assert-MuesliPriResourceMap -Dump $priDump -ExpectedName $store.packageName
+    foreach ($badDump in @(
+        '<PriInfo><ResourceMap name="Muesli.Windows" /></PriInfo>',
+        '<PriInfo><ResourceMap name="mueslihq.mueslivoicemeetingnotes" /></PriInfo>',
+        '<PriInfo />'
+    )) {
+        Assert-Rejected { Assert-MuesliPriResourceMap -Dump ([xml]$badDump) -ExpectedName $store.packageName } 'PRI resource-map identity mismatch'
+    }
+    $artifactRoot = Join-Path $scratch 'artifacts'
+    foreach ($directory in @('msix', 'store', 'custom/nested')) {
+        $packagePath = Join-Path $artifactRoot "$directory/package.msix"
+        $relative = (Get-MuesliRelativePath -BasePath $artifactRoot -TargetPath $packagePath).Replace('\', '/')
+        Assert-True ($relative -eq "$directory/package.msix") "Release artifact path must follow selected output directory: $directory"
+    }
     # Exercise the actual native inventory under strict mode: catalog entries intentionally
     # select either exact file names OR patterns, so the other property may be absent.
     $nativeDir = Join-Path $scratch 'native'
@@ -84,7 +101,7 @@ try {
     & (Join-Path $scripts 'generate-native-runtime-inventory.ps1') -PackageDirectory $nativeDir -CatalogPath $catalogPath -OutputPath $nativeReportPath
     $nativeReport = Get-Content -LiteralPath $nativeReportPath -Raw | ConvertFrom-Json
     Assert-True ($nativeReport.passed -and $nativeReport.nativeFileCount -eq 2) 'Exact and pattern catalog entries must both work under strict mode.'
-    Write-Host 'Store packaging behavioral tests passed (18 scenarios).'
+    Write-Host 'Store packaging behavioral tests passed (25 scenarios).'
 } finally {
     Remove-Item -LiteralPath $scratch -Recurse -Force
 }

@@ -84,8 +84,24 @@ if ($env:MUESLI_SHARED_CORE_MODE -eq 'managed-fallback') {
 $arguments += '-p:AppxPackageSigningEnabled=false'
 
 Write-Host "Packaging Muesli ($Configuration, x64)..." -ForegroundColor Cyan
-& $dotnet @arguments
-if ($LASTEXITCODE -ne 0) { throw "MSIX packaging failed with exit code $LASTEXITCODE." }
+# Compile resources against the Store identity, rather than renaming only the final manifest.
+# The tracked development manifest is never edited. A unique temporary copy also avoids carrying
+# an old Store manifest into a later development build.
+$storeManifestDirectory = $null
+try {
+    if ($Store) {
+        $storeManifestDirectory = Join-Path ([IO.Path]::GetTempPath()) ('muesli-store-manifest-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $storeManifestDirectory | Out-Null
+        $storeManifest = Join-Path $storeManifestDirectory 'Package.appxmanifest'
+        Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $project) 'Package.appxmanifest') -Destination $storeManifest
+        Set-MuesliStoreManifestIdentity -ManifestPath $storeManifest -StoreIdentity $storeIdentity
+        $arguments += "-p:MuesliStoreManifest=$storeManifest"
+    }
+    & $dotnet @arguments
+    if ($LASTEXITCODE -ne 0) { throw "MSIX packaging failed with exit code $LASTEXITCODE." }
+} finally {
+    if ($storeManifestDirectory) { Remove-Item -LiteralPath $storeManifestDirectory -Recurse -Force }
+}
 
 # The single-project MSIX pipeline packs only @(PackagingOutputs); the loose-layout Swift bridge,
 # its runtime closure and the WPF indicator companion are copied after Build and are therefore not
@@ -204,7 +220,8 @@ function Rebuild-MsixPayload {
         }
 
         if ($Store) {
-            Set-MuesliStoreManifestIdentity -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -StoreIdentity $storeIdentity
+            [xml]$builtManifest = Get-Content -LiteralPath (Join-Path $scratch 'AppxManifest.xml') -Raw
+            Assert-MuesliStoreManifestIdentity -Manifest $builtManifest -StoreIdentity $storeIdentity -ExpectedVersion ([string]$builtManifest.Package.Identity.Version)
         } elseif ($Publisher) {
             Set-ManifestPublisher -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -Publisher $Publisher
         }
