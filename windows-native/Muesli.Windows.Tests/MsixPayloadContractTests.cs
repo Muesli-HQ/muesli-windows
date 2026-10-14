@@ -54,6 +54,8 @@ public sealed class MsixPayloadContractTests
         var script = PackageScript();
         Assert.Contains("Sort-Object LastWriteTimeUtc -Descending", script, StringComparison.Ordinal);
         Assert.Contains("Muesli.Windows.WinUI_{0}_x64.msix", script, StringComparison.Ordinal);
-        Assert.Contains("Directory.Build.props", script, StringComparison.Ordinal);
+        Assert.Contains("Get-MuesliReleaseProperties -Root $repoRoot", script, StringComparison.Ordinal);
+        var metadataReader = File.ReadAllText(TestRepositoryLayout.Combine("scripts", "read-release-properties.ps1"));
+        Assert.Contains("Directory.Build.props", metadataReader, StringComparison.Ordinal);
     }
 }
