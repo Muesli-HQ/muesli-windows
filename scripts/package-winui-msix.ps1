@@ -37,7 +37,9 @@ if ($Store -and $Publisher) { throw 'Store packaging uses Partner Center identit
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'release-common.ps1')
+. (Join-Path $PSScriptRoot 'read-release-properties.ps1')
 . (Join-Path $PSScriptRoot 'store-package-common.ps1')
+$release = Get-MuesliReleaseProperties -Root $repoRoot
 $storeIdentity = if ($Store) { Read-MuesliStoreIdentity -Path (Join-Path $repoRoot 'windows-native\store-identity.json') } else { $null }
 $sharedCore = Assert-MuesliSharedCoreRevision -Root $repoRoot -AllowUnpinnedDevOverride
 $env:MUESLI_SHARED_CORE_MODE = if ($sharedCore.BridgeRequired) { 'shared-core' } else { 'managed-fallback' }
@@ -221,7 +223,7 @@ function Rebuild-MsixPayload {
 
         if ($Store) {
             [xml]$builtManifest = Get-Content -LiteralPath (Join-Path $scratch 'AppxManifest.xml') -Raw
-            Assert-MuesliStoreManifestIdentity -Manifest $builtManifest -StoreIdentity $storeIdentity -ExpectedVersion ([string]$builtManifest.Package.Identity.Version)
+            Assert-MuesliStoreManifestIdentity -Manifest $builtManifest -StoreIdentity $storeIdentity -ExpectedVersion "$($release.Version).0"
         } elseif ($Publisher) {
             Set-ManifestPublisher -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -Publisher $Publisher
         }
@@ -257,9 +259,7 @@ if ($primaryMsix -and $looseExe -and $makeAppx) {
 
     # Publish one stable top-level filename. Selecting the first recursive result previously
     # repacked an older artifact while leaving the package produced by this build untouched.
-    [xml]$versionProperties = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Build.props') -Raw
-    $productVersion = [string]($versionProperties.Project.PropertyGroup.MuesliVersion | Select-Object -First 1)
-    if ([string]::IsNullOrWhiteSpace($productVersion)) { throw 'MuesliVersion is missing from Directory.Build.props.' }
+    $productVersion = $release.Version
     $canonicalMsixPath = Join-Path $OutputDirectory ("Muesli.Windows.WinUI_{0}_x64.msix" -f $productVersion)
     if (-not $primaryMsix.FullName.Equals($canonicalMsixPath, [StringComparison]::OrdinalIgnoreCase)) {
         Copy-Item -LiteralPath $primaryMsix.FullName -Destination $canonicalMsixPath -Force

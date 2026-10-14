@@ -83,7 +83,8 @@ function Get-MuesliMakePriPath {
     )
     foreach ($root in $roots) {
         $tool = Get-ChildItem -LiteralPath $root -Recurse -File -Filter 'makepri.exe' -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending | Select-Object -First 1
         if ($tool) { return $tool.FullName }
     }
     throw 'MakePri.exe was not found; Store resource-map identity cannot be verified.'

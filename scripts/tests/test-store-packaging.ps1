@@ -82,6 +82,18 @@ try {
         $relative = (Get-MuesliRelativePath -BasePath $artifactRoot -TargetPath $packagePath).Replace('\', '/')
         Assert-True ($relative -eq "$directory/package.msix") "Release artifact path must follow selected output directory: $directory"
     }
+    $originalProfile = $env:USERPROFILE
+    try {
+        $env:USERPROFILE = Join-Path $scratch 'sdk-profile'
+        $toolsRoot = Join-Path $env:USERPROFILE '.nuget/packages/microsoft.windows.sdk.buildtools'
+        foreach ($sdk in @('10.0.9.0', '10.0.28000.0')) {
+            $directory = Join-Path $toolsRoot "fixture/bin/$sdk/x64"
+            New-Item -ItemType Directory -Path $directory -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $directory 'makepri.exe'), 'fixture')
+        }
+        $selected = Get-MuesliMakePriPath
+        Assert-True ($selected -eq (Join-Path $toolsRoot 'fixture/bin/10.0.28000.0/x64/makepri.exe')) 'MakePri SDK selection must compare numeric versions.'
+    } finally { $env:USERPROFILE = $originalProfile }
     # Exercise the actual native inventory under strict mode: catalog entries intentionally
     # select either exact file names OR patterns, so the other property may be absent.
     $nativeDir = Join-Path $scratch 'native'
@@ -101,7 +113,7 @@ try {
     & (Join-Path $scripts 'generate-native-runtime-inventory.ps1') -PackageDirectory $nativeDir -CatalogPath $catalogPath -OutputPath $nativeReportPath
     $nativeReport = Get-Content -LiteralPath $nativeReportPath -Raw | ConvertFrom-Json
     Assert-True ($nativeReport.passed -and $nativeReport.nativeFileCount -eq 2) 'Exact and pattern catalog entries must both work under strict mode.'
-    Write-Host 'Store packaging behavioral tests passed (25 scenarios).'
+    Write-Host 'Store packaging behavioral tests passed (26 scenarios).'
 } finally {
     Remove-Item -LiteralPath $scratch -Recurse -Force
 }
