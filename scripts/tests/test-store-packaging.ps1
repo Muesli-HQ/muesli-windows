@@ -52,6 +52,10 @@ try {
     [IO.File]::WriteAllText($trxPath, $trxText)
     $counts = Read-MuesliPassingWindowsTestResults -Path $trxPath
     Assert-True ($counts.passed -eq 2 -and $counts.notExecuted -eq 1) 'TRX must preserve skipped test disclosure.'
+    $adapterTrx = $trxText.Replace('notExecuted="1"', 'notExecuted="0" total="3"').Replace('</TestRun>', '<Results><UnitTestResult outcome="NotExecuted" /></Results></TestRun>')
+    [IO.File]::WriteAllText($trxPath, $adapterTrx)
+    $counts = Read-MuesliPassingWindowsTestResults -Path $trxPath
+    Assert-True ($counts.notExecuted -eq 1) 'TRX must disclose skipped outcomes when the VSTest summary counter is zero.'
     foreach ($mutation in @(
         @('outcome="Completed"', 'outcome="Failed"'),
         @('failed="0"', 'failed="1"'),
@@ -80,7 +84,7 @@ try {
     & (Join-Path $scripts 'generate-native-runtime-inventory.ps1') -PackageDirectory $nativeDir -CatalogPath $catalogPath -OutputPath $nativeReportPath
     $nativeReport = Get-Content -LiteralPath $nativeReportPath -Raw | ConvertFrom-Json
     Assert-True ($nativeReport.passed -and $nativeReport.nativeFileCount -eq 2) 'Exact and pattern catalog entries must both work under strict mode.'
-    Write-Host 'Store packaging behavioral tests passed (17 scenarios).'
+    Write-Host 'Store packaging behavioral tests passed (18 scenarios).'
 } finally {
     Remove-Item -LiteralPath $scratch -Recurse -Force
 }

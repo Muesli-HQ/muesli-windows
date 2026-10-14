@@ -63,9 +63,14 @@ function Read-MuesliPassingWindowsTestResults {
     foreach ($name in @('error', 'timeout', 'aborted')) {
         if ([int]$counters.GetAttribute($name) -ne 0) { throw "Windows test run has $name results." }
     }
+    # VSTest can write notExecuted=0 even when xUnit records skipped UnitTestResult entries.
+    # Read the actual outcomes and total/executed difference so qualification skips stay visible.
+    $skippedResults = @($trx.SelectNodes("/*[local-name()='TestRun']/*[local-name()='Results']/*[local-name()='UnitTestResult'][@outcome='NotExecuted']")).Count
+    $notExecuted = [Math]::Max([int]$counters.notExecuted,
+        [Math]::Max($skippedResults, [Math]::Max(0, [int]$counters.GetAttribute('total') - [int]$counters.executed)))
     return [ordered]@{
         passed = [int]$counters.passed
         failed = [int]$counters.failed
-        notExecuted = [int]$counters.notExecuted
+        notExecuted = $notExecuted
     }
 }
