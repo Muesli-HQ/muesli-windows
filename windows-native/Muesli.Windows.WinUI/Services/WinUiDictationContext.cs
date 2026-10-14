@@ -632,7 +632,9 @@ public sealed class WinUiDictationContext : IDisposable
                 {
                     await _paste.CopyTextAsync(text, CancellationToken.None);
                     deliveryMs = stageStarted.ElapsedMilliseconds;
-                    Status = "Paste failed; transcript saved and copied";
+                    Status = pasteException is PasteBlockedByElevationException
+                        ? "Can't type into an administrator app; transcript copied"
+                        : "Paste failed; transcript saved and copied";
                     _log.Error("WinUI active-app paste failed after dictation persistence.", pasteException);
                 }
             }

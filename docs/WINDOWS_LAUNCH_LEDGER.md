@@ -10,7 +10,14 @@ The tracked Windows work is split into draft PRs [#23](https://github.com/Muesli
 
 If this ledger disagrees with any other document, this ledger wins.
 
-**Current blocker list (2026-10-10):** `LAUNCH_BLOCKERS_2026-10-10.md`. #38 and #39 are merged and the draft stack above is closed. That review fixed three product P0s (global Escape swallowed after the first dictation, meeting pill discarding without confirmation, microphone pre-warm before onboarding) and records the signed-installer blockers (S1–S13) and open product P1s.
+**Launch status (2026-10-14):** the code blockers in `LAUNCH_BLOCKERS_2026-10-10.md` are fixed on `codex/computer-use` (PR #42). See that file's "Status on 2026-10-14" section. What remains:
+- release-owner decisions: channel and certificate, publisher DN, privacy/support URLs, updates, low-memory fallback, mic pre-warm;
+- a signed build from a tagged commit;
+- clean-VM and physical qualification.
+
+The draft-PR paragraph above is historical.
+
+**Original blocker list (2026-10-10):** `LAUNCH_BLOCKERS_2026-10-10.md`. #38 and #39 are merged and the draft stack above is closed. That review fixed three product P0s (global Escape swallowed after the first dictation, meeting pill discarding without confirmation, microphone pre-warm before onboarding) and records the signed-installer blockers (S1–S13) and open product P1s.
 
 Operational model catalog (engines, hashes, roles): `WINDOWS_TRANSCRIPTION_MODELS.md`.
 Capability IDs and macOS file mapping: `WINDOWS_MACOS_PARITY_MATRIX.md` (statuses copied from here).

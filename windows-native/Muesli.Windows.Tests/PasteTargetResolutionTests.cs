@@ -20,7 +20,22 @@ public sealed class PasteTargetResolutionTests
         public Task<string?> ReadTextAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
         public Task RestoreAsync(ClipboardSnapshot snapshot, CancellationToken cancellationToken) => Task.CompletedTask;
         public bool SendPasteShortcut() => true;
-        public TextInputResult SendText(string text) => new(true, false);
+        public int Sent { get; private set; }
+        public TextInputResult SendText(string text) { Sent++; return new(true, false); }
+    }
+
+    [Fact]
+    public async Task NeverReportsAPasteIntoAnAdministratorWindowAsDone()
+    {
+        var windows = new FakeWindows();
+        var input = new NoInput();
+        var service = new ActiveAppPasteService(input, windows, input);
+        IntPtr admin = 1;
+        windows.Windows[admin] = new("regedit", 100, RunsAboveMuesli: true);
+        windows.ForegroundWindow = admin;
+
+        await Assert.ThrowsAsync<PasteBlockedByElevationException>(() => service.PasteTextAsync("hello", admin));
+        Assert.Equal(0, input.Sent);
     }
 
     [Fact]

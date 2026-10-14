@@ -84,6 +84,12 @@ public sealed class ActiveAppPasteService
                 "The app that was active when dictation started is no longer available. The transcript was saved in Muesli history and the clipboard was left unchanged.");
         }
 
+        if (DescribeWindow(targetWindow).RunsAboveMuesli)
+        {
+            // Windows drops input sent to a higher-integrity window without reporting an error.
+            throw new PasteBlockedByElevationException();
+        }
+
         _windows.RequestForeground(targetWindow);
         var targetWasForeground = await WaitForTargetForegroundAsync(targetWindow, cancellationToken);
         focusStarted.Stop();
@@ -273,7 +279,11 @@ public sealed record PasteOperationResult(
     long InputMs,
     bool TargetWasForeground);
 
-public sealed record PasteTargetInfo(string ProcessName, uint ProcessId)
+/// <param name="RunsAboveMuesli">The app runs as administrator (higher integrity) and Muesli does not.</param>
+public sealed record PasteTargetInfo(string ProcessName, uint ProcessId, bool RunsAboveMuesli = false)
 {
     public static PasteTargetInfo Unknown { get; } = new("unknown", 0);
 }
+
+public sealed class PasteBlockedByElevationException() : InvalidOperationException(
+    "The app runs as administrator, so Windows blocks Muesli from typing into it.");

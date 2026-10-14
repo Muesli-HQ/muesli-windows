@@ -34,11 +34,61 @@ public sealed class NativeWindowActivationAdapter : IWindowActivationAdapter, IW
             // The target may close between shortcut press and metadata capture.
         }
 
-        return new PasteTargetInfo(processName, processId);
+        return new PasteTargetInfo(processName, processId, IntegrityLevel(processId) > OwnIntegrityLevel.Value);
+    }
+
+    private static readonly Lazy<int> OwnIntegrityLevel = new(() => IntegrityLevel((uint)Environment.ProcessId));
+
+    /// <summary>Mandatory integrity RID (medium 0x2000, high 0x3000). An elevated process whose token a
+    /// medium process cannot open reads as high; one Muesli cannot open at all reads as unknown (0).</summary>
+    private static int IntegrityLevel(uint processId)
+    {
+        const uint processQueryLimitedInformation = 0x1000, tokenQuery = 0x0008;
+        const int tokenIntegrityLevel = 25, errorAccessDenied = 5, high = 0x3000;
+        var process = OpenProcess(processQueryLimitedInformation, false, processId);
+        if (process == IntPtr.Zero) return 0;
+        try
+        {
+            if (!OpenProcessToken(process, tokenQuery, out var token))
+                return Marshal.GetLastWin32Error() == errorAccessDenied ? high : 0;
+            try
+            {
+                _ = GetTokenInformation(token, tokenIntegrityLevel, IntPtr.Zero, 0, out var size);
+                var buffer = Marshal.AllocHGlobal(size);
+                try
+                {
+                    if (!GetTokenInformation(token, tokenIntegrityLevel, buffer, size, out _)) return 0;
+                    var sid = Marshal.ReadIntPtr(buffer); // TOKEN_MANDATORY_LABEL.Label.Sid
+                    var count = Marshal.ReadByte(GetSidSubAuthorityCount(sid));
+                    return Marshal.ReadInt32(GetSidSubAuthority(sid, (uint)(count - 1)));
+                }
+                finally { Marshal.FreeHGlobal(buffer); }
+            }
+            finally { CloseHandle(token); }
+        }
+        finally { CloseHandle(process); }
     }
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(IntPtr token, int infoClass, IntPtr info, int length, out int returned);
+
+    [DllImport("advapi32.dll")]
+    private static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
+
+    [DllImport("advapi32.dll")]
+    private static extern IntPtr GetSidSubAuthority(IntPtr sid, uint index);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
 }
 
 /// <param name="pasteShortcut">The saved paste keys; some terminals paste only with Ctrl+Shift+V or Shift+Insert.</param>
