@@ -16,7 +16,8 @@ param(
     [switch]$SkipTests,
     [switch]$SkipInstaller,
     [switch]$CompareTwoBuilds,
-    [switch]$SkipTwoBuildCompare
+    [switch]$SkipTwoBuildCompare,
+    [switch]$Store
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,7 +42,7 @@ New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 $testResultsDir = Join-Path $artifactsDir "test-results"
 New-Item -ItemType Directory -Force -Path $testResultsDir | Out-Null
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $artifactsDir "msix"
+    $OutputDirectory = Join-Path $artifactsDir $(if ($Store) { 'store' } else { 'msix' })
 }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 
@@ -98,10 +99,9 @@ function Invoke-MuesliMsixBuild {
     }
     New-Item -ItemType Directory -Force -Path $BuildOutputDirectory | Out-Null
     # package-winui-msix.ps1 emits package descriptor objects; discard them so only the path is returned.
-    & $packageScript -Configuration $Configuration -OutputDirectory $BuildOutputDirectory | Out-Null
+    & $packageScript -Configuration $Configuration -OutputDirectory $BuildOutputDirectory -Store:$Store | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "MSIX packaging failed with exit code $LASTEXITCODE." }
-    $msix = Get-ChildItem -Path $BuildOutputDirectory -Recurse -Filter 'Muesli.Windows.WinUI_*.msix' -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    $msix = Get-Item -LiteralPath (Join-Path $BuildOutputDirectory "Muesli.Windows.WinUI_$($release.Version)_x64.msix") -ErrorAction SilentlyContinue
     if (-not $msix) { throw "MSIX packaging reported success but produced no .msix under $BuildOutputDirectory." }
     return $msix.FullName
 }
@@ -139,7 +139,7 @@ $manifestPath = Join-Path $artifactsDir "muesli-win32-manifest.xml"
 
 $nativeInventoryPath = Join-Path $artifactsDir "native-runtime-inventory.json"
 $smokePath = Join-Path $artifactsDir "msix-smoke-report.json"
-& $smokeScript -MsixPath $msixPath -ReportPath $smokePath -NativeInventoryPath $nativeInventoryPath -SkipLaunch:$SkipLaunch
+& $smokeScript -MsixPath $msixPath -ReportPath $smokePath -NativeInventoryPath $nativeInventoryPath -SkipLaunch:$SkipLaunch -Store:$Store
 $smoke = Get-Content -LiteralPath $smokePath -Raw | ConvertFrom-Json
 
 # The MSIX is the shipping installer. The retired WPF-era Inno companion installer is not built
@@ -158,6 +158,7 @@ $hashes = [ordered]@{
     sdk = $sdkVersion
     gitHead = $head
     signed = $false
+    distribution = if ($Store) { 'microsoft-store' } else { 'development' }
     cudaProviderIncluded = $false
     cpuProviderIncluded = $true
     files = @()
@@ -184,11 +185,35 @@ foreach ($target in $hashTargets) {
 $hashesPath = Join-Path $artifactsDir "release-hashes.json"
 Write-Utf8NoBomFile -Path $hashesPath -Content (($hashes | ConvertTo-Json -Depth 8) + "`n")
 
+$productGates = @(Get-MuesliReleaseLegalProductGates -Root $root)
+if ($Store) {
+    foreach ($gate in $productGates) {
+        switch ($gate.id) {
+            'SIGN-02' {
+                $gate.status = 'StoreManaged'
+                $gate.detail = 'Microsoft signs Store packages after certification; no purchased certificate is required for this build.'
+                $gate.launchClaim = 'This is an unsigned Store submission artifact, not a signed public download.'
+            }
+            'IDENT-01' {
+                $gate.status = 'StoreIdentityVerified'
+                $gate.detail = "Partner Center identity verified in the package: $($smoke.identity.name), $($smoke.identity.publisher)."
+                $gate.launchClaim = 'The package carries the reserved Store identity; certification is outstanding.'
+            }
+            'UPD-01' {
+                $gate.status = 'StoreManaged'
+                $gate.detail = 'Public updates use Microsoft Store delivery after publication.'
+                $gate.launchClaim = 'Store update delivery must be qualified on the Store-distributed build.'
+            }
+        }
+    }
+}
 $report = [ordered]@{
     schemaVersion = 1
     module = "L04"
     signed = $false
     shippingInstaller = "msix"
+    distribution = if ($Store) { 'microsoft-store' } else { 'development' }
+    storeCertificationPerformed = $false
     cudaProviderIncluded = $false
     cpuProviderIncluded = $true
     version = $release.Version
@@ -215,16 +240,17 @@ $report = [ordered]@{
     installerNote = $installerNote
     twoBuildContentInventoriesMatched = if ($null -eq $twoBuild) { $null } else { [bool]$twoBuild.matched }
     twoBuildNote = "MSIX file hashes may differ because the container stores entry timestamps. contentDigest ignores those timestamps."
-    legalProductGates = @(Get-MuesliReleaseLegalProductGates -Root $root)
+    legalProductGates = $productGates
     remainingGates = @(
-        "SIGN-01 Authenticode/MSIX signing (L05 / D5)",
-        "PKG-01 clean-VM install/upgrade/uninstall (L07)",
-        "QuestPDF EXP-01 community-license eligibility (release owner)",
-        "UPD-01 v1 manual update policy or app-side updater",
+        if ($Store) { 'Microsoft Store certification and signing after submission' }
+        else { "SIGN-01 Authenticode/MSIX signing (L05 / D5)" }
+        "PKG-01 clean-VM install/upgrade/uninstall (L07)"
+        "QuestPDF EXP-01 community-license eligibility (release owner)"
+        if ($Store) { 'Store-delivered update qualification' } else { "UPD-01 v1 manual update policy or app-side updater" }
         "AUD-03 audio-interference policy decision"
     )
     artifacts = @(
-        "msix/$([IO.Path]::GetFileName($msixPath))",
+        (Get-MuesliRelativePath -BasePath $artifactsDir -TargetPath $msixPath).Replace('\', '/'),
         "test-results/windows-tests.trx",
         "msix-smoke-report.json",
         "muesli-win32-manifest.xml",

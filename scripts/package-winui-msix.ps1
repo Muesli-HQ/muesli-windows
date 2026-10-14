@@ -3,10 +3,9 @@
     Builds the shipping Muesli WinUI 3 app as an MSIX package.
 
 .DESCRIPTION
-    Produces an unsigned MSIX by default. Installing an unsigned or loose package requires
-    Developer Mode or a sideloading policy, both of which need an elevated session, so this
-    script stops at package creation and reports what is still required to install it. It never
-    claims the package was installed or qualified.
+    Produces an unsigned MSIX. With -Store, applies the reserved Partner Center identity and
+    creates a package for Microsoft Store submission; the Store signs it after certification.
+    An unsigned MSIX is not a publicly installable download. This script does not install it.
 
     Signing is a separate step (scripts\build-signed-release.ps1 / sign-windows-release.ps1): this
     script unpacks and repacks the package, which would destroy any signature applied here.
@@ -28,14 +27,20 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
     [string]$OutputDirectory,
-    [string]$Publisher
+    [string]$Publisher,
+    [switch]$Store
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if ($Store -and $Publisher) { throw 'Store packaging uses Partner Center identity; do not override Publisher.' }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'release-common.ps1')
+. (Join-Path $PSScriptRoot 'read-release-properties.ps1')
+. (Join-Path $PSScriptRoot 'store-package-common.ps1')
+$release = Get-MuesliReleaseProperties -Root $repoRoot
+$storeIdentity = if ($Store) { Read-MuesliStoreIdentity -Path (Join-Path $repoRoot 'windows-native\store-identity.json') } else { $null }
 $sharedCore = Assert-MuesliSharedCoreRevision -Root $repoRoot -AllowUnpinnedDevOverride
 $env:MUESLI_SHARED_CORE_MODE = if ($sharedCore.BridgeRequired) { 'shared-core' } else { 'managed-fallback' }
 $project = Join-Path $repoRoot 'windows-native\Muesli.Windows.WinUI\Muesli.Windows.WinUI.csproj'
@@ -81,8 +86,24 @@ if ($env:MUESLI_SHARED_CORE_MODE -eq 'managed-fallback') {
 $arguments += '-p:AppxPackageSigningEnabled=false'
 
 Write-Host "Packaging Muesli ($Configuration, x64)..." -ForegroundColor Cyan
-& $dotnet @arguments
-if ($LASTEXITCODE -ne 0) { throw "MSIX packaging failed with exit code $LASTEXITCODE." }
+# Compile resources against the Store identity, rather than renaming only the final manifest.
+# The tracked development manifest is never edited. A unique temporary copy also avoids carrying
+# an old Store manifest into a later development build.
+$storeManifestDirectory = $null
+try {
+    if ($Store) {
+        $storeManifestDirectory = Join-Path ([IO.Path]::GetTempPath()) ('muesli-store-manifest-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $storeManifestDirectory | Out-Null
+        $storeManifest = Join-Path $storeManifestDirectory 'Package.appxmanifest'
+        Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $project) 'Package.appxmanifest') -Destination $storeManifest
+        Set-MuesliStoreManifestIdentity -ManifestPath $storeManifest -StoreIdentity $storeIdentity
+        $arguments += "-p:MuesliStoreManifest=$storeManifest"
+    }
+    & $dotnet @arguments
+    if ($LASTEXITCODE -ne 0) { throw "MSIX packaging failed with exit code $LASTEXITCODE." }
+} finally {
+    if ($storeManifestDirectory) { Remove-Item -LiteralPath $storeManifestDirectory -Recurse -Force }
+}
 
 # The single-project MSIX pipeline packs only @(PackagingOutputs); the loose-layout Swift bridge,
 # its runtime closure and the WPF indicator companion are copied after Build and are therefore not
@@ -200,7 +221,12 @@ function Rebuild-MsixPayload {
             Copy-Item -LiteralPath $source -Destination (Join-Path $scratch ([IO.Path]::GetFileName($source)).ToLowerInvariant()) -Force
         }
 
-        if ($Publisher) { Set-ManifestPublisher -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -Publisher $Publisher }
+        if ($Store) {
+            [xml]$builtManifest = Get-Content -LiteralPath (Join-Path $scratch 'AppxManifest.xml') -Raw
+            Assert-MuesliStoreManifestIdentity -Manifest $builtManifest -StoreIdentity $storeIdentity -ExpectedVersion "$($release.Version).0"
+        } elseif ($Publisher) {
+            Set-ManifestPublisher -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -Publisher $Publisher
+        }
 
         # Reject foreign-RID content last, after the staged bridge/companion copies, so a win-x64
         # package can never carry ARM64/x86/foreign runtimes from any source.
@@ -233,9 +259,7 @@ if ($primaryMsix -and $looseExe -and $makeAppx) {
 
     # Publish one stable top-level filename. Selecting the first recursive result previously
     # repacked an older artifact while leaving the package produced by this build untouched.
-    [xml]$versionProperties = Get-Content -LiteralPath (Join-Path $repoRoot 'Directory.Build.props') -Raw
-    $productVersion = [string]($versionProperties.Project.PropertyGroup.MuesliVersion | Select-Object -First 1)
-    if ([string]::IsNullOrWhiteSpace($productVersion)) { throw 'MuesliVersion is missing from Directory.Build.props.' }
+    $productVersion = $release.Version
     $canonicalMsixPath = Join-Path $OutputDirectory ("Muesli.Windows.WinUI_{0}_x64.msix" -f $productVersion)
     if (-not $primaryMsix.FullName.Equals($canonicalMsixPath, [StringComparison]::OrdinalIgnoreCase)) {
         Copy-Item -LiteralPath $primaryMsix.FullName -Destination $canonicalMsixPath -Force
@@ -260,7 +284,11 @@ foreach ($package in $packages) {
 }
 
 Write-Host ''
-Write-Warning @'
+if ($Store) {
+    Write-Host 'Unsigned Microsoft Store submission package produced. Microsoft signs it after certification; do not distribute this file as an installable website download.'
+} else {
+    Write-Warning @'
 The package is UNSIGNED and has not been installed or qualified by this script.
 Sign it with scripts\build-signed-release.ps1 (production certificate) before distributing it.
 '@
+}

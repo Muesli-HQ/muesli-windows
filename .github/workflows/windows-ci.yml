@@ -95,6 +95,10 @@ jobs:
         run: |
           pwsh -ExecutionPolicy Bypass -File .\scripts\rehearse-windows-release.ps1 -SkipTwoBuildCompare
 
+      - name: Store packaging behavioral tests (no credentials)
+        shell: pwsh
+        run: ./scripts/tests/test-store-packaging.ps1
+
       - name: Upload unsigned release artifacts
         if: always()
         uses: actions/upload-artifact@v4

@@ -75,14 +75,14 @@ $forbiddenDirs = @($catalog.forbiddenPublicCudaDirectoryNames | ForEach-Object {
 
 $fileMap = @{}
 foreach ($component in $catalog.components) {
-    if ($component.nativeFiles) {
+    if ($component.PSObject.Properties['nativeFiles']) {
         foreach ($name in $component.nativeFiles) {
             $fileMap[$name.ToLowerInvariant()] = $component
         }
     }
 }
 
-$patternComponents = @($catalog.components | Where-Object { $_.nativeFilePatterns })
+$patternComponents = @($catalog.components | Where-Object { $_.PSObject.Properties['nativeFilePatterns'] })
 
 $excludeSet = @{}
 foreach ($name in @($ExcludeDirectory)) {

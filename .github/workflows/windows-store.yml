@@ -1,0 +1,116 @@
+name: Windows Store package
+
+on:
+  push:
+    branches: [main, codex/windows-store-release]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-store-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  store-package:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      DOTNET_MULTILEVEL_LOOKUP: "0"
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+
+      - name: Read pinned shared-core revision
+        id: core
+        run: |
+          $lock = Get-Content windows-native/shared-core.lock.json -Raw | ConvertFrom-Json
+          if ($lock.repository -ne 'Muesli-HQ/muesli') { throw 'Unexpected shared-core repository.' }
+          $required = $null -eq $lock.PSObject.Properties['bridgeRequired'] -or [bool]$lock.bridgeRequired
+          if ($required -and $lock.revision -notmatch '^[0-9a-fA-F]{40}$') { throw 'Shared core requires a full pinned SHA.' }
+          if (-not $required -and -not [string]::IsNullOrWhiteSpace($lock.revision)) { throw 'Managed fallback must not pin a bridge revision.' }
+          "required=$($required.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "revision=$($lock.revision)" >> $env:GITHUB_OUTPUT
+          if (-not $required) { 'MUESLI_SHARED_CORE_MODE=managed-fallback' >> $env:GITHUB_ENV }
+
+      - name: Check out shared Swift repository
+        if: steps.core.outputs.required == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Muesli-HQ/muesli
+          ref: ${{ steps.core.outputs.revision }}
+          path: shared-muesli
+          persist-credentials: false
+          token: ${{ secrets.MUESLI_SHARED_REPO_TOKEN != '' && secrets.MUESLI_SHARED_REPO_TOKEN || github.token }}
+      - name: Install pinned Swift toolchain
+        if: steps.core.outputs.required == 'true'
+        uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
+        with:
+          source: swift.org
+          swift-version: swift-6.4.0-release
+          swift-build: 6.4.0-RELEASE
+      - name: Install native Swift dependencies
+        if: steps.core.outputs.required == 'true'
+        run: |
+          $vcpkg = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { 'C:\vcpkg' }
+          & "$vcpkg\vcpkg.exe" install sqlite3 zlib lzfse --triplet x64-windows
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg failed.' }
+          "VCPKG_ROOT=$vcpkg" >> $env:GITHUB_ENV
+          "MUESLI_SHARED_CORE_PACKAGE=$env:GITHUB_WORKSPACE\shared-muesli\native\MuesliNative" >> $env:GITHUB_ENV
+
+      - name: Test, build and verify Store submission package
+        run: ./scripts/build-store-release.ps1
+
+      - name: Upload verified Store package and evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-store-package-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            artifacts/store/Muesli.Windows.WinUI_*.msix
+            artifacts/store-submission-report.json
+            artifacts/release-rehearsal-report.json
+            artifacts/release-hashes.json
+            artifacts/msix-smoke-report.json
+            artifacts/store-pri-dump.xml
+            artifacts/muesli-win32-manifest.xml
+            artifacts/package-content-inventory.json
+            artifacts/native-runtime-inventory.json
+            artifacts/test-results/windows-tests.trx
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-store-failure-${{ github.sha }}
+          if-no-files-found: warn
+          path: |
+            artifacts/test-results/*.trx
+            artifacts/msix-smoke-report.json
+            artifacts/store-pri-dump.xml
+            artifacts/native-runtime-inventory.json
+
+      - name: Summarize Store artifact
+        run: |
+          $report = Get-Content artifacts/store-submission-report.json -Raw | ConvertFrom-Json
+          @"
+          Store upload package: $($report.package)
+          Product: $($report.storeIdentity.displayName) ($($report.storeId))
+          Version: $($report.version)
+          SHA-256: $($report.sha256)
+          Windows tests passed: $($report.testCounters.passed); not executed: $($report.testCounters.notExecuted)
+          Package identity, runtime closure and native inventory verified. No paid signing credentials used.
+          This workflow does not install the app, submit to Partner Center, certify or publish it.
+          "@ >> $env:GITHUB_STEP_SUMMARY
