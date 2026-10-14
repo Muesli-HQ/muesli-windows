@@ -12,13 +12,15 @@ param(
     [string]$ReportPath = "",
     [string]$NativeInventoryPath = "",
     [string]$WorkDir = "",
-    [switch]$SkipLaunch
+    [switch]$SkipLaunch,
+    [switch]$Store
 )
 
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $PSScriptRoot "read-release-properties.ps1")
 . (Join-Path $PSScriptRoot "release-common.ps1")
+. (Join-Path $PSScriptRoot 'store-package-common.ps1')
 $release = Get-MuesliReleaseProperties -Root $root
 
 if (-not (Test-Path -LiteralPath $MsixPath)) { throw "MSIX not found: $MsixPath" }
@@ -79,7 +81,12 @@ try {
         version = [string]$identity.Version
     }
     $expectedVersion = "$($release.Version).0"
-    if ([string]$identity.Name -ne "Muesli.Windows") {
+    if ($Store) {
+        $storeIdentity = Read-MuesliStoreIdentity -Path (Join-Path $root 'windows-native\store-identity.json')
+        try { Assert-MuesliStoreManifestIdentity -Manifest $manifest -StoreIdentity $storeIdentity -ExpectedVersion $expectedVersion }
+        catch { $failures.Add($_.Exception.Message) }
+        if ($entryNames -contains 'AppxSignature.p7x') { $failures.Add('Store submission build unexpectedly carries a local signature.') }
+    } elseif ([string]$identity.Name -ne "Muesli.Windows") {
         $failures.Add("MSIX identity name '$($identity.Name)' is not 'Muesli.Windows'.")
     }
     if ([string]$identity.Version -ne $expectedVersion) {
@@ -107,6 +114,16 @@ try {
         "WINDOWS-PRIVACY.md",
         "licenses/Apache-2.0.txt"
     )
+    # Require each runtime in its actual application directory. Finding the companion's copy
+    # must not hide a missing main-app runtime on a machine with no developer prerequisites.
+    foreach ($runtime in @('coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'System.Private.CoreLib.dll')) {
+        foreach ($requiredPath in @($runtime, "Indicator/$runtime")) {
+            if ($entryNames -notcontains $requiredPath) { $failures.Add("MSIX is not .NET self-contained: missing $requiredPath") }
+        }
+    }
+    foreach ($requiredPath in @('Microsoft.UI.Xaml.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'vcomp140.dll')) {
+        if ($entryNames -notcontains $requiredPath) { $failures.Add("MSIX is missing an app-local runtime: $requiredPath") }
+    }
     # The shared Swift bridge is optional when the lock ships the managed fallback; a pinned bridge
     # must still be present in the payload.
     if ($env:MUESLI_SHARED_CORE_MODE -ne 'managed-fallback') {
@@ -173,7 +190,9 @@ try {
         $failures.Add("Native-runtime inventory generation failed for the MSIX payload: $($_.Exception.Message)")
     }
 
-    if (-not $SkipLaunch) {
+    if ($Store) {
+        $report.launchReason = 'Unsigned Store submission artifact; installation and interactive qualification are separate.'
+    } elseif (-not $SkipLaunch) {
         # An unsigned MSIX can only be installed when Developer Mode/sideloading is enabled and the
         # session is elevated. Record which precondition is missing rather than claiming a launch.
         $devMode = $false

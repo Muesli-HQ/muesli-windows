@@ -3,10 +3,9 @@
     Builds the shipping Muesli WinUI 3 app as an MSIX package.
 
 .DESCRIPTION
-    Produces an unsigned MSIX by default. Installing an unsigned or loose package requires
-    Developer Mode or a sideloading policy, both of which need an elevated session, so this
-    script stops at package creation and reports what is still required to install it. It never
-    claims the package was installed or qualified.
+    Produces an unsigned MSIX. With -Store, applies the reserved Partner Center identity and
+    creates a package for Microsoft Store submission; the Store signs it after certification.
+    An unsigned MSIX is not a publicly installable download. This script does not install it.
 
     Signing is a separate step (scripts\build-signed-release.ps1 / sign-windows-release.ps1): this
     script unpacks and repacks the package, which would destroy any signature applied here.
@@ -28,14 +27,18 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
     [string]$OutputDirectory,
-    [string]$Publisher
+    [string]$Publisher,
+    [switch]$Store
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if ($Store -and $Publisher) { throw 'Store packaging uses Partner Center identity; do not override Publisher.' }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'release-common.ps1')
+. (Join-Path $PSScriptRoot 'store-package-common.ps1')
+$storeIdentity = if ($Store) { Read-MuesliStoreIdentity -Path (Join-Path $repoRoot 'windows-native\store-identity.json') } else { $null }
 $sharedCore = Assert-MuesliSharedCoreRevision -Root $repoRoot -AllowUnpinnedDevOverride
 $env:MUESLI_SHARED_CORE_MODE = if ($sharedCore.BridgeRequired) { 'shared-core' } else { 'managed-fallback' }
 $project = Join-Path $repoRoot 'windows-native\Muesli.Windows.WinUI\Muesli.Windows.WinUI.csproj'
@@ -200,7 +203,11 @@ function Rebuild-MsixPayload {
             Copy-Item -LiteralPath $source -Destination (Join-Path $scratch ([IO.Path]::GetFileName($source)).ToLowerInvariant()) -Force
         }
 
-        if ($Publisher) { Set-ManifestPublisher -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -Publisher $Publisher }
+        if ($Store) {
+            Set-MuesliStoreManifestIdentity -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -StoreIdentity $storeIdentity
+        } elseif ($Publisher) {
+            Set-ManifestPublisher -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -Publisher $Publisher
+        }
 
         # Reject foreign-RID content last, after the staged bridge/companion copies, so a win-x64
         # package can never carry ARM64/x86/foreign runtimes from any source.
@@ -260,7 +267,11 @@ foreach ($package in $packages) {
 }
 
 Write-Host ''
-Write-Warning @'
+if ($Store) {
+    Write-Host 'Unsigned Microsoft Store submission package produced. Microsoft signs it after certification; do not distribute this file as an installable website download.'
+} else {
+    Write-Warning @'
 The package is UNSIGNED and has not been installed or qualified by this script.
 Sign it with scripts\build-signed-release.ps1 (production certificate) before distributing it.
 '@
+}

@@ -7,6 +7,9 @@
     <!-- Carry the Windows App SDK runtime inside the MSIX. A framework-dependent package does not
          install on a clean PC unless the matching Windows App Runtime is already present. -->
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- WindowsAppSDKSelfContained does not bundle the .NET runtime. Website installs must
+         also work on PCs without .NET 10; carry the managed runtime alongside the app. -->
+    <SelfContained>true</SelfContained>
     <RootNamespace>Muesli.Windows.WinUI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>

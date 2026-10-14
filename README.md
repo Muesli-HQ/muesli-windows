@@ -33,7 +33,7 @@ Muesli for Windows brings the same local-first philosophy as [Muesli for macOS](
 
 Transcription runs on device through native sherpa-onnx models. Meeting summaries run locally by default; OpenAI and OpenRouter are optional when you provide your own API keys.
 
-The shipping shell is **WinUI 3**, packaged with **MSIX**. This repository is currently for source builds, development, and beta qualification. A signed public installer remains a release gate.
+The shipping shell is **WinUI 3**, packaged with **MSIX**. Public distribution is being prepared through the Microsoft Store as **Muesli: Voice & Meeting Notes**. The listing is reserved; certification and Windows qualification remain release gates.
 
 ### Dictation
 
@@ -168,7 +168,7 @@ Muesli for Windows is **0.3.0 beta**. Local development and unsigned packaging a
 - Updates are manual: Muesli does not check for, download, or install updates automatically.
 - Muesli does not pause or duck unrelated media while recording ("no interference").
 - Meetings export as Markdown or PDF (QuestPDF Community license; Muesli is open source).
-- Public support/privacy URLs and the production publisher identity are not final; release builds take their publisher from the signing certificate (see `docs/WINDOWS_SIGNED_RELEASE.md`).
+- The Store publisher identity is reserved and recorded in `windows-native/store-identity.json`; public support/privacy URLs and certification are still outstanding. See the [Store release guide](docs/WINDOWS_STORE_RELEASE.md).
 
 ### Current limitations
 
@@ -177,7 +177,7 @@ Muesli for Windows is **0.3.0 beta**. Local development and unsigned packaging a
 - Process-targeted loopback requires Windows build 20348 or newer and a live detected-process ID. When Windows blocks it, Muesli visibly falls back to render-endpoint loopback, which can include unrelated system sounds; mic recording can continue in a disclosed degraded state.
 - Preparing a missing model requires an explicit network-backed download. Transcription itself fails closed when the selected role is missing or unverified.
 - Live meeting transcription is off by default. The explicit Nemotron 3.5 option has passed packaged Windows real-inference and Silero-boundary qualification; preparing it is network-backed and never enables it automatically. Long physical-meeting, Bluetooth, route-change, CUDA-live, and human multilingual qualification remain open.
-- Installer is not code-signed until a signing certificate is configured.
+- Store submission packages are unsigned; Microsoft signs them after certification. A paid signing certificate is not required for this channel.
 
 See the [launch ledger](docs/WINDOWS_LAUNCH_LEDGER.md), [release qualification](docs/PHASE5_RELEASE_QUALIFICATION.md), and [roadmap](docs/ROADMAP.md) for detailed status.
 
@@ -213,10 +213,10 @@ Physical microphone, Bluetooth, route-change, and sleep/recovery checks are part
 ### Package
 
 ```powershell
-.\scripts\package-windows-v1.ps1
+.\scripts\build-store-release.ps1
 ```
 
-This delegates to the shipping WinUI MSIX packager. For the unsigned release rehearsal, including tests and MSIX smoke checks, see [rehearse-windows-release.ps1](scripts/rehearse-windows-release.ps1). Release qualification records native-runtime, stress, memory, package-hash, signature, and fresh-launch log evidence.
+This runs tests and packages/verifies the reserved Microsoft Store identity. The **Windows Store package** GitHub Actions workflow uploads the MSIX and build evidence without signing credentials. See the [Store release guide](docs/WINDOWS_STORE_RELEASE.md). Local development packaging remains available through [rehearse-windows-release.ps1](scripts/rehearse-windows-release.ps1); package checks do not replace interactive qualification or Store certification.
 
 ---
 
