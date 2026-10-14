@@ -1,4 +1,5 @@
 using System.Drawing;
+using Microsoft.Win32;
 using Muesli.Windows.Core.Contracts;
 using Forms = System.Windows.Forms;
 
@@ -20,6 +21,8 @@ public sealed class WindowsTrayIconService : IDisposable
     private readonly Action? _resumeSetup;
     private readonly Action? _featureTour;
     private readonly Forms.NotifyIcon _icon;
+    private readonly string? _iconPath;
+    private readonly string? _lightTaskbarIconPath;
     private int _disposed;
 
     public WindowsTrayIconService(
@@ -35,7 +38,8 @@ public sealed class WindowsTrayIconService : IDisposable
         Func<Task>? pauseMeeting = null,
         Func<Task>? resumeMeeting = null,
         Action? resumeSetup = null,
-        Action? featureTour = null)
+        Action? featureTour = null,
+        string? lightTaskbarIconPath = null)
     {
         _dispatcher = dispatcher;
         _dictationRecording = dictationRecording;
@@ -49,19 +53,23 @@ public sealed class WindowsTrayIconService : IDisposable
         _resumeMeeting = resumeMeeting;
         _resumeSetup = resumeSetup;
         _featureTour = featureTour;
+        _iconPath = iconPath;
+        _lightTaskbarIconPath = lightTaskbarIconPath;
         _icon = new Forms.NotifyIcon
         {
             Text = "Muesli",
-            Icon = LoadIcon(iconPath),
+            Icon = LoadThemedIcon(),
             Visible = true,
             ContextMenuStrip = BuildMenu()
         };
         _icon.DoubleClick += (_, _) => Show("timeline");
+        if (lightTaskbarIconPath is not null) SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
 
     public void Refresh() => _dispatcher.TryEnqueue(() =>
     {
         if (Volatile.Read(ref _disposed) != 0) return;
+        _icon.Text = StatusText();
         var replacement = BuildMenu();
         var prior = _icon.ContextMenuStrip;
         _icon.ContextMenuStrip = replacement;
@@ -71,6 +79,7 @@ public sealed class WindowsTrayIconService : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _icon.Visible = false;
         _icon.Dispose();
     }
@@ -118,7 +127,36 @@ public sealed class WindowsTrayIconService : IDisposable
         return menu;
     }
 
+    // Hovering the tray icon must disclose any active capture.
+    private string StatusText() =>
+        _meetingPaused?.Invoke() == true ? "Muesli · Meeting paused"
+        : _meetingRecording() ? "Muesli · Recording meeting"
+        : _dictationRecording() ? "Muesli · Dictating"
+        : "Muesli";
+
     private void Show(string destination) => _dispatcher.TryEnqueue(() => _show(destination));
+
+    // Like the macOS menu-bar template, the tray mark follows the taskbar's light or dark theme.
+    private void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category != UserPreferenceCategory.General) return;
+        _dispatcher.TryEnqueue(() =>
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+            var prior = _icon.Icon;
+            _icon.Icon = LoadThemedIcon();
+            if (prior != SystemIcons.Application) prior?.Dispose();
+        });
+    }
+
+    private Icon LoadThemedIcon() =>
+        LoadIcon(_lightTaskbarIconPath is not null && TaskbarUsesLightTheme() ? _lightTaskbarIconPath : _iconPath);
+
+    private static bool TaskbarUsesLightTheme()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+        return key?.GetValue("SystemUsesLightTheme") is int value && value != 0;
+    }
 
     private static Icon LoadIcon(string? iconPath)
     {

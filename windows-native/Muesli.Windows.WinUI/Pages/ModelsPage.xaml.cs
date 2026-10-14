@@ -56,21 +56,14 @@ public sealed partial class ModelsPage : Page
     }
 
     /// <summary>
-    /// Gutters follow the frozen page tokens. The only page-specific decision is the category
-    /// group: macOS keeps "Model category" inline to the left of the segments and centres the
-    /// pair, which does not survive a compact content width, so there the label stacks above the
-    /// segments again. Both the tier test and the padding come from <see cref="MuesliPageMetrics"/>.
+    /// Gutters follow the frozen page tokens in <see cref="MuesliPageMetrics"/>. The column fills
+    /// the page up to its cap, so switching category never resizes the cards to their text.
     /// </summary>
     private void ApplyResponsiveLayout(double width)
     {
+        if (width <= 0) return;
         ContentStack.Padding = MuesliPageMetrics.ContentPadding(width);
-
-        var compact = MuesliPageMetrics.IsCompact(width);
-        CategoryGroup.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
-        CategoryGroup.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Center;
-        CategoryLabel.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Center;
-        CategoryDescription.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Center;
-        CategoryDescription.TextAlignment = compact ? TextAlignment.Left : TextAlignment.Center;
+        ContentStack.Width = Math.Min(width, ContentStack.MaxWidth);
     }
 
     private void UpdateCategoryState()

@@ -14,18 +14,33 @@
         reason; this page was the remaining Page-level accelerator owner in the shell.
     -->
     <Page.Resources>
-        <Style x:Key="TemplateListItemStyle" TargetType="ListViewItem">
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0" />
+        <!-- macOS MeetingTemplatesManagerView actionButton: 11pt glyph, 13 medium, 12,7 padding, cornerSmall. -->
+        <Style x:Key="TemplateActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}">
+            <Setter Property="Padding" Value="12,6" />
             <Setter Property="MinHeight" Value="0" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="TemplateDestructiveActionStyle" TargetType="Button" BasedOn="{StaticResource TemplateActionStyle}">
+            <Setter Property="Foreground" Value="{ThemeResource MuesliErrorBrush}" />
+            <Setter Property="Background" Value="{ThemeResource MuesliErrorMutedBrush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style x:Key="TemplateFieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+        </Style>
+        <Style x:Key="TemplateErrorStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{ThemeResource MuesliErrorBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="AutomationProperties.LiveSetting" Value="Polite" />
         </Style>
         <Style x:Key="TemplateEditorTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
             <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Padding" Value="11,8" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
         </Style>
     </Page.Resources>
@@ -36,306 +51,208 @@
     </Page.KeyboardAccelerators>
 
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
-        <ScrollViewer x:Name="PageScroller"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Disabled"
-                      VerticalScrollMode="Disabled">
-            <Grid x:Name="ContentRoot"
-                  Padding="{StaticResource MuesliPageContentPadding}"
-                  RowDefinitions="Auto,Auto,*"
-                  RowSpacing="16"
-                  HorizontalAlignment="Stretch">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="ContentRoot"
+                        Padding="{StaticResource MuesliPageContentPadding}"
+                        Spacing="20">
 
-                <Grid x:Name="TitleRow"
-                      ColumnDefinitions="*,Auto"
-                      RowDefinitions="Auto,Auto,Auto"
-                      ColumnSpacing="16"
-                      RowSpacing="8">
-                    <StackPanel Spacing="10" MinWidth="0">
-                        <!--
-                            P4-04. The back link's leading glyph starts on the page gutter, not
-                            8 DIP inside it: the button keeps a real hit-target padding and pulls
-                            itself back out by the same amount, so the link and the page title
-                            share one left edge instead of the 379/390 px pair the baseline
-                            measured. MeetingDetailPage's back link does the same.
-                        -->
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                    <StackPanel Spacing="4" MinWidth="0">
+                        <!-- P4-04: the back glyph starts on the page gutter. -->
                         <Button x:Name="BackButton"
                                 Click="Back_Click"
                                 Style="{StaticResource MuesliGhostButtonStyle}"
                                 HorizontalAlignment="Left"
                                 Padding="8,4"
-                                Margin="-8,0,0,0"
+                                Margin="-8,0,0,8"
                                 AutomationProperties.Name="Back to meetings"
                                 AutomationProperties.AutomationId="MeetingTemplatesBackButton">
                             <StackPanel Orientation="Horizontal" Spacing="7">
-                                <FontIcon Glyph="&#xE72B;"
-                                          FontSize="14"
-                                          FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                                <TextBlock Text="Back to Meetings" />
+                                <FontIcon Glyph="&#xE72B;" FontSize="12" />
+                                <TextBlock Text="Back to Meetings" FontSize="13" FontWeight="SemiBold" />
                             </StackPanel>
                         </Button>
                         <TextBlock Text="Meeting Templates"
                                    Style="{StaticResource MuesliPageTitleStyle}"
-                                   TextWrapping="Wrap"
-                                   MinWidth="0" />
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="Create reusable prompt-based note formats for meetings."
+                                   FontSize="13"
+                                   Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
-                    <Button x:Name="NewTemplateButton"
-                            Grid.Column="1"
-                            VerticalAlignment="Bottom"
-                            Style="{StaticResource MuesliSecondaryButtonStyle}"
-                            Command="{x:Bind ViewModel.NewTemplateCommand}"
-                            Click="NewTemplate_Click"
-                            AutomationProperties.Name="New meeting template"
-                            AutomationProperties.AutomationId="NewMeetingTemplateButton"
-                            ToolTipService.ToolTip="New template (Ctrl+N)">
-                        <StackPanel Orientation="Horizontal" Spacing="7">
-                            <FontIcon Glyph="&#xE710;"
-                                      FontSize="14"
-                                      FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                            <TextBlock Text="New template" />
-                        </StackPanel>
-                    </Button>
-                    <TextBlock x:Name="PageSubtitle"
-                               Grid.Row="1"
-                               Grid.ColumnSpan="2"
-                               Text="Create reusable prompt-based note formats for meetings."
-                               Style="{StaticResource MuesliPageSubtitleStyle}" />
+                    <Grid Grid.Column="1" VerticalAlignment="Bottom">
+                        <Button x:Name="NewTemplateButton"
+                                Style="{StaticResource TemplateActionStyle}"
+                                Click="NewTemplate_Click"
+                                AutomationProperties.Name="New meeting template"
+                                AutomationProperties.AutomationId="NewMeetingTemplateButton"
+                                ToolTipService.ToolTip="New template (Ctrl+N)">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE710;" FontSize="11" />
+                                <TextBlock Text="New template" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="CancelEditButton"
+                                Visibility="Collapsed"
+                                Style="{StaticResource TemplateActionStyle}"
+                                Click="CancelEdit_Click"
+                                AutomationProperties.Name="Cancel template edits"
+                                AutomationProperties.AutomationId="CancelMeetingTemplateButton"
+                                ToolTipService.ToolTip="Cancel (Esc)">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE711;" FontSize="11" />
+                                <TextBlock Text="Cancel" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
                 </Grid>
 
                 <InfoBar x:Name="StatusBar"
-                         Grid.Row="1"
                          IsOpen="{x:Bind ViewModel.IsStatusOpen, Mode=TwoWay}"
                          Title="{x:Bind ViewModel.StatusTitle, Mode=OneWay}"
                          Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                          IsClosable="True"
+                         Visibility="{x:Bind local:MeetingTemplatesPage.BoolToVisibility(ViewModel.IsStatusOpen), Mode=OneWay}"
                          AutomationProperties.AutomationId="MeetingTemplatesStatus"
                          AutomationProperties.LiveSetting="Polite" />
 
-                <Grid x:Name="TemplateColumns"
-                      Grid.Row="2"
-                      ColumnDefinitions="300,*"
-                      RowDefinitions="Auto,Auto"
-                      ColumnSpacing="18"
-                      RowSpacing="16"
-                      HorizontalAlignment="Stretch">
-
-                    <Border x:Name="TemplateListCard"
-                            Style="{StaticResource MuesliCardStyle}"
-                            Padding="0"
-                            MinWidth="0">
-                        <Grid RowDefinitions="Auto,Auto,*">
-                            <Grid Padding="18,16,18,12" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <StackPanel Spacing="3" MinWidth="0">
-                                    <TextBlock Text="TEMPLATES"
-                                               Style="{StaticResource MuesliSectionLabelStyle}" />
-                                    <TextBlock Text="{x:Bind ViewModel.TemplateCountLabel, Mode=OneWay}"
-                                               FontSize="12"
-                                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Grid>
-                            <Border Grid.Row="1" Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" />
-                            <Grid Grid.Row="2" MinHeight="160">
-                                <ListView x:Name="TemplateList"
-                                          ItemsSource="{x:Bind ViewModel.Templates, Mode=OneWay}"
-                                          SelectedItem="{x:Bind ViewModel.SelectedTemplate, Mode=TwoWay}"
-                                          SelectionMode="Single"
-                                          IsItemClickEnabled="False"
-                                          Background="Transparent"
-                                          BorderThickness="0"
-                                          Padding="6,4"
-                                          ItemContainerStyle="{StaticResource TemplateListItemStyle}"
-                                          KeyDown="TemplateList_KeyDown"
-                                          ContainerContentChanging="TemplateList_ContainerContentChanging"
-                                          AutomationProperties.Name="Custom meeting templates"
-                                          AutomationProperties.AutomationId="MeetingTemplateList">
-                                    <ListView.ItemContainerTransitions>
-                                        <TransitionCollection />
-                                    </ListView.ItemContainerTransitions>
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate x:DataType="svc:PersistedMeetingTemplate">
-                                            <Grid Padding="12,10"
-                                                  ColumnDefinitions="Auto,*"
-                                                  ColumnSpacing="12"
-                                                  AutomationProperties.Name="{x:Bind Name}">
-                                                <Border Width="32"
-                                                        Height="32"
-                                                        CornerRadius="8"
-                                                        Background="{ThemeResource MuesliAccentMutedBrush}"
-                                                        VerticalAlignment="Top">
-                                                    <FontIcon Glyph="&#xE8A5;"
-                                                              FontSize="14"
-                                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                              Foreground="{ThemeResource MuesliAccentBrush}"
-                                                              HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center" />
-                                                </Border>
-                                                <StackPanel Grid.Column="1" Spacing="3" MinWidth="0">
-                                                    <TextBlock Text="{x:Bind Name}"
-                                                               Style="{StaticResource MuesliRowTitleStyle}"
-                                                               FontSize="14" />
-                                                    <TextBlock Text="{x:Bind Prompt}"
-                                                               Style="{StaticResource MuesliRowSecondaryStyle}"
-                                                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                                               TextWrapping="Wrap"
-                                                               MaxLines="2"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                                <Border x:Name="EmptyState"
-                                        Background="Transparent"
-                                        Visibility="Collapsed"
-                                        AutomationProperties.Name="No custom templates yet"
-                                        AutomationProperties.AutomationId="MeetingTemplatesEmptyState">
-                                    <StackPanel HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Spacing="8"
-                                                MaxWidth="280"
-                                                Padding="20">
-                                        <FontIcon Glyph="&#xE8A5;"
-                                                  FontSize="28"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                                  HorizontalAlignment="Center" />
-                                        <TextBlock Text="{x:Bind ViewModel.EmptyStateTitle, Mode=OneWay}"
-                                                   FontSize="16"
-                                                   FontWeight="SemiBold"
-                                                   HorizontalAlignment="Center"
-                                                   TextAlignment="Center"
-                                                   TextWrapping="Wrap" />
-                                        <TextBlock Text="{x:Bind ViewModel.EmptyStateInstruction, Mode=OneWay}"
-                                                   Style="{StaticResource MuesliBodyStyle}"
-                                                   TextAlignment="Center" />
-                                        <Button Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                                HorizontalAlignment="Center"
-                                                Margin="0,6,0,0"
-                                                Command="{x:Bind ViewModel.NewTemplateCommand}"
-                                                Click="NewTemplate_Click"
-                                                AutomationProperties.Name="Create a meeting template from the empty state">
-                                            <StackPanel Orientation="Horizontal" Spacing="7">
-                                                <FontIcon Glyph="&#xE710;"
-                                                          FontSize="14"
-                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                                                <TextBlock Text="New template" />
-                                            </StackPanel>
-                                        </Button>
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
-                        </Grid>
+                <StackPanel Spacing="12">
+                    <!-- macOS emptyState: one quiet pill, not a hero card. -->
+                    <Border x:Name="EmptyState"
+                            HorizontalAlignment="Left"
+                            Padding="12,10"
+                            CornerRadius="6"
+                            Background="{ThemeResource MuesliSurfaceBrush}"
+                            BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
+                            BorderThickness="1"
+                            AutomationProperties.Name="No custom templates yet"
+                            AutomationProperties.AutomationId="MeetingTemplatesEmptyState">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE70F;" FontSize="11" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                            <TextBlock Text="No custom templates yet." FontSize="13" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        </StackPanel>
                     </Border>
 
-                    <Border x:Name="TemplateEditorCard"
-                            Grid.Column="1"
-                            Style="{StaticResource MuesliCardStyle}"
-                            Padding="0"
-                            MinWidth="0">
-                        <Grid Padding="20,18" RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="0">
-                            <StackPanel Spacing="4" Margin="0,0,0,14">
-                                <TextBlock Text="TEMPLATE"
-                                           Style="{StaticResource MuesliSectionLabelStyle}" />
-                                <TextBlock Text="{x:Bind ViewModel.EditorTitle, Mode=OneWay}"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"
-                                           FontFamily="{StaticResource MuesliFontFamilySemiBold}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.EditorSubtitle, Mode=OneWay}"
-                                           FontSize="12"
-                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
+                    <ItemsRepeater x:Name="TemplateList"
+                                   ItemsSource="{x:Bind ViewModel.Templates, Mode=OneWay}"
+                                   AutomationProperties.Name="Custom meeting templates"
+                                   AutomationProperties.AutomationId="MeetingTemplateList">
+                        <ItemsRepeater.Layout>
+                            <StackLayout Spacing="8" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="svc:PersistedMeetingTemplate">
+                                <Border Padding="12"
+                                        CornerRadius="6"
+                                        Background="{ThemeResource MuesliSurfaceBrush}"
+                                        BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
+                                        BorderThickness="1"
+                                        AutomationProperties.Name="{x:Bind Name}">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                        <StackPanel Spacing="4" MinWidth="0">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon Glyph="&#xE70F;" FontSize="11" Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                <TextBlock Text="{x:Bind Name}"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <TextBlock Text="{x:Bind Prompt}"
+                                                       FontSize="12"
+                                                       Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                                       TextWrapping="Wrap"
+                                                       MaxLines="2"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                                            <Button Style="{StaticResource TemplateActionStyle}"
+                                                    Tag="{x:Bind}"
+                                                    Click="EditTemplate_Click"
+                                                    AutomationProperties.Name="Edit template">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon Glyph="&#xE70F;" FontSize="11" />
+                                                    <TextBlock Text="Edit" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Style="{StaticResource TemplateDestructiveActionStyle}"
+                                                    Tag="{x:Bind}"
+                                                    Click="DeleteTemplate_Click"
+                                                    AutomationProperties.Name="Delete meeting template">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon Glyph="&#xE74D;" FontSize="11" />
+                                                    <TextBlock Text="Delete" />
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
 
-                            <StackPanel Grid.Row="1" Spacing="6" Margin="0,0,0,12">
+                    <!-- macOS customTemplateEditor: shown only while creating or editing. -->
+                    <Border x:Name="TemplateEditorCard"
+                            Visibility="Collapsed"
+                            Padding="16"
+                            CornerRadius="10"
+                            Background="{ThemeResource MuesliSurfaceBrush}"
+                            BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="{x:Bind ViewModel.EditorTitle, Mode=OneWay}"
+                                       FontSize="13"
+                                       FontWeight="SemiBold" />
+
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Name" Style="{StaticResource TemplateFieldLabelStyle}" />
                                 <TextBox x:Name="NameBox"
-                                         Header="Template name"
-                                         PlaceholderText="Product planning summary"
+                                         PlaceholderText="Customer follow-up"
                                          Style="{StaticResource TemplateEditorTextBoxStyle}"
                                          Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          KeyDown="NameBox_KeyDown"
+                                         AutomationProperties.Name="Template name"
                                          AutomationProperties.AutomationId="MeetingTemplateName" />
                                 <TextBlock Text="{x:Bind ViewModel.NameError, Mode=OneWay}"
-                                           Foreground="{ThemeResource MuesliErrorBrush}"
-                                           FontSize="12"
-                                           TextWrapping="Wrap"
+                                           Style="{StaticResource TemplateErrorStyle}"
                                            Visibility="{x:Bind local:MeetingTemplatesPage.BoolToVisibility(ViewModel.HasNameError), Mode=OneWay}"
-                                           AutomationProperties.LiveSetting="Polite"
                                            AutomationProperties.AutomationId="MeetingTemplateNameError" />
                             </StackPanel>
 
-                            <TextBox x:Name="PromptBox"
-                                     Grid.Row="2"
-                                     Header="Summary instructions"
-                                     PlaceholderText="Summarize decisions, owners, risks, and next steps."
-                                     Style="{StaticResource TemplateEditorTextBoxStyle}"
-                                     Text="{x:Bind ViewModel.Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     AcceptsReturn="True"
-                                     TextWrapping="Wrap"
-                                     MinHeight="180"
-                                     VerticalAlignment="Stretch"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     AutomationProperties.AutomationId="MeetingTemplatePrompt" />
-
-                            <TextBlock x:Name="PromptErrorText"
-                                       Grid.Row="3"
-                                       Text="{x:Bind ViewModel.PromptError, Mode=OneWay}"
-                                       Foreground="{ThemeResource MuesliErrorBrush}"
-                                       FontSize="12"
-                                       TextWrapping="Wrap"
-                                       Margin="0,6,0,0"
-                                       Visibility="{x:Bind local:MeetingTemplatesPage.BoolToVisibility(ViewModel.HasPromptError), Mode=OneWay}"
-                                       AutomationProperties.LiveSetting="Polite"
-                                       AutomationProperties.AutomationId="MeetingTemplatePromptError" />
-
-                            <StackPanel x:Name="EditorActions"
-                                        Grid.Row="4"
-                                        Orientation="Horizontal"
-                                        Spacing="8"
-                                        HorizontalAlignment="Right"
-                                        Margin="0,16,0,0">
-                                <!--
-                                    The destructive action leads the row rather than sitting
-                                    between Cancel and the primary Save, so the only irreversible
-                                    control here is the one furthest from the one people press.
-                                -->
-                                <Button Command="{x:Bind ViewModel.DeleteCommand}"
-                                        Style="{StaticResource MuesliDestructiveButtonStyle}"
-                                        AutomationProperties.Name="Delete meeting template"
-                                        AutomationProperties.AutomationId="DeleteMeetingTemplateButton"
-                                        ToolTipService.ToolTip="Delete the selected template">
-                                    <StackPanel Orientation="Horizontal" Spacing="7">
-                                        <FontIcon Glyph="&#xE74D;"
-                                                  FontSize="13"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                                        <TextBlock Text="Delete" />
-                                    </StackPanel>
-                                </Button>
-                                <Button Command="{x:Bind ViewModel.CancelCommand}"
-                                        Style="{StaticResource MuesliGhostButtonStyle}"
-                                        AutomationProperties.Name="Cancel template edits"
-                                        AutomationProperties.AutomationId="CancelMeetingTemplateButton"
-                                        ToolTipService.ToolTip="Clear the editor (Esc)">
-                                    <TextBlock Text="Cancel" />
-                                </Button>
-                                <Button Command="{x:Bind ViewModel.SaveCommand}"
-                                        Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                        AutomationProperties.Name="Save meeting template"
-                                        AutomationProperties.AutomationId="SaveMeetingTemplateButton"
-                                        ToolTipService.ToolTip="Save template (Ctrl+S)">
-                                    <StackPanel Orientation="Horizontal" Spacing="7">
-                                        <FontIcon Glyph="&#xE74E;"
-                                                  FontSize="13"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                                        <TextBlock Text="Save changes" />
-                                    </StackPanel>
-                                </Button>
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Prompt" Style="{StaticResource TemplateFieldLabelStyle}" />
+                                <TextBox x:Name="PromptBox"
+                                         PlaceholderText="Summarize decisions, owners, risks, and next steps."
+                                         Style="{StaticResource TemplateEditorTextBoxStyle}"
+                                         Text="{x:Bind ViewModel.Prompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         MinHeight="140"
+                                         MaxHeight="360"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         AutomationProperties.Name="Summary instructions"
+                                         AutomationProperties.AutomationId="MeetingTemplatePrompt" />
+                                <TextBlock Text="{x:Bind ViewModel.PromptError, Mode=OneWay}"
+                                           Style="{StaticResource TemplateErrorStyle}"
+                                           Visibility="{x:Bind local:MeetingTemplatesPage.BoolToVisibility(ViewModel.HasPromptError), Mode=OneWay}"
+                                           AutomationProperties.AutomationId="MeetingTemplatePromptError" />
                             </StackPanel>
-                        </Grid>
+
+                            <Button x:Name="SaveButton"
+                                    HorizontalAlignment="Right"
+                                    Style="{StaticResource TemplateActionStyle}"
+                                    Click="Save_Click"
+                                    AutomationProperties.Name="Save meeting template"
+                                    AutomationProperties.AutomationId="SaveMeetingTemplateButton"
+                                    ToolTipService.ToolTip="Save template (Ctrl+S)">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon x:Name="SaveGlyph" Glyph="&#xE710;" FontSize="11" />
+                                    <TextBlock x:Name="SaveLabel" Text="Create template" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
                     </Border>
-                </Grid>
-            </Grid>
+                </StackPanel>
+            </StackPanel>
         </ScrollViewer>
     </Grid>
 </Page>

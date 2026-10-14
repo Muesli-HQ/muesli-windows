@@ -53,6 +53,7 @@ public partial class IndicatorWindow : Window
     private string _recordingAccentHex = "1e1e2e";
     private string _hotkeyLabel = "shortcut";
     private bool _handsFree;
+    private bool _minimalStyle;
     private string _message = "";
     private string _indicatorAnchor = "Middle Right";
     private double? _savedLeft;
@@ -180,6 +181,7 @@ public partial class IndicatorWindow : Window
         _visible = snapshot.Visible;
         _meetingPaused = snapshot.MeetingPaused;
         _handsFree = snapshot.HandsFree;
+        _minimalStyle = string.Equals(snapshot.IndicatorStyle, "minimal", StringComparison.OrdinalIgnoreCase);
         _hotkeyLabel = string.IsNullOrWhiteSpace(snapshot.HotkeyLabel) ? "shortcut" : snapshot.HotkeyLabel;
         _recordingAccentHex = string.IsNullOrWhiteSpace(snapshot.RecordingColorHex) ? "1e1e2e" : snapshot.RecordingColorHex;
         _message = snapshot.Message ?? "";
@@ -248,7 +250,9 @@ public partial class IndicatorWindow : Window
 
     private void Render()
     {
-        var size = FloatingIndicatorLayout.SizeFor(_state, _hovered);
+        var size = MinimalResting
+            ? FloatingIndicatorLayout.MinimalRestingSize(_indicatorAnchor)
+            : FloatingIndicatorLayout.SizeFor(_state, _hovered, _message);
         _widthDip = size.Width;
         _heightDip = size.Height;
         _cornerRadiusDip = size.CornerRadius;
@@ -300,11 +304,30 @@ public partial class IndicatorWindow : Window
         }
     }
 
+    private bool MinimalResting =>
+        _minimalStyle && !_highContrast && _state == FloatingIndicatorState.Idle && !_hovered;
+
     private void BuildIdle(bool hovered, Brush brush)
     {
+        if (MinimalResting)
+        {
+            // macOS Minimal: a quiet grey grip (0x696969 at 82%) until hovered.
+            var vertical = FloatingIndicatorLayout.MinimalGripIsVertical(_indicatorAnchor);
+            ContentHost.Children.Add(new Border
+            {
+                Width = vertical ? FloatingIndicatorLayout.MinimalGripThickness : FloatingIndicatorLayout.MinimalGripLength,
+                Height = vertical ? FloatingIndicatorLayout.MinimalGripLength : FloatingIndicatorLayout.MinimalGripThickness,
+                CornerRadius = new CornerRadius(FloatingIndicatorLayout.MinimalGripThickness / 2),
+                Background = new SolidColorBrush(MediaColor.FromArgb(0xD1, 0x69, 0x69, 0x69)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            return;
+        }
+
         if (!hovered)
         {
-            ContentHost.Children.Add(MuesliGlyph(18, new Thickness()));
+            ContentHost.Children.Add(MuesliGlyph(FloatingIndicatorLayout.IdleBrandMarkSize, new Thickness()));
             return;
         }
 
@@ -314,7 +337,7 @@ public partial class IndicatorWindow : Window
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
-        stack.Children.Add(MuesliGlyph(15, new Thickness()));
+        stack.Children.Add(MuesliGlyph(FloatingIndicatorLayout.HoverBrandMarkSize, new Thickness()));
         stack.Children.Add(new TextBlock
         {
             Text = _handsFree
@@ -362,12 +385,10 @@ public partial class IndicatorWindow : Window
         // here clipped the 27-point waveform down to three visible bars.
         var grid = new Grid();
         var isMeeting = _owner == IndicatorOwnerKind.Meeting;
-        var leftGlyph = isMeeting
-            ? (_meetingPaused ? "▶" : "⏸")
-            : FloatingIndicatorLayout.RecordingCancelGlyph;
+        // Both use the cross: dictation cancels, a meeting asks to discard (macOS meeting stop controls).
         var left = new TextBlock
         {
-            Text = leftGlyph,
+            Text = FloatingIndicatorLayout.RecordingCancelGlyph,
             FontSize = isMeeting
                 ? FloatingIndicatorLayout.MeetingControlFontSize
                 : FloatingIndicatorLayout.RecordingCancelFontSize,
@@ -536,6 +557,7 @@ public partial class IndicatorWindow : Window
 
     private Brush BorderBrushFor(FloatingIndicatorState state, bool hovered)
     {
+        if (MinimalResting) return MediaBrushes.Transparent;
         var opacity = state switch
         {
             FloatingIndicatorState.Idle => hovered ? 0.14 : 0.22,
@@ -551,6 +573,9 @@ public partial class IndicatorWindow : Window
     private Brush GlassBrush(FloatingIndicatorState state, bool hovered)
     {
         if (_highContrast) return SystemColors.ControlBrush;
+        // Alpha 1, not 0: a layered window passes clicks through fully transparent pixels, and the
+        // margin around the grip must still catch the pointer.
+        if (MinimalResting) return new SolidColorBrush(MediaColor.FromArgb(1, 0, 0, 0));
 
         // macOS: recording is the solid accent (its blur is hidden); notices are solid green or
         // amber; every other state is the dark tint over the blur, emulated by GlassFill.
@@ -637,25 +662,67 @@ public partial class IndicatorWindow : Window
         // the cursor.
         if (_drag.IsDragging) return;
 
-        var workArea = WorkAreaForCursorDip();
+        var screen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
         var size = new DipSize(_widthDip, _heightDip, _cornerRadiusDip);
 
         if (string.Equals(_indicatorAnchor, "Custom", StringComparison.OrdinalIgnoreCase) &&
             _savedLeft is { } savedLeft &&
             _savedTop is { } savedTop)
         {
-            var repaired = FloatingIndicatorLayout.RepairSavedCenter(new DipPoint(savedLeft, savedTop), size, workArea);
+            // A dragged position belongs to the monitor it was dropped on, not the cursor's monitor.
+            // It was saved as Left/Top, i.e. physical pixels divided by that monitor's scale, so the
+            // owning monitor is the one containing the point scaled back by its own DPI.
+            screen = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(candidate =>
+            {
+                var scale = MonitorScale(candidate);
+                return candidate.Bounds.Contains((int)Math.Round(savedLeft * scale), (int)Math.Round(savedTop * scale));
+            }) ?? screen;
+        }
+
+        var screenScale = MonitorScale(screen);
+        var pixels = screen.WorkingArea;
+        var workArea = new DipRect(pixels.X / screenScale, pixels.Y / screenScale, pixels.Width / screenScale, pixels.Height / screenScale);
+
+        if (string.Equals(_indicatorAnchor, "Custom", StringComparison.OrdinalIgnoreCase) &&
+            _savedLeft is { } customLeft &&
+            _savedTop is { } customTop)
+        {
+            var repaired = FloatingIndicatorLayout.RepairSavedCenter(new DipPoint(customLeft, customTop), size, workArea);
             if (repaired is { } fixedCenter)
             {
                 _savedLeft = fixedCenter.X;
                 _savedTop = fixedCenter.Y;
             }
             var topLeft = new DipPoint(_savedLeft.Value - size.Width / 2, _savedTop.Value - size.Height / 2);
-            MoveTo(FloatingIndicatorLayout.Clamp(topLeft, size, workArea));
+            MoveToOnScreen(FloatingIndicatorLayout.Clamp(topLeft, size, workArea), screenScale);
             return;
         }
 
-        MoveTo(FloatingIndicatorLayout.AnchorTopLeft(_indicatorAnchor, size, workArea));
+        MoveToOnScreen(FloatingIndicatorLayout.AnchorTopLeft(_indicatorAnchor, size, workArea), screenScale);
+    }
+
+    /// <summary>
+    /// Places the pill on a monitor in that monitor's own DIPs. WPF converts Left/Top with the DPI
+    /// of the monitor the window is on now, which lands wrong when the target monitor has a
+    /// different scale, so the move is made in physical pixels.
+    /// </summary>
+    private void MoveToOnScreen(DipPoint point, double screenScale)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero ||
+            !SetWindowPos(handle, IntPtr.Zero, (int)Math.Round(point.X * screenScale), (int)Math.Round(point.Y * screenScale),
+                0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate))
+        {
+            MoveTo(point);
+        }
+    }
+
+    /// <summary>Physical pixels per DIP for a monitor (1.0 at 100%, 1.5 at 150%).</summary>
+    private static double MonitorScale(System.Windows.Forms.Screen screen)
+    {
+        var centre = new NativePoint { X = screen.Bounds.Left + screen.Bounds.Width / 2, Y = screen.Bounds.Top + screen.Bounds.Height / 2 };
+        var monitor = MonitorFromPoint(centre, MonitorDefaultToNearest);
+        return GetDpiForMonitor(monitor, MdtEffectiveDpi, out var dpiX, out _) == 0 && dpiX > 0 ? dpiX / 96.0 : 1.0;
     }
 
     private void MoveTo(DipPoint point)
@@ -799,17 +866,15 @@ public partial class IndicatorWindow : Window
         {
             if (_owner == IndicatorOwnerKind.Meeting)
             {
-                if (x < FloatingIndicatorLayout.CancelRegionWidthDip)
+                // Cancel asks the owner to confirm discarding; the body only drags.
+                var meetingAction = FloatingIndicatorLayout.MeetingActionForClick(x, _widthDip);
+                if (meetingAction != FloatingIndicatorAction.None)
                 {
                     _sendCommand(new IndicatorCommand
                     {
                         SessionId = _sessionId,
-                        Type = _meetingPaused ? IndicatorCommandType.Resume : IndicatorCommandType.Pause
+                        Type = meetingAction == FloatingIndicatorAction.Cancel ? IndicatorCommandType.Cancel : IndicatorCommandType.Stop
                     });
-                }
-                else
-                {
-                    _sendCommand(new IndicatorCommand { SessionId = _sessionId, Type = IndicatorCommandType.Stop });
                 }
             }
             else
@@ -856,6 +921,23 @@ public partial class IndicatorWindow : Window
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern long SetWindowLongPtr(IntPtr hWnd, int nIndex, long value);
+
+    private const uint SwpNoSize = 0x0001, SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010;
+    private const uint MonitorDefaultToNearest = 2;
+    private const int MdtEffectiveDpi = 0;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X; public int Y; }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(NativePoint point, uint flags);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
 
     protected override void OnClosing(CancelEventArgs e)
     {

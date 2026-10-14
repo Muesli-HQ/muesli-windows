@@ -65,6 +65,29 @@ public sealed class VersionIdentityContractTests
     }
 
     [Fact]
+    public void SignedReleaseInstallsOnACleanMachineAndKeepsUserData()
+    {
+        var package = File.ReadAllText(TestRepositoryLayout.Combine("scripts", "package-winui-msix.ps1"));
+        var signedRelease = File.ReadAllText(TestRepositoryLayout.Combine("scripts", "build-signed-release.ps1"));
+        var project = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "Muesli.Windows.WinUI.csproj"));
+        var manifest = AppxManifest().ToString();
+
+        // The production publisher is written into the packaged manifest before signing.
+        Assert.Contains("$packageArgs.Publisher = $ExpectedPublisherSubject", signedRelease, StringComparison.Ordinal);
+        Assert.Contains("Set-ManifestPublisher", package, StringComparison.Ordinal);
+        // Repacking destroys signatures, so the packager never signs.
+        Assert.DoesNotContain("PackageCertificateThumbprint", package, StringComparison.Ordinal);
+        // No Windows App Runtime or VC++ redistributable has to be installed first.
+        Assert.Contains("<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>", project, StringComparison.Ordinal);
+        Assert.Contains("'vcomp140.dll'", package, StringComparison.Ordinal);
+        // History lives in the real %APPDATA%\muesli and survives uninstall.
+        Assert.Contains("FileSystemWriteVirtualization>disabled<", manifest, StringComparison.Ordinal);
+        Assert.Contains("unvirtualizedResources", manifest, StringComparison.Ordinal);
+        Assert.DoesNotContain("10.0.17763", manifest, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RuntimeVersionComesFromTheAssemblyBuiltFromTheSameSource()
     {
         // The About page and startup log read the assembly version, which Directory.Build.props

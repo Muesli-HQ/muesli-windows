@@ -498,9 +498,25 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         : "Captions appear as speech is recognized.";
 
     partial void OnShowLiveTabChanged(bool value) => OnPropertyChanged(nameof(ShowRecordingNotes));
+    // Typing updates the in-memory draft (which Stop and discard already persist) and writes to
+    // disk only after a pause.
+    private CancellationTokenSource? _notesDebounce;
+
     partial void OnManualNotesChanged(string value)
     {
-        if (!_loadingNotes && CanEditRecordingNotes) SaveRecordingNotes();
+        if (_loadingNotes || !CanEditRecordingNotes) return;
+        _meetingRuntime.UpdateManualNotesDraft(value);
+        NotesSaveStatus = "Saving…";
+        _notesDebounce?.Cancel();
+        _notesDebounce = new CancellationTokenSource();
+        _ = SaveNotesAfterPauseAsync(_notesDebounce.Token);
+    }
+
+    private async Task SaveNotesAfterPauseAsync(CancellationToken token)
+    {
+        try { await Task.Delay(700, token); }
+        catch (OperationCanceledException) { return; }
+        if (CanEditRecordingNotes) SaveRecordingNotes();
     }
 
     [RelayCommand(CanExecute = nameof(CanEditRecordingNotes))]
@@ -599,7 +615,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         !string.Equals(MeetingStatus, "Ready", StringComparison.Ordinal);
 
     public string ResultCountHint =>
-        $"{(Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings")} · Open a meeting to review notes, transcript, and template-driven summaries";
+        $"{(Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings")}  •  Open a meeting to review notes, transcript, and template-driven summaries";
 
     /// <summary>Current sort, shown on the compact sort pill (MeetingsView.swift parity).</summary>
     public string SortLabel => SortIndex == 1 ? "Oldest first" : "Newest first";
@@ -670,9 +686,11 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         try
         {
             MeetingStatus = "Finalizing transcript…";
-            await _meetingRuntime.StopAndSaveAsync(cancellationToken);
+            var meeting = await _meetingRuntime.StopAndSaveAsync(cancellationToken);
             Reload();
-            MeetingStatus = "Meeting saved";
+            MeetingStatus = meeting.SessionState == MeetingSessionState.Failed || string.IsNullOrWhiteSpace(meeting.Transcript)
+                ? "Meeting saved without a transcript"
+                : "Meeting saved";
         }
         catch (OperationCanceledException)
         {
@@ -1119,7 +1137,9 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
                 $"{session.Journal.StartedAtUtc.ToLocalTime():g} · {session.MicrophonePartCount} mic part(s) · {session.SystemPartCount} system part(s)"))
             .ToList();
         if (IsRecording) MeetingStatus = $"Recording · {_meetingRuntime.ActiveTitle}";
-        else if (IsPaused) MeetingStatus = "Paused · audio retained";
+        else if (IsPaused) MeetingStatus = _meetingRuntime.FinalizationFailed
+            ? "Saving failed · audio kept. Choose Stop to retry."
+            : "Paused · audio retained";
         if (wasActive && !IsActive) Reload();
         NotifyCommandState();
         OnPropertyChanged(nameof(IsActive));
@@ -1180,6 +1200,9 @@ public sealed record MeetingListItem(
 
     public bool HasDuration => !string.IsNullOrEmpty(DurationLabel);
 
+    /// <summary>macOS formatMeta: "time  •  duration".</summary>
+    public string MetaLabel => HasDuration ? $"{TimestampLabel}  •  {DurationLabel}" : TimestampLabel;
+
     /// <summary>
     /// P3-01: what a screen reader announces for this row. Without it the ListView container peer
     /// falls back to the record's generated <c>ToString()</c> and reads the whole debug dump
@@ -1209,7 +1232,10 @@ public sealed record MeetingListItem(
             item.Id,
             item.FolderId,
             string.IsNullOrWhiteSpace(item.Title) ? "Untitled meeting" : item.Title,
-            string.IsNullOrWhiteSpace(item.Summary) ? "No summary saved" : SingleLine(item.Summary),
+            // macOS previewText: written notes for an unfinished meeting, else notes, else transcript.
+            MeetingPreviewText.Snippet(
+                !string.IsNullOrWhiteSpace(item.ManualNotes) && item.SessionState != MeetingSessionState.Completed ? item.ManualNotes
+                : string.IsNullOrWhiteSpace(item.Summary) ? item.Transcript : item.Summary),
             item.CreatedAt.ToLocalTime().ToString("d MMM yyyy 'at' h:mm:ss tt"),
             FormatDuration(item.DurationMs),
             SessionStateLabel(item.SessionState, item.RecoveredFromInterruption),
@@ -1260,7 +1286,7 @@ public sealed record MeetingListItem(
             return null;
         }
 
-        return ("Recording", "\uE983");
+        return ("Recording", "\uE8D6"); // Audio, standing in for the macOS waveform symbol
     }
 
     /// <summary>
@@ -1277,8 +1303,6 @@ public sealed record MeetingListItem(
         MeetingSessionState.Cancelled => "Cancelled",
         _ => state.ToString()
     };
-
-    private static string SingleLine(string text) => text.Trim().Replace('\r', ' ').Replace('\n', ' ');
 }
 
 public sealed record RecoverableMeetingListItem(RecoverableMeetingSession Session, string Title, string Detail);

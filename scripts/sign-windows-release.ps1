@@ -11,7 +11,8 @@
 param(
     [string]$MsixPath = "",
     [string]$CertificateThumbprint = "",
-    [string]$TimestampUrl = "https://timestamp.digicert.com",
+    # RFC 3161 servers are plain HTTP (the response is itself signed); signtool rejects the https URL.
+    [string]$TimestampUrl = "http://timestamp.digicert.com",
     [string]$SignatureOutputDirectory = "",
     [string]$ExpectedPublisherSubject = "",
     [switch]$DryRun,

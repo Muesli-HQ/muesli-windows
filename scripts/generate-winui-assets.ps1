@@ -82,7 +82,10 @@ function New-RoundedBarPath {
 
 function New-OpticallySizedAppListBitmap {
     param(
-        [Parameter(Mandatory)][int]$Size
+        [Parameter(Mandatory)][int]$Size,
+        # Unplated draws only the mark in one colour and taller, like the macOS menu-bar template.
+        [switch]$Unplated,
+        [System.Drawing.Color]$MarkColor = [System.Drawing.Color]::FromArgb(255, 107, 163, 247)
     )
 
     # Pixel-snap the master mark: use as many of its bars as the frame can hold with one-pixel gaps
@@ -90,6 +93,13 @@ function New-OpticallySizedAppListBitmap {
     # master's own envelope. This is what makes the taskbar/Start mark read like the 1024px artwork
     # instead of a differently-proportioned approximation. Caller owns the bitmap.
     $barCount = if ($Size -lt 18) { 7 } elseif ($Size -lt 22) { 9 } elseif ($Size -lt 28) { 11 } else { 13 }
+    if (-not $Unplated) {
+        # On the plate the master mark spans only 635/1024 of the icon's width, so use the odd
+        # bar count whose one-pixel bars and gaps come closest to that footprint (5 at 16px, 11 at
+        # 32px). Filling the plate edge to edge reads as a different logo from the macOS icon.
+        $fit = ((635 / 1024.0 * $Size) + 1) / 2
+        $barCount = [Math]::Min(13, 2 * [int][Math]::Round(($fit - 1) / 2) + 1)
+    }
     $barHeights = Get-ResampledBarHeights -Profile $script:MasterBarProfile -Count $barCount
 
     $bitmap = New-Object System.Drawing.Bitmap $Size, $Size
@@ -104,19 +114,24 @@ function New-OpticallySizedAppListBitmap {
 
         $margin = [Math]::Max(0.5, $Size / 64.0)
         $diameter = $Size * 0.43
-        $right = $Size - (2 * $margin)
+        # One-pixel bars make the mark an odd number of pixels wide and tall, centred on pixel
+        # (Size-1)/2, so the plate is one pixel smaller and centred there too; shifting the bars
+        # half a pixel instead would blur them.
+        $right = $Size - 1 - (2 * $margin)
         $backgroundPath.AddArc($margin, $margin, $diameter, $diameter, 180, 90)
         $backgroundPath.AddArc($right - $diameter + $margin, $margin, $diameter, $diameter, 270, 90)
         $backgroundPath.AddArc($right - $diameter + $margin, $right - $diameter + $margin, $diameter, $diameter, 0, 90)
         $backgroundPath.AddArc($margin, $right - $diameter + $margin, $diameter, $diameter, 90, 90)
         $backgroundPath.CloseFigure()
 
-        $background = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 22, 23, 25))
-        try {
-            $graphics.FillPath($background, $backgroundPath)
-        }
-        finally {
-            $background.Dispose()
+        if (-not $Unplated) {
+            $background = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 22, 23, 25))
+            try {
+                $graphics.FillPath($background, $backgroundPath)
+            }
+            finally {
+                $background.Dispose()
+            }
         }
 
         $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
@@ -128,12 +143,15 @@ function New-OpticallySizedAppListBitmap {
         $gap = 1
         $markWidth = ($barHeights.Count * $barWidth) + (($barHeights.Count - 1) * $gap)
         $left = [int][Math]::Floor(($Size - $markWidth) / 2.0)
-        $maximumHeight = [int][Math]::Round($Size * 0.58)
-        $blue = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 107, 163, 247))
+        # macOS draws the menu-bar mark 14pt tall in an 18pt image; on the plate the master's
+        # tallest bar is 513 of 1024px.
+        $maximumHeight = [int][Math]::Round($Size * $(if ($Unplated) { 14 / 18.0 } else { 513 / 1024.0 }))
+        $blue = New-Object System.Drawing.SolidBrush $MarkColor
         try {
             for ($index = 0; $index -lt $barHeights.Count; $index++) {
                 $x = $left + ($index * ($barWidth + $gap))
-                $height = [Math]::Max(2, [int][Math]::Round($maximumHeight * $barHeights[$index]))
+                # Odd heights keep every bar centred on the same pixel row as the plate.
+                $height = [Math]::Max(3, 2 * [int][Math]::Round(($maximumHeight * $barHeights[$index] - 1) / 2) + 1)
                 $top = [int][Math]::Floor(($Size - $height) / 2.0)
                 $path = New-RoundedBarPath -X $x -Y $top -Width $barWidth -Height $height
                 try {
@@ -233,6 +251,19 @@ function Write-IconFile {
         $writer.Dispose()
         $file.Dispose()
     }
+}
+
+function Write-TrayIcon {
+    param(
+        [Parameter(Mandatory)][System.Drawing.Color]$MarkColor,
+        [Parameter(Mandatory)][string]$DestinationPath
+    )
+
+    # The notification area shows the bare mark, matching the macOS menu-bar template icon.
+    $frames = foreach ($size in 16, 20, 24, 32) {
+        [pscustomobject]@{ Size = $size; Bitmap = (New-OpticallySizedAppListBitmap -Size $size -Unplated -MarkColor $MarkColor) }
+    }
+    Write-IconFile -Frames $frames -DestinationPath $DestinationPath
 }
 
 function Write-ProductAppIcon {
@@ -359,9 +390,12 @@ try {
 
     # WinApp's app.ico downsamples a single raster, so its sub-36px frames turn the waveform
     # into an unreadable "8". Rebuild the product icon from the master with the same
-    # optically-sized small frames the app-list assets use; the tray and taskbar bind this file.
+    # optically-sized small frames the app-list assets use; the taskbar and windows bind this file.
     $productAppIcon = Join-Path $outputDirectoryPath 'AppIcon.ico'
     Write-ProductAppIcon -MasterPath $sourceIconPath -DestinationPath $productAppIcon
+    # White for the default dark taskbar; near-black ink for a light taskbar.
+    Write-TrayIcon -MarkColor ([System.Drawing.Color]::White) -DestinationPath (Join-Path $outputDirectoryPath 'TrayIcon.ico')
+    Write-TrayIcon -MarkColor ([System.Drawing.Color]::FromArgb(255, 28, 28, 30)) -DestinationPath (Join-Path $outputDirectoryPath 'TrayIconLightTaskbar.ico')
 
     $targetVariants = @(Get-ChildItem -LiteralPath $outputDirectoryPath -Filter 'Square44x44Logo.targetsize-*.png' -File)
     if ($targetVariants.Count -ne 42) {

@@ -67,7 +67,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     public PersistedMeeting? ResumedMeeting => _journal?.ResumedMeeting;
 
     public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverableSessions() =>
-        _recovery.Discover();
+        _recovery.Discover(_journal?.SessionId);
 
     public MeetingCaptureSnapshot CaptureSnapshot
     {

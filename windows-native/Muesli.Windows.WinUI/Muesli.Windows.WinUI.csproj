@@ -2,7 +2,11 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <!-- Meeting capture needs process loopback (build 19041+); Directory.Build.props supports 19045+. -->
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <!-- Carry the Windows App SDK runtime inside the MSIX. A framework-dependent package does not
+         install on a clean PC unless the matching Windows App Runtime is already present. -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <RootNamespace>Muesli.Windows.WinUI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>
@@ -25,6 +29,7 @@
          icon onto a system-colored backplate when a target size or theme variant is missing. -->
     <Content Include="Assets\*.png" />
     <Content Include="Assets\AppIcon.ico" />
+    <Content Include="Assets\TrayIcon*.ico" />
     <!-- The floating indicator's Muesli mark, carried over from the retired WPF reference's
          Assets\menu_m_template@2x.png so the pill shows the real glyph, not a typographic "m". -->
     <!-- Inter is the product typeface for the shipping Windows app. -->

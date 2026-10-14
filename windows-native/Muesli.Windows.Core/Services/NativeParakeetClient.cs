@@ -43,6 +43,12 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
     private long _initialModelLoadMs;
     private long _warmupMs;
     private bool _warmupCompleted;
+    private long _lastDecodeTimestamp;
+
+    // Windows trims an idle process's working set when other apps need memory, so a resident
+    // model can still start cold. Past this idle time, InitializeAsync (run on hotkey-down) decodes
+    // half a second of silence to fault the weights back in while the user is still speaking.
+    private static readonly TimeSpan RefreshAfterIdle = TimeSpan.FromMinutes(5);
     private bool _disposed;
 
     public static string ModelCacheDirectory =>
@@ -400,6 +406,11 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
             warmupStarted.Stop();
             _warmupMs = warmupStarted.ElapsedMilliseconds;
             _warmupCompleted = true;
+            _lastDecodeTimestamp = Stopwatch.GetTimestamp();
+        }
+        else if (Stopwatch.GetElapsedTime(_lastDecodeTimestamp) >= RefreshAfterIdle)
+        {
+            Decode(new float[16000 / 2], 16000);
         }
 
         var diagnostic = string.Join(
@@ -484,6 +495,7 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         using var stream = _recognizer!.CreateStream();
         stream.AcceptWaveform(sampleRate, samples);
         _recognizer.Decode(stream);
+        _lastDecodeTimestamp = Stopwatch.GetTimestamp();
         return stream.Result;
     }
 

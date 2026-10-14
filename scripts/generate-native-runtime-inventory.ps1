@@ -62,7 +62,11 @@ $platformRuntimePatterns = @(
     '^Microsoft\.Windows\.ApplicationModel\.',
     '^Microsoft\.Web\.',
     '^WebView2Loader\.dll$',
-    '^DirectML\.dll$'
+    '^DirectML\.dll$',
+    # Self-contained Windows App SDK (WinUI, composition, DWriteCore, MRM) natives.
+    '(?i)^Microsoft\.(UI|DirectManipulation|Graphics|InputStateManager|Internal\.FrameworkUdk)\.',
+    '(?i)^Microsoft\.Windows\.(Search|Widgets|Workloads)',
+    '(?i)^(CoreMessagingXP|DWriteCore|DwmSceneI|dwmcorei|dcompi|wuceffectsi|MRM|marshal|NPUDetect|PerceptiveStreaming|WinUIEdit|PushNotificationsLongRunningTask\.ProxyStub|SessionHandleIPCProxyStub)\.dll$'
 )
 $platformRuntime = [System.Collections.Generic.List[object]]::new()
 

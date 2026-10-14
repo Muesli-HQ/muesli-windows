@@ -46,6 +46,7 @@ public sealed partial class CleanupModelItem : ObservableObject
         ? ""
         : $"Installed · {_snapshot.DiskSize}";
     public bool HasInstalledSize => !string.IsNullOrWhiteSpace(InstalledLabel);
+    public string SizeCaption => HasInstalledSize ? $"{DownloadLabel} · {_snapshot.DiskSize} on disk" : DownloadLabel;
     public bool CanPrepare => !_snapshot.IsInstalled || !_snapshot.IsVerified;
     public bool CanCancel => IsBusy;
     public bool CanVerify => _snapshot.IsInstalled;

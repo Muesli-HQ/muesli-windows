@@ -49,6 +49,7 @@ public sealed class WinUiIndicatorHost : IDisposable
     private double? _savedLeft;
     private double? _savedTop;
     private long _lastAmplitudePublishTicks;
+    private volatile bool _connectedThisLaunch;
 
     public WinUiIndicatorHost(
         WinUiDictationContext dictation,
@@ -95,7 +96,7 @@ public sealed class WinUiIndicatorHost : IDisposable
         _lifetime = new CancellationTokenSource();
         _instanceId = Guid.NewGuid().ToString("N");
         _server = new IndicatorPipeServer(_instanceId, OnCommand);
-        _server.Connected += (_, _) => Publish();
+        _server.Connected += (_, _) => { _connectedThisLaunch = true; Publish(); };
         _server.Disconnected += (_, _) => HandleCompanionGone();
         _server.Start();
 
@@ -132,6 +133,8 @@ public sealed class WinUiIndicatorHost : IDisposable
             owner = IndicatorOwnerKind.Meeting;
             meetingPaused = _meetings.IsPaused;
             state = FloatingIndicatorState.Recording;
+            // ponytail: levels arrive with live-transcript snapshots only; a flat pill means live transcription is off.
+            _amplitude = meetingPaused ? 0f : (float)Math.Clamp(Math.Max(_meetings.MicrophoneLevel, _meetings.SystemLevel), 0, 1);
         }
         else if (_meetings.IsBusy)
         {
@@ -220,6 +223,7 @@ public sealed class WinUiIndicatorHost : IDisposable
             HotkeyLabel = string.IsNullOrWhiteSpace(settings.Hotkey) ? "shortcut" : settings.Hotkey,
             Message = ComposeMessage(_state, _dictation.Status ?? ""),
             RecordingColorHex = settings.RecordingColorHex,
+            IndicatorStyle = settings.IndicatorStyle,
             MeetingPaused = _meetingPaused,
             HandsFree = settings.EnableDoubleTapDictation,
             IndicatorAnchor = _indicatorAnchor,
@@ -312,6 +316,7 @@ public sealed class WinUiIndicatorHost : IDisposable
                 _dispatcher.TryEnqueue(() =>
                 {
                     if (_owner == IndicatorOwnerKind.Meeting) _ = _meetings.StopAndSaveAsync();
+                    else if (_owner == IndicatorOwnerKind.ComputerUse) _ = _computerUse.ToggleVoiceAsync();
                     else _ = _dictation.StopRecordingAsync();
                 });
                 break;
@@ -320,6 +325,7 @@ public sealed class WinUiIndicatorHost : IDisposable
                 _dispatcher.TryEnqueue(() =>
                 {
                     if (_owner == IndicatorOwnerKind.Meeting) _ = DiscardMeetingWithConfirmationAsync();
+                    else if (_owner == IndicatorOwnerKind.ComputerUse) _ = _computerUse.CancelAsync();
                     else _ = _dictation.CancelAsync();
                 });
                 break;
@@ -433,7 +439,18 @@ public sealed class WinUiIndicatorHost : IDisposable
                 UseShellExecute = false,
                 WorkingDirectory = Path.GetDirectoryName(exe)!
             };
+            _connectedThisLaunch = false;
             _companion = Process.Start(startInfo);
+            if (_companion is not null)
+            {
+                // A companion that dies before connecting never raises the pipe's Disconnected.
+                var launched = _companion;
+                launched.EnableRaisingEvents = true;
+                launched.Exited += (_, _) => _dispatcher.TryEnqueue(() =>
+                {
+                    if (ReferenceEquals(launched, _companion) && !_connectedThisLaunch) HandleCompanionGone();
+                });
+            }
             _log.Info($"Started WPF indicator companion pid={_companion?.Id} instance={_instanceId}");
         }
         catch (Exception exception)
@@ -467,7 +484,7 @@ public sealed class WinUiIndicatorHost : IDisposable
     {
         _server?.Dispose();
         _server = new IndicatorPipeServer(_instanceId, OnCommand);
-        _server.Connected += (_, _) => Publish();
+        _server.Connected += (_, _) => { _connectedThisLaunch = true; Publish(); };
         _server.Disconnected += (_, _) => HandleCompanionGone();
         _server.Start();
     }

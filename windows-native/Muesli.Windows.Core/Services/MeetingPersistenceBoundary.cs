@@ -57,8 +57,8 @@ internal sealed class MeetingPersistenceBoundary
         MeetingAudioChannel channel) =>
         _store.BuildTrackTimeline(journal, channel);
 
-    public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverable() =>
-        _store.DiscoverRecoverable();
+    public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverable(string? activeSessionId = null) =>
+        _store.DiscoverRecoverable(activeSessionId);
 
     public MeetingSessionJournal ApplyState(
         MeetingSessionJournal journal,

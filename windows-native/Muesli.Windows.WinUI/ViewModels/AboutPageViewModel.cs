@@ -103,6 +103,13 @@ public partial class AboutPageViewModel(
     private void OpenLogs() => _log.OpenLogDirectory();
 
     [RelayCommand]
+    private void OpenDataDirectory()
+    {
+        Directory.CreateDirectory(ProfilePath);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = ProfilePath, UseShellExecute = true });
+    }
+
+    [RelayCommand]
     private void OpenModelCache() => _diagnostics.OpenModelCacheDirectory();
 
     [RelayCommand]

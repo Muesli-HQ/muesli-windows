@@ -137,17 +137,25 @@ public static class FloatingIndicatorLayout
         [0.302, 0.579, 0.852, 1.000, 0.899, 0.602, 0.302, 0.602, 0.899, 1.000, 0.852, 0.579, 0.302];
 
     /// <summary>
+    /// Brand-mark heights in the idle pill, per macOS: the mark is drawn 14pt tall inside an 18pt
+    /// image, shown in a 14pt view at rest (≈11pt mark) and an 18pt view on hover (14pt mark).
+    /// </summary>
+    public const double IdleBrandMarkSize = 11;
+    public const double HoverBrandMarkSize = 14;
+
+    /// <summary>
     /// Pixel-snapped brand-mark geometry, in DIPs, for a mark <paramref name="size"/> DIPs tall at
     /// display <paramref name="scale"/>. Like <c>scripts/generate-winui-assets.ps1</c>'s small icon
     /// frames, every bar and gap is a whole number of physical pixels (at least one), because at
     /// pill size fractional 13-bar gaps antialias away and the mark smears into a blob. Bar heights
-    /// share the tallest bar's pixel parity so centring never puts a bar half a pixel off.
+    /// share the tallest bar's pixel parity so centring never puts a bar half a pixel off. Bar and
+    /// gap widths keep the icon's own 32:18 px ratio against its 513 px tallest bar.
     /// </summary>
     public static (double BarWidth, double Gap, double[] Heights) BrandMarkGeometry(double size, double scale)
     {
         scale = scale > 0 ? scale : 1;
-        var bar = Math.Max(1, Math.Round(size / 13 * scale));
-        var gap = Math.Max(1, Math.Round(size / 30 * scale));
+        var bar = Math.Max(1, Math.Round(size * 32 / 513 * scale));
+        var gap = Math.Max(1, Math.Round(size * 18 / 513 * scale));
         var tallest = Math.Round(size * scale);
         var heights = BrandMarkBars
             .Select(m => Math.Max(bar, tallest - 2 * Math.Round((tallest - m * size * scale) / 2)) / scale)
@@ -185,6 +193,21 @@ public static class FloatingIndicatorLayout
 
     /// <summary>The five-bar standing envelope, symmetric about the centre.</summary>
     public static readonly double[] WaveformBarMultipliers = [0.6, 0.85, 1.0, 0.85, 0.6];
+
+    /// <summary>
+    /// macOS Minimal style rests as a 30×8 grip (8×30 beside a middle-left/right anchor). The window
+    /// keeps a 6 DIP margin around it, matching macOS's interactive inset, so the grip is hoverable.
+    /// </summary>
+    public const double MinimalGripLength = 30;
+    public const double MinimalGripThickness = 8;
+    public const double MinimalGripHitMargin = 6;
+
+    public static bool MinimalGripIsVertical(string? anchor) => anchor is "Middle Left" or "Middle Right";
+
+    public static DipSize MinimalRestingSize(string? anchor) =>
+        MinimalGripIsVertical(anchor)
+            ? new DipSize(MinimalGripThickness + 2 * MinimalGripHitMargin, MinimalGripLength + 2 * MinimalGripHitMargin, 0)
+            : new DipSize(MinimalGripLength + 2 * MinimalGripHitMargin, MinimalGripThickness + 2 * MinimalGripHitMargin, 0);
 
     public static DipSize SizeFor(FloatingIndicatorState state, bool hovered, string? message = "")
     {
@@ -233,6 +256,18 @@ public static class FloatingIndicatorLayout
                 xDip < cancelRegion ? FloatingIndicatorAction.Cancel : FloatingIndicatorAction.Stop,
             _ => FloatingIndicatorAction.None
         };
+
+    /// <summary>
+    /// macOS meeting pill: a 22-point Discard button at x=1 and a Stop button 23 points from the
+    /// right edge. The waveform body has no command so dragging can never end a meeting; pause and
+    /// resume live in the floating transcript header.
+    /// </summary>
+    public const double MeetingButtonRegionDip = 23;
+
+    public static FloatingIndicatorAction MeetingActionForClick(double xDip, double widthDip) =>
+        xDip < MeetingButtonRegionDip ? FloatingIndicatorAction.Cancel
+        : xDip >= widthDip - MeetingButtonRegionDip ? FloatingIndicatorAction.Stop
+        : FloatingIndicatorAction.None;
 
     /// <summary>
     /// Top-left position for an anchored indicator, following the eight supported anchors inside

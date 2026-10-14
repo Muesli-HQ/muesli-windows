@@ -100,6 +100,10 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         return meetings;
     }
 
+    /// <summary>One meeting by id, without loading the whole library.</summary>
+    public PersistedMeeting? FindMeeting(string id) =>
+        _store.Meetings.FindDetail(id) is { } detail ? LibraryHistoryMapper.ToPersisted(detail) : null;
+
     public void SaveMeetings(IEnumerable<PersistedMeeting> meetings, bool afterExplicitDeletion = false)
     {
         var incoming = meetings.ToList();

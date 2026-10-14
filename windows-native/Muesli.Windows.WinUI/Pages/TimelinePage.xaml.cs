@@ -1,10 +1,9 @@
-using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Muesli.Windows.WinUI.Services;
-using Windows.UI.Text;
+using Muesli.Windows.Services;
 using Muesli.Windows.WinUI.ViewModels;
 
 namespace Muesli.Windows.WinUI.Pages;
@@ -24,18 +23,85 @@ public sealed partial class TimelinePage : Page
     {
         InitializeComponent();
         ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
-        Loaded += (_, _) => UpdateEmptyState();
+        Loaded += (_, _) =>
+        {
+            UpdateEmptyState();
+            UpdateSortPill();
+        };
     }
 
     public static Visibility BoolToVisibility(bool value) =>
         value ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>Meeting titles are named things and read bold; a dictation row is its own text.</summary>
-    public static FontWeight TitleWeight(bool isMeeting) =>
-        isMeeting ? FontWeights.SemiBold : FontWeights.Normal;
+    public static Visibility InvertBoolToVisibility(bool value) =>
+        value ? Visibility.Collapsed : Visibility.Visible;
 
-    public static FontFamily TitleFont(bool isMeeting) =>
-        (FontFamily)Application.Current.Resources[isMeeting ? "MuesliFontFamilySemiBold" : "MuesliFontFamily"];
+    /// <summary>macOS StatsHeaderView prints large word counts as "20.8k".</summary>
+    public static string CompactCount(int count) =>
+        count >= 1000 ? $"{count / 1000.0:0.0}k" : count.ToString();
+
+    /// <summary>macOS TimelineMeetingRow duration: "40s", "3m 5s", "1h 12m".</summary>
+    public static string MeetingDuration(int durationMs)
+    {
+        var seconds = Math.Max(0, (int)Math.Round(durationMs / 1000.0));
+        if (seconds >= 3600) return $"{seconds / 3600}h {seconds % 3600 / 60}m";
+        if (seconds >= 60) return seconds % 60 == 0 ? $"{seconds / 60}m" : $"{seconds / 60}m {seconds % 60}s";
+        return $"{seconds}s";
+    }
+
+    /// <summary>Notes as plain text, as macOS MeetingPreviewText does, instead of raw markdown.</summary>
+    public static string MeetingPreview(string detail)
+    {
+        var snippet = MeetingPreviewText.Snippet(detail);
+        return snippet == "No notes yet" ? "No transcript or notes yet" : snippet;
+    }
+
+    /// <summary>macOS MeetingStatusDisplay colours: recording red, processing accent, completed green.</summary>
+    public static Brush StatusBrush(string status) => (Brush)Application.Current.Resources[status.ToLowerInvariant() switch
+    {
+        var s when s.Contains("record") => "MuesliErrorBrush",
+        var s when s.Contains("process") || s.Contains("transcrib") => "MuesliAccentBrush",
+        var s when s.Contains("fail") || s.Contains("attention") => "MuesliWarningBrush",
+        var s when s.Contains("complete") => "MuesliSuccessBrush",
+        _ => "MuesliTextTertiaryBrush"
+    }];
+
+    /// <summary>The status colour at 12%, the capsule's fill.</summary>
+    public static Brush StatusTint(string status)
+    {
+        var color = StatusBrush(status) is SolidColorBrush solid ? solid.Color : Microsoft.UI.Colors.Gray;
+        return new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x1F, color.R, color.G, color.B));
+    }
+
+    private void StatCard_Click(object sender, RoutedEventArgs e) =>
+        (App.Window as MainWindow)?.ShellPage?.NavigateTo("insights");
+
+    private void SortItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioMenuFlyoutItem { Tag: string tag } && int.TryParse(tag, out var index))
+        {
+            ViewModel.SortIndex = index;
+            UpdateSortPill();
+        }
+    }
+
+    /// <summary>
+    /// The macOS filter menu: a bare tertiary funnel at the default, an accent pill naming the
+    /// choice otherwise.
+    /// </summary>
+    private void UpdateSortPill()
+    {
+        var oldest = ViewModel.SortIndex == 1;
+        NewestFirstItem.IsChecked = !oldest;
+        OldestFirstItem.IsChecked = oldest;
+        SortLabel.Text = "Oldest first";
+        SortLabel.Visibility = oldest ? Visibility.Visible : Visibility.Collapsed;
+        var tone = (Brush)Application.Current.Resources[oldest ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush"];
+        SortIcon.Foreground = tone;
+        SortLabel.Foreground = tone;
+        if (oldest) SortButton.Background = (Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
+        else SortButton.ClearValue(Control.BackgroundProperty);
+    }
 
     private void UpdateEmptyState()
     {

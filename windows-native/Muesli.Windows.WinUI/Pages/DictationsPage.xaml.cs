@@ -32,12 +32,51 @@ public sealed partial class DictationsPage : Page
         {
             ApplyResponsiveLayout(ActualWidth);
             UpdateEmptyState();
+            UpdateSortPill();
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
     }
 
     public static Visibility BoolToVisibility(bool value) =>
         value ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>macOS StatsHeaderView prints large word counts as "20.8k".</summary>
+    public static string CompactCount(string label) =>
+        int.TryParse(label, System.Globalization.NumberStyles.AllowThousands, System.Globalization.CultureInfo.CurrentCulture, out var count)
+            ? TimelinePage.CompactCount(count)
+            : label;
+
+    /// <summary>macOS voiceNoteButton: accent at rest, the recording red while capturing.</summary>
+    public static Microsoft.UI.Xaml.Media.Brush RecordBackground(bool isRecording) =>
+        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[isRecording ? "MuesliErrorBrush" : "MuesliAccentBrush"];
+
+    public static string RecordGlyph(bool isRecording) => isRecording ? "" : "";
+
+    private void StatCard_Click(object sender, RoutedEventArgs e) =>
+        (App.Window as MainWindow)?.ShellPage?.NavigateTo("insights");
+
+    private void SortItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioMenuFlyoutItem { Tag: string tag } && int.TryParse(tag, out var index))
+        {
+            ViewModel.SortIndex = index;
+            UpdateSortPill();
+        }
+    }
+
+    /// <summary>macOS filter menu: a bare tertiary funnel at the default, an accent pill otherwise.</summary>
+    private void UpdateSortPill()
+    {
+        var oldest = ViewModel.SortIndex == 1;
+        NewestFirstItem.IsChecked = !oldest;
+        OldestFirstItem.IsChecked = oldest;
+        SortLabel.Visibility = oldest ? Visibility.Visible : Visibility.Collapsed;
+        var tone = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[oldest ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush"];
+        SortIcon.Foreground = tone;
+        SortLabel.Foreground = tone;
+        if (oldest) SortButton.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
+        else SortButton.ClearValue(Control.BackgroundProperty);
+    }
 
     /// <summary>
     /// P2-04: the shell passes its nav tag ("dictations") when the rail navigates here, and a

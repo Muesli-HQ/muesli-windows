@@ -451,10 +451,10 @@ function Get-MuesliReleaseLegalProductGates {
         [ordered]@{
             id = "EXP-01"
             area = "PDF export (QuestPDF Community eligibility)"
-            status = "BlockedUntilReleaseOwnerDecision"
-            detail = "QuestPDF is selected as LicenseType.Community but no eligibility conclusion is recorded. PDF is not launch-ready."
-            launchClaim = "PDF export must not be described as launch-ready."
-            disableSwitch = "MeetingDocumentWriter.PdfExportApproved (default false) / MUESLI_PDF_EXPORT_APPROVED=1 for development only."
+            status = "Approved"
+            detail = "QuestPDF LicenseType.Community; release owner confirmed eligibility on 2026-10-11 (Muesli is an open-source project)."
+            launchClaim = "PDF export may be described as available."
+            disableSwitch = "MeetingDocumentWriter.PdfExportApproved (default true) / MUESLI_PDF_EXPORT_APPROVED=0 to withdraw."
         },
         [ordered]@{
             id = "SIGN-02"

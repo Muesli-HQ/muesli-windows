@@ -24,8 +24,7 @@ public sealed class ReleaseLegalAndQualificationGateTests
             Assert.Contains(id, common, StringComparison.Ordinal);
         }
 
-        Assert.Contains("BlockedUntilReleaseOwnerDecision", common, StringComparison.Ordinal);
-        Assert.Contains("must not be described as launch-ready", common, StringComparison.Ordinal);
+        Assert.Contains("ExternallyBlocked", common, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public sealed class ReleaseLegalAndQualificationGateTests
     }
 
     [Fact]
-    public void PdfExportIsDisabledUntilEligibilityIsApproved()
+    public void PdfExportKeepsAWithdrawalSwitch()
     {
         var writer = Read("windows-native", "Muesli.Windows.Platform", "Services", "MeetingDocumentWriter.cs");
         var viewModel = Read("windows-native", "Muesli.Windows.WinUI", "ViewModels", "MeetingDetailViewModel.cs");

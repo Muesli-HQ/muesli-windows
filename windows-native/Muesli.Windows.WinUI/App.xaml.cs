@@ -177,11 +177,13 @@ public partial class App : Application
         var startupSettings = Settings.Load();
         ExecutionProviderService.Configure(startupSettings.ExecutionProvider);
         NativeTextCleanupService.Configure(startupSettings.CleanupModelId);
+        Themes.AccentPalette.Apply(startupSettings.RecordingColorHex);
         Startup = new WinUiStartupRegistrationService();
         Window = new MainWindow();
         TrackTheme(Window);
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         UiDispatcher = new WinUiDispatcher(DispatcherQueue);
+        Settings.Changed += (_, settings) => DispatcherQueue.TryEnqueue(() => Themes.AccentPalette.Apply(settings.RecordingColorHex));
         _desktopInstance.StartListening(() => UiDispatcher.TryEnqueue(() => ((MainWindow)Window).ShowDashboard()));
         Meetings = new WinUiMeetingContext(Library, Settings, UiDispatcher);
         Models = new WinUiModelsContext(Library, Settings);
@@ -189,7 +191,8 @@ public partial class App : Application
         ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation);
         ComputerUse.ConfirmActionAsync = ConfirmComputerUseActionAsync;
         ComputerUse.CaptureStarted = () => ((MainWindow)Window).HideDashboard();
-        ComputerUse.RegisterVoiceShortcut(UiDispatcher);
+        // Computer Use is hidden for v1, so Ctrl+Shift+F8 is left free:
+        // ComputerUse.RegisterVoiceShortcut(UiDispatcher);
         MeetingDetection = new WinUiMeetingDetectionService();
         _meetingNotifications = new WinUiMeetingNotificationService(
             UiDispatcher,
@@ -223,12 +226,13 @@ public partial class App : Application
             },
             mainWindow.ShowDashboard,
             () => _ = RequestExitAsync(),
-            Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"),
+            Path.Combine(AppContext.BaseDirectory, "Assets", "TrayIcon.ico"),
             () => Meetings.IsPaused,
             Meetings.PauseAsync,
             Meetings.ResumeAsync,
             () => ShowOnboarding(explicitResume: true),
-            ShowFeatureTour);
+            ShowFeatureTour,
+            Path.Combine(AppContext.BaseDirectory, "Assets", "TrayIconLightTaskbar.ico"));
         Dictation.Changed += (_, _) => Tray.Refresh();
         Meetings.Changed += (_, _) =>
         {
@@ -258,6 +262,25 @@ public partial class App : Application
                 if (Meetings.IsSourceMissing) _meetingNotifications?.Close();
                 Meetings.SetSourceMissing(false);
             }
+        };
+        Microsoft.Windows.System.Power.PowerManager.SystemSuspendStatusChanged += (_, _) =>
+        {
+            // Raised off the UI thread. Windows allows only a moment before sleeping, so checkpoint
+            // synchronously here instead of queueing behind UI work.
+            try
+            {
+                var status = Microsoft.Windows.System.Power.PowerManager.SystemSuspendStatus;
+                if (status == Microsoft.Windows.System.Power.SystemSuspendStatus.Entering)
+                    Meetings.SuspendForPowerAsync().Wait(TimeSpan.FromSeconds(5));
+                else if (status is Microsoft.Windows.System.Power.SystemSuspendStatus.AutoResume
+                    or Microsoft.Windows.System.Power.SystemSuspendStatus.ManualResume)
+                    UiDispatcher.TryEnqueue(async () =>
+                    {
+                        try { await Meetings.ResumeAfterPowerAsync(); }
+                        catch (Exception exception) { _log.Error("Meeting resume after sleep failed.", exception); }
+                    });
+            }
+            catch (Exception exception) { _log.Error("Meeting sleep checkpoint failed; audio remains recoverable.", exception); }
         };
         Meetings.SourceWarningDismissed += (_, _) =>
         {
@@ -312,11 +335,14 @@ public partial class App : Application
             mainWindow.HideDashboard();
 
         // Development-only deterministic preview route for visual qualification. It never persists a
-        // fake meeting and never starts capture.
+        // fake meeting and never starts capture. Compiled out of Release so shipped builds can never
+        // show a made-up meeting.
+#if DEBUG
         if (TryGetMeetingNotificationPreview(out var previewState))
         {
             UiDispatcher.TryEnqueue(() => ShowMeetingNotificationPreview(previewState));
         }
+#endif
     }
 
     private async Task StopDetectedMeetingAsync()

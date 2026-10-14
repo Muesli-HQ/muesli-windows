@@ -248,16 +248,36 @@ public sealed class FloatingIndicatorLayoutTests
     public void BrandMarkGeometry_snaps_every_bar_and_gap_to_whole_pixels(double scale)
     {
         // Fractional 13-bar gaps antialias away at pill size and the logo smears into a blob.
-        var (bar, gap, heights) = FloatingIndicatorLayout.BrandMarkGeometry(18, scale);
+        var (bar, gap, heights) = FloatingIndicatorLayout.BrandMarkGeometry(FloatingIndicatorLayout.IdleBrandMarkSize, scale);
         static bool Whole(double pixels) => Math.Abs(pixels - Math.Round(pixels)) < 1e-9;
         Assert.True(Whole(bar * scale) && bar * scale >= 1);
         Assert.True(Whole(gap * scale) && gap * scale >= 1);
         Assert.Equal(13, heights.Length);
-        var tallest = Math.Round(18 * scale);
+        var tallest = Math.Round(FloatingIndicatorLayout.IdleBrandMarkSize * scale);
         Assert.All(heights, h => Assert.True(Whole(h * scale) && (tallest - h * scale) % 2 == 0));
         Assert.Equal(heights, heights.Reverse());
         Assert.Equal(tallest / scale, heights.Max(), 6);
         Assert.True(heights[3] > heights[0] && heights[3] > heights[6]);
+    }
+
+    [Theory]
+    [InlineData("Middle Right", 20, 42)]
+    [InlineData("Middle Left", 20, 42)]
+    [InlineData("Top Center", 42, 20)]
+    [InlineData("Custom", 42, 20)]
+    public void MinimalRestingSize_turns_the_grip_vertical_beside_side_anchors(string anchor, double width, double height)
+    {
+        var size = FloatingIndicatorLayout.MinimalRestingSize(anchor);
+        Assert.Equal((width, height), (size.Width, size.Height));
+    }
+
+    [Theory]
+    [InlineData(5, FloatingIndicatorAction.Cancel)]
+    [InlineData(38, FloatingIndicatorAction.None)]
+    [InlineData(70, FloatingIndicatorAction.Stop)]
+    public void MeetingActionForClick_never_stops_from_the_waveform_body(double x, FloatingIndicatorAction expected)
+    {
+        Assert.Equal(expected, FloatingIndicatorLayout.MeetingActionForClick(x, FloatingIndicatorLayout.LiveWidth));
     }
 
     // ─── Status return durations ─────────────────────────────────────────────────────────────

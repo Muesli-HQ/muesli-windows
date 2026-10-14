@@ -105,6 +105,18 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial int HotkeyTriggerThresholdMs { get; set; }
     [ObservableProperty] public partial string Hotkey { get; set; } = "F8";
     [ObservableProperty] public partial int ThemeIndex { get; set; }
+    [ObservableProperty] public partial int RecordingColorIndex { get; set; }
+    [ObservableProperty] public partial int IndicatorStyleIndex { get; set; }
+
+    /// <summary>
+    /// The recording pill's accent presets, in macOS order. "1e1e2e" is the shared stored value for
+    /// the default accent; a hex outside this list (index -1) is preserved on save.
+    /// </summary>
+    public static readonly (string Hex, string Name)[] RecordingColors =
+    [
+        ("1e1e2e", "Default"), ("2563eb", "Blue"), ("ef4444", "Red"), ("f59e0b", "Amber"),
+        ("10b981", "Green"), ("8b5cf6", "Purple"), ("ec4899", "Pink")
+    ];
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
     [ObservableProperty] public partial bool IsStatusOpen { get; set; }
     [ObservableProperty] public partial bool IsStatusError { get; private set; }
@@ -293,9 +305,16 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         HotkeyTriggerThresholdMs = _source.HotkeyTriggerThresholdMs;
         Hotkey = _source.Hotkey;
         ThemeIndex = _source.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
+        IndicatorStyleIndex = _source.IndicatorStyle == "minimal" ? 1 : 0;
+        RecordingColorIndex = Array.FindIndex(RecordingColors, color => color.Hex == _source.RecordingColorHex);
         Microphones = new[] { "Automatic" }.Concat(_dictation.ListMicrophones()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         SelectedMicrophone = string.IsNullOrWhiteSpace(_source.MicrophoneName) ? "Automatic" : _source.MicrophoneName;
-        DictationModels = TranscriptionModelCatalog.Models.Select(model => model.DisplayName).ToList();
+        // macOS lists only installed models; the Models page owns downloads. The saved selections
+        // stay listed so the picker never shows blank (dictation then fails closed with guidance).
+        DictationModels = TranscriptionModelCatalog.Models
+            .Where(model => TranscriptionModelReadiness.IsVerified(model) ||
+                model.Id == _source.DictationModelId || model.Id == _source.FinalMeetingModelId)
+            .Select(model => model.DisplayName).ToList();
         MeetingModels = DictationModels;
         SelectedDictationModel = TranscriptionModelCatalog.Get(_source.DictationModelId).DisplayName;
         SelectedMeetingModel = TranscriptionModelCatalog.Get(_source.FinalMeetingModelId).DisplayName;
@@ -374,6 +393,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             ShowLiveWaveformOnHover = ShowLiveWaveformOnHover,
             HotkeyTriggerThresholdMs = threshold,
             Theme = theme,
+            IndicatorStyle = IndicatorStyleIndex == 1 ? "minimal" : "classic",
+            RecordingColorHex = RecordingColorIndex >= 0 ? RecordingColors[RecordingColorIndex].Hex : _source.RecordingColorHex,
             MicrophoneName = SelectedMicrophone == "Automatic" ? null : SelectedMicrophone,
             DictationModelId = dictationModel,
             FinalMeetingModelId = meetingModel,
@@ -407,26 +428,37 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             ResolvedOpenRouterApiKey = OpenRouterApiKey.Trim(),
             ResolvedCustomLlmApiKey = CustomLlmApiKey.Trim()
         };
+        string? warning = null;
         if (draft.ComputerUseEnabled &&
             !ComputerUseConfiguration.TryValidate(draft, draft.ResolvedOpenAIApiKey, out var error))
         {
             draft = draft with { ComputerUseEnabled = false };
             ComputerUseEnabled = false;
-            ShowStatus(error, isError: true);
+            warning = $"Computer Use was turned off: {error}";
         }
 
         HotkeyTriggerThresholdMs = threshold;
         ComputerUseAllowedApplications = draft.ComputerUseAllowedApplications;
         ComputerUseAllowedBrowserDomains = draft.ComputerUseAllowedBrowserDomains;
+        // Windows can refuse the startup task (e.g. disabled in Task Manager). That must not
+        // block keys and every other setting from saving.
+        if (IsStartupAvailable)
+        {
+            try { await _startup.SetEnabledAsync(StartAtLogin); }
+            catch (Exception exception)
+            {
+                warning = (warning is null ? "" : warning + " ") + $"Launch at sign-in could not be changed: {exception.Message}";
+            }
+        }
+
         try
         {
-            if (IsStartupAvailable) await _startup.SetEnabledAsync(StartAtLogin);
             _settingsContext.SaveProviderKeys(OpenAIApiKey, OpenRouterApiKey, CustomLlmApiKey);
             _settingsContext.Save(draft);
             _source = draft;
             _applyDetection(draft.AutoMeetingDetectionEnabled);
             HasUnsavedChanges = false;
-            ShowStatus("Settings saved.");
+            ShowStatus(warning is null ? "Settings saved." : $"Settings saved. {warning}", isError: warning is not null);
         }
         catch (Exception exception)
         {
@@ -439,7 +471,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task TestMicrophoneAsync()
     {
-        var probe = await _microphone.ProbeAsync(SelectedMicrophone == "Automatic" ? null : SelectedMicrophone);
+        MicrophoneProbeResult probe;
+        try { probe = await _microphone.ProbeAsync(SelectedMicrophone == "Automatic" ? null : SelectedMicrophone); }
+        catch (Exception exception) { ShowStatus($"Microphone test failed: {exception.Message}", true); return; }
         AssignPermissions(WindowsPermissionStatus.Build(
             true,
             probe.Captured,

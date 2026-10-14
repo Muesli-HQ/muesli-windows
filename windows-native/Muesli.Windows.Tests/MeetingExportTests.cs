@@ -7,6 +7,9 @@ namespace Muesli.Windows.Tests;
 /// project. Exercises the shared deterministic Markdown renderer and the Markdown/PDF writer on the
 /// active tree, including the EXP-01 PDF release gate.
 /// </summary>
+
+// Both classes flip the static PDF gate; running them in parallel made each see the other's value.
+[Collection("PdfExportGate")]
 public sealed class MeetingExportTests
 {
     private static MeetingItem Meeting(string summary = "## Summary\n- shipped the release", string manual = "") =>

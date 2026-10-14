@@ -32,6 +32,13 @@ public sealed partial class MeetingDetailPage : Page
 
             if (args.PropertyName == nameof(ViewModel.Transcript)) SavedTranscriptFeed.Update(null, ViewModel.Transcript);
 
+            if (args.PropertyName == nameof(ViewModel.IsPlaying))
+            {
+                // Drive the playhead once per rendered frame, only while audio plays.
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnRenderingFrame;
+                if (ViewModel.IsPlaying) Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnRenderingFrame;
+            }
+
             if (args.PropertyName is nameof(ViewModel.ShowNotesTab) or null or "")
             {
                 SyncTabBar();
@@ -54,6 +61,7 @@ public sealed partial class MeetingDetailPage : Page
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
         Unloaded += (_, _) =>
         {
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnRenderingFrame;
             ViewModel.LibraryChanged -= OnLibraryChanged;
             ViewModel.MeetingRemoved -= OnMeetingRemoved;
             ViewModel.RecordingStarted -= OnRecordingStarted;
@@ -101,10 +109,10 @@ public sealed partial class MeetingDetailPage : Page
     private void OnMeetingRemoved(object? sender, EventArgs e) =>
         BackButton.Focus(FocusState.Programmatic);
 
-    private void PlaybackSlider_PointerCaptureLost(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
-    {
-        ViewModel.SeekTo(PlaybackSlider.Value);
-    }
+    private void OnRenderingFrame(object? sender, object e) => ViewModel.RefreshPlaybackPosition();
+
+    private void Waveform_Seeked(object? sender, double fraction) =>
+        ViewModel.SeekTo(fraction * ViewModel.PlaybackDurationSeconds);
 
     private void DetailTabBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
@@ -161,18 +169,6 @@ public sealed partial class MeetingDetailPage : Page
                 button.HorizontalAlignment = HorizontalAlignment.Stretch;
             }
 
-            Grid.SetRow(TrackPicker, 0);
-            Grid.SetColumn(TrackPicker, 0);
-            Grid.SetColumnSpan(TrackPicker, 4);
-            PlaybackToolbar.ColumnDefinitions[0].Width = new GridLength(0, GridUnitType.Auto);
-            Grid.SetRow(PlayButton, 1);
-            Grid.SetColumn(PlayButton, 0);
-            Grid.SetColumnSpan(PlayButton, 1);
-            Grid.SetRow(PauseButton, 1);
-            Grid.SetColumn(PauseButton, 1);
-            Grid.SetRow(StopButton, 1);
-            Grid.SetColumn(StopButton, 2);
-
             Grid.SetRow(SummaryTemplatePicker, 1);
             Grid.SetColumn(SummaryTemplatePicker, 0);
             Grid.SetColumnSpan(SummaryTemplatePicker, 2);
@@ -215,18 +211,6 @@ public sealed partial class MeetingDetailPage : Page
             {
                 button.HorizontalAlignment = HorizontalAlignment.Left;
             }
-
-            PlaybackToolbar.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
-            Grid.SetRow(TrackPicker, 0);
-            Grid.SetColumn(TrackPicker, 0);
-            Grid.SetColumnSpan(TrackPicker, 1);
-            Grid.SetRow(PlayButton, 0);
-            Grid.SetColumn(PlayButton, 1);
-            Grid.SetColumnSpan(PlayButton, 1);
-            Grid.SetRow(PauseButton, 0);
-            Grid.SetColumn(PauseButton, 2);
-            Grid.SetRow(StopButton, 0);
-            Grid.SetColumn(StopButton, 3);
 
             Grid.SetRow(SummaryTemplatePicker, 0);
             Grid.SetColumn(SummaryTemplatePicker, 1);

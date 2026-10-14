@@ -18,6 +18,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     private PersistedMeeting? _meeting;
     private RetranscriptionCandidate? _candidate;
     private int _disposed;
+    private CancellationTokenSource? _notesDebounce;
+    private bool _notesPending;
 
     public MeetingDetailViewModel(
         WinUiLibraryContext library,
@@ -45,6 +47,10 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] public partial string Title { get; set; } = "Meeting";
     [ObservableProperty] public partial string Metadata { get; private set; } = "";
+    // macOS meetingIdentity: calendar date · clock duration · word count, each with its icon.
+    [ObservableProperty] public partial string MetadataDate { get; private set; } = "";
+    [ObservableProperty] public partial string MetadataDuration { get; private set; } = "";
+    [ObservableProperty] public partial string MetadataWords { get; private set; } = "";
     [ObservableProperty] public partial string TitleOwnershipLabel { get; private set; } = "";
     [ObservableProperty] public partial string Summary { get; private set; } = "";
     [ObservableProperty] public partial string Transcript { get; set; } = "";
@@ -79,7 +85,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool HasCandidate { get; private set; }
     [ObservableProperty] public partial IReadOnlyList<MeetingFolderOption> FolderOptions { get; private set; } = [];
     [ObservableProperty] public partial MeetingFolderOption? SelectedFolder { get; set; }
-    [ObservableProperty] public partial IReadOnlyList<WaveformBar> WaveformBars { get; private set; } = [];
+    [ObservableProperty] public partial IReadOnlyList<double> WaveformPeaks { get; private set; } = [];
+    [ObservableProperty] public partial bool IsPlaying { get; private set; }
     [ObservableProperty] public partial double PlaybackSeconds { get; set; }
     [ObservableProperty] public partial double PlaybackDurationSeconds { get; private set; }
 
@@ -145,13 +152,16 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     public bool ShowTranscriptTab => HasMeeting && !ShowNotesTab;
     public bool ShowNotesContent => HasMeeting && ShowNotesTab;
     public bool ShowGeneratedNotes => HasMeeting && _meeting?.SessionState == MeetingSessionState.Completed;
-    public bool HasWaveform => WaveformBars.Count > 0;
-    public double PlaybackSliderMaximum => Math.Max(1d, PlaybackDurationSeconds);
+    public bool HasWaveform => WaveformPeaks.Count > 0;
+    public double PlaybackProgress => PlaybackDurationSeconds > 0 ? PlaybackSeconds / PlaybackDurationSeconds : 0;
+    public string PlayPauseGlyph => IsPlaying ? "\uE769" : "\uE768";
+    public string PlayPauseLabel => IsPlaying ? "Pause recording" : "Play recording";
     public string PlaybackTimeLabel =>
         $"{FormatTime(TimeSpan.FromSeconds(PlaybackSeconds))} / {FormatTime(TimeSpan.FromSeconds(PlaybackDurationSeconds))}";
 
     public void Load(string meetingId)
     {
+        FlushNotes();
         _meeting = _library.FindMeeting(meetingId);
         HasMeeting = _meeting is not null;
         if (_meeting is null)
@@ -190,9 +200,24 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     partial void OnManualNotesChanged(string value)
     {
         if (_meeting is null || value == _meeting.ManualNotes || Volatile.Read(ref _disposed) != 0) return;
+        // Persist after a typing pause, not per keystroke.
+        _notesPending = true;
+        _notesDebounce?.Cancel();
+        var debounce = _notesDebounce = new CancellationTokenSource();
+        _ = Task.Delay(700, debounce.Token).ContinueWith(
+            _ => _dispatcher.TryEnqueue(() => { if (!debounce.IsCancellationRequested) FlushNotes(); }),
+            TaskContinuationOptions.OnlyOnRanToCompletion);
+    }
+
+    // Writes pending notes now. Pass the freshest copy of the meeting when one was just reloaded.
+    private void FlushNotes(PersistedMeeting? latest = null)
+    {
+        _notesDebounce?.Cancel();
+        if (!_notesPending || (latest ?? _meeting) is not { } target) return;
+        _notesPending = false;
         try
         {
-            var updated = MeetingNotesComposer.ApplyManualNotes(_meeting, value);
+            var updated = MeetingNotesComposer.ApplyManualNotes(target, ManualNotes);
             if (_library.UpdateMeeting(updated)) _meeting = updated;
             else ShowStatus("The meeting no longer exists. Your writing has not been saved.", true);
         }
@@ -209,12 +234,22 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         GenerateSummaryCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnPlaybackSecondsChanged(double value) => OnPropertyChanged(nameof(PlaybackTimeLabel));
+    partial void OnPlaybackSecondsChanged(double value)
+    {
+        OnPropertyChanged(nameof(PlaybackTimeLabel));
+        OnPropertyChanged(nameof(PlaybackProgress));
+    }
 
     partial void OnPlaybackDurationSecondsChanged(double value)
     {
-        OnPropertyChanged(nameof(PlaybackSliderMaximum));
         OnPropertyChanged(nameof(PlaybackTimeLabel));
+        OnPropertyChanged(nameof(PlaybackProgress));
+    }
+
+    partial void OnIsPlayingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PlayPauseGlyph));
+        OnPropertyChanged(nameof(PlayPauseLabel));
     }
 
     [RelayCommand(CanExecute = nameof(CanWork))]
@@ -317,7 +352,9 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         if (_meeting is null) return;
         try
         {
-            await _clipboard.SetTextAsync(SpeakerAliasService.Apply(_meeting.Transcript, _meeting.SpeakerAliases), cancellationToken);
+            // macOS copies with the export metadata header (title, date, duration, words).
+            await _clipboard.SetTextAsync(MeetingExportFormatter.BuildMarkdown(
+                ToMeetingItem(_meeting), MeetingExportMode.Transcript, _meeting.SpeakerAliases), cancellationToken);
             ShowStatus("Transcript copied to the clipboard.");
         }
         catch (OperationCanceledException) { }
@@ -354,8 +391,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         // dictation and meeting list confirmations do.
         var name = string.IsNullOrWhiteSpace(_meeting.Title) ? "Untitled meeting" : _meeting.Title.Trim();
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete this meeting and its saved transcript?\n\n“{name}”\n{Metadata}\n\n" +
-            "Retained recordings owned by Muesli remain available for recovery until cleanup.",
+            $"Delete this meeting, its transcript, and its saved recording?\n\n“{name}”\n{Metadata}\n\n" +
+            "Imported original files are not deleted.",
             "Delete meeting", cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
         if (_library.DeleteMeeting(_meeting.Id))
@@ -398,6 +435,9 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     [RelayCommand] private void Play() { try { _runtime.Play(); } catch (Exception exception) { ShowStatus(exception.Message, true); } }
     [RelayCommand] private void Pause() => _runtime.Pause();
     [RelayCommand] private void StopPlayback() => _runtime.Stop();
+
+    /// <summary>macOS player: one play/pause toggle.</summary>
+    [RelayCommand] private void TogglePlayback() { if (IsPlaying) Pause(); else Play(); }
 
     public void SeekTo(double seconds)
     {
@@ -446,10 +486,19 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     private void ApplyMeeting(PersistedMeeting meeting, bool keepTranscriptDraft = false)
     {
+        // A reload must not overwrite notes typed during the debounce window.
+        if (_notesPending && meeting.Id == _meeting?.Id)
+        {
+            FlushNotes(meeting);
+            meeting = _meeting ?? meeting;
+        }
         RelatedMeetings = _library.RelatedMeetings(meeting.Id);
         OnPropertyChanged(nameof(HasRelatedMeetings));
         Title = meeting.Title;
         Metadata = $"{meeting.CreatedAt.ToLocalTime():MMM d, yyyy · h:mm tt} · {FormatDuration(meeting.DurationMs)} · {meeting.ModelProfile}";
+        MetadataDate = meeting.CreatedAt.ToLocalTime().ToString("d MMM yyyy 'at' h:mm:ss tt");
+        MetadataDuration = FormatHeaderDuration(meeting.DurationMs);
+        MetadataWords = $"{meeting.WordCount} words";
         HasManualTitle = meeting.TitleIsManual;
         TitleOwnershipLabel = meeting.TitleIsManual
             ? "Your title · kept when notes are regenerated"
@@ -508,6 +557,23 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         return options;
     }
 
+    private double _playbackAnchorSeconds;
+    private long _playbackAnchorTimestamp;
+
+    /// <summary>
+    /// Called every rendered frame while playing. The reader's position advances in read-ahead chunks, so
+    /// the playhead is extrapolated from the exact position of the last play/pause/seek on a high-resolution
+    /// clock, the way video editors drive a playhead.
+    /// </summary>
+    // ponytail: wall clock vs. audio clock drift is ~0.01%; re-anchoring on every seek/pause keeps it invisible.
+    public void RefreshPlaybackPosition()
+    {
+        if (!IsPlaying) return;
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(_playbackAnchorTimestamp).TotalSeconds;
+        PlaybackSeconds = Math.Min(_playbackAnchorSeconds + elapsed, PlaybackDurationSeconds);
+        PlaybackStatus = $"Playing · {FormatTime(TimeSpan.FromSeconds(PlaybackSeconds))} / {FormatTime(TimeSpan.FromSeconds(PlaybackDurationSeconds))}";
+    }
+
     private void UpdatePlayback(MeetingPlaybackStateChangedEventArgs args)
     {
         PlaybackStatus = args.State == MeetingPlaybackState.Failed
@@ -515,14 +581,20 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             : $"{args.State} · {FormatTime(args.Position)} / {FormatTime(args.Duration)}";
         PlaybackSeconds = args.Position.TotalSeconds;
         PlaybackDurationSeconds = Math.Max(args.Duration.TotalSeconds, 0);
+        _playbackAnchorSeconds = PlaybackSeconds;
+        _playbackAnchorTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        IsPlaying = args.State == MeetingPlaybackState.Playing;
         RefreshWaveform();
     }
 
     private void RefreshWaveform()
     {
-        WaveformBars = _runtime.WaveformPeaks
-            .Select(peak => new WaveformBar(Math.Max(2, peak * 46)))
-            .ToList();
+        // The peak cache stores bar heights (4 + 20 x amplitude, amplitude floored at 0.04); recover amplitudes
+        // with that floor as silence, then normalise to the loudest bucket with a 10/255 floor, as macOS
+        // RecordingWaveformData does. Without removing the floor a silent recording drew full-height bars.
+        var amplitudes = _runtime.WaveformPeaks.Select(height => Math.Clamp(((height - 4) / 20 - 0.04) / 0.96, 0, 1)).ToList();
+        var loudest = Math.Max(amplitudes.DefaultIfEmpty(0).Max(), 0.01);
+        WaveformPeaks = amplitudes.Select(amplitude => Math.Max(10 / 255d, amplitude / loudest)).ToList();
         OnPropertyChanged(nameof(HasWaveform));
     }
 
@@ -595,6 +667,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (Volatile.Read(ref _disposed) == 0) FlushNotes();
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _meetings.Changed -= OnMeetingRuntimeChanged;
         _runtime.Dispose();
@@ -614,6 +687,15 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             ? TimeSpan.FromMilliseconds(durationMs).ToString(@"h\:mm\:ss")
             : TimeSpan.FromMilliseconds(durationMs).ToString(@"m\:ss");
 
+    /// <summary>macOS MeetingDetailView.formatDuration: "1h 5m", "1m 2s", "45s".</summary>
+    private static string FormatHeaderDuration(int durationMs)
+    {
+        var seconds = (int)Math.Round(Math.Max(durationMs, 0) / 1000d);
+        if (seconds >= 3600) return $"{seconds / 3600}h {seconds % 3600 / 60}m";
+        if (seconds >= 60) return seconds % 60 == 0 ? $"{seconds / 60}m" : $"{seconds / 60}m {seconds % 60}s";
+        return $"{seconds}s";
+    }
+
     private static string FormatTime(TimeSpan value) => value.TotalHours >= 1
         ? value.ToString(@"h\:mm\:ss")
         : value.ToString(@"m\:ss");
@@ -630,4 +712,3 @@ public sealed record MeetingFolderOption(string Id, string DisplayName, string P
 {
     public bool HasParent => ParentSuffix.Length > 0;
 }
-public sealed record WaveformBar(double Height);

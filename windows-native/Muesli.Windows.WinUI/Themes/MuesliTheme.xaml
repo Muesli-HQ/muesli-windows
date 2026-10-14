@@ -24,15 +24,17 @@
                 <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#111214" />
                 <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#1C1D20" />
                 <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0202226" />
+                <SolidColorBrush x:Key="MuesliSurfacePrimaryBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliHoverBrush" Color="#232528" />
                 <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#2E3340" />
-                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#12FFFFFF" />
                 <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#12FFFFFF" />
                 <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#9EFFFFFF" />
-                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#BDFFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
@@ -129,6 +131,23 @@
                 <Color x:Key="SystemAccentColorDark2">#24559F</Color>
                 <Color x:Key="SystemAccentColorDark3">#1D4680</Color>
                 <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#2F6FE0" />
+                <!--
+                    TextBox focus underline and text selection. generic.xaml builds these from the
+                    accent Color ramp and aliases them with StaticResource, so they are redeclared
+                    here as brushes AccentPalette can retint (same geometry as generic.xaml).
+                -->
+                <LinearGradientBrush x:Key="TextControlElevationBorderFocusedBrush" MappingMode="Absolute" StartPoint="0,0" EndPoint="0,2">
+                    <LinearGradientBrush.RelativeTransform>
+                        <ScaleTransform ScaleY="-1" CenterY="0.5" />
+                    </LinearGradientBrush.RelativeTransform>
+                    <LinearGradientBrush.GradientStops>
+                        <GradientStop Offset="1.0" Color="#2F6FE0" />
+                        <GradientStop Offset="1.0" Color="#12FFFFFF" />
+                    </LinearGradientBrush.GradientStops>
+                </LinearGradientBrush>
+                <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
+                <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#6BA3F7" />
+                <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3F7BE6" />
                 <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#2A63C8" />
                 <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#262830" />
@@ -168,15 +187,17 @@
                 <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#111214" />
                 <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#1C1D20" />
                 <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#262830" />
+                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0202226" />
+                <SolidColorBrush x:Key="MuesliSurfacePrimaryBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliHoverBrush" Color="#232528" />
                 <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#2E3340" />
-                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#1CFFFFFF" />
+                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#12FFFFFF" />
                 <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#12FFFFFF" />
                 <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#9EFFFFFF" />
-                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#BDFFFFFF" />
+                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
@@ -250,6 +271,23 @@
                 <Color x:Key="SystemAccentColorDark2">#24559F</Color>
                 <Color x:Key="SystemAccentColorDark3">#1D4680</Color>
                 <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#2F6FE0" />
+                <!--
+                    TextBox focus underline and text selection. generic.xaml builds these from the
+                    accent Color ramp and aliases them with StaticResource, so they are redeclared
+                    here as brushes AccentPalette can retint (same geometry as generic.xaml).
+                -->
+                <LinearGradientBrush x:Key="TextControlElevationBorderFocusedBrush" MappingMode="Absolute" StartPoint="0,0" EndPoint="0,2">
+                    <LinearGradientBrush.RelativeTransform>
+                        <ScaleTransform ScaleY="-1" CenterY="0.5" />
+                    </LinearGradientBrush.RelativeTransform>
+                    <LinearGradientBrush.GradientStops>
+                        <GradientStop Offset="1.0" Color="#2F6FE0" />
+                        <GradientStop Offset="1.0" Color="#12FFFFFF" />
+                    </LinearGradientBrush.GradientStops>
+                </LinearGradientBrush>
+                <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
+                <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#6BA3F7" />
+                <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3F7BE6" />
                 <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#2A63C8" />
                 <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#262830" />
@@ -289,17 +327,19 @@
                 <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#FFFFFF" />
                 <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#FFFFFF" />
                 <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#F0F2F5" />
+                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0F0F0F2" />
+                <SolidColorBrush x:Key="MuesliSurfacePrimaryBrush" Color="#E5E5EA" />
                 <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#F0F2F5" />
                 <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#F0F2F5" />
                 <SolidColorBrush x:Key="MuesliHoverBrush" Color="#E8EBF0" />
                 <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#DEE8F8" />
-                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#1A000000" />
+                <SolidColorBrush x:Key="MuesliBorderBrush" Color="#14000000" />
                 <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#0F000000" />
-                <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#E6000000" />
-                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#99000000" />
-                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#61000000" />
-                <SolidColorBrush x:Key="MuesliAccentBrush" Color="#2364C9" />
-                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#1F2364C9" />
+                <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#E0000000" />
+                <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#A8000000" />
+                <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8C000000" />
+                <SolidColorBrush x:Key="MuesliAccentBrush" Color="#2563EB" />
+                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#1F2563EB" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#1F62D6" />
                 <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#0F9F6E" />
                 <SolidColorBrush x:Key="MuesliSuccessMutedBrush" Color="#1F0F9F6E" />
@@ -311,9 +351,9 @@
                 <SolidColorBrush x:Key="MuesliControlHoverBrush" Color="#F3F5F8" />
                 <SolidColorBrush x:Key="MuesliControlPressedBrush" Color="#E8EBF0" />
                 <SolidColorBrush x:Key="MuesliControlDisabledBrush" Color="#F6F7F9" />
-                <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="MuesliFocusOuterBrush" Color="#000000" />
-                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="MuesliOverlayBrush" Color="#66000000" />
 
                 <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E6000000" />
@@ -324,7 +364,7 @@
                 <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#E6000000" />
                 <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#61000000" />
                 <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#61000000" />
-                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#1D55AD" />
                 <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#174892" />
 
@@ -342,9 +382,9 @@
 
                 <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#1A000000" />
                 <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#24000000" />
-                <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="#000000" />
-                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#2364C9" />
+                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#14000000" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#DDE1E8" />
                 <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#0F000000" />
@@ -369,14 +409,31 @@
                     See the note in the Default dictionary for why the ramp, not the brushes,
                     is the override point.
                 -->
-                <Color x:Key="SystemAccentColor">#2364C9</Color>
+                <Color x:Key="SystemAccentColor">#2563EB</Color>
                 <Color x:Key="SystemAccentColorLight1">#4C86DE</Color>
                 <Color x:Key="SystemAccentColorLight2">#7BA9EC</Color>
                 <Color x:Key="SystemAccentColorLight3">#A9C8F4</Color>
                 <Color x:Key="SystemAccentColorDark1">#1F62D6</Color>
-                <Color x:Key="SystemAccentColorDark2">#2364C9</Color>
+                <Color x:Key="SystemAccentColorDark2">#2563EB</Color>
                 <Color x:Key="SystemAccentColorDark3">#1D55AD</Color>
                 <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#1F62D6" />
+                <!--
+                    TextBox focus underline and text selection. generic.xaml builds these from the
+                    accent Color ramp and aliases them with StaticResource, so they are redeclared
+                    here as brushes AccentPalette can retint (same geometry as generic.xaml).
+                -->
+                <LinearGradientBrush x:Key="TextControlElevationBorderFocusedBrush" MappingMode="Absolute" StartPoint="0,0" EndPoint="0,2">
+                    <LinearGradientBrush.RelativeTransform>
+                        <ScaleTransform ScaleY="-1" CenterY="0.5" />
+                    </LinearGradientBrush.RelativeTransform>
+                    <LinearGradientBrush.GradientStops>
+                        <GradientStop Offset="1.0" Color="#1F62D6" />
+                        <GradientStop Offset="1.0" Color="#0F000000" />
+                    </LinearGradientBrush.GradientStops>
+                </LinearGradientBrush>
+                <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
+                <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#2563EB" />
+                <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#1B58C0" />
                 <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#174CA6" />
                 <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#E8EBF0" />
@@ -423,6 +480,8 @@
                 <StaticResource x:Key="MuesliSidebarBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliSurfaceBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliSurfaceRaisedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliBackgroundRaisedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliSurfacePrimaryBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliRaisedBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliRaisedSurfaceBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliHoverBrush" ResourceKey="SystemColorHighlightColorBrush" />

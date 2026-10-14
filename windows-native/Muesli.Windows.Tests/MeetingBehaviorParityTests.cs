@@ -105,6 +105,24 @@ public sealed class MeetingBehaviorParityTests
     }
 
     [Fact]
+    public void SavingOneMeetingLeavesTheRestOfTheSqliteLibraryAlone()
+    {
+        using var directory = new TestDirectory();
+        Assert.True(new PersistenceCutover(directory.Path).EnsureMigrated().Succeeded);
+        using var history = SqliteLibraryHistoryAdapter.Open(directory.Path);
+        var first = new PersistedMeeting { Id = "meet_a", Title = "A", ManualNotes = "a notes", CreatedAt = DateTime.Now };
+        var second = new PersistedMeeting { Id = "meet_b", Title = "B", ManualNotes = "b notes", CreatedAt = DateTime.Now };
+        history.SaveMeetings([first, second]);
+
+        history.SaveMeetings([second with { ManualNotes = "typed" }]);
+
+        Assert.Equal("a notes", history.FindMeeting("meet_a")?.ManualNotes);
+        Assert.Equal("typed", history.FindMeeting("meet_b")?.ManualNotes);
+        Assert.Null(history.FindMeeting("missing"));
+        Assert.Equal(2, history.LoadMeetings().Count);
+    }
+
+    [Fact]
     public void KeepingNotesAfterDiscardRoundTripsThroughWindowsSqliteWithoutInventingSpeech()
     {
         using var directory = new TestDirectory();

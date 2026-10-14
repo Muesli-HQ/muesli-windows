@@ -80,13 +80,6 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
     public bool IsCleanupCategory => CategoryIndex == 2;
     public bool HasItems => Items.Count > 0;
 
-    public string CategoryDescription => CategoryIndex switch
-    {
-        1 => "Choose the model used for live meetings and imported recordings.",
-        2 => "Optional cleanup is applied locally after transcription when enabled in Settings.",
-        _ => "Choose the model used for push-to-talk dictation."
-    };
-
     public string RoleDescription => RoleIndex == 0
         ? "Choose the model used for push-to-talk dictation."
         : "Choose the final model used for recordings and imported meetings.";
@@ -111,7 +104,6 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
             RoleIndex = value;
         }
         OnPropertyChanged(nameof(IsCleanupCategory));
-        OnPropertyChanged(nameof(CategoryDescription));
         OnPropertyChanged(nameof(RoleDescription));
         _resetVariantSelection = true;
         Reload();
@@ -352,6 +344,9 @@ public sealed partial class ModelFamilyCardItem : ObservableObject
     /// <summary>Repository-owned vendor mark filename (no extension), or "" for a neutral glyph.</summary>
     public string LogoFile => _descriptor.LogoFile;
     public bool HasLogo => !string.IsNullOrWhiteSpace(LogoFile);
+    /// <summary>macOS draws the OpenAI mark as a glyph in the text colour; other marks sit on a white tile.</summary>
+    public bool UsesOpenAiGlyph => LogoFile == "openai-logo";
+    public bool HasTileLogo => HasLogo && !UsesOpenAiGlyph;
     public string BadgeLabel => _descriptor.BadgeLabel;
     public bool HasBadge => !string.IsNullOrWhiteSpace(BadgeLabel);
 
@@ -530,6 +525,8 @@ public sealed partial class ModelVariantItem : ObservableObject
         ? string.Empty
         : $"Installed · {DiskSize}";
     public bool HasInstalledSize => !string.IsNullOrWhiteSpace(InstalledLabel);
+    /// <summary>Download size, plus what is on disk once installed, as one caption.</summary>
+    public string SizeCaption => HasInstalledSize ? $"{DownloadLabel} · {DiskSize} on disk" : DownloadLabel;
     public bool HasLanguages => !string.IsNullOrWhiteSpace(Languages);
 
     public string ProgressLabel => ProgressPercent is int value ? $"{value}%" : StatusText;
@@ -568,7 +565,7 @@ public sealed partial class ModelVariantItem : ObservableObject
             StatusText,
         TranscriptionModelStatus.Failed or TranscriptionModelStatus.DeletionFailed => StatusText,
         _ when IsSelectedForAnyRole && HasFilesOnDisk && !CanDelete && !IsBusy =>
-            $"These files stay on disk because this model is selected for {SelectedRoleLabel}. Pick a different model for that role first.",
+            $"In use for {SelectedRoleLabel}, so it can't be deleted. Choose another model for that first.",
         _ => ""
     };
 

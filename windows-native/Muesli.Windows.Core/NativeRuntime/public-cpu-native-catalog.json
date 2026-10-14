@@ -125,7 +125,7 @@
       "noticesHeading": "Microsoft Visual C++ 2022 runtime",
       "allowedInPublicWinX64": true,
       "requiredInPublicWinX64": false,
-      "nativeFiles": [ "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll" ]
+      "nativeFiles": [ "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll", "vcomp140.dll" ]
     },
     {
       "id": "questpdf-native-win-x64",

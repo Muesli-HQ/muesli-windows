@@ -19,6 +19,21 @@ public sealed class DictationRollingTranscriberTests
     }
 
     [Fact]
+    public void PerformanceBoostRaisesPriorityAndRestoresItWhenTheLastScopeEnds()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        var before = process.PriorityClass;
+        var outer = TranscriptionPerformance.Boost();
+        var inner = TranscriptionPerformance.Boost();
+        inner.Dispose();
+        process.Refresh();
+        Assert.Equal(System.Diagnostics.ProcessPriorityClass.AboveNormal, process.PriorityClass);
+        outer.Dispose();
+        process.Refresh();
+        Assert.Equal(before, process.PriorityClass);
+    }
+
+    [Fact]
     public async Task CompletedAudioDecodesBeforeStopAndTailIsAppendedInOrder()
     {
         using var directory = new TestDirectory();

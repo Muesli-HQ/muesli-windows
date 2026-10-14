@@ -37,6 +37,10 @@ public sealed class MarkdownNotesEditor : RichEditBox
     private void Render(string markdown)
     {
         _applying = true;
+        // A read-only RichEditBox rejects Document.SetText with E_ACCESSDENIED. Thrown from an x:Bind
+        // update, that aborted every later binding on the page (title, folder, metadata stayed blank).
+        var readOnly = IsReadOnly;
+        IsReadOnly = false;
         try
         {
             var lines = markdown.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').Select(MeetingNotesRichText.ParseLine).ToArray();
@@ -64,7 +68,11 @@ public sealed class MarkdownNotesEditor : RichEditBox
             Document.Selection.SetRange(0, 0);
             _published = markdown;
         }
-        finally { _applying = false; }
+        finally
+        {
+            IsReadOnly = readOnly;
+            _applying = false;
+        }
     }
 
     private void Publish()

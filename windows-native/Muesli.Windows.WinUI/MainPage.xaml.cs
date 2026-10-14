@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Muesli.Windows.Core.Services;
 using Muesli.Windows.Services;
 using Muesli.Windows.WinUI.ViewModels;
 using Windows.System;
@@ -72,6 +73,34 @@ public sealed partial class MainPage : Page
         ApplyResponsiveLayout(ShellRoot.ActualWidth);
         Navigate(_selectedTag);
         RefreshNavigationVisuals();
+        DrawBrandMark();
+        XamlRoot.Changed -= OnXamlRootChanged;
+        XamlRoot.Changed += OnXamlRootChanged;
+    }
+
+    private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => DrawBrandMark();
+
+    /// <summary>
+    /// The app icon's mark as tall as the "muesli" title beside it, as on the macOS sidebar,
+    /// with each bar and gap a whole number of physical pixels.
+    /// </summary>
+    private void DrawBrandMark()
+    {
+        var (bar, gap, heights) = FloatingIndicatorLayout.BrandMarkGeometry(22, XamlRoot?.RasterizationScale ?? 1);
+        var tallest = heights.Max();
+        var figures = new PathFigureCollection();
+        for (var index = 0; index < heights.Length; index++)
+        {
+            // A round-capped stroke as wide as the bar: the caps make the bar's rounded ends.
+            var x = index * (bar + gap) + bar / 2;
+            var figure = new PathFigure { StartPoint = new(x, (tallest - heights[index] + bar) / 2) };
+            figure.Segments.Add(new LineSegment { Point = new(x, (tallest + heights[index] - bar) / 2) });
+            figures.Add(figure);
+        }
+        BrandMark.StrokeThickness = bar;
+        BrandMark.Width = heights.Length * bar + (heights.Length - 1) * gap;
+        BrandMark.Height = tallest;
+        BrandMark.Data = new PathGeometry { Figures = figures };
     }
 
     private void ShellRoot_SizeChanged(object sender, SizeChangedEventArgs e) =>

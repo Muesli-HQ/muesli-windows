@@ -12,10 +12,8 @@ does not replace the applicable license texts in `licenses/` or upstream terms.
 - License: the license shipped in the 2026.5.0 NuGet package; this build selects
   `LicenseType.Community`.
 - Use: PDF meeting export.
-- Important: the Community license is not universally available. The legal entity that
-  builds or distributes Muesli must confirm eligibility under QuestPDF's current License
-  Selection Guide or obtain the appropriate paid license. No eligibility conclusion is
-  made here.
+- Eligibility: Muesli is an open-source project, which QuestPDF's Community license covers
+  (confirmed by the release owner on 2026-10-11).
 - Included text: `licenses/QuestPDF-2026.5.0.md`.
 
 QuestPDF's redistributed native/content dependencies in this package include:
@@ -39,9 +37,8 @@ QuestPDF's redistributed native/content dependencies in this package include:
   License 1.1; https://www.latofonts.com/; the upstream `LatoFont/OFL.txt` is
   also retained verbatim in the published package.
 
-QuestPDF community-license eligibility is a Phase 13 / EXP-01 release-owner
-check. This repository records that the build selects `LicenseType.Community`
-and does not declare that the distributing entity is eligible.
+The build selects `LicenseType.Community`; the release owner confirmed eligibility
+(EXP-01) on 2026-10-11 because Muesli is an open-source project.
 
 ### NAudio 2.2.1
 
@@ -104,14 +101,25 @@ and does not declare that the distributing entity is eligible.
 - Use: self-contained Windows runtime, WPF, JSON, logging abstractions, and related support.
 - Included text: `licenses/MIT.txt`.
 
-### CommunityToolkit.HighPerformance and Ix.Async support libraries
+### CommunityToolkit.Mvvm, CommunityToolkit.HighPerformance and Ix.Async support libraries
 
 - Copyright: .NET Foundation, Microsoft, and contributors.
 - Sources: https://github.com/CommunityToolkit/dotnet and
   https://github.com/dotnet/reactive
 - License: MIT.
-- Use: transitive managed dependencies of the application libraries.
+- Use: view-model infrastructure and transitive managed dependencies of the application libraries.
 - Included text: `licenses/MIT.txt`.
+
+### Windows App SDK 2.4, WinUI 3 and the WebView2 SDK
+
+- Copyright: Microsoft Corporation.
+- Sources: https://github.com/microsoft/WindowsAppSDK, https://github.com/microsoft/microsoft-ui-xaml,
+  https://www.nuget.org/packages/Microsoft.Web.WebView2
+- License: the license terms shipped in the `Microsoft.WindowsAppSDK` 2.4.0 and
+  `Microsoft.Web.WebView2` NuGet packages.
+- Use: the application UI framework and Windows App runtime, carried inside the package
+  (self-contained) so no separate runtime install is needed. `WebView2Loader.dll` is the SDK loader;
+  the WebView2 browser runtime itself is part of Windows and is not redistributed.
 
 ### Swift shared core (MuesliCoreABI) 6.4
 
@@ -132,8 +140,9 @@ and does not declare that the distributing entity is eligible.
 
 - Copyright: Microsoft Corporation.
 - License: the Microsoft Visual C++ Redistributable terms; redistributed beside the application
-  because the shared Swift bridge and native dependencies link against the C++ runtime.
-- Use: `MSVCP140.dll`, `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`.
+  because the llama.cpp cleanup backend (`llama.dll`, `ggml*.dll`) links against the C++ runtime
+  and OpenMP, which Windows does not include.
+- Use: `msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `vcomp140.dll`.
 - Included text: `licenses/Microsoft-VCpp-Runtime.txt`.
 
 ## Fonts
@@ -160,6 +169,61 @@ download.
 - Use: multilingual speech recognition. Muesli uses sherpa-onnx-converted ONNX artifacts
   from the pinned k2-fsa release.
 - Included text: `licenses/CC-BY-4.0.txt`.
+
+### NVIDIA Parakeet TDT 0.6B v2
+
+- Creator and attribution: NVIDIA Corporation, `nvidia/parakeet-tdt-0.6b-v2`.
+- Model card: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2
+- License: Creative Commons Attribution 4.0 International (CC BY 4.0).
+- Use: English speech recognition via sherpa-onnx-converted ONNX artifacts from the pinned k2-fsa release.
+- Included text: `licenses/CC-BY-4.0.txt`.
+
+### NVIDIA Parakeet Unified EN 0.6B
+
+- Creator and attribution: NVIDIA Corporation, `nvidia/parakeet-unified-en-0.6b`.
+- Model card: https://huggingface.co/nvidia/parakeet-unified-en-0.6b
+- License: the NVIDIA terms published on the model card.
+- Use: English speech recognition via sherpa-onnx-converted ONNX artifacts from the pinned k2-fsa release.
+
+### OpenAI Whisper (tiny, small, medium.en, turbo)
+
+- Creator and attribution: OpenAI, https://github.com/openai/whisper
+- License: MIT.
+- Use: multilingual speech recognition via sherpa-onnx-converted ONNX artifacts from the pinned k2-fsa release.
+- Included text: `licenses/MIT.txt`.
+
+### SenseVoice Small
+
+- Creator and attribution: FunAudioLLM / Alibaba Tongyi Lab, `FunAudioLLM/SenseVoiceSmall`.
+- Model card: https://huggingface.co/FunAudioLLM/SenseVoiceSmall
+- License: the FunASR model license published with the model.
+- Use: Chinese, English, Japanese, Korean and Cantonese recognition via sherpa-onnx-converted artifacts.
+
+### Qwen3-ASR 0.6B
+
+- Creator and attribution: Alibaba Qwen team, `Qwen/Qwen3-ASR-0.6B`.
+- Model card: https://huggingface.co/Qwen/Qwen3-ASR-0.6B
+- License: Apache License 2.0.
+- Use: multilingual recognition via sherpa-onnx-converted artifacts.
+- Included text: `licenses/Apache-2.0.txt`.
+
+### Cohere Transcribe
+
+- Creator and attribution: Cohere Labs, `CohereLabs/cohere-transcribe-03-2026`.
+- Model card: https://huggingface.co/CohereLabs/cohere-transcribe-03-2026
+- License: Apache License 2.0.
+- Use: 14-language recognition via sherpa-onnx-converted artifacts.
+- Included text: `licenses/Apache-2.0.txt`.
+
+### Local cleanup models (opt-in)
+
+- Muesli Cleanup, `phequals/qwen35-postproc-v3-gguf`: first-party Muesli model derived from Qwen3.5
+  (Apache-2.0 base).
+- S1-mini by Superwhisper, `superwhisper/s1-mini-GGUF`: the terms on its model card
+  (https://huggingface.co/superwhisper/s1-mini-GGUF); derivative of Qwen3-0.6B (Apache-2.0).
+- Qwen Basic Cleanup, `unsloth/Qwen3.5-0.8B-GGUF`: Apache License 2.0 (Alibaba Qwen team).
+- Use: optional local text cleanup through llama.cpp, downloaded only when the user enables it.
+- Included text: `licenses/Apache-2.0.txt`.
 
 ### NVIDIA Nemotron 3.5 ASR Streaming 0.6B
 

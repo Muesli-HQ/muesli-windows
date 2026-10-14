@@ -35,7 +35,8 @@ internal sealed class MeetingRecoveryWorkflow
         _logService = logService;
     }
 
-    public IReadOnlyList<RecoverableMeetingSession> Discover() => _persistence.DiscoverRecoverable();
+    public IReadOnlyList<RecoverableMeetingSession> Discover(string? activeSessionId = null) =>
+        _persistence.DiscoverRecoverable(activeSessionId);
 
     public static MeetingRecoveryHydration Hydrate(RecoverableMeetingSession recovery)
     {

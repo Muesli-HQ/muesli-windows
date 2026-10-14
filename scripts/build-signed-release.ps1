@@ -13,7 +13,8 @@ param(
     [switch]$SkipTests,
     [string]$CertificateThumbprint = "",
     [string]$ExpectedPublisherSubject = "",
-    [string]$TimestampUrl = "https://timestamp.digicert.com",
+    # RFC 3161 servers are plain HTTP (the response is itself signed); signtool rejects the https URL.
+    [string]$TimestampUrl = "http://timestamp.digicert.com",
     [string]$SignatureOutputDirectory = ""
 )
 
@@ -48,7 +49,10 @@ if (-not $sharedCore.BridgeRequired) {
 }
 
 Write-Host "Building unsigned WinUI MSIX (mode=$mode)..."
-& (Join-Path $PSScriptRoot "package-winui-msix.ps1") -Configuration $Configuration -OutputDirectory (Join-Path $artifactsDir "msix") | Out-Null
+$packageArgs = @{ Configuration = $Configuration; OutputDirectory = (Join-Path $artifactsDir "msix") }
+# The manifest publisher must equal the signing certificate subject or Windows refuses the install.
+if ($mode -eq "production") { $packageArgs.Publisher = $ExpectedPublisherSubject }
+& (Join-Path $PSScriptRoot "package-winui-msix.ps1") @packageArgs | Out-Null
 $msix = Get-MuesliLatestMsix -SearchRoot (Join-Path $artifactsDir "msix")
 if ($null -eq $msix) { throw "MSIX packaging reported success but produced no .msix." }
 $msixPath = $msix.FullName
