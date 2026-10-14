@@ -61,7 +61,26 @@ try {
         [IO.File]::WriteAllText($trxPath, $trxText.Replace($mutation[0], $mutation[1]))
         Assert-Rejected { Read-MuesliPassingWindowsTestResults -Path $trxPath } $(if ($mutation[0] -like 'aborted*') { 'aborted' } else { 'passing Windows test run' })
     }
-    Write-Host 'Store packaging behavioral tests passed (16 scenarios).'
+    # Exercise the actual native inventory under strict mode: catalog entries intentionally
+    # select either exact file names OR patterns, so the other property may be absent.
+    $nativeDir = Join-Path $scratch 'native'
+    New-Item -ItemType Directory -Path $nativeDir | Out-Null
+    foreach ($name in @('ExactNative.dll', 'PatternNative.dll')) { [IO.File]::WriteAllText((Join-Path $nativeDir $name), 'fixture native bytes') }
+    $catalogPath = Join-Path $scratch 'catalog.json'
+    $catalog = [ordered]@{
+        publicPackage = @{ cpuProviderIncluded = $true; cudaProviderIncluded = $false }
+        forbiddenPublicCudaFiles = @(); forbiddenPublicCudaDirectoryNames = @()
+        components = @(
+            @{ id = 'exact'; source = 'fixture'; version = '1'; license = 'MIT'; licenseFile = 'MIT.txt'; noticesHeading = 'fixture'; allowedInPublicWinX64 = $true; requiredInPublicWinX64 = $false; nativeFiles = @('ExactNative.dll') },
+            @{ id = 'pattern'; source = 'fixture'; version = '1'; license = 'MIT'; licenseFile = 'MIT.txt'; noticesHeading = 'fixture'; allowedInPublicWinX64 = $true; requiredInPublicWinX64 = $false; nativeFilePatterns = @('^PatternNative\.dll$') }
+        )
+    }
+    $catalog | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $catalogPath
+    $nativeReportPath = Join-Path $scratch 'native-report.json'
+    & (Join-Path $scripts 'generate-native-runtime-inventory.ps1') -PackageDirectory $nativeDir -CatalogPath $catalogPath -OutputPath $nativeReportPath
+    $nativeReport = Get-Content -LiteralPath $nativeReportPath -Raw | ConvertFrom-Json
+    Assert-True ($nativeReport.passed -and $nativeReport.nativeFileCount -eq 2) 'Exact and pattern catalog entries must both work under strict mode.'
+    Write-Host 'Store packaging behavioral tests passed (17 scenarios).'
 } finally {
     Remove-Item -LiteralPath $scratch -Recurse -Force
 }
