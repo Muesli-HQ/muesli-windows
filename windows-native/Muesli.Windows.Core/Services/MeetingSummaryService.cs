@@ -292,6 +292,18 @@ public static class MeetingSummaryService
     /// <summary>Waits between summary retries; tests replace it to run without real delays.</summary>
     public static Func<TimeSpan, CancellationToken, Task> RetryDelay { get; set; } = Task.Delay;
 
+    /// <summary>macOS <c>summaryFailureNotes</c>: when the chosen provider fails after a meeting, say so
+    /// and keep the raw transcript instead of passing local keyword notes off as the summary.
+    /// Written notes live in their own field, so they are not repeated here.</summary>
+    public static string SummaryFailureNotes(string transcript, string meetingTitle, string provider, string reason)
+    {
+        var sections = new List<string> { "## Summary failed" };
+        if (!string.IsNullOrWhiteSpace(meetingTitle)) sections.Add($"Meeting: {meetingTitle.Trim()}");
+        sections.Add($"Muesli could not generate structured meeting notes.\n\n{provider} summary failed ({reason}). Use Generate Notes to try again.");
+        sections.Add($"## Raw Transcript\n\n{transcript}");
+        return string.Join("\n\n", sections);
+    }
+
     private static string CreateLocalSummary(string transcript, string meetingTitle, MuesliSettings settings)
     {
         var promptOverride = settings.MeetingSummaryPromptOverride?.Trim() ?? "";

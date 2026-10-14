@@ -283,6 +283,13 @@ public partial class App : Application
             }
             catch (Exception exception) { _log.Error("Meeting sleep checkpoint failed; audio remains recoverable.", exception); }
         };
+        // Shutdown or sign-out (WM_ENDSESSION, raised on SystemEvents' own thread): checkpoint like sleep
+        // so the recording is recoverable on the next launch. Windows allows about five seconds.
+        Microsoft.Win32.SystemEvents.SessionEnded += (_, _) =>
+        {
+            try { Meetings.SuspendForPowerAsync().Wait(TimeSpan.FromSeconds(4)); }
+            catch (Exception exception) { _log.Error("Meeting shutdown checkpoint failed; audio remains recoverable.", exception); }
+        };
         Meetings.SourceWarningDismissed += (_, _) =>
         {
             _autoStop?.DismissWarning();

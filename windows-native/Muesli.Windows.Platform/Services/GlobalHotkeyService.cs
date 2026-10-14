@@ -28,6 +28,9 @@ public sealed class GlobalHotkeyService : IDisposable
     private Func<bool>? _canCancel;
     private Action? _onCancel;
     private Action? _onOtherKey;
+    private string _gestureText = "F8";
+    private readonly object _gate = new();
+    private volatile bool _stopping;
 
     public void Register(
         string gesture,
@@ -37,7 +40,14 @@ public sealed class GlobalHotkeyService : IDisposable
         Action? onCancel = null,
         Action? onOtherKey = null)
     {
+        lock (_gate) RegisterLocked(gesture, onDown, onUp, canCancel, onCancel, onOtherKey);
+    }
+
+    private void RegisterLocked(string gesture, Action onDown, Action onUp, Func<bool>? canCancel, Action? onCancel, Action? onOtherKey)
+    {
         Dispose();
+        _stopping = false;
+        _gestureText = gesture;
         _gesture = HotkeyGestureParser.Parse(gesture);
         if (HotkeyGestureParser.IsEscape(_gesture.VirtualKey))
         {
@@ -69,6 +79,12 @@ public sealed class GlobalHotkeyService : IDisposable
 
     public void Dispose()
     {
+        lock (_gate) DisposeLocked();
+    }
+
+    private void DisposeLocked()
+    {
+        _stopping = true;
         if (_hookThread is { } thread)
         {
             if (_hookThreadId != 0) PostThreadMessage(_hookThreadId, 0x0012 /* WM_QUIT */, IntPtr.Zero, IntPtr.Zero);
@@ -109,6 +125,24 @@ public sealed class GlobalHotkeyService : IDisposable
             if (_hookId != IntPtr.Zero) UnhookWindowsHookEx(_hookId);
             _hookId = IntPtr.Zero;
             _hookThreadId = 0;
+            // The thread ended without Dispose (an exception, or GetMessage failing): the shortcut
+            // would silently stop working, so install the hook again on a fresh thread.
+            if (!_stopping && ready.Task.IsCompletedSuccessfully)
+                ThreadPool.QueueUserWorkItem(_ => Reinstall());
+        }
+    }
+
+    private void Reinstall()
+    {
+        lock (_gate)
+        {
+            if (_stopping || _onDown is null || _onUp is null) return;
+            try
+            {
+                new AppLogService().Info("Global keyboard hook stopped; reinstalling it.");
+                RegisterLocked(_gestureText, _onDown, _onUp, _canCancel, _onCancel, _onOtherKey);
+            }
+            catch (Exception exception) { new AppLogService().Error("Global keyboard hook could not be reinstalled.", exception); }
         }
     }
 

@@ -565,9 +565,12 @@ public sealed class WinUiMeetingContext : IDisposable
         // Title/notes generation can take minutes; apply generated fields onto the latest saved copy
         // so a title, notes, or folder edited meanwhile in the detail page are not overwritten.
         var latest = _library.FindMeeting(meeting.Id) ?? meeting;
+        var notes = result is { UsedLocalFallback: true, SafeFailureReason: { } reason }
+            ? MeetingSummaryService.SummaryFailureNotes(meeting.Transcript, generatedTitle, result.Provider, reason)
+            : result.Summary;
         var finalized = MeetingNotesComposer.ApplyResummarization(
             latest,
-            result.Summary,
+            notes,
             _settings.MeetingSummaryTemplate,
             generatedTitle);
         SaveMeeting(finalized);

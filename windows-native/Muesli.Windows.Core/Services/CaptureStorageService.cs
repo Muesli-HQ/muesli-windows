@@ -19,6 +19,19 @@ public sealed class CaptureStorageService
         _recordingsDirectory = Path.Combine(_captureDirectory, "recordings");
     }
 
+    /// <summary>Meeting audio runs to about 1.5 GB an hour per channel, so refuse to start a recording
+    /// on a nearly full drive instead of failing partway through.</summary>
+    public const long MinimumFreeBytesToRecord = 1L << 30;
+
+    public static void EnsureRoomToRecord(string? captureDirectory = null)
+    {
+        var directory = Path.GetFullPath(captureDirectory ??
+            Muesli.Windows.Core.Profiles.MuesliProfilePaths.Current().CaptureDirectory);
+        var free = new DriveInfo(Path.GetPathRoot(directory)!).AvailableFreeSpace;
+        if (free < MinimumFreeBytesToRecord)
+            throw new IOException($"Only {free / (1 << 20)} MB is free on {Path.GetPathRoot(directory)}. Free up at least 1 GB before recording a meeting.");
+    }
+
     public MeetingAudioPaths PersistMeetingAudio(
         string meetingId,
         ICapturedAudioArtifact? microphone,
