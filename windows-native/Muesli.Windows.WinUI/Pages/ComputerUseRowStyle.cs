@@ -35,7 +35,8 @@ public static class ComputerUseRowStyle
     /// <summary>macOS TargetApplicationIconView: the app's own icon, cached per executable.</summary>
     public static ImageSource? AppIcon(DictationTargetApp? app)
     {
-        if (app?.ExePath is not { Length: > 0 } path) return null;
+        if (app?.ExePath is not { Length: > 0 } saved) return null;
+        var path = CurrentPackagePath(saved);
         // ponytail: theme read when the icon is first drawn; rows bound earlier keep theirs until rebuilt.
         var dark = App.ResolveTheme(App.Settings.Load().Theme) switch
         {
@@ -62,6 +63,32 @@ public static class ComputerUseRowStyle
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or System.Xml.XmlException or System.Runtime.InteropServices.COMException) { }
         return AppIcons[key] = source;
+    }
+
+    /// <summary>An MSIX app's folder is named after its version and is deleted when the app updates,
+    /// so a saved path like <c>WindowsApps\Claude_2.37337.1.0_x64__pzs8sxrjxfjjc\app\Claude.exe</c>
+    /// is redirected to the same file in the currently installed version.</summary>
+    internal static string CurrentPackagePath(string exePath)
+    {
+        const string marker = @"\WindowsApps\";
+        var at = exePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (at < 0 || File.Exists(exePath)) return exePath;
+        var rest = exePath[(at + marker.Length)..];
+        var slash = rest.IndexOf('\\');
+        if (slash < 0) return exePath;
+        // Name_Version_Arch_ResourceId_PublisherId; package names cannot contain underscores.
+        var parts = rest[..slash].Split('_');
+        if (parts.Length < 5) return exePath;
+        try
+        {
+            var package = new global::Windows.Management.Deployment.PackageManager()
+                .FindPackagesForUser(string.Empty, $"{parts[0]}_{parts[^1]}").FirstOrDefault();
+            return package is null ? exePath : Path.Combine(package.InstalledLocation.Path, rest[(slash + 1)..]);
+        }
+        catch (Exception exception) when (exception is System.Runtime.InteropServices.COMException or UnauthorizedAccessException or ArgumentException)
+        {
+            return exePath;
+        }
     }
 
     private static System.Drawing.Bitmap? IconBitmap(string path)
