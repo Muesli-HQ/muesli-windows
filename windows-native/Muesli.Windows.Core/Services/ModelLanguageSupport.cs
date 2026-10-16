@@ -64,6 +64,7 @@ public static class ModelLanguageSupport
     {
         NativeAsrModelKind.Whisper => IsEnglishOnly(model) ? EnglishOnly : WhisperMultilingual,
         NativeAsrModelKind.CohereTranscribe => CohereLanguages,
+        NativeAsrModelKind.Bodhan => BodhanModels.Languages(model),
         NativeAsrModelKind.SenseVoice => AutomaticMultilingual,
         NativeAsrModelKind.Parakeet or NativeAsrModelKind.ParakeetTransducer =>
             IsEnglishOnly(model) ? EnglishOnly : AutomaticMultilingual,

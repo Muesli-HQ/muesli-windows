@@ -19,7 +19,6 @@ public sealed partial class MainPage : Page
 {
     public MainPageViewModel ViewModel { get; } = new(App.Library);
 
-    private int _tourIndex = -1;
     private bool _meetingFoldersExpanded = true;
     private bool _compactRail;
     /// <summary>
@@ -140,7 +139,6 @@ public sealed partial class MainPage : Page
 
         BrandNameText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         GreetingText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        SpreadTheWordLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         NavigationHeader.Margin = compact ? new Thickness(8, 18, 8, 12) : new Thickness(16, 18, 16, 16);
         SearchBox.PlaceholderText = compact ? string.Empty : "Search...";
         if (compact)
@@ -192,6 +190,7 @@ public sealed partial class MainPage : Page
         {
             ApplyNavButtonCompact(button, compact);
         }
+        ThemeToggle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
 
         ApplyTourOverlayChrome();
     }
@@ -221,7 +220,7 @@ public sealed partial class MainPage : Page
         {
             grid.ColumnDefinitions[0].Width = compact
                 ? new GridLength(1, GridUnitType.Star)
-                : new GridLength(22);
+                : new GridLength(32);
             foreach (var icon in grid.Children.OfType<FontIcon>())
             {
                 icon.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
@@ -289,12 +288,6 @@ public sealed partial class MainPage : Page
         });
     }
 
-    public void StartFeatureTour()
-    {
-        _tourIndex = 0;
-        RenderTourStep();
-    }
-
     private void NavButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button button && button.Tag is string tag)
@@ -306,7 +299,20 @@ public sealed partial class MainPage : Page
         }
     }
 
+    /// <summary>
+    /// Logs how long a page switch takes: building the page, then until the UI thread is idle again
+    /// (layout and first render done), so a slow page shows up in the log instead of as a hunch.
+    /// </summary>
     private void Navigate(string tag)
+    {
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        NavigateCore(tag);
+        var buildMs = started.ElapsedMilliseconds;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            new AppLogService().Info($"Page navigation. page={tag}; buildMs={buildMs}; readyMs={started.ElapsedMilliseconds}"));
+    }
+
+    private void NavigateCore(string tag)
     {
         if (tag.StartsWith("meetings", StringComparison.OrdinalIgnoreCase))
         {
@@ -355,6 +361,18 @@ public sealed partial class MainPage : Page
         _selectedTag = tag;
         RefreshNavigationVisuals();
         Navigate(tag);
+    }
+
+    /// <summary>
+    /// macOS openInsights(section:): a stat card opens Insights at its section, and the back
+    /// link returns to the page the card was on.
+    /// </summary>
+    public void OpenInsights(string section, string from)
+    {
+        DismissSearchQuery();
+        _selectedTag = "insights";
+        RefreshNavigationVisuals();
+        ContentFrame.Navigate(typeof(Pages.InsightsPage), $"{section}|{from}");
     }
 
     /// <summary>
@@ -480,113 +498,79 @@ public sealed partial class MainPage : Page
         MeetingChevronIcon.Glyph = _meetingFoldersExpanded ? "\uE70D" : "\uE76C";
     }
 
-    private void CreateMeetingFolder_Click(object sender, RoutedEventArgs e)
+    /// <summary>The folder being renamed in place, as macOS SidebarView folderRenameField.</summary>
+    private string? _renamingFolderId;
+
+    /// <summary>macOS createNewFolder: a "New Folder" row opens for renaming and is selected.</summary>
+    private void CreateMeetingFolder_Click(object sender, RoutedEventArgs e) => CreateFolder(null);
+
+    private void CreateFolder(string? parentId)
     {
-        // Folder create/rename/validation lives on the Meetings page. The rail control opens that
-        // page instead of inventing a second persistence path with no name prompt, and then opens
-        // the folder editor on it — the editor is collapsed by default since P3-02, so navigating
-        // alone would leave the "+" pointing at nothing the user can see.
-        NavigateTo("meetings");
-        if (ContentFrame.Content is Pages.MeetingsPage page)
+        try
         {
-            page.RevealFolderEditor();
+            var folder = App.Library.SaveMeetingFolder(null, "New Folder", parentId);
+            if (!_meetingFoldersExpanded) ToggleMeetingFolders_Click(this, new RoutedEventArgs());
+            _renamingFolderId = folder.Id;
+            NavigateTo($"meetings:{folder.Id}");
+            RebuildMeetingFolders();
         }
+        catch (Exception exception) { _ = App.Dialogs.ShowWarningAsync(exception.Message, "Could not create the folder"); }
     }
 
-    private void Share_Click(object sender, RoutedEventArgs e)
+    /// <summary>macOS folder context menu: New Subfolder, Rename, Move to Top Level, Delete.</summary>
+    private MenuFlyout FolderMenu(MeetingFolderListItem folder)
     {
-        if (sender is not Button button || button.Tag is not string tag)
+        var menu = new MenuFlyout();
+        var subfolder = new MenuFlyoutItem { Text = "New Subfolder" };
+        subfolder.Click += (_, _) => CreateFolder(folder.Id);
+        menu.Items.Add(subfolder);
+        var rename = new MenuFlyoutItem { Text = "Rename" };
+        rename.Click += (_, _) => { _renamingFolderId = folder.Id; RebuildMeetingFolders(); };
+        menu.Items.Add(rename);
+        if (folder.ParentName is not null)
         {
-            return;
+            var top = new MenuFlyoutItem { Text = "Move to Top Level" };
+            top.Click += (_, _) => { App.Library.MoveMeetingFolder(folder.Id, null); RefreshFolderViews(); };
+            menu.Items.Add(top);
         }
-
-        var target = string.Equals(tag, "linkedin", StringComparison.OrdinalIgnoreCase)
-            ? "https://www.linkedin.com/sharing/share-offsite/?url=https://muesli.app"
-            : "https://twitter.com/intent/tweet?text=Meet%20Muesli%20%E2%80%94%20private%20on-device%20dictation&url=https://muesli.app";
-        _ = Launcher.LaunchUriAsync(new Uri(target));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var delete = new MenuFlyoutItem { Text = "Delete", Foreground = (Brush)Application.Current.Resources["MuesliErrorBrush"] };
+        delete.Click += async (_, _) => await DeleteFolderAsync(folder);
+        menu.Items.Add(delete);
+        return menu;
     }
 
-    private void TourNext_Click(object sender, RoutedEventArgs e)
+    private async Task DeleteFolderAsync(MeetingFolderListItem folder)
     {
-        if (_tourIndex < 0) return;
-        if (_tourIndex >= FeatureTourCatalog.Steps.Count - 1)
-        {
-            CompleteTour();
-            return;
-        }
-
-        _tourIndex++;
-        RenderTourStep();
+        var direct = App.Library.ReadSnapshot().Meetings.Count(meeting => meeting.FolderId == folder.Id);
+        var message = direct > 0
+            ? $"{direct} meeting{(direct == 1 ? "" : "s")} in this folder will be moved to Unfiled. Subfolders will be kept."
+            : "This folder will be permanently removed. Subfolders will be kept.";
+        if (await App.Dialogs.ConfirmAsync(message, $"Delete \u201c{folder.Name}\u201d?") != Muesli.Windows.Core.Contracts.AppDialogChoice.Primary) return;
+        App.Library.DeleteMeetingFolder(folder.Id);
+        if (_selectedTag == $"meetings:{folder.Id}") NavigateTo("meetings");
+        RefreshFolderViews();
     }
 
-    private void TourSkip_Click(object sender, RoutedEventArgs e) => CompleteTour();
-
-    private void TourEscape_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private void CommitRename(string id, string text)
     {
-        if (_tourIndex < 0)
+        if (_renamingFolderId != id) return;
+        _renamingFolderId = null;
+        var name = text.Trim();
+        if (name.Length > 0)
         {
-            return;
+            try { App.Library.SaveMeetingFolder(id, name); }
+            catch (Exception exception) { _ = App.Dialogs.ShowWarningAsync(exception.Message, "Could not rename the folder"); }
         }
-
-        CompleteTour();
-        args.Handled = true;
+        RefreshFolderViews();
     }
 
-    private void RenderTourStep()
+    /// <summary>The rail and an open Meetings page both show folder names and counts.</summary>
+    private void RefreshFolderViews()
     {
-        if (_tourIndex < 0 || _tourIndex >= FeatureTourCatalog.Steps.Count)
-        {
-            TourOverlay.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        var step = FeatureTourCatalog.Steps[_tourIndex];
-        TourStepLabel.Text = $"TOUR · {_tourIndex + 1} OF {FeatureTourCatalog.Steps.Count}";
-        TourTitle.Text = step.Title;
-        TourBody.Text = step.Body;
-        TourNextButton.Content = _tourIndex == FeatureTourCatalog.Steps.Count - 1 ? "Done" : "Next";
-        TourOverlay.Visibility = Visibility.Visible;
-        ApplyTourOverlayChrome();
-        if (!string.Equals(step.TargetName, "FloatingIndicator", StringComparison.Ordinal))
-        {
-            NavigateTo(step.TargetName);
-        }
-
-        _ = TourNextButton.Focus(FocusState.Programmatic);
-    }
-
-    private void ApplyTourOverlayChrome()
-    {
-        if (new AccessibilitySettings().HighContrast)
-        {
-            // High Contrast dictionaries may only alias SystemColor* brushes, and those brushes
-            // cannot take Opacity. An opaque window-text scrim would hide the page, so the tour
-            // card uses a transparent overlay and a strong system border instead.
-            TourOverlay.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            TourCard.BorderThickness = new Thickness(2, 2, 2, 2);
-            TourCard.BorderBrush = Brush("MuesliBorderStrongBrush");
-            return;
-        }
-
-        TourOverlay.ClearValue(Panel.BackgroundProperty);
-        TourCard.ClearValue(Border.BorderThicknessProperty);
-        TourCard.ClearValue(Border.BorderBrushProperty);
-    }
-
-    private void CompleteTour()
-    {
-        _tourIndex = -1;
-        TourOverlay.Visibility = Visibility.Collapsed;
-        var current = App.Settings.Load() with
-        {
-            LastCompletedFeatureTourVersion = FeatureTourCatalog.CurrentVersion
-        };
-        App.Settings.Save(current);
-
-        VisibleNavItems()
-            .FirstOrDefault(button =>
-                string.Equals(button.Tag?.ToString(), _selectedTag, StringComparison.OrdinalIgnoreCase))
-            ?.Focus(FocusState.Programmatic);
+        RebuildMeetingFolders();
+        RefreshNavigationVisuals();
+        if (ContentFrame.Content is Pages.MeetingsPage page) page.ViewModel.Refresh();
     }
 
     private void RefreshGreeting()
@@ -625,13 +609,41 @@ public sealed partial class MainPage : Page
         foreach (var folder in MeetingFolderListItem.BuildTree(App.Library.ReadSnapshot()))
         {
             var tag = folder.IsAllMeetings ? "meetings" : $"meetings:{folder.Id}";
-            MeetingChildrenHost.Children.Add(CreateFolderButton(folder, tag));
+            if (!folder.IsAllMeetings && folder.Id == _renamingFolderId)
+            {
+                MeetingChildrenHost.Children.Add(RenameField(folder));
+                continue;
+            }
+            var button = CreateFolderButton(folder, tag);
+            if (!folder.IsAllMeetings) button.ContextFlyout = FolderMenu(folder);
+            MeetingChildrenHost.Children.Add(button);
         }
 
         foreach (var child in MeetingChildrenHost.Children.OfType<Button>())
         {
             ApplyNavButtonCompact(child, _compactRail);
         }
+    }
+
+    /// <summary>macOS folderRenameField: the name is edited in place; Enter or leaving the field saves, Escape cancels.</summary>
+    private TextBox RenameField(MeetingFolderListItem folder)
+    {
+        var box = new TextBox
+        {
+            Text = folder.Name,
+            PlaceholderText = "Folder name",
+            FontSize = 13,
+            Margin = new Thickness(8 + Math.Min(folder.Depth, 8) * 12, 2, 8, 2)
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(box, "Folder name");
+        box.Loaded += (_, _) => { box.Focus(FocusState.Programmatic); box.SelectAll(); };
+        box.KeyDown += (_, args) =>
+        {
+            if (args.Key == VirtualKey.Enter) { args.Handled = true; CommitRename(folder.Id, box.Text); }
+            else if (args.Key == VirtualKey.Escape) { args.Handled = true; _renamingFolderId = null; RebuildMeetingFolders(); }
+        };
+        box.LostFocus += (_, _) => CommitRename(folder.Id, box.Text);
+        return box;
     }
 
     private Button CreateFolderButton(MeetingFolderListItem folder, string tag)
@@ -661,7 +673,7 @@ public sealed partial class MainPage : Page
         {
             Margin = new Thickness(Math.Min(folder.Depth, 8) * 12, 0, 0, 0)
         };
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
 
@@ -718,6 +730,8 @@ public sealed partial class MainPage : Page
             var selected = string.Equals(tag, _selectedTag, StringComparison.OrdinalIgnoreCase);
             button.Background = selected ? selectedBackground : null;
             button.Foreground = selected ? primary : secondary;
+            // macOS: labels are medium, the selected one semibold.
+            button.FontWeight = selected ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Medium;
 
             if (button.Content is Grid grid)
             {
@@ -726,6 +740,26 @@ public sealed partial class MainPage : Page
                     icon.Foreground = selected ? accent : secondary;
                 }
             }
+        }
+        RefreshThemeToggle();
+    }
+
+    /// <summary>macOS darkModeToggle: picks light or dark through the same setting Settings uses.</summary>
+    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not string theme) return;
+        var settings = App.Settings.Load();
+        if (settings.Theme == theme) return;
+        App.Settings.Save(settings with { Theme = theme });
+    }
+
+    private void RefreshThemeToggle()
+    {
+        var dark = ActualTheme != ElementTheme.Light;
+        foreach (var (button, selected) in new[] { (LightThemeButton, !dark), (DarkThemeButton, dark) })
+        {
+            button.Background = selected ? Brush("MuesliSelectedBrush") : null;
+            button.Foreground = selected ? Brush("MuesliAccentBrush") : Brush("MuesliTextTertiaryBrush");
         }
     }
 
@@ -785,8 +819,6 @@ public sealed partial class MainPage : Page
 
         yield return InsightsNav;
         yield return DictionaryNav;
-        yield return TweetNav;
-        yield return LinkedInNav;
         yield return ModelsNav;
         yield return ShortcutsNav;
         yield return SettingsNav;

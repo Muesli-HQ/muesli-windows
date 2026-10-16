@@ -52,7 +52,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string MetadataDuration { get; private set; } = "";
     [ObservableProperty] public partial string MetadataWords { get; private set; } = "";
     [ObservableProperty] public partial string TitleOwnershipLabel { get; private set; } = "";
-    [ObservableProperty] public partial string Summary { get; private set; } = "";
+    [ObservableProperty] public partial string Summary { get; set; } = "";
     [ObservableProperty] public partial string Transcript { get; set; } = "";
     [ObservableProperty] public partial string ManualNotes { get; set; } = "";
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
@@ -104,6 +104,43 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     public string MeetingId => _meeting?.Id ?? "";
     [ObservableProperty] public partial IReadOnlyList<PersistedMeeting> RelatedMeetings { get; private set; } = [];
     public bool HasRelatedMeetings => RelatedMeetings.Count > 0;
+
+    // macOS threadBreadcrumb: the predecessor link, "Thread · N meetings", then the follow-ups.
+    [ObservableProperty] public partial MeetingThreadLink? ThreadPredecessor { get; private set; }
+    [ObservableProperty] public partial IReadOnlyList<MeetingThreadLink> ThreadSuccessors { get; private set; } = [];
+    [ObservableProperty] public partial string ThreadCountLabel { get; private set; } = "";
+    public bool HasThread => ThreadCountLabel.Length > 0;
+    public bool HasThreadPredecessor => ThreadPredecessor is not null;
+    public bool HasManySuccessors => ThreadSuccessors.Count > 1;
+    public string FollowUpsHeading => $"Follow-ups ({ThreadSuccessors.Count})";
+
+    /// <summary>macOS editing mode: Edit Notes / Edit Transcript in the "…" menu, Done to save.</summary>
+    [ObservableProperty] public partial bool IsEditing { get; private set; }
+    public string EditLabel => IsEditing ? "Done" : ShowNotesTab ? "Edit Notes" : "Edit Transcript";
+    public bool IsEditingTranscript => IsEditing && !ShowNotesTab;
+    public bool ShowTranscriptFeed => !IsEditingTranscript;
+
+    /// <summary>The notes document: the generated notes, or the raw transcript under the title (macOS rawTranscriptNotes).</summary>
+    public string NotesMarkdown => HasGeneratedSummary
+        ? Summary
+        : HasSavedTranscript ? $"# {Title}\n\n## Raw Transcript\n\n{Transcript}" : "";
+    public bool ShowNotesDocument => NotesMarkdown.Length > 0 && !(IsEditing && HasGeneratedSummary);
+    public bool ShowSummaryEditor => IsEditing && HasGeneratedSummary;
+    public bool HasTrackChoice => PlaybackTracks.Count > 1;
+    public bool ShowTranscriptCta => !HasGeneratedSummary && HasSavedTranscript && ShowGeneratedNotes;
+    public bool ShowManualNotes => IsEditing || !string.IsNullOrWhiteSpace(ManualNotes);
+    /// <summary>macOS shows "Apply Template" for a chosen-but-unapplied template; here choosing one applies it.</summary>
+    public string SummaryActionLabel => "Re-summarize";
+    public string TranscriptCta => $"Use {SummaryActionLabel} to turn this raw transcript into AI meeting notes and a cleaned-up title.";
+    public string ExportCurrentLabel => ShowNotesTab ? "Export Notes" : "Export Transcript";
+
+    /// <summary>The folder pill: the folder's path, or "Add to folder".</summary>
+    [ObservableProperty] public partial string FolderLabel { get; private set; } = "Add to folder";
+    public bool HasFolder => _meeting?.FolderId is not null;
+    public string? FolderId => _meeting?.FolderId;
+    public string? RecordingPath => _meeting is null ? null
+        : new[] { _meeting.MicrophoneAudioPath, _meeting.SystemAudioPath, _meeting.SourcePath }.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path));
+    public bool HasRecordingFile => RecordingPath is not null;
     public bool CanContinueMeeting => CanWork && _meeting is not null && MeetingContinuation.CanContinue(_meeting)
         && !_meetings.IsRecording && !_meetings.IsPaused && !_meetings.IsBusy;
     public bool CanFollowUp => CanContinueMeeting && _library.SupportsMeetingThreads;
@@ -183,7 +220,10 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             return;
         }
 
+        IsEditing = false;
         ApplyMeeting(_meeting);
+        // macOS opens the notes when there are generated notes and the transcript otherwise.
+        ShowNotesTab = HasGeneratedSummary || !HasSavedTranscript;
         var recovery = _runtime.RecoverCandidate(_meeting.Id);
         if (recovery?.Candidate is { } recovered)
         {
@@ -196,6 +236,111 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     partial void OnHasMeetingChanged(bool value) => NotifyPresentation();
 
     partial void OnShowNotesTabChanged(bool value) => NotifyPresentation();
+    partial void OnIsEditingChanged(bool value) => NotifyPresentation();
+    partial void OnSummaryChanged(string value) => OnPropertyChanged(nameof(NotesMarkdown));
+
+    partial void OnTitleChanged(string value)
+    {
+        OnPropertyChanged(nameof(NotesMarkdown));
+        // macOS saves the title as it is edited; the editor commits on Enter or leaving the field.
+        if (_meeting is null || _applying) return;
+        var title = value.Trim();
+        if (title.Length == 0 || title == _meeting.Title) return;
+        var updated = MeetingNotesComposer.ApplyManualTitle(_meeting, title);
+        if (_library.UpdateMeeting(updated)) { _meeting = updated; LibraryChanged?.Invoke(this, EventArgs.Empty); }
+        else ShowStatus("The meeting no longer exists.", true);
+    }
+
+    private bool _applying;
+
+    /// <summary>The folder popover: null clears the folder (macOS toggles a checked folder off).</summary>
+    public void MoveToFolder(string? folderId)
+    {
+        if (_meeting is null || _meeting.FolderId == folderId) return;
+        var updated = _meeting with { FolderId = folderId };
+        if (!_library.UpdateMeeting(updated)) { ShowStatus("The meeting no longer exists.", true); return; }
+        _meeting = updated;
+        ApplyFolder(updated);
+        LibraryChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void CreateFolderAndMove(string name)
+    {
+        try { MoveToFolder(_library.SaveMeetingFolder(null, name).Id); }
+        catch (Exception exception) { ShowStatus($"Could not create the folder: {exception.Message}", true); }
+    }
+
+    private void ApplyFolder(PersistedMeeting meeting)
+    {
+        FolderLabel = meeting.FolderId is { } id
+            ? MeetingsPageViewModel.FolderPath(_library.History.LoadMeetingFolders(), id) ?? "Add to folder"
+            : "Add to folder";
+        OnPropertyChanged(nameof(HasFolder));
+        OnPropertyChanged(nameof(FolderId));
+    }
+
+    /// <summary>Edit Notes / Edit Transcript, then Done saves what was edited.</summary>
+    [RelayCommand(CanExecute = nameof(CanWork))]
+    private async Task ToggleEditingAsync()
+    {
+        if (!IsEditing) { IsEditing = true; return; }
+        IsEditing = false;
+        if (_meeting is null) return;
+        if (ShowNotesTab)
+        {
+            FlushNotes();
+            if (HasGeneratedSummary && Summary != (_meeting.Summary ?? ""))
+            {
+                var updated = _meeting with { Summary = Summary };
+                if (_library.UpdateMeeting(updated)) _meeting = updated;
+                else ShowStatus("The meeting no longer exists.", true);
+            }
+            return;
+        }
+        if (Transcript == SpeakerAliasService.Apply(_meeting.Transcript, _meeting.SpeakerAliases)) return;
+        SaveTranscript();
+        if (!HasGeneratedSummary || !CanGenerateSummary) return;
+        var choice = await _dialogs.ConfirmAsync(
+            "Your transcript edits may change the generated notes. Re-summarize now to update them from the edited transcript.",
+            "Re-summarize Notes?", "Re-summarize", "Not Now");
+        if (choice == AppDialogChoice.Primary) await GenerateSummaryCommand.ExecuteAsync(null);
+    }
+
+    /// <summary>The Template submenu: choosing a template re-summarizes with it.</summary>
+    public async Task ApplyTemplateAsync(string template)
+    {
+        SelectedTemplate = template;
+        if (CanGenerateSummary) await GenerateSummaryCommand.ExecuteAsync(null);
+    }
+
+    /// <summary>macOS Copy: the current tab with the export metadata header.</summary>
+    [RelayCommand]
+    private async Task CopyCurrentAsync(CancellationToken cancellationToken)
+    {
+        if (_meeting is null) return;
+        try
+        {
+            await _clipboard.SetTextAsync(MeetingExportFormatter.BuildMarkdown(ToMeetingItem(_meeting),
+                ShowNotesTab ? MeetingExportMode.Notes : MeetingExportMode.Transcript, _meeting.SpeakerAliases), cancellationToken);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { ShowStatus($"Could not copy: {WinUiClipboardService.DescribeFailure(exception)}", true); }
+    }
+
+    [RelayCommand] private Task ExportCurrentAsync(CancellationToken cancellationToken) =>
+        ExportAsync(ShowNotesTab ? MeetingExportMode.Notes : MeetingExportMode.Transcript, cancellationToken);
+
+    [RelayCommand] private Task ExportFullAsync(CancellationToken cancellationToken) =>
+        ExportAsync(MeetingExportMode.FullMeeting, cancellationToken);
+
+    /// <summary>macOS Show Recording: reveals the retained audio in Explorer.</summary>
+    [RelayCommand]
+    private void ShowRecording()
+    {
+        if (RecordingPath is not { } path) return;
+        try { System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\""); }
+        catch (Exception exception) { ShowStatus($"Could not show the recording: {exception.Message}", true); }
+    }
 
     partial void OnManualNotesChanged(string value)
     {
@@ -296,9 +441,10 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             var result = await _runtime.GenerateSummaryAsync(_meeting, SelectedTemplate, cancellationToken);
             _meeting = _library.FindMeeting(_meeting.Id);
             if (_meeting is not null) ApplyMeeting(_meeting);
-            ShowStatus(result.UsedLocalFallback && result.SafeFailureReason is not null
+            var fellBack = result.UsedLocalFallback && result.SafeFailureReason is not null;
+            ShowStatus(fellBack
                 ? $"Notes generated locally because the selected provider was unavailable ({result.SafeFailureReason})."
-                : $"Notes generated with {result.Provider}.");
+                : $"Notes generated with {result.Provider}.", isError: fellBack);
         }
         catch (OperationCanceledException) { ShowStatus("Summary generation cancelled."); }
         catch (Exception exception) { ShowStatus($"Could not generate notes: {exception.Message}", true); }
@@ -362,19 +508,21 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task ExportMarkdownAsync(CancellationToken cancellationToken)
+    private Task ExportMarkdownAsync(CancellationToken cancellationToken) => ExportAsync(MeetingExportMode.FullMeeting, cancellationToken);
+
+    private async Task ExportAsync(MeetingExportMode mode, CancellationToken cancellationToken)
     {
         if (_meeting is null) return;
         try
         {
             var model = ToMeetingItem(_meeting);
             var suggestedName = Path.ChangeExtension(
-                MeetingExportFormatter.SuggestFilename(model, MeetingExportMode.FullMeeting), ".md");
+                MeetingExportFormatter.SuggestFilename(model, mode), ".md");
             // PDF is offered only while the QuestPDF Community-license eligibility gate is approved.
             var picked = await _filePickers.PickSaveFileAsync(
                 new FilePickerRequest("Export meeting", MeetingDocumentWriter.ApprovedExportExtensions, suggestedName), cancellationToken);
             if (picked is null) return;
-            var markdown = MeetingExportFormatter.BuildMarkdown(model, MeetingExportMode.FullMeeting, _meeting.SpeakerAliases);
+            var markdown = MeetingExportFormatter.BuildMarkdown(model, mode, _meeting.SpeakerAliases);
             await Task.Run(() => MeetingDocumentWriter.Write(markdown, picked.Path), cancellationToken);
             ShowStatus($"Meeting exported to {picked.DisplayName}.");
         }
@@ -389,11 +537,9 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         // Delete now sits behind the "…" menu, so the dialog is the last place the user can check
         // that the menu belonged to the meeting they meant. It names the record, the way the
         // dictation and meeting list confirmations do.
-        var name = string.IsNullOrWhiteSpace(_meeting.Title) ? "Untitled meeting" : _meeting.Title.Trim();
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete this meeting, its transcript, and its saved recording?\n\n“{name}”\n{Metadata}\n\n" +
-            "Imported original files are not deleted.",
-            "Delete meeting", cancellationToken);
+            "Are you sure you want to delete this meeting? Saved notes, transcript, and any retained recording will be removed.",
+            "Delete Meeting", "Delete", "Cancel", cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
         if (_library.DeleteMeeting(_meeting.Id))
         {
@@ -494,7 +640,10 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         }
         RelatedMeetings = _library.RelatedMeetings(meeting.Id);
         OnPropertyChanged(nameof(HasRelatedMeetings));
-        Title = meeting.Title;
+        ApplyThread(meeting);
+        _applying = true;
+        try { Title = meeting.Title; }
+        finally { _applying = false; }
         Metadata = $"{meeting.CreatedAt.ToLocalTime():MMM d, yyyy · h:mm tt} · {FormatDuration(meeting.DurationMs)} · {meeting.ModelProfile}";
         MetadataDate = meeting.CreatedAt.ToLocalTime().ToString("d MMM yyyy 'at' h:mm:ss tt");
         MetadataDuration = FormatHeaderDuration(meeting.DurationMs);
@@ -520,11 +669,27 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             .Select(pair => new SpeakerAliasItem(pair.Key, pair.Value)).ToList();
         FolderOptions = BuildFolderOptions(_library.ReadSnapshot());
         SelectedFolder = FolderOptions.FirstOrDefault(folder => folder.Id == meeting.FolderId) ?? FolderOptions[0];
+        ApplyFolder(meeting);
         PlaybackTracks = _runtime.GetTracks(meeting);
         HasRecording = PlaybackTracks.Count > 0;
         if (SelectedPlaybackTrack is null || !PlaybackTracks.Any(track => track.Path == SelectedPlaybackTrack.Path))
             SelectedPlaybackTrack = PlaybackTracks.FirstOrDefault();
         RefreshWaveform();
+        NotifyPresentation();
+    }
+
+    private void ApplyThread(PersistedMeeting meeting)
+    {
+        if (!_library.SupportsMeetingThreads) return;
+        var predecessor = _library.Predecessor(meeting.Id);
+        var successors = _library.FollowUps(meeting.Id);
+        ThreadPredecessor = predecessor is null ? null : MeetingThreadLink.From(predecessor, "Follow-up to: ");
+        ThreadSuccessors = successors.Select(item => MeetingThreadLink.From(item, successors.Count == 1 ? "Followed by: " : "")).ToList();
+        ThreadCountLabel = predecessor is null && successors.Count == 0 ? "" : $"Thread · {_library.ThreadSize(meeting.Id)} meetings";
+        OnPropertyChanged(nameof(HasThread));
+        OnPropertyChanged(nameof(HasThreadPredecessor));
+        OnPropertyChanged(nameof(HasManySuccessors));
+        OnPropertyChanged(nameof(FollowUpsHeading));
     }
 
     /// <summary>
@@ -603,6 +768,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         _candidate = candidate;
         CandidateTranscript = candidate.Transcript;
         HasCandidate = true;
+        ShowNotesTab = false;
     }
 
     private void ClearCandidate()
@@ -642,6 +808,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         SaveTranscriptCommand.NotifyCanExecuteChanged();
         GenerateSummaryCommand.NotifyCanExecuteChanged();
         RetranscribeCommand.NotifyCanExecuteChanged();
+        ToggleEditingCommand.NotifyCanExecuteChanged();
         ResumeFinishedCommand.NotifyCanExecuteChanged();
         StartFollowUpCommand.NotifyCanExecuteChanged();
     }
@@ -656,13 +823,27 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanGenerateSummary));
         OnPropertyChanged(nameof(CanContinueMeeting));
         OnPropertyChanged(nameof(CanFollowUp));
+        OnPropertyChanged(nameof(EditLabel));
+        OnPropertyChanged(nameof(IsEditingTranscript));
+        OnPropertyChanged(nameof(ShowTranscriptFeed));
+        OnPropertyChanged(nameof(NotesMarkdown));
+        OnPropertyChanged(nameof(ShowNotesDocument));
+        OnPropertyChanged(nameof(ShowSummaryEditor));
+        OnPropertyChanged(nameof(HasTrackChoice));
+        OnPropertyChanged(nameof(ShowTranscriptCta));
+        OnPropertyChanged(nameof(ShowManualNotes));
+        OnPropertyChanged(nameof(SummaryActionLabel));
+        OnPropertyChanged(nameof(TranscriptCta));
+        OnPropertyChanged(nameof(ExportCurrentLabel));
+        OnPropertyChanged(nameof(HasRecordingFile));
     }
 
+    /// <summary>macOS says nothing when an action works; only a failure opens the status bar.</summary>
     private void ShowStatus(string message, bool isError = false)
     {
         StatusMessage = message;
         IsStatusError = isError;
-        IsStatusOpen = true;
+        IsStatusOpen = isError;
     }
 
     public void Dispose()
@@ -702,6 +883,13 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 }
 
 public sealed record SpeakerAliasItem(string Source, string Replacement);
+
+/// <summary>One link in the macOS thread breadcrumb: "title · start time", with an optional lead-in.</summary>
+public sealed record MeetingThreadLink(string Id, string Text)
+{
+    public static MeetingThreadLink From(PersistedMeeting meeting, string prefix) =>
+        new(meeting.Id, $"{prefix}{meeting.Title} · {meeting.CreatedAt.ToLocalTime():MMM d, h:mm tt}");
+}
 /// <summary>
 /// One destination in the meeting-detail folder picker. <paramref name="DisplayName"/> shows
 /// nesting as leading spaces the way the folder lists do, <paramref name="ParentSuffix"/> keeps a

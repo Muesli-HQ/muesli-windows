@@ -26,15 +26,35 @@ public sealed partial class DictationsPage : Page
     public DictationsPage()
     {
         InitializeComponent();
-        Unloaded += (_, _) => ViewModel.Dispose();
-        ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
+        // No Refresh button (macOS has none): the list reloads when a Computer Use run lands.
+        Unloaded += (_, _) =>
+        {
+            ViewModel.Dispose();
+            App.ComputerUse.Changed -= OnComputerUseChanged;
+        };
+        ViewModel.PropertyChanged += (_, _) =>
+        {
+            UpdateEmptyState();
+            UpdateFilterPills();
+        };
         Loaded += (_, _) =>
         {
             ApplyResponsiveLayout(ActualWidth);
+            App.ComputerUse.Changed += OnComputerUseChanged;
             UpdateEmptyState();
-            UpdateSortPill();
+            UpdateFilterPills();
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
+    }
+
+    private void OnComputerUseChanged(object? sender, EventArgs e) => ViewModel.Refresh();
+
+    /// <summary>Builds the next page of older days once the reader is within a screen of the end.</summary>
+    private void PageScroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (sender is ScrollViewer scroller && ViewModel.Groups.HasMore &&
+            scroller.VerticalOffset >= scroller.ScrollableHeight - scroller.ViewportHeight)
+            ViewModel.Groups.ShowMore();
     }
 
     public static Visibility BoolToVisibility(bool value) =>
@@ -52,30 +72,26 @@ public sealed partial class DictationsPage : Page
 
     public static string RecordGlyph(bool isRecording) => isRecording ? "" : "";
 
+    /// <summary>macOS StatsHeaderView.onSelect: each card opens its Insights section.</summary>
     private void StatCard_Click(object sender, RoutedEventArgs e) =>
-        (App.Window as MainWindow)?.ShellPage?.NavigateTo("insights");
+        (App.Window as MainWindow)?.ShellPage?.OpenInsights((sender as FrameworkElement)?.Tag as string ?? "words", "dictations");
 
-    private void SortItem_Click(object sender, RoutedEventArgs e)
+    private void DateFilterMenu_Opening(object sender, object e) =>
+        HistoryFilterBar.FillDateMenu(DateFilterMenu, ViewModel.DateFilters, ViewModel.DateFilterIndex, index => ViewModel.DateFilterIndex = index);
+
+    private void AppFilterMenu_Opening(object sender, object e) =>
+        HistoryFilterBar.FillAppMenu(AppFilterMenu, ViewModel.Apps, ViewModel.AppFilter, app => ViewModel.AppFilter = app);
+
+    private void UpdateFilterPills()
     {
-        if (sender is RadioMenuFlyoutItem { Tag: string tag } && int.TryParse(tag, out var index))
-        {
-            ViewModel.SortIndex = index;
-            UpdateSortPill();
-        }
+        HistoryFilterBar.StyleDatePill(DateFilterButton, DateFilterIcon, DateFilterLabel,
+            ViewModel.DateFilterIndex > 0 && ViewModel.DateFilterIndex < ViewModel.DateFilters.Count ? ViewModel.DateFilters[ViewModel.DateFilterIndex] : null);
+        HistoryFilterBar.StyleAppPill(AppFilterButton, AppFilterIcon, AppFilterGlyph, AppFilterLabel, ViewModel.AppFilter);
     }
 
-    /// <summary>macOS filter menu: a bare tertiary funnel at the default, an accent pill otherwise.</summary>
-    private void UpdateSortPill()
+    private void ToggleText_Click(object sender, RoutedEventArgs e)
     {
-        var oldest = ViewModel.SortIndex == 1;
-        NewestFirstItem.IsChecked = !oldest;
-        OldestFirstItem.IsChecked = oldest;
-        SortLabel.Visibility = oldest ? Visibility.Visible : Visibility.Collapsed;
-        var tone = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[oldest ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush"];
-        SortIcon.Foreground = tone;
-        SortLabel.Foreground = tone;
-        if (oldest) SortButton.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
-        else SortButton.ClearValue(Control.BackgroundProperty);
+        if (Tagged(sender) is { } item) item.Body.IsExpanded = !item.Body.IsExpanded;
     }
 
     /// <summary>
@@ -89,6 +105,9 @@ public sealed partial class DictationsPage : Page
         base.OnNavigatedTo(e);
         var id = e.Parameter as string;
         _pendingRevealId = ViewModel.Contains(id) ? id : null;
+        // An older dictation's day may not be built yet.
+        if (_pendingRevealId is { } reveal)
+            ViewModel.Groups.ShowThrough(group => group.Items.Any(item => item.Id == reveal));
     }
 
     private void UpdateEmptyState()
@@ -100,8 +119,13 @@ public sealed partial class DictationsPage : Page
         // The list is rebuilt on every reload, so the tracked selection owner is stale.
         _selectedRowList = null;
 
-        EmptyStateTitle.Text = "No dictations yet";
-        EmptyStateBody.Text = "Your first completed dictation will be stored here.";
+        // macOS DictationsView empty state: the filter hint, else the push-to-talk prompt.
+        if (ViewModel.HasItems) return;
+        EmptyStateTitle.Text = ViewModel.EmptyStateTitle;
+        var hotkey = App.Settings.Load().Hotkey;
+        EmptyStateBody.Text = ViewModel.IsFiltered
+            ? "Try another source, app, or time range"
+            : $"Hold {(string.IsNullOrWhiteSpace(hotkey) ? "your shortcut" : hotkey)} to dictate";
     }
 
     /// <summary>
@@ -144,7 +168,7 @@ public sealed partial class DictationsPage : Page
         container.PointerExited += Row_Hide;
         container.GotFocus += Row_Reveal;
         container.LostFocus += Row_Hide;
-        SetRowActionsVisible(container, false);
+        SetRowActionsVisible(container, item.HasRun);
 
         var duration = string.IsNullOrEmpty(item.DurationLabel) ? "" : $", {item.DurationLabel}";
         AutomationProperties.SetName(container, $"{item.TimeLabel}{duration}. {item.Text}");
@@ -205,6 +229,8 @@ public sealed partial class DictationsPage : Page
             return;
         }
 
+        // macOS keeps the actions of a row with expandable details visible.
+        visible |= container.Content is DictationListItem { HasRun: true };
         actions.Opacity = visible ? 1 : 0;
         actions.IsHitTestVisible = visible;
     }
@@ -215,6 +241,29 @@ public sealed partial class DictationsPage : Page
         {
             await ViewModel.CopyCommand.ExecuteAsync(item);
         }
+    }
+
+    private async void CopyTrace_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender) is { } item)
+        {
+            await ViewModel.CopyTraceCommand.ExecuteAsync(item);
+        }
+    }
+
+    private void ToggleRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender)?.Run is { } run) run.IsExpanded = !run.IsExpanded;
+    }
+
+    /// <summary>macOS DictationRowView: tapping a Computer Use row opens its steps; tapping any
+    /// other dictation copies it.</summary>
+    private async void Row_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        if (ComputerUseRowStyle.IsOwnTap(e.OriginalSource, sender) ||
+            (sender as FrameworkElement)?.DataContext is not DictationListItem item) return;
+        if (item.Run is { } run) run.IsExpanded = !run.IsExpanded;
+        else await ViewModel.CopyCommand.ExecuteAsync(item);
     }
 
     private async void DeleteDictation_Click(object sender, RoutedEventArgs e)

@@ -47,6 +47,8 @@ public sealed partial class SettingsPage : Page
             // partially realised tree before Loaded and cached an incomplete list.
             _valueControls = null;
             ApplyResponsiveLayout(ActualWidth);
+            // The SelectorBar re-selects its default tab while loading, after OnNavigatedTo.
+            if (_requestedSection is { } requested) SelectSection(requested);
             UpdateSections();
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
@@ -57,6 +59,8 @@ public sealed partial class SettingsPage : Page
     /// Lets another page deep-link a Settings section (for example the Shortcuts page's
     /// "Configure in Settings" action for Computer Use).
     /// </summary>
+    private void ManageCleanupPresets_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(CleanupPresetsPage));
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
@@ -71,9 +75,17 @@ public sealed partial class SettingsPage : Page
             _ => -1
         };
         if (index < 0 || index >= SectionBar.Items.Count) return;
+        _requestedSection = index;
+        SelectSection(index);
+        UpdateSections();
+    }
+
+    private int? _requestedSection;
+
+    private void SelectSection(int index)
+    {
         SectionBar.SelectedItem = SectionBar.Items[index];
         ViewModel.SectionIndex = index;
-        UpdateSections();
     }
 
     /// <summary>
@@ -198,8 +210,6 @@ public sealed partial class SettingsPage : Page
         }
 
         DataActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
-        ComputerUseLimitsHost.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
-        ComputerUseActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         PushToTalkHost.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         ExportFolderHost.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         ExportFolderHost.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;

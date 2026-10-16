@@ -3,6 +3,31 @@ namespace Muesli.Windows.Tests;
 public sealed class CapturePrivacyAndRuntimeTests
 {
     [Fact]
+    public void SavedTracksCompressToM4aThatStillDecodesAndStaysOwned()
+    {
+        using var directory = new TestDirectory();
+        var storage = new CaptureStorageService(directory.Path);
+        var meetingDirectory = Path.Combine(directory.Path, "recordings", "meet_1");
+        Directory.CreateDirectory(meetingDirectory);
+        var wav = Path.Combine(meetingDirectory, "microphone.wav");
+        // One second of 16 kHz mono tone, the shape meeting capture saves.
+        var tone = new NAudio.Wave.SampleProviders.OffsetSampleProvider(
+            new NAudio.Wave.SampleProviders.SignalGenerator(16000, 1) { Frequency = 440, Gain = 0.2 }) { TakeSamples = 16000 };
+        NAudio.Wave.WaveFileWriter.CreateWaveFile16(wav, tone);
+
+        var m4a = MeetingRecordingCompression.ToM4a(wav);
+
+        Assert.Equal(Path.ChangeExtension(wav, ".m4a"), m4a);
+        Assert.False(File.Exists(wav));
+        using (var reader = new NAudio.Wave.AudioFileReader(m4a))
+            Assert.InRange(reader.TotalTime.TotalSeconds, 0.9, 1.2);
+        Assert.True(storage.IsOwnedMeetingAudioPath("meet_1", m4a));
+        Assert.True(storage.IsOwnedMeetingAudioPath("meet_1", Path.Combine(meetingDirectory, "system-resume-meet_2.m4a")));
+        Assert.False(storage.IsOwnedMeetingAudioPath("meet_1", Path.Combine(meetingDirectory, "notes.m4a")));
+        Assert.Equal(m4a, MeetingRecordingCompression.ToM4a(m4a));
+    }
+
+    [Fact]
     public void MeetingRetentionUsesUniqueStablePathsAndProtectsImports()
     {
         using var directory = new TestDirectory();

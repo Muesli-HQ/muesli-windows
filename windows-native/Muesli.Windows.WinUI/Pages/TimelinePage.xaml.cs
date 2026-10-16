@@ -17,17 +17,44 @@ public sealed partial class TimelinePage : Page
     /// </summary>
     private ListView? _selectedRowList;
 
-    public TimelinePageViewModel ViewModel { get; } = new(App.Library);
+    public TimelinePageViewModel ViewModel { get; } = new(App.Library, App.Clipboard, App.Dialogs);
 
     public TimelinePage()
     {
         InitializeComponent();
-        ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
+        ViewModel.PropertyChanged += (_, _) =>
+        {
+            UpdateEmptyState();
+            UpdateFilterPills();
+        };
+        // No Refresh button (macOS has none): the feed reloads whenever history changes.
         Loaded += (_, _) =>
         {
             UpdateEmptyState();
-            UpdateSortPill();
+            UpdateFilterPills();
+            App.Dictation.Changed += OnHistoryChanged;
+            App.ComputerUse.Changed += OnHistoryChanged;
+            App.Meetings.Changed += OnHistoryChanged;
         };
+        Unloaded += (_, _) =>
+        {
+            App.Dictation.Changed -= OnHistoryChanged;
+            App.ComputerUse.Changed -= OnHistoryChanged;
+            App.Meetings.Changed -= OnHistoryChanged;
+        };
+    }
+
+    private void OnHistoryChanged(object? sender, EventArgs e)
+    {
+        if (!App.Dictation.IsRecording && !App.Dictation.IsBusy) ViewModel.Refresh();
+    }
+
+    /// <summary>Builds the next page of older days once the reader is within a screen of the end.</summary>
+    private void PageScroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (sender is ScrollViewer scroller && ViewModel.Groups.HasMore &&
+            scroller.VerticalOffset >= scroller.ScrollableHeight - scroller.ViewportHeight)
+            ViewModel.Groups.ShowMore();
     }
 
     public static Visibility BoolToVisibility(bool value) =>
@@ -73,34 +100,26 @@ public sealed partial class TimelinePage : Page
         return new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x1F, color.R, color.G, color.B));
     }
 
+    /// <summary>macOS StatsHeaderView.onSelect: each card opens its Insights section.</summary>
     private void StatCard_Click(object sender, RoutedEventArgs e) =>
-        (App.Window as MainWindow)?.ShellPage?.NavigateTo("insights");
+        (App.Window as MainWindow)?.ShellPage?.OpenInsights((sender as FrameworkElement)?.Tag as string ?? "words", "timeline");
 
-    private void SortItem_Click(object sender, RoutedEventArgs e)
+    private void DateFilterMenu_Opening(object sender, object e) =>
+        HistoryFilterBar.FillDateMenu(DateFilterMenu, HistoryFormat.DateFilters, ViewModel.DateFilterIndex, index => ViewModel.DateFilterIndex = index);
+
+    private void AppFilterMenu_Opening(object sender, object e) =>
+        HistoryFilterBar.FillAppMenu(AppFilterMenu, ViewModel.Apps, ViewModel.AppFilter, app => ViewModel.AppFilter = app);
+
+    private void UpdateFilterPills()
     {
-        if (sender is RadioMenuFlyoutItem { Tag: string tag } && int.TryParse(tag, out var index))
-        {
-            ViewModel.SortIndex = index;
-            UpdateSortPill();
-        }
+        HistoryFilterBar.StyleDatePill(DateFilterButton, DateFilterIcon, DateFilterLabel,
+            ViewModel.DateFilterIndex > 0 ? HistoryFormat.DateFilters[ViewModel.DateFilterIndex] : null);
+        HistoryFilterBar.StyleAppPill(AppFilterButton, AppFilterIcon, AppFilterGlyph, AppFilterLabel, ViewModel.AppFilter);
     }
 
-    /// <summary>
-    /// The macOS filter menu: a bare tertiary funnel at the default, an accent pill naming the
-    /// choice otherwise.
-    /// </summary>
-    private void UpdateSortPill()
+    private void ToggleText_Click(object sender, RoutedEventArgs e)
     {
-        var oldest = ViewModel.SortIndex == 1;
-        NewestFirstItem.IsChecked = !oldest;
-        OldestFirstItem.IsChecked = oldest;
-        SortLabel.Text = "Oldest first";
-        SortLabel.Visibility = oldest ? Visibility.Visible : Visibility.Collapsed;
-        var tone = (Brush)Application.Current.Resources[oldest ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush"];
-        SortIcon.Foreground = tone;
-        SortLabel.Foreground = tone;
-        if (oldest) SortButton.Background = (Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
-        else SortButton.ClearValue(Control.BackgroundProperty);
+        if (Tagged(sender) is { } entry) entry.Body.IsExpanded = !entry.Body.IsExpanded;
     }
 
     private void UpdateEmptyState()
@@ -112,8 +131,8 @@ public sealed partial class TimelinePage : Page
         EmptyState.Visibility = ViewModel.HasEntries ? Visibility.Collapsed : Visibility.Visible;
         TimelineList.Visibility = ViewModel.HasEntries ? Visibility.Visible : Visibility.Collapsed;
 
-        EmptyStateTitle.Text = "No timeline activity yet";
-        EmptyStateBody.Text = "Saved dictations and completed meetings will appear here.";
+        // macOS TimelineView.emptyState.
+        EmptyStateTitle.Text = ViewModel.EmptyStateTitle;
     }
 
     /// <summary>
@@ -127,6 +146,16 @@ public sealed partial class TimelinePage : Page
         {
             return;
         }
+
+        var container = args.ItemContainer;
+        container.PointerEntered -= Row_Reveal;
+        container.PointerExited -= Row_Hide;
+        if (!args.InRecycleQueue)
+        {
+            container.PointerEntered += Row_Reveal;
+            container.PointerExited += Row_Hide;
+        }
+        SetRowActionsVisible(container, entry.HasRun);
 
         var detail = entry.HasDetail ? ". " + entry.DetailLabel : "";
         AutomationProperties.SetName(
@@ -148,6 +177,15 @@ public sealed partial class TimelinePage : Page
             return;
         }
 
+        // macOS TimelineView rows are DictationRowView: a Computer Use row opens its steps and any
+        // other dictation is copied. Only meetings open a page.
+        if (!entry.IsMeeting)
+        {
+            if (entry.Run is { } run) run.IsExpanded = !run.IsExpanded;
+            else _ = ViewModel.CopyCommand.ExecuteAsync(entry);
+            return;
+        }
+
         if (sender is ListView list)
         {
             if (_selectedRowList is not null && !ReferenceEquals(_selectedRowList, list))
@@ -165,6 +203,47 @@ public sealed partial class TimelinePage : Page
         Frame?.Navigate(
             entry.IsMeeting ? typeof(MeetingDetailPage) : typeof(DictationsPage),
             entry.Id);
+    }
+
+    private void Row_Reveal(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is ContentControl container) SetRowActionsVisible(container, true);
+    }
+
+    private void Row_Hide(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is ContentControl container) SetRowActionsVisible(container, false);
+    }
+
+    /// <summary>Hover-revealed like Dictations; a Computer Use row keeps its actions visible.</summary>
+    private static void SetRowActionsVisible(ContentControl container, bool visible)
+    {
+        if ((container.ContentTemplateRoot as FrameworkElement)?.FindName("RowActions") is not FrameworkElement actions) return;
+        visible |= container.Content is WinUiTimelineEntry { HasRun: true };
+        actions.Opacity = visible ? 1 : 0;
+        actions.IsHitTestVisible = visible;
+    }
+
+    private static WinUiTimelineEntry? Tagged(object sender) => (sender as FrameworkElement)?.Tag as WinUiTimelineEntry;
+
+    private void ToggleRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender)?.Run is { } run) run.IsExpanded = !run.IsExpanded;
+    }
+
+    private async void CopyTrace_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender) is { } entry) await ViewModel.CopyTraceCommand.ExecuteAsync(entry);
+    }
+
+    private async void CopyDictation_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender) is { } entry) await ViewModel.CopyCommand.ExecuteAsync(entry);
+    }
+
+    private async void DeleteDictation_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tagged(sender) is { } entry) await ViewModel.DeleteCommand.ExecuteAsync(entry);
     }
 
     /// <summary>Prompt 9: real accessible names for record-backed list containers (<see cref="ListItemAutomationNames"/>).</summary>

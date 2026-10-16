@@ -209,8 +209,10 @@ public static class FloatingIndicatorLayout
             ? new DipSize(MinimalGripThickness + 2 * MinimalGripHitMargin, MinimalGripLength + 2 * MinimalGripHitMargin, 0)
             : new DipSize(MinimalGripLength + 2 * MinimalGripHitMargin, MinimalGripThickness + 2 * MinimalGripHitMargin, 0);
 
-    public static DipSize SizeFor(FloatingIndicatorState state, bool hovered, string? message = "")
+    public static DipSize SizeFor(FloatingIndicatorState state, bool hovered, string? message = "", bool computerUse = false)
     {
+        if (computerUse && state == FloatingIndicatorState.Transcribing)
+            return new DipSize(ComputerUseWidthFor(message), TranscribingHeight, TranscribingRadius);
         return state switch
         {
             FloatingIndicatorState.Idle => hovered
@@ -235,6 +237,10 @@ public static class FloatingIndicatorLayout
         // macOS warningPillSize: 18 + 24 icon + 4 + text + 2 + 18, 180 minimum. ~6.2 DIPs per
         // character approximates 11pt medium Segoe UI.
         Math.Clamp(66 + (message?.Length ?? 0) * 6.2, StatusWidth, StatusWidthMax);
+
+    /// <summary>The Computer Use progress pill (stop cross, cursor, step text) widens with its text.</summary>
+    public static double ComputerUseWidthFor(string? message) =>
+        Math.Clamp(72 + (message?.Length ?? 0) * 6.2, TranscribingWidth, StatusWidthMax);
 
     /// <summary>How long a status pill stays visible before returning to idle.</summary>
     public static long ReturnMilliseconds(FloatingIndicatorState state) =>

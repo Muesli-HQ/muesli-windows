@@ -4,6 +4,52 @@ Full review of `codex/meeting-dictation-parity` (after `16c06d8`) against the si
 goal and the macOS reference (`C:\Users\madha\Downloads\muesli-main\muesli-main`). Statuses in
 `WINDOWS_LAUNCH_LEDGER.md` still govern; this is the current blocker list feeding it.
 
+## Status on 2026-10-14
+
+The tables below are the original review and are kept as written. On `codex/computer-use` (PR #42):
+
+- **Installer:** S1, S3, S6, S7, S8 (AppData virtualization disabled), S10 and the notices part of S9 are fixed (`d05eb7e`). QuestPDF Community is approved (`703acfd`). Still open:
+  - S2: certificate.
+  - S4/S11: clean-VM qualification and SmartScreen/Smart App Control.
+  - S5: a signed build from a tagged commit.
+  - S9: privacy/support URLs and controller.
+  - S12: updates stay manual unless decided otherwise.
+  - S13: package size (documented).
+- **Dictation:** every P1 is fixed except the low-memory Cohere fallback, which is still the release owner's decision (7).
+  - `1abdd76` and `a5199ae` fixed:
+    - a model that isn't downloaded now fails closed;
+    - stops are serialized;
+    - Escape is handled off the hook thread;
+    - the onboarding test is no longer saved;
+    - Esc in onboarding;
+    - macOS filler, artifact and spacing rules.
+  - A microphone that fails mid-dictation now reports "the microphone stopped" instead of "No speech detected".
+  - A paste into an administrator window is detected; the transcript is copied and the pill says why.
+  - The keyboard hook reinstalls itself if its thread dies.
+  - Mic pre-warm now skips headsets, handsets and Hands-Free endpoints. The form-factor constants were off by one.
+- **Meetings:** all P1s are fixed.
+  - `237fa92` and `22b0b06` fixed:
+    - the live session is no longer flagged as recoverable;
+    - a failed save is honest;
+    - sleep is checkpointed;
+    - edits survive summarization;
+    - notes are saved one meeting at a time;
+    - deleting a meeting removes its audio.
+  - `dde8680` added the meeting shortcut; export modes cover Notes/Transcript/Full and PDF.
+  - New since the last update:
+    - a failed summary writes "Summary failed" notes with the transcript;
+    - shutdown and sign-out checkpoint the meeting;
+    - a meeting won't start with less than 1 GB free.
+- **Indicator, onboarding, settings:**
+  - `4268d7e` and `3e081a7`: the tray discloses capture, companion exit is detected, live meeting levels, per-monitor DPI restore.
+  - `a5199ae`: settings save when you leave the page.
+  - `0f94ab2`: onboarding parity.
+  - The indicator pipe no longer queues snapshots while the companion is disconnected, and only the newest snapshot is written.
+- **Still open:**
+  - The P2 polish rows.
+  - Decisions 1, 2, 5, 6, 7 and 8.
+  - All of "Human / physical qualification" below.
+
 Severity: **P0** = cannot ship (data loss, privacy, core flow broken, no installable artifact).
 **P1** = must fix before a public release. **P2** = should fix.
 

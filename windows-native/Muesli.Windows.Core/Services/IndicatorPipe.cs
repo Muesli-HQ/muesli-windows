@@ -21,6 +21,7 @@ public sealed class IndicatorPipeServer : IDisposable
     private Thread? _snapshotThread;
     private Thread? _commandThread;
     private int _disposed;
+    private volatile bool _snapshotConnected;
 
     public IndicatorPipeServer(string instanceId, Action<IndicatorCommand>? onCommand = null)
     {
@@ -30,7 +31,7 @@ public sealed class IndicatorPipeServer : IDisposable
 
     public string PipeName => IndicatorProtocol.PipeNameFor(_instanceId);
 
-    public bool IsConnected => _snapshotPipe is not null;
+    public bool IsConnected => _snapshotConnected;
 
     public event EventHandler? Connected;
 
@@ -45,9 +46,11 @@ public sealed class IndicatorPipeServer : IDisposable
         _commandThread.Start();
     }
 
+    /// <summary>Snapshots carry the whole state: none queue while no companion is connected (it gets
+    /// a fresh one on connect), and only the newest queued one is written.</summary>
     public void Publish(IndicatorSnapshot snapshot)
     {
-        if (Volatile.Read(ref _disposed) != 0) return;
+        if (Volatile.Read(ref _disposed) != 0 || !_snapshotConnected) return;
         try
         {
             _outbound.Add(IndicatorProtocol.SerializeSnapshot(snapshot));
@@ -89,6 +92,8 @@ public sealed class IndicatorPipeServer : IDisposable
                 continue;
             }
 
+            while (_outbound.TryTake(out _)) { }
+            _snapshotConnected = true;
             Connected?.Invoke(this, EventArgs.Empty);
             try
             {
@@ -104,6 +109,7 @@ public sealed class IndicatorPipeServer : IDisposable
                         break;
                     }
 
+                    while (_outbound.TryTake(out var newer)) payload = newer;
                     PipeLineIO.WriteLine(pipe, payload);
                 }
             }
@@ -116,6 +122,7 @@ public sealed class IndicatorPipeServer : IDisposable
             }
             finally
             {
+                _snapshotConnected = false;
                 if (ReferenceEquals(_snapshotPipe, pipe)) _snapshotPipe = null;
             }
         }

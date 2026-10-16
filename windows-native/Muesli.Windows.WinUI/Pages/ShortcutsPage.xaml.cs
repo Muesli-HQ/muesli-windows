@@ -12,7 +12,7 @@ public sealed partial class ShortcutsPage : Page
 {
     private bool _ready;
 
-    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey);
+    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey, App.ComputerUse.RegisterVoiceShortcut, App.RegisterMeetingShortcut, App.Quill.RegisterShortcut);
 
     /// <summary>
     /// Re-installs the global push-to-talk hook from the saved gesture. Returns null when the hook
@@ -62,6 +62,13 @@ public sealed partial class ShortcutsPage : Page
     /// <summary>macOS hotkeyBadge prints the whole chord in one badge: "Ctrl + Shift + F8".</summary>
     public static string Keys(IReadOnlyList<string> parts) => string.Join(" + ", parts);
 
+    private void ChangeComputerUseShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.BeginCapture("computer-use");
+        ApplyCaptureChrome();
+        Focus(FocusState.Programmatic);
+    }
+
     private void ChangeShortcut_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.BeginCapture();
@@ -75,6 +82,14 @@ public sealed partial class ShortcutsPage : Page
         if (!_ready) return;
         ViewModel.SetHandsFreeEnabled(HandsFreeToggle.IsOn);
     }
+
+    private void PushToTalk_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || PushToTalkToggle.IsOn == ViewModel.PushToTalkEnabled) return;
+        ViewModel.SetPushToTalkEnabled(PushToTalkToggle.IsOn);
+    }
+
+    private void ResetDefaults_Click(object sender, RoutedEventArgs e) => ViewModel.ResetToDefaults();
 
     /// <summary>Persists Computer Use enablement from this page once the user toggles it.</summary>
     private void ComputerUse_Toggled(object sender, RoutedEventArgs e)
@@ -90,11 +105,32 @@ public sealed partial class ShortcutsPage : Page
         Frame?.Navigate(typeof(SettingsPage), "computer-use");
     }
 
-    /// <summary>Meeting recording has no global shortcut yet; open the page that starts it.</summary>
-    private void OpenMeetings_Click(object sender, RoutedEventArgs e)
+    private void Quill_Toggled(object sender, RoutedEventArgs e)
     {
-        (App.Window as MainWindow)?.ShellPage?.SyncRailSelection("meetings");
-        Frame?.Navigate(typeof(MeetingsPage));
+        if (!_ready || QuillToggle.IsOn == ViewModel.QuillEnabled) return;
+        ViewModel.SetQuillEnabled(QuillToggle.IsOn);
+        // Refused (not signed in): put the switch back, since the OneWay binding saw no change.
+        QuillToggle.IsOn = ViewModel.QuillEnabled;
+    }
+
+    private void ChangeQuillShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.BeginCapture("quill");
+        ApplyCaptureChrome();
+        Focus(FocusState.Programmatic);
+    }
+
+    private void MeetingShortcut_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || MeetingShortcutToggle.IsOn == ViewModel.MeetingShortcutEnabled) return;
+        ViewModel.SetMeetingShortcutEnabled(MeetingShortcutToggle.IsOn);
+    }
+
+    private void ChangeMeetingShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.BeginCapture("meeting");
+        ApplyCaptureChrome();
+        Focus(FocusState.Programmatic);
     }
 
     protected override void OnKeyDown(KeyRoutedEventArgs e)
@@ -106,32 +142,20 @@ public sealed partial class ShortcutsPage : Page
         }
 
         e.Handled = true;
+        var button = ViewModel.IsCapturingComputerUse ? ChangeComputerUseButton
+            : ViewModel.IsCapturingMeeting ? ChangeMeetingButton
+            : ViewModel.IsCapturingQuill ? ChangeQuillButton : ChangePushToTalkButton;
         if (e.Key == VirtualKey.Escape)
         {
             ViewModel.CancelCapture();
             ApplyCaptureChrome();
-            ChangePushToTalkButton.Focus(FocusState.Programmatic);
+            button.Focus(FocusState.Programmatic);
             return;
         }
-        if (e.Key is VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl or
-            VirtualKey.Shift or VirtualKey.LeftShift or VirtualKey.RightShift or
-            VirtualKey.Menu or VirtualKey.LeftMenu or VirtualKey.RightMenu or
-            VirtualKey.LeftWindows or VirtualKey.RightWindows)
-        {
-            return;
-        }
-
-        var label = KeyLabel(e.Key);
-        if (label is null) return;
-        var parts = new List<string>();
-        if (IsDown(VirtualKey.Control)) parts.Add("Ctrl");
-        if (IsDown(VirtualKey.Shift)) parts.Add("Shift");
-        if (IsDown(VirtualKey.Menu)) parts.Add("Alt");
-        if (IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows)) parts.Add("Win");
-        parts.Add(label);
-        ViewModel.ApplyCapturedGesture(string.Join('+', parts));
+        if (CaptureGesture(e.Key) is not { } gesture) return;
+        ViewModel.ApplyCapturedGesture(gesture);
         ApplyCaptureChrome();
-        ChangePushToTalkButton.Focus(FocusState.Programmatic);
+        button.Focus(FocusState.Programmatic);
     }
 
     private void HoldThreshold_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
@@ -145,15 +169,49 @@ public sealed partial class ShortcutsPage : Page
     /// <summary>While capturing, the badge takes the accent tint so it reads as listening.</summary>
     private void ApplyCaptureChrome()
     {
-        var capturing = ViewModel.IsCapturing;
-        PushKeycapWell.BorderBrush = ThemeBrush(capturing ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
-        PushKeycapWell.Background = ThemeBrush(capturing ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+        var computerUse = ViewModel.IsCapturingComputerUse;
+        var meeting = ViewModel.IsCapturingMeeting;
+        var quill = ViewModel.IsCapturingQuill;
+        var push = ViewModel.IsCapturing && !computerUse && !meeting && !quill;
+        QuillKeycapWell.BorderBrush = ThemeBrush(quill ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        QuillKeycapWell.Background = ThemeBrush(quill ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+        MeetingKeycapWell.BorderBrush = ThemeBrush(meeting ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        MeetingKeycapWell.Background = ThemeBrush(meeting ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+        PushKeycapWell.BorderBrush = ThemeBrush(push ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        PushKeycapWell.Background = ThemeBrush(push ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+        ComputerUseKeycapWell.BorderBrush = ThemeBrush(computerUse ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        ComputerUseKeycapWell.Background = ThemeBrush(computerUse ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
     }
 
     private static Brush ThemeBrush(string key) =>
         Application.Current.Resources[key] is Brush brush
             ? brush
             : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+
+    /// <summary>
+    /// The gesture for a key press with the modifiers held now ("Ctrl+Shift+D"), or null while
+    /// only a modifier is down or the key cannot be a shortcut. Onboarding captures with this too.
+    /// </summary>
+    internal static string? CaptureGesture(VirtualKey key)
+    {
+        if (key is VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl or
+            VirtualKey.Shift or VirtualKey.LeftShift or VirtualKey.RightShift or
+            VirtualKey.Menu or VirtualKey.LeftMenu or VirtualKey.RightMenu or
+            VirtualKey.LeftWindows or VirtualKey.RightWindows)
+        {
+            return null;
+        }
+
+        var label = KeyLabel(key);
+        if (label is null) return null;
+        var parts = new List<string>();
+        if (IsDown(VirtualKey.Control)) parts.Add("Ctrl");
+        if (IsDown(VirtualKey.Shift)) parts.Add("Shift");
+        if (IsDown(VirtualKey.Menu)) parts.Add("Alt");
+        if (IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows)) parts.Add("Win");
+        parts.Add(label);
+        return string.Join('+', parts);
+    }
 
     private static bool IsDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);

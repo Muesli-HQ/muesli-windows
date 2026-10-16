@@ -162,7 +162,12 @@ public sealed class WinUiMeetingContext : IDisposable
             if (IsRecording || IsPaused) throw new InvalidOperationException("A meeting is already active.");
             await RefreshSettingsAsync(cancellationToken);
             _title = title;
-            await StartCoreAsync(processId, cancellationToken);
+            try { await StartCoreAsync(processId, cancellationToken); }
+            catch (Exception exception)
+            {
+                DiagnosticIncidentPrompts.Record(DiagnosticIncident.MeetingStartFailed, "start_meeting_recording", _settings.FinalMeetingModelId, exception);
+                throw;
+            }
             return true;
         });
 
@@ -254,10 +259,11 @@ public sealed class WinUiMeetingContext : IDisposable
                 _settings.SaveMeetingRecordings,
                 cancellationToken);
         }
-        catch (MeetingSessionRecoverableException)
+        catch (MeetingSessionRecoverableException exception)
         {
             FinalizationFailed = true;
             RaiseChanged();
+            DiagnosticIncidentPrompts.Record(DiagnosticIncident.MeetingProcessingFailed, "meeting_stop_processing", _settings.FinalMeetingModelId, exception);
             throw;
         }
         FinalizationFailed = false;
@@ -267,6 +273,7 @@ public sealed class WinUiMeetingContext : IDisposable
         ActiveMeetingId = null;
         IsSourceMissing = false;
         var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
+        meeting = await CompressSavedTracksAsync(meeting);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -381,6 +388,7 @@ public sealed class WinUiMeetingContext : IDisposable
         var unchangedSpeech = IsResumingFinishedMeeting && string.IsNullOrWhiteSpace(result.Transcript);
         _coordinator.AcknowledgePersisted(result.MeetingId);
         var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
+        meeting = await CompressSavedTracksAsync(meeting);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -507,6 +515,18 @@ public sealed class WinUiMeetingContext : IDisposable
 
     private void SaveMeeting(PersistedMeeting meeting) => _library.SaveMeeting(meeting);
 
+    /// <summary>Recording format M4A: compress the kept tracks once the transcript no longer needs them.</summary>
+    private async Task<PersistedMeeting> CompressSavedTracksAsync(PersistedMeeting meeting)
+    {
+        if (!_settings.SaveMeetingRecordings || _settings.MeetingRecordingFormat != "m4a") return meeting;
+        var microphone = await Task.Run(() => MeetingRecordingCompression.ToM4a(meeting.MicrophoneAudioPath, _log.Error));
+        var system = await Task.Run(() => MeetingRecordingCompression.ToM4a(meeting.SystemAudioPath, _log.Error));
+        if (microphone == meeting.MicrophoneAudioPath && system == meeting.SystemAudioPath) return meeting;
+        meeting = meeting with { MicrophoneAudioPath = microphone, SystemAudioPath = system };
+        SaveMeeting(meeting);
+        return meeting;
+    }
+
     private async Task<PersistedMeeting> FinalizeMeetingAsync(
         PersistedMeeting meeting,
         CancellationToken cancellationToken)
@@ -522,7 +542,7 @@ public sealed class WinUiMeetingContext : IDisposable
         SaveMeeting(meeting);
         var transcript = await _pipeline.PrepareImportedTranscriptAsync(
             meeting.Transcript,
-            _settings.EnableLocalCleanup,
+            _settings.EnableLocalCleanup && _settings.CleanupSource == "local",
             _library.LoadDictionary(),
             cancellationToken,
             removeFillerWords: _settings.RemoveFillerWords);
@@ -540,13 +560,17 @@ public sealed class WinUiMeetingContext : IDisposable
             summarySettings,
             cancellationToken,
             manualNotes: meeting.ManualNotes,
-            previousMeetingNotes: _library.Predecessor(meeting.Id) is { } predecessor ? MeetingContinuation.CarriedNotes(predecessor) : null);
+            previousMeetingNotes: _library.Predecessor(meeting.Id) is { } predecessor ? MeetingContinuation.CarriedNotes(predecessor) : null,
+            participantNames: MeetingParticipants.Load(_library.Profile.RootDirectory, meeting.Id).Select(person => person.Name));
         // Title/notes generation can take minutes; apply generated fields onto the latest saved copy
         // so a title, notes, or folder edited meanwhile in the detail page are not overwritten.
         var latest = _library.FindMeeting(meeting.Id) ?? meeting;
+        var notes = result is { UsedLocalFallback: true, SafeFailureReason: { } reason }
+            ? MeetingSummaryService.SummaryFailureNotes(meeting.Transcript, generatedTitle, result.Provider, reason)
+            : result.Summary;
         var finalized = MeetingNotesComposer.ApplyResummarization(
             latest,
-            result.Summary,
+            notes,
             _settings.MeetingSummaryTemplate,
             generatedTitle);
         SaveMeeting(finalized);

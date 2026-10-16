@@ -59,13 +59,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         _meetings.Changed += OnMeetingsChanged;
     }
 
-    private void OnComputerUseChanged(object? sender, EventArgs args)
-    {
-        ComputerUseStatus = _computerUse.Status;
-        ComputerUseVoiceLabel = _computerUse.VoiceButtonText;
-        ComputerUseStopEnabled = _computerUse.StopEnabled;
-        ComputerUseDiagnostics = _computerUse.Diagnostics;
-    }
+    private void OnComputerUseChanged(object? sender, EventArgs args) =>
+        ComputerUseSignedIn = _computerUse.ChatGpt.IsSignedIn;
 
     private void OnMeetingsChanged(object? sender, EventArgs args)
     {
@@ -97,7 +92,34 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string MeetingSummaryTemplate { get; set; } = "Standard Meeting Notes";
     [ObservableProperty] public partial IReadOnlyList<string> MeetingTemplates { get; private set; } = [];
     [ObservableProperty] public partial bool RemoveFillerWords { get; set; }
+    [NotifyPropertyChangedFor(nameof(ShowCleanupPreset))]
     [ObservableProperty] public partial bool EnableLocalCleanup { get; set; }
+    [NotifyPropertyChangedFor(nameof(CleanupSourceHelp), nameof(ShowCleanupPreset))]
+    [ObservableProperty] public partial int CleanupSourceIndex { get; set; }
+    [NotifyPropertyChangedFor(nameof(CleanupPresetPreview))]
+    [ObservableProperty] public partial int CleanupPresetIndex { get; set; }
+    private IReadOnlyList<CleanupPromptPreset> _cleanupPresets = CleanupPrompts.BuiltIns;
+    public IReadOnlyList<string> CleanupPresetNames => _cleanupPresets.Select(preset => preset.Name).ToList();
+    public string CleanupPresetPreview => _cleanupPresets[Math.Clamp(CleanupPresetIndex, 0, _cleanupPresets.Count - 1)].Prompt;
+    /// <summary>Presets shape the prompt sent to a cloud source; the local model keeps its own.</summary>
+    public bool ShowCleanupPreset => EnableLocalCleanup && CleanupSourceIndex > 0;
+    [NotifyPropertyChangedFor(nameof(OcrContextHelp))]
+    [ObservableProperty] public partial bool EnableAppContext { get; set; }
+    [ObservableProperty] public partial bool EnableDictationOcrContext { get; set; }
+    /// <summary>macOS dictationOCRContextDescription.</summary>
+    public string OcrContextHelp => EnableAppContext
+        ? "Also read the text visible in the window you're dictating into, on this PC, and add it to the app context."
+        : "Turn on App context first.";
+    private static readonly string[] CleanupSources = ["local", "chatgpt", "openai", "openrouter", "ollama", "lmstudio", "custom"];
+
+    /// <summary>Says where the dictation goes, so a cloud choice is never a surprise.</summary>
+    public string CleanupSourceHelp => CleanupSourceIndex switch
+    {
+        <= 0 => "Runs the cleanup model from Models on this PC. Nothing leaves your computer.",
+        1 => "Sends each dictation to your signed-in ChatGPT account. Adds a moment before pasting.",
+        4 or 5 => "Sends each dictation to the local server set under Meetings > Meeting Summaries.",
+        _ => "Sends each dictation to this provider, using the key and model set under Meetings > Meeting Summaries."
+    };
     [ObservableProperty] public partial bool ComputerUseEnabled { get; set; }
     [ObservableProperty] public partial bool ShowFloatingIndicator { get; set; }
     [ObservableProperty] public partial bool SoundEnabled { get; set; }
@@ -107,6 +129,21 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial int ThemeIndex { get; set; }
     [ObservableProperty] public partial int RecordingColorIndex { get; set; }
     [ObservableProperty] public partial int IndicatorStyleIndex { get; set; }
+    [ObservableProperty] public partial int IndicatorPositionIndex { get; set; }
+    [ObservableProperty] public partial IReadOnlyList<string> IndicatorPositions { get; private set; } = IndicatorAnchors;
+    [ObservableProperty] public partial int AutoExportContentIndex { get; set; }
+    [ObservableProperty] public partial int PasteShortcutIndex { get; set; }
+    [ObservableProperty] public partial bool PauseMediaDuringDictation { get; set; }
+    [ObservableProperty] public partial bool MuteAudioDuringDictation { get; set; }
+    [ObservableProperty] public partial int RecordingFormatIndex { get; set; }
+    private static readonly string[] PasteShortcuts = ["ctrl-v", "ctrl-shift-v", "shift-insert"];
+    [ObservableProperty] public partial int MeetingSummaryRetryCount { get; set; } = MeetingSummaryRetryPolicy.DefaultRetryCount;
+
+    /// <summary>macOS indicator_position choices; "Custom" appears only after a drag.</summary>
+    public static readonly string[] IndicatorAnchors =
+        ["Top Left", "Top Center", "Top Right", "Middle Left", "Middle Right", "Bottom Left", "Bottom Center", "Bottom Right"];
+    private const string CustomIndicatorPosition = "Custom (drag to reposition)";
+    private static readonly string[] AutoExportContents = ["notes", "transcript", "full-meeting"];
 
     /// <summary>
     /// The recording pill's accent presets, in macOS order. "1e1e2e" is the shared stored value for
@@ -130,23 +167,23 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial IReadOnlyList<string> LiveModels { get; private set; } = [];
     [ObservableProperty] public partial string SelectedLiveModel { get; set; } = "Off";
     [ObservableProperty] public partial int LiveOwnershipIndex { get; set; }
-    [ObservableProperty] public partial int ComputerUseProviderIndex { get; set; }
-    [ObservableProperty] public partial string ComputerUsePlannerModel { get; set; } = "";
-    [ObservableProperty] public partial int ComputerUsePlannerTimeoutSeconds { get; set; } = 30;
-    [ObservableProperty] public partial int ComputerUsePerActionTimeoutSeconds { get; set; } = 10;
-    [ObservableProperty] public partial int ComputerUseMaximumActionCount { get; set; } = 5;
-    [ObservableProperty] public partial string ComputerUseAllowedApplications { get; set; } = "";
-    [ObservableProperty] public partial string ComputerUseAllowedBrowserDomains { get; set; } = "";
-    [ObservableProperty] public partial int ComputerUseBrowserInterfaceIndex { get; set; }
-    [ObservableProperty] public partial string ComputerUseBrowserEndpoint { get; set; } = "http://127.0.0.1:9222";
-    [ObservableProperty] public partial string ComputerUseStatus { get; private set; } = "";
-    [ObservableProperty] public partial string ComputerUseVoiceLabel { get; private set; } = "Speak planner command";
-    [ObservableProperty] public partial bool ComputerUseStopEnabled { get; private set; }
-    [ObservableProperty] public partial string ComputerUseDiagnostics { get; private set; } = "";
+    /// <summary>Index into <see cref="ComputerUseConfiguration.PlannerModels"/>.</summary>
+    [ObservableProperty] public partial int ComputerUseModelIndex { get; set; }
+    public IReadOnlyList<string> ComputerUseModels { get; } = ComputerUseConfiguration.PlannerModels.Select(model => model.Label).ToList();
+    /// <summary>The thinking efforts the selected model supports, as labels.</summary>
+    [ObservableProperty] public partial IReadOnlyList<string> ComputerUseEfforts { get; private set; } = [];
+    [ObservableProperty] public partial int ComputerUseEffortIndex { get; set; }
+    [ObservableProperty] public partial int ComputerUseTimeoutSeconds { get; set; } = 120;
+    private string _computerUseEffort = "";
+    [NotifyPropertyChangedFor(nameof(ComputerUseSignInLabel))]
+    [ObservableProperty] public partial bool ComputerUseSignedIn { get; private set; }
+    public string ComputerUseSignInLabel => ComputerUseSignedIn ? "Sign out of ChatGPT" : "Sign in with ChatGPT";
+    public string ComputerUseNotice => ComputerUseConfiguration.Notice;
     [ObservableProperty] public partial string CaptureStatus { get; private set; } = "Idle";
     [ObservableProperty] public partial string DetectionStatus { get; private set; } = "";
     [NotifyPropertyChangedFor(nameof(ShowOllamaSettings))]
     [NotifyPropertyChangedFor(nameof(ShowOpenAISettings))]
+    [NotifyPropertyChangedFor(nameof(ShowChatGptSettings))]
     [NotifyPropertyChangedFor(nameof(ShowOpenRouterSettings))]
     [NotifyPropertyChangedFor(nameof(ShowLmStudioSettings))]
     [NotifyPropertyChangedFor(nameof(ShowCustomHttpSettings))]
@@ -173,6 +210,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public IReadOnlyList<SummaryProviderInfo> SummaryProviders { get; } = SummaryProviderDisclosure.Available;
 
     public bool ShowOllamaSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.Ollama;
+    public bool ShowChatGptSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.ChatGpt;
     public bool ShowOpenAISettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenAI;
     public bool ShowOpenRouterSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenRouter;
     public bool ShowLmStudioSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.LmStudio;
@@ -183,8 +221,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             OllamaEndpoint,
             LmStudioEndpoint,
             CustomLlmEndpoint);
-    public string ChatGptSubscriptionNotice { get; } =
-        "ChatGPT subscription sign-in is not available on Windows. Cloud providers in the list above send transcript text to the selected destination.";
 
     // P5-04: the "Sync" tab held nothing but an unavailable-on-Windows notice. Its single honest
     // statement now sits in the General tab's DATA section, next to the permission row that already
@@ -251,11 +287,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [
         nameof(SectionIndex), nameof(HasUnsavedChanges), nameof(StatusMessage), nameof(IsStatusOpen),
         nameof(IsStatusError), nameof(Permissions), nameof(Microphones), nameof(DictationModels),
-        nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseStatus),
-        nameof(ComputerUseVoiceLabel), nameof(ComputerUseStopEnabled), nameof(ComputerUseDiagnostics),
+        nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseEfforts), nameof(IndicatorPositions),
         nameof(CaptureStatus), nameof(DetectionStatus), nameof(IsStartupAvailable),
-        nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp),
-        nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings),
+        nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp), nameof(CleanupSourceHelp),
+        nameof(CleanupPresetNames), nameof(CleanupPresetPreview), nameof(ShowCleanupPreset),
+        nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings), nameof(ShowChatGptSettings),
         nameof(ShowOpenRouterSettings), nameof(ShowGeneral), nameof(ShowDictation),
         nameof(ShowComputerUse), nameof(ShowMeetings), nameof(ShowAppearance)
     ];
@@ -288,6 +324,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
         AutoMeetingDetectionEnabled = _source.AutoMeetingDetectionEnabled;
         SaveMeetingRecordings = _source.SaveMeetingRecordings;
+        RecordingFormatIndex = _source.MeetingRecordingFormat == "m4a" ? 1 : 0;
         AutoExportMarkdownEnabled = _source.AutoExportMarkdownEnabled;
         AutoExportMarkdownDirectory = _source.AutoExportMarkdownDirectory;
         AutoExportPdfEnabled = _source.AutoExportPdfEnabled;
@@ -297,7 +334,17 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         MeetingTemplates = MeetingSummaryService.BuiltInTemplateNames.Concat(_library.LoadMeetingTemplates().Select(item => item.Name)).Distinct().ToList();
         MeetingSummaryTemplate = MeetingSummaryService.NormalizeTemplateName(_source.MeetingSummaryTemplate);
         RemoveFillerWords = _source.RemoveFillerWords;
+        PasteShortcutIndex = Math.Max(0, Array.IndexOf(PasteShortcuts, _source.PasteShortcut));
+        PauseMediaDuringDictation = _source.PauseMediaDuringDictation;
+        MuteAudioDuringDictation = _source.MuteAudioDuringDictation;
+        MeetingSummaryRetryCount = MeetingSummaryRetryPolicy.Clamp(_source.MeetingSummaryRetryCount);
         EnableLocalCleanup = _source.EnableLocalCleanup;
+        CleanupSourceIndex = Math.Max(0, Array.IndexOf(CleanupSources, _source.CleanupSource));
+        _cleanupPresets = CleanupPrompts.All(_source.CustomCleanupPrompts);
+        OnPropertyChanged(nameof(CleanupPresetNames));
+        CleanupPresetIndex = Math.Max(0, _cleanupPresets.ToList().FindIndex(preset => preset.Id == _source.ActiveCleanupPromptId));
+        EnableAppContext = _source.EnableAppContext;
+        EnableDictationOcrContext = _source.EnableDictationOcrContext;
         ComputerUseEnabled = _source.ComputerUseEnabled;
         ShowFloatingIndicator = _source.ShowFloatingIndicator;
         SoundEnabled = _source.SoundEnabled;
@@ -306,6 +353,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         Hotkey = _source.Hotkey;
         ThemeIndex = _source.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
         IndicatorStyleIndex = _source.IndicatorStyle == "minimal" ? 1 : 0;
+        var anchor = Array.IndexOf(IndicatorAnchors, _source.IndicatorAnchor);
+        IndicatorPositions = anchor < 0 ? [.. IndicatorAnchors, CustomIndicatorPosition] : IndicatorAnchors;
+        IndicatorPositionIndex = anchor < 0 ? IndicatorAnchors.Length : anchor;
+        AutoExportContentIndex = Math.Max(0, Array.IndexOf(AutoExportContents, _source.AutoExportMarkdownContent));
         RecordingColorIndex = Array.FindIndex(RecordingColors, color => color.Hex == _source.RecordingColorHex);
         Microphones = new[] { "Automatic" }.Concat(_dictation.ListMicrophones()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         SelectedMicrophone = string.IsNullOrWhiteSpace(_source.MicrophoneName) ? "Automatic" : _source.MicrophoneName;
@@ -324,20 +375,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             : StreamingModelCatalog.Get(_source.LiveMeetingModelId)?.DisplayName ?? "Off";
         LiveOwnershipIndex = LiveTranscriptOwnershipDescriptor.ModeFromSettingValue(_source.LiveTranscriptOwnership)
             == LiveTranscriptOwnershipMode.UnifiedLiveAndFinal ? 1 : 0;
-        ComputerUseProviderIndex = ComputerUseConfiguration.ProviderLabel(_source.ComputerUsePlannerProvider) == "OpenAI" ? 1 : 0;
-        ComputerUsePlannerModel = _source.ComputerUsePlannerModel;
-        ComputerUsePlannerTimeoutSeconds = _source.ComputerUsePlannerTimeoutSeconds;
-        ComputerUsePerActionTimeoutSeconds = _source.ComputerUsePerActionTimeoutSeconds;
-        ComputerUseMaximumActionCount = _source.ComputerUseMaximumActionCount;
-        ComputerUseAllowedApplications = _source.ComputerUseAllowedApplications;
-        ComputerUseAllowedBrowserDomains = _source.ComputerUseAllowedBrowserDomains;
-        ComputerUseBrowserInterfaceIndex = ComputerUseConfiguration.BrowserInterfaceLabel(_source.ComputerUseBrowserInterface) == "Loopback DevTools" ? 1 : 0;
-        ComputerUseBrowserEndpoint = _source.ComputerUseBrowserEndpoint;
-        ComputerUseStatus = _computerUse.Status;
-        ComputerUseVoiceLabel = _computerUse.VoiceButtonText;
-        ComputerUseStopEnabled = _computerUse.StopEnabled;
-        _computerUse.RefreshDiagnostics();
-        ComputerUseDiagnostics = _computerUse.Diagnostics;
+        _computerUseEffort = _source.ComputerUseReasoningEffort;
+        ComputerUseModelIndex = IndexOfPlannerModel(_source.ComputerUsePlannerModel);
+        ShowComputerUseEfforts();
+        ComputerUseTimeoutSeconds = _source.ComputerUseTimeoutSeconds;
+        ComputerUseSignedIn = _computerUse.ChatGpt.IsSignedIn;
         CaptureStatus = _meetings.CaptureStatus;
         DetectionStatus = _detection.Status;
         SelectedSummaryProvider = SummaryProviderDisclosure.For(_source.MeetingSummaryProvider);
@@ -371,22 +413,36 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             ? null
             : StreamingModelCatalog.Models.FirstOrDefault(model => model.DisplayName == SelectedLiveModel)?.Id;
         var enableComputerUse = ComputerUseEnabled;
-        var draft = _source with
+        // Fields this page does not edit (indicator drag position, Shortcuts page, tour state) may
+        // have changed since it loaded, so the draft starts from what is on disk now.
+        var current = _settingsContext.Load();
+        var draft = current with
         {
             UserName = UserName.Trim(),
             OpenDashboardOnLaunch = OpenDashboardOnLaunch,
             StartAtLogin = StartAtLogin,
             AutoMeetingDetectionEnabled = AutoMeetingDetectionEnabled,
             SaveMeetingRecordings = SaveMeetingRecordings,
+            MeetingRecordingFormat = RecordingFormatIndex == 1 ? "m4a" : "wav",
             AutoExportMarkdownEnabled = AutoExportMarkdownEnabled,
             AutoExportMarkdownDirectory = AutoExportMarkdownDirectory.Trim(),
             AutoExportPdfEnabled = AutoExportPdfEnabled,
+            AutoExportMarkdownContent = AutoExportContents[Math.Clamp(AutoExportContentIndex, 0, AutoExportContents.Length - 1)],
             PostMeetingHookEnabled = PostMeetingHookEnabled,
             PostMeetingHookExecutablePath = PostMeetingHookExecutablePath.Trim(),
             PostMeetingHookTimeoutSeconds = Math.Clamp(PostMeetingHookTimeoutSeconds, 1, 600),
             MeetingSummaryTemplate = MeetingSummaryTemplate,
+            MeetingSummaryRetryCount = MeetingSummaryRetryPolicy.Clamp(MeetingSummaryRetryCount),
             RemoveFillerWords = RemoveFillerWords,
+            PasteShortcut = PasteShortcuts[Math.Clamp(PasteShortcutIndex, 0, PasteShortcuts.Length - 1)],
+            PauseMediaDuringDictation = PauseMediaDuringDictation,
+            MuteAudioDuringDictation = MuteAudioDuringDictation,
             EnableLocalCleanup = EnableLocalCleanup,
+            CleanupSource = CleanupSources[Math.Clamp(CleanupSourceIndex, 0, CleanupSources.Length - 1)],
+            ActiveCleanupPromptId = _cleanupPresets[Math.Clamp(CleanupPresetIndex, 0, _cleanupPresets.Count - 1)].Id,
+            EnableAppContext = EnableAppContext,
+            // macOS turns OCR off with app context.
+            EnableDictationOcrContext = EnableAppContext && EnableDictationOcrContext,
             ComputerUseEnabled = enableComputerUse,
             ShowFloatingIndicator = ShowFloatingIndicator,
             SoundEnabled = SoundEnabled,
@@ -394,6 +450,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             HotkeyTriggerThresholdMs = threshold,
             Theme = theme,
             IndicatorStyle = IndicatorStyleIndex == 1 ? "minimal" : "classic",
+            IndicatorAnchor = IndicatorPositionIndex >= 0 && IndicatorPositionIndex < IndicatorAnchors.Length ? IndicatorAnchors[IndicatorPositionIndex] : current.IndicatorAnchor,
             RecordingColorHex = RecordingColorIndex >= 0 ? RecordingColors[RecordingColorIndex].Hex : _source.RecordingColorHex,
             MicrophoneName = SelectedMicrophone == "Automatic" ? null : SelectedMicrophone,
             DictationModelId = dictationModel,
@@ -403,18 +460,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
                 LiveOwnershipIndex == 1
                     ? LiveTranscriptOwnershipMode.UnifiedLiveAndFinal
                     : LiveTranscriptOwnershipMode.PreviewOnly),
-            ComputerUsePlannerProvider = ComputerUseProviderIndex == 1 ? "openai" : "none",
-            ComputerUsePlannerModel = ComputerUsePlannerModel.Trim(),
-            ComputerUsePlannerTimeoutSeconds = ComputerUsePlannerTimeoutSeconds,
-            ComputerUsePerActionTimeoutSeconds = ComputerUsePerActionTimeoutSeconds,
-            ComputerUseMaximumActionCount = ComputerUseMaximumActionCount,
-            ComputerUseAllowedApplications = ComputerUseConfiguration.NormalizeAllowlist(ComputerUseAllowedApplications),
-            ComputerUseAllowedBrowserDomains = ComputerUseConfiguration.NormalizeAllowlist(ComputerUseAllowedBrowserDomains),
-            ComputerUseIncludeWindowText = false,
-            ComputerUseIncludeBrowserPageText = false,
-            ComputerUseIncludeScreenshots = false,
-            ComputerUseBrowserInterface = ComputerUseBrowserInterfaceIndex == 1 ? "loopback-devtools" : "none",
-            ComputerUseBrowserEndpoint = ComputerUseBrowserEndpoint.Trim(),
+            ComputerUsePlannerProvider = "chatgpt",
+            ComputerUsePlannerModel = SelectedPlannerModel.Id,
+            ComputerUseReasoningEffort = ComputerUseConfiguration.Effort(SelectedPlannerModel, _computerUseEffort),
+            ComputerUseTimeoutSeconds = Math.Clamp(ComputerUseTimeoutSeconds, 1, 600),
             MeetingSummaryProvider = SelectedSummaryProvider?.Id ?? "local",
             OllamaEndpoint = OllamaEndpoint.Trim(),
             OllamaModel = OllamaModel.Trim(),
@@ -430,7 +479,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         };
         string? warning = null;
         if (draft.ComputerUseEnabled &&
-            !ComputerUseConfiguration.TryValidate(draft, draft.ResolvedOpenAIApiKey, out var error))
+            !ComputerUseConfiguration.TryValidate(draft, _computerUse.ChatGpt.IsSignedIn, out var error))
         {
             draft = draft with { ComputerUseEnabled = false };
             ComputerUseEnabled = false;
@@ -438,8 +487,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         }
 
         HotkeyTriggerThresholdMs = threshold;
-        ComputerUseAllowedApplications = draft.ComputerUseAllowedApplications;
-        ComputerUseAllowedBrowserDomains = draft.ComputerUseAllowedBrowserDomains;
         // Windows can refuse the startup task (e.g. disabled in Task Manager). That must not
         // block keys and every other setting from saving.
         if (IsStartupAvailable)
@@ -511,34 +558,33 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task SpeakComputerUseAsync() => await _computerUse.ToggleVoiceAsync();
-
-    [RelayCommand]
-    private async Task StopComputerUseAsync() => await _computerUse.CancelAsync();
-
-    [RelayCommand]
-    private void OpenComputerUseDiagnostics()
+    private async Task ToggleChatGptSignInAsync()
     {
-        _computerUse.RefreshDiagnostics();
-        ComputerUseDiagnostics = _computerUse.Diagnostics;
-        ShowStatus("Loaded the redacted Computer Use trace.");
+        if (_computerUse.ChatGpt.IsSignedIn) _computerUse.SignOutOfChatGpt();
+        else await _computerUse.SignInToChatGptAsync();
+        ComputerUseSignedIn = _computerUse.ChatGpt.IsSignedIn;
     }
 
-    [RelayCommand]
-    private void PreviewComputerUseConfirmation()
-    {
-        var apps = ComputerUseConfiguration.ParseAllowlist(ComputerUseAllowedApplications);
-        if (apps.Length == 0)
-        {
-            ShowStatus("Allow at least one application before previewing a confirmation.", isError: true);
-            return;
-        }
+    private ComputerUseConfiguration.PlannerModel SelectedPlannerModel =>
+        ComputerUseConfiguration.PlannerModels[Math.Clamp(ComputerUseModelIndex, 0, ComputerUseConfiguration.PlannerModels.Count - 1)];
 
-        _computerUse.PreviewConfirmation(new ComputerUseAction(
-            ComputerUseActionKind.FocusWindow,
-            new ComputerUseTarget(apps[0], null, null, null, null),
-            null,
-            ComputerUseRisk.None));
+    private static int IndexOfPlannerModel(string id) =>
+        ComputerUseConfiguration.PlannerModels.ToList().IndexOf(ComputerUseConfiguration.Model(id));
+
+    /// <summary>macOS keeps the chosen thinking level when the new model supports it, else its default.</summary>
+    partial void OnComputerUseModelIndexChanged(int value) => ShowComputerUseEfforts();
+
+    partial void OnComputerUseEffortIndexChanged(int value)
+    {
+        if (value >= 0 && value < SelectedPlannerModel.Efforts.Count) _computerUseEffort = SelectedPlannerModel.Efforts[value];
+    }
+
+    private void ShowComputerUseEfforts()
+    {
+        var model = SelectedPlannerModel;
+        var effort = ComputerUseConfiguration.Effort(model, _computerUseEffort);
+        ComputerUseEfforts = model.Efforts.Select(ComputerUseConfiguration.EffortLabel).ToList();
+        ComputerUseEffortIndex = model.Efforts.ToList().IndexOf(effort);
     }
 
     /// <summary>

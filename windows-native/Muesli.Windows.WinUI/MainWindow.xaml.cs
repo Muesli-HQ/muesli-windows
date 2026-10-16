@@ -70,7 +70,8 @@ public sealed partial class MainWindow : Window
 
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (_resizingForDpi)
+        if (_resizingForDpi ||
+            sender.Presenter is OverlappedPresenter { State: not OverlappedPresenterState.Restored })
         {
             return;
         }
@@ -114,6 +115,10 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void ResizeForDpi(uint dpi, bool forceDefaultSize)
     {
+        // A minimized window reports a 199×34 placeholder and a maximized one hangs past the work
+        // area; resizing either corrupts the bounds Windows restores, which left the shell shifted
+        // off the top-left of the screen. Only a normal window is sized here.
+        if (AppWindow.Presenter is OverlappedPresenter { State: not OverlappedPresenterState.Restored }) return;
         var scale = Math.Max(1d, dpi / 96d);
         if (forceDefaultSize)
         {
@@ -233,5 +238,5 @@ public sealed partial class MainWindow : Window
 
     public MainPage? ShellPage => RootFrame.Content as MainPage;
 
-    public void StartFeatureTour() => ShellPage?.StartFeatureTour();
+    public void StartFeatureTour(bool invite) => ShellPage?.StartFeatureTour(invite);
 }

@@ -7,6 +7,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:Muesli.Windows.WinUI.Pages"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:svc="using:Muesli.Windows.WinUI.Services"
     xmlns:vm="using:Muesli.Windows.WinUI.ViewModels"
     mc:Ignorable="d">
     <Page.Resources>
@@ -36,41 +37,9 @@
     </Page.Resources>
 
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ViewChanged="PageScroller_ViewChanged">
             <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="20">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Text="Dictations" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" />
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                        <!-- macOS voiceNoteButton: 30pt tall, 12pt semibold, accent, red while recording. -->
-                        <Button Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                Height="30" MinHeight="30" Padding="12,0" CornerRadius="6"
-                                VerticalAlignment="Center"
-                                Background="{x:Bind local:DictationsPage.RecordBackground(ViewModel.IsRecording), Mode=OneWay}"
-                                Command="{x:Bind ViewModel.ToggleDictationCommand}"
-                                AutomationProperties.Name="Start or stop dashboard dictation"
-                                AutomationProperties.AutomationId="DictationRecordButton">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="{x:Bind local:DictationsPage.RecordGlyph(ViewModel.IsRecording), Mode=OneWay}" FontSize="12" />
-                                <TextBlock Text="{x:Bind ViewModel.RecordButtonLabel, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" />
-                            </StackPanel>
-                        </Button>
-                        <Button Style="{StaticResource MuesliGhostButtonStyle}"
-                                Visibility="{x:Bind local:DictationsPage.BoolToVisibility(ViewModel.IsRecording), Mode=OneWay}"
-                                Command="{x:Bind ViewModel.CancelDictationCommand}"
-                                AutomationProperties.Name="Cancel active dictation"
-                                AutomationProperties.AutomationId="DictationCancelButton"
-                                ToolTipService.ToolTip="Cancel dictation">
-                            <FontIcon Glyph="&#xE711;" FontSize="14" />
-                        </Button>
-                        <Button Style="{StaticResource MuesliGhostButtonStyle}"
-                                Command="{x:Bind ViewModel.RefreshCommand}"
-                                AutomationProperties.AutomationId="DictationsRefreshButton"
-                                AutomationProperties.Name="Refresh dictations"
-                                ToolTipService.ToolTip="Refresh dictations">
-                            <FontIcon Glyph="&#xE72C;" FontSize="15" />
-                        </Button>
-                    </StackPanel>
-                </Grid>
+                <TextBlock Text="Dictations" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" />
 
                 <!--
                     Visibility is bound as well as IsOpen: a closed InfoBar collapses its own
@@ -88,7 +57,7 @@
 
                 <!-- macOS StatsHeaderView without the meeting card: each card opens Insights. -->
                 <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
-                    <Button Grid.Column="0" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                    <Button Grid.Column="0" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click" Tag="streak"
                             ToolTipService.ToolTip="Open streak insights" AutomationProperties.Name="Current dictation streak">
                         <StackPanel Spacing="8">
                             <PathIcon Width="20" Height="20" HorizontalAlignment="Center"
@@ -98,7 +67,7 @@
                             <TextBlock Text="day streak" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
                     </Button>
-                    <Button Grid.Column="1" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                    <Button Grid.Column="1" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click" Tag="words"
                             ToolTipService.ToolTip="Open word activity insights" AutomationProperties.Name="Words dictated">
                         <StackPanel Spacing="8">
                             <FontIcon Glyph="&#xE8D2;" FontSize="20" Foreground="{ThemeResource MuesliAccentBrush}" />
@@ -106,7 +75,7 @@
                             <TextBlock Text="words dictated" Style="{StaticResource MuesliStatLabelStyle}" />
                         </StackPanel>
                     </Button>
-                    <Button Grid.Column="2" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click"
+                    <Button Grid.Column="2" Style="{StaticResource MuesliStatButtonStyle}" Click="StatCard_Click" Tag="pace"
                             ToolTipService.ToolTip="Open speaking pace insights" AutomationProperties.Name="Average dictation pace">
                         <StackPanel Spacing="8">
                             <FontIcon Glyph="&#xEC4A;" FontSize="20" Foreground="{ThemeResource MuesliSuccessBrush}" />
@@ -116,31 +85,62 @@
                     </Button>
                 </Grid>
 
+                <!-- macOS voiceNoteButton: right-aligned under the stats, 30pt, accent, red while recording. -->
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,-8,0,-8">
+                    <Button Style="{StaticResource MuesliGhostButtonStyle}"
+                            Visibility="{x:Bind local:DictationsPage.BoolToVisibility(ViewModel.IsRecording), Mode=OneWay}"
+                            Command="{x:Bind ViewModel.CancelDictationCommand}"
+                            AutomationProperties.Name="Cancel voice note"
+                            AutomationProperties.AutomationId="DictationCancelButton"
+                            ToolTipService.ToolTip="Cancel voice note">
+                        <FontIcon Glyph="&#xE711;" FontSize="14" />
+                    </Button>
+                    <Button Style="{StaticResource MuesliPrimaryButtonStyle}"
+                            Height="30" MinHeight="30" Padding="12,0" CornerRadius="6"
+                            Background="{x:Bind local:DictationsPage.RecordBackground(ViewModel.IsRecording), Mode=OneWay}"
+                            Command="{x:Bind ViewModel.ToggleDictationCommand}"
+                            AutomationProperties.Name="{x:Bind ViewModel.RecordButtonLabel, Mode=OneWay}"
+                            AutomationProperties.AutomationId="DictationRecordButton">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="{x:Bind local:DictationsPage.RecordGlyph(ViewModel.IsRecording), Mode=OneWay}" FontSize="12" />
+                            <TextBlock Text="{x:Bind ViewModel.RecordButtonLabel, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
                 <!--
-                    P2-05: no page-level search field — the sidebar field is the shell's one
-                    search entry point.
-                    P2-09: the "All / This PC" segmented control is gone. It had no
-                    SelectionChanged handler at all, and Windows has exactly one capture source
-                    (BACKEND-05), so a source filter here could only ever have one real option.
-                    macOS shows "This Mac / From iPhone" because a second source genuinely exists
-                    there; inventing the Windows equivalent would be fake data.
+                    macOS dictationFilterBar: the destination-app menu (once any app is known) and
+                    the date menu on the right. P2-05: no page-level search field. P2-09: no
+                    "This Mac / From iPhone" source picker; Windows has one capture source, so a
+                    second option would be invented.
                 -->
-                <Grid ColumnDefinitions="*,Auto" Margin="0,-4,0,-8">
-                    <Button x:Name="SortButton" Grid.Column="1"
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,-4,0,-8">
+                    <Button x:Name="AppFilterButton"
                             Style="{StaticResource MuesliGhostButtonStyle}"
-                            Padding="8,3" MinHeight="0" CornerRadius="12"
-                            ToolTipService.ToolTip="Sort"
-                            AutomationProperties.Name="Sort dictations"
-                            AutomationProperties.AutomationId="DictationsSort">
+                            Padding="8,4" MinHeight="0" CornerRadius="12"
+                            Visibility="{x:Bind local:DictationsPage.BoolToVisibility(ViewModel.ShowAppFilter), Mode=OneWay}"
+                            AutomationProperties.Name="Destination application filter"
+                            AutomationProperties.AutomationId="DictationsAppFilter">
                         <StackPanel Orientation="Horizontal" Spacing="5">
-                            <FontIcon x:Name="SortIcon" Glyph="&#xE71C;" FontSize="12" />
-                            <TextBlock x:Name="SortLabel" Text="Oldest first" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" />
+                            <Image x:Name="AppFilterIcon" Width="16" Height="16" Visibility="Collapsed" />
+                            <FontIcon x:Name="AppFilterGlyph" Glyph="&#xF0E2;" FontSize="11" />
+                            <TextBlock x:Name="AppFilterLabel" Text="Apps" FontSize="11" FontWeight="Medium" VerticalAlignment="Center" MaxWidth="180" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <Button.Flyout>
-                            <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                <RadioMenuFlyoutItem x:Name="NewestFirstItem" Text="Newest first" GroupName="DictationsSort" Click="SortItem_Click" Tag="0" />
-                                <RadioMenuFlyoutItem x:Name="OldestFirstItem" Text="Oldest first" GroupName="DictationsSort" Click="SortItem_Click" Tag="1" />
-                            </MenuFlyout>
+                            <MenuFlyout x:Name="AppFilterMenu" Placement="BottomEdgeAlignedLeft" Opening="AppFilterMenu_Opening" />
+                        </Button.Flyout>
+                    </Button>
+                    <Button x:Name="DateFilterButton" Grid.Column="2"
+                            Style="{StaticResource MuesliGhostButtonStyle}"
+                            Padding="0,3" MinHeight="0" CornerRadius="12"
+                            AutomationProperties.Name="Date filter"
+                            AutomationProperties.AutomationId="DictationsDateFilter">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon x:Name="DateFilterIcon" Glyph="&#xE71C;" FontSize="11" />
+                            <TextBlock x:Name="DateFilterLabel" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="DateFilterMenu" Placement="BottomEdgeAlignedRight" Opening="DateFilterMenu_Opening" />
                         </Button.Flyout>
                     </Button>
                 </Grid>
@@ -200,25 +200,95 @@
                                                         copy/delete revealed on hover. No duration column:
                                                         macOS never prints one on a dictation row.
                                                     -->
-                                                    <Grid>
+                                                    <Grid Background="Transparent" Tapped="Row_Tapped">
+                                                        <!-- macOS DictationsView context menu. -->
+                                                        <Grid.ContextFlyout>
+                                                            <MenuFlyout>
+                                                                <MenuFlyoutItem Text="Copy" Tag="{x:Bind}" Click="CopyDictation_Click">
+                                                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                                <MenuFlyoutItem Text="Copy CUA Trace" Tag="{x:Bind}" Click="CopyTrace_Click"
+                                                                                Visibility="{x:Bind local:ComputerUseRowStyle.Show(HasRun)}">
+                                                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FD;" /></MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                            </MenuFlyout>
+                                                        </Grid.ContextFlyout>
                                                         <Grid ColumnDefinitions="80,*,Auto" ColumnSpacing="20" Padding="20,16">
                                                             <TextBlock Text="{x:Bind TimeLabel}" Style="{StaticResource MuesliTimestampStyle}" FontWeight="Medium" VerticalAlignment="Top" Margin="0,2,0,0" />
-                                                            <TextBlock Grid.Column="1"
-                                                                       Text="{x:Bind Text}"
-                                                                       FontFamily="{StaticResource MuesliFontFamily}"
-                                                                       FontSize="15"
-                                                                       LineHeight="21"
-                                                                       Foreground="{ThemeResource MuesliTextPrimaryBrush}"
-                                                                       TextWrapping="Wrap"
-                                                                       MaxLines="3"
-                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <!-- macOS DictationRowView: a CUA tag before a Computer Use command, its final
+                                                                 status after it, and the step trail below when expanded. -->
+                                                            <StackPanel Grid.Column="1" Spacing="8" MinWidth="0">
+                                                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                                                    <Border Margin="0,3,8,0" VerticalAlignment="Top" CornerRadius="4" Padding="5,2"
+                                                                            Background="{ThemeResource MuesliAccentMutedBrush}"
+                                                                            Visibility="{x:Bind local:ComputerUseRowStyle.Show(IsComputerUse)}">
+                                                                        <TextBlock Text="CUA" FontFamily="Consolas" FontSize="10" FontWeight="Bold"
+                                                                                   Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                                    </Border>
+                                                                    <TextBlock Grid.Column="1"
+                                                                               Text="{x:Bind Body.Shown, Mode=OneWay}"
+                                                                               FontFamily="{StaticResource MuesliFontFamily}"
+                                                                               FontSize="15"
+                                                                               LineHeight="21"
+                                                                               Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                                                                               TextWrapping="Wrap"
+                                                                               MaxLines="{x:Bind Body.MaxLines, Mode=OneWay}"
+                                                                               TextTrimming="CharacterEllipsis" />
+                                                                    <TextBlock Grid.Column="2" Margin="8,3,0,0" VerticalAlignment="Top"
+                                                                               FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="12"
+                                                                               Text="{x:Bind Run.StatusLabel}"
+                                                                               Foreground="{x:Bind local:ComputerUseRowStyle.StatusBrush(Run.Status)}" />
+                                                                </Grid>
+                                                                <!-- macOS "Show more" / "Show less" under long text. -->
+                                                                <Button Style="{StaticResource MuesliGhostButtonStyle}" Padding="0" MinHeight="0" MinWidth="0"
+                                                                        HorizontalAlignment="Left" Background="Transparent" BorderThickness="0"
+                                                                        Tag="{x:Bind}" Click="ToggleText_Click"
+                                                                        Visibility="{x:Bind local:ComputerUseRowStyle.Show(Body.CanExpand)}"
+                                                                        AutomationProperties.Name="{x:Bind Body.ToggleName, Mode=OneWay}"
+                                                                        AutomationProperties.AutomationId="DictationExpandButton">
+                                                                    <TextBlock Text="{x:Bind Body.ToggleLabel, Mode=OneWay}" FontSize="12" FontWeight="Medium"
+                                                                               Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                                </Button>
+                                                                <StackPanel Spacing="8"
+                                                                            Visibility="{x:Bind local:ComputerUseRowStyle.Show(Run.IsExpanded), Mode=OneWay, FallbackValue=Collapsed}">
+                                                                    <Rectangle Height="1" Opacity="0.5" Fill="{ThemeResource MuesliBorderSoftBrush}" />
+                                                                    <ItemsControl ItemsSource="{x:Bind Run.Steps}" IsTabStop="False">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate x:DataType="svc:ComputerUseStep">
+                                                                                <StackPanel Spacing="4" Margin="0,0,0,8">
+                                                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                                        <TextBlock Text="{x:Bind StepLabel}" Width="48" FontFamily="Consolas" FontSize="11"
+                                                                                                   Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                                                        <TextBlock Text="{x:Bind Title}" FontSize="12" FontWeight="Medium"
+                                                                                                   Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                                                                    </StackPanel>
+                                                                                    <TextBlock Text="{x:Bind Body}" Margin="56,0,0,0" FontSize="12"
+                                                                                               Foreground="{ThemeResource MuesliTextPrimaryBrush}"
+                                                                                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                                </StackPanel>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                </StackPanel>
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="20" VerticalAlignment="Top">
+                                                            <!-- macOS TargetApplicationIconView: where the dictation was pasted. -->
+                                                            <Grid Width="20" Height="20" VerticalAlignment="Top" Margin="0,1,0,0"
+                                                                  Visibility="{x:Bind local:ComputerUseRowStyle.Show(HasTargetApp)}"
+                                                                  ToolTipService.ToolTip="{x:Bind local:ComputerUseRowStyle.DictatedInto(TargetApp)}"
+                                                                  AutomationProperties.Name="{x:Bind local:ComputerUseRowStyle.DictatedInto(TargetApp)}">
+                                                                <Image Source="{x:Bind local:ComputerUseRowStyle.AppIcon(TargetApp)}" Stretch="Uniform" />
+                                                                <Border CornerRadius="4" Background="{ThemeResource MuesliSurfacePrimaryBrush}"
+                                                                        Visibility="{x:Bind local:ComputerUseRowStyle.AppIconFallback(TargetApp)}">
+                                                                    <FontIcon Glyph="&#xECAA;" FontSize="14" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                                </Border>
+                                                            </Grid>
                                                             <StackPanel x:Name="RowActions"
-                                                                        Grid.Column="2"
                                                                         Orientation="Horizontal"
                                                                         Spacing="2"
                                                                         Margin="-8,-4,-8,0"
-                                                                        Opacity="0"
-                                                                        IsHitTestVisible="False">
+                                                                        Opacity="{x:Bind local:ComputerUseRowStyle.ActionsOpacity(HasRun)}"
+                                                                        IsHitTestVisible="{x:Bind HasRun}">
                                                                 <!--
                                                                     Tag + Click, not
                                                                     {Binding ElementName=RootPage}:
@@ -231,6 +301,24 @@
                                                                     on, verified by the delete
                                                                     confirmation naming it.
                                                                 -->
+                                                                <Button Style="{StaticResource DictationRowActionStyle}"
+                                                                        Tag="{x:Bind}"
+                                                                        Click="ToggleRun_Click"
+                                                                        Visibility="{x:Bind local:ComputerUseRowStyle.Show(HasRun)}"
+                                                                        ToolTipService.ToolTip="{x:Bind local:ComputerUseRowStyle.ChevronName(Run.IsExpanded), Mode=OneWay}"
+                                                                        AutomationProperties.Name="{x:Bind local:ComputerUseRowStyle.ChevronName(Run.IsExpanded), Mode=OneWay}"
+                                                                        AutomationProperties.AutomationId="DictationStepsToggle">
+                                                                    <FontIcon Glyph="{x:Bind local:ComputerUseRowStyle.Chevron(Run.IsExpanded), Mode=OneWay}" FontSize="12" />
+                                                                </Button>
+                                                                <Button Style="{StaticResource DictationRowActionStyle}"
+                                                                        Tag="{x:Bind}"
+                                                                        Click="CopyTrace_Click"
+                                                                        Visibility="{x:Bind local:ComputerUseRowStyle.Show(HasRun)}"
+                                                                        ToolTipService.ToolTip="Copy CUA trace"
+                                                                        AutomationProperties.Name="Copy CUA trace"
+                                                                        AutomationProperties.AutomationId="DictationCopyTraceButton">
+                                                                    <FontIcon Glyph="&#xE8FD;" FontSize="12" />
+                                                                </Button>
                                                                 <Button Style="{StaticResource DictationRowActionStyle}"
                                                                         Tag="{x:Bind}"
                                                                         Click="CopyDictation_Click"
@@ -248,6 +336,7 @@
                                                                     <FontIcon Glyph="&#xE74D;" FontSize="12" Foreground="{ThemeResource MuesliErrorBrush}" Opacity="0.6" />
                                                                 </Button>
                                                             </StackPanel>
+                                                            </StackPanel>
                                                         </Grid>
                                                         <Rectangle Height="1" Margin="20,0" VerticalAlignment="Bottom"
                                                                    Fill="{ThemeResource MuesliBorderSoftBrush}" />
@@ -260,7 +349,7 @@
                         </ListView.ItemTemplate>
                     </ListView>
                     <Border x:Name="EmptyState" MinHeight="260">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
                             <FontIcon Glyph="&#xE720;" FontSize="40" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
                             <TextBlock x:Name="EmptyStateTitle" Text="No dictations yet" FontSize="18" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextSecondaryBrush}" HorizontalAlignment="Center" />
                             <TextBlock x:Name="EmptyStateBody" Text="Your first completed dictation will be stored here." FontSize="13" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextAlignment="Center" />

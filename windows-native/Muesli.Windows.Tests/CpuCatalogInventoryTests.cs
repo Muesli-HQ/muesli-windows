@@ -41,8 +41,8 @@ public sealed class CpuCatalogInventoryTests
             contract.GetProperty("requiredCorpusCategories").EnumerateArray().Select(item => item.GetString() ?? "").ToArray());
 
         var advertised = root.GetProperty("models").EnumerateArray().ToArray();
-        var runtime = TranscriptionModelCatalog.Models;
-        Assert.Equal(12, runtime.Count);
+        var runtime = TranscriptionModelCatalog.CpuModels;
+        Assert.Equal(14, runtime.Count);
         Assert.Equal(runtime.Count, advertised.Length);
 
         for (var index = 0; index < runtime.Count; index++)
@@ -105,7 +105,7 @@ public sealed class CpuCatalogInventoryTests
         Assert.Contains("MaxRealtimeFactor", script, StringComparison.Ordinal);
 
         using var document = LoadCatalog();
-        foreach (var model in TranscriptionModelCatalog.Models)
+        foreach (var model in TranscriptionModelCatalog.CpuModels)
         {
             Assert.Contains($"\"id\": \"{model.Id}\"", File.ReadAllText(CatalogPath), StringComparison.Ordinal);
         }
@@ -120,7 +120,7 @@ public sealed class CpuCatalogInventoryTests
         Assert.Contains("inventory-not-qualified", inventory, StringComparison.Ordinal);
         Assert.DoesNotContain("MOD-02 Complete", inventory, StringComparison.Ordinal);
         Assert.DoesNotContain("Complete and verified", inventory, StringComparison.Ordinal);
-        foreach (var model in TranscriptionModelCatalog.Models)
+        foreach (var model in TranscriptionModelCatalog.CpuModels)
         {
             Assert.Contains(model.Id, inventory, StringComparison.Ordinal);
             Assert.Contains(model.ArchiveSha256, inventory, StringComparison.OrdinalIgnoreCase);
@@ -144,7 +144,7 @@ public sealed class CpuCatalogInventoryTests
 
         var cases = root.GetProperty("cases").EnumerateArray().ToArray();
         var modelIds = cases.Select(item => item.GetProperty("modelId").GetString()).ToArray();
-        Assert.Equal(TranscriptionModelCatalog.Models.Select(model => model.Id).ToArray(), modelIds);
+        Assert.Equal(TranscriptionModelCatalog.CpuModels.Select(model => model.Id).ToArray(), modelIds);
         Assert.All(cases, item =>
         {
             Assert.True(item.GetProperty("placeholder").GetBoolean());

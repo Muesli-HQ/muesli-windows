@@ -56,13 +56,35 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
         if (item is null || !TranscriptionModelCatalog.TryGet(item.Id, out var model)) return;
         var normalized = ModelLanguageSupport.Normalize(model, code);
         var settings = _settings.Load();
-        var map = new Dictionary<string, string>(settings.ModelLanguages, StringComparer.OrdinalIgnoreCase)
-        {
-            [model.Id] = normalized
-        };
+        // A Bodhan language applies to both precisions of that model, like its output setting, so
+        // switching INT8/FP16 keeps it.
+        var ids = model.Kind == NativeAsrModelKind.Bodhan
+            ? TranscriptionModelCatalog.Models
+                .Where(other => other.Kind == NativeAsrModelKind.Bodhan && BodhanModels.IsFlex(other) == BodhanModels.IsFlex(model))
+                .Select(other => other.Id)
+                .ToArray()
+            : [model.Id];
+        var map = new Dictionary<string, string>(settings.ModelLanguages, StringComparer.OrdinalIgnoreCase);
+        foreach (var id in ids) map[id] = normalized;
         _settings.Save(settings with { ModelLanguages = map });
+        foreach (var variant in Items.SelectMany(card => card.Variants).Where(variant => ids.Contains(variant.Id)))
+        {
+            variant.ApplyLanguage(normalized);
+        }
+
         item.ApplyLanguage(normalized);
         ShowStatus($"{model.DisplayName} language set to {ModelLanguageSupport.LabelFor(model, normalized)}.");
+    }
+
+    /// <summary>macOS bodhan_output_mode: one saved preference shared by both Bodhan Flex variants.</summary>
+    public void SetBodhanOutput(ModelVariantItem? item, string? code)
+    {
+        if (item is null) return;
+        var normalized = BodhanModels.NormalizeOutputMode(code);
+        var settings = _settings.Load();
+        _settings.Save(settings with { BodhanOutputMode = normalized });
+        foreach (var variant in Items.SelectMany(card => card.Variants)) variant.ApplyOutput(normalized);
+        ShowStatus($"Bodhan Flex output set to {item.SelectedOutputLabel}.");
     }
 
     [ObservableProperty] public partial IReadOnlyList<ModelFamilyCardItem> Items { get; private set; } = [];
@@ -82,7 +104,9 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
 
     public string RoleDescription => RoleIndex == 0
         ? "Choose the model used for push-to-talk dictation."
-        : "Choose the final model used for recordings and imported meetings.";
+        : "Choose the final model used for recordings and imported meetings. Live captions during a meeting use the live preview model in Settings.";
+
+    public string RoleSectionTitle => RoleIndex == 0 ? "DICTATION" : "LIVE MEETINGS";
 
     private string RoleLabel => RoleIndex == 1 ? "meetings" : "dictation";
 
@@ -93,6 +117,7 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
             CategoryIndex = value;
         }
         OnPropertyChanged(nameof(RoleDescription));
+        OnPropertyChanged(nameof(RoleSectionTitle));
         _resetVariantSelection = true;
         Reload();
     }
@@ -105,15 +130,13 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
         }
         OnPropertyChanged(nameof(IsCleanupCategory));
         OnPropertyChanged(nameof(RoleDescription));
+        OnPropertyChanged(nameof(RoleSectionTitle));
         _resetVariantSelection = true;
         Reload();
     }
 
     partial void OnItemsChanged(IReadOnlyList<ModelFamilyCardItem> value) =>
         OnPropertyChanged(nameof(HasItems));
-
-    [RelayCommand]
-    private void Refresh() => Reload();
 
     [RelayCommand]
     private void SetActive(ModelVariantItem? item)
@@ -156,8 +179,8 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
     {
         if (item is null || item.IsSelectedForAnyRole) return;
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete the local files for {item.DisplayName}? You can download them again later.",
-            "Delete transcription model",
+            "The downloaded model files will be removed from this PC. You can download the model again later.",
+            $"Delete \"{item.DisplayName}\"?",
             cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
         try
@@ -284,6 +307,7 @@ internal static class ModelFamilyCatalog
         NativeAsrModelKind.SenseVoice => "sensevoice",
         NativeAsrModelKind.Qwen3Asr => "qwen3-asr",
         NativeAsrModelKind.CohereTranscribe => "cohere-transcribe",
+        NativeAsrModelKind.Bodhan => BodhanModels.IsFlex(model) ? "bodhan-flex" : "bodhan-core",
         _ => model.Id.ToLowerInvariant()
     };
 
@@ -310,6 +334,25 @@ internal static class ModelFamilyCatalog
         "sensevoice" => new ModelFamilyDescriptor(key, "SenseVoice", "Alibaba", "", "", "", first.Id, "qwen-logo"),
         "qwen3-asr" => new ModelFamilyDescriptor(key, "Qwen3-ASR", "Alibaba", "", "", "", first.Id, "qwen-logo"),
         "cohere-transcribe" => new ModelFamilyDescriptor(key, "Cohere Transcribe", "Cohere", "", "", "", first.Id, "cohere-logo"),
+        // macOS bodhanCard uses bodhan-logo; the glyph is only the fallback.
+        "bodhan-core" => new ModelFamilyDescriptor(
+            key,
+            "Bodhan Core",
+            "Bodhan AI / AI4Bharat",
+            "\uE8C1",
+            "Indian-language speech written in its own script, English words included. Pick the language you speak, or Auto-detect.",
+            "",
+            "bodhan-core-int8",
+            "bodhan-logo"),
+        "bodhan-flex" => new ModelFamilyDescriptor(
+            key,
+            "Bodhan Flex",
+            "Bodhan AI / AI4Bharat",
+            "\uE8C1",
+            "For mixed-language dictation: your language in its own script with English words in Latin letters, or all native or all romanized. Also formats spoken numbers.",
+            "",
+            "bodhan-flex-int8",
+            "bodhan-logo"),
         _ => new ModelFamilyDescriptor(key, first.DisplayName, "Local model", "", "", "", first.Id, "")
     };
 }
@@ -494,9 +537,32 @@ public sealed partial class ModelVariantItem : ObservableObject
     public string SelectedLanguageLabel => ModelLanguageSupport.LabelFor(_model, SelectedLanguageCode);
 
     partial void OnSelectedLanguageCodeChanged(string value) => OnPropertyChanged(nameof(SelectedLanguageLabel));
+    partial void OnSelectedOutputCodeChanged(string value) => OnPropertyChanged(nameof(SelectedOutputLabel));
 
     /// <summary>Updates the shown choice after a persisted language change.</summary>
     public void ApplyLanguage(string code) => SelectedLanguageCode = ModelLanguageSupport.Normalize(_model, code);
+
+    private static readonly IReadOnlyList<ModelLanguageOption> BodhanOutputs =
+    [
+        new("native", "Native"),
+        new("mixed", "Mixed"),
+        new("romanized", "Romanized")
+    ];
+
+    /// <summary>Bodhan Flex's output script; Core always writes native script.</summary>
+    public IReadOnlyList<ModelLanguageOption> OutputOptions => BodhanOutputs;
+    public bool IsOutputSelectable => _model.Kind == NativeAsrModelKind.Bodhan && BodhanModels.IsFlex(_model);
+    public string OutputAccessibleName => $"{DisplayName} output";
+
+    [ObservableProperty] public partial string SelectedOutputCode { get; private set; } = BodhanModels.OutputModeSetting;
+
+    public string SelectedOutputLabel => BodhanOutputs.FirstOrDefault(option => option.Code == SelectedOutputCode)?.Label ?? SelectedOutputCode;
+
+    public void ApplyOutput(string code) => SelectedOutputCode = BodhanModels.NormalizeOutputMode(code);
+
+    /// <summary>The Indic Open Model License §2 notice, shown on the model's own card.</summary>
+    public string AttributionNotice => _model.Kind == NativeAsrModelKind.Bodhan ? BodhanModels.AttributionNotice(_model) : "";
+    public bool HasAttributionNotice => AttributionNotice.Length > 0;
 
     public TranscriptionModelStatus Status { get; private set; }
     public string StatusText { get; private set; } = "";

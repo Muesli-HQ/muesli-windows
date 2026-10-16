@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Muesli.Windows.Services;
 using Muesli.Windows.Core.Contracts;
+using Muesli.Windows.Core.Insights;
 using Muesli.Windows.WinUI.Services;
 
 namespace Muesli.Windows.WinUI.ViewModels;
@@ -9,12 +10,46 @@ namespace Muesli.Windows.WinUI.ViewModels;
 public partial class TimelinePageViewModel : ObservableObject
 {
     private readonly WinUiLibraryContext _library;
+    private readonly IClipboardService _clipboard;
+    private readonly IAppDialogService _dialogs;
 
-    public TimelinePageViewModel(WinUiLibraryContext library)
+    public TimelinePageViewModel(WinUiLibraryContext library, IClipboardService clipboard, IAppDialogService dialogs)
     {
         _library = library;
+        _clipboard = clipboard;
+        _dialogs = dialogs;
         Snapshot = library.ReadSnapshot();
         ApplyFilterAndSort();
+    }
+
+    // macOS TimelineView reuses DictationRowView: copy, copy CUA trace and delete on every dictation row.
+    [RelayCommand]
+    private async Task CopyAsync(WinUiTimelineEntry? entry, CancellationToken cancellationToken)
+    {
+        if (entry is null || entry.IsMeeting) return;
+        try { await _clipboard.SetTextAsync(entry.Title, cancellationToken); }
+        catch (Exception) { }
+    }
+
+    [RelayCommand]
+    private async Task CopyTraceAsync(WinUiTimelineEntry? entry, CancellationToken cancellationToken)
+    {
+        if (entry?.Run is not { } run) return;
+        try { await _clipboard.SetTextAsync(run.TraceText(entry.Title), cancellationToken); }
+        catch (Exception) { }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAsync(WinUiTimelineEntry? entry, CancellationToken cancellationToken)
+    {
+        if (entry is null || entry.IsMeeting) return;
+        var choice = await _dialogs.ConfirmAsync(
+            "Are you sure you want to delete this dictation? This cannot be undone.",
+            "Delete Dictation",
+            cancellationToken);
+        if (choice != AppDialogChoice.Primary) return;
+        _library.DeleteDictation(entry.Id);
+        Refresh();
     }
 
     [ObservableProperty]
@@ -25,16 +60,26 @@ public partial class TimelinePageViewModel : ObservableObject
 
     /// <summary>
     /// Timeline sections mirror the desktop library: a small date heading followed by one
-    /// divided surface containing the activity for that day.  Keeping the grouping in the
-    /// view model means the page can stay responsive while filtering and sorting.
+    /// divided surface containing the activity for that day, revealed a page at a time.
     /// </summary>
-    [ObservableProperty]
-    public partial IReadOnlyList<TimelineGroup> Groups { get; private set; } = [];
+    public IncrementalGroups<TimelineGroup> Groups { get; } = new(group => group.Items.Count);
 
+    /// <summary>macOS timeline date filter: every <see cref="HistoryFormat.DateFilters"/> range is offered.</summary>
     [ObservableProperty]
-    public partial int SortIndex { get; set; }
+    public partial int DateFilterIndex { get; set; }
+
+    /// <summary>macOS TargetApplicationFilterMenu: only dictations pasted into this app.</summary>
+    [ObservableProperty]
+    public partial DictationTargetApp? AppFilter { get; set; }
+
+    /// <summary>The apps dictations were pasted into, for the app filter.</summary>
+    public IReadOnlyList<DictationTargetApp> Apps { get; private set; } = [];
+
+    public bool ShowAppFilter => Apps.Count > 0 || AppFilter is not null;
 
     public bool HasEntries => Entries.Count > 0;
+
+    public string EmptyStateTitle => AppFilter is { } app ? $"No dictations for {app.Name}" : "No activity yet";
 
     public string ResultCountLabel => $"{Entries.Count:N0} {(Entries.Count == 1 ? "item" : "items")}";
     /// <summary>
@@ -48,8 +93,7 @@ public partial class TimelinePageViewModel : ObservableObject
         ? "—"
         : $"{Snapshot.AverageWordsPerMinute:N0}";
 
-    [RelayCommand]
-    private void Refresh()
+    public void Refresh()
     {
         Snapshot = _library.ReadSnapshot();
         ApplyFilterAndSort();
@@ -58,46 +102,41 @@ public partial class TimelinePageViewModel : ObservableObject
 
     partial void OnSnapshotChanged(WinUiLibrarySnapshot value) => NotifyDerived();
 
-    partial void OnSortIndexChanged(int value) => ApplyFilterAndSort();
+    partial void OnDateFilterIndexChanged(int value) => ApplyFilterAndSort();
+
+    partial void OnAppFilterChanged(DictationTargetApp? value) => ApplyFilterAndSort();
 
     partial void OnEntriesChanged(IReadOnlyList<WinUiTimelineEntry> value) => NotifyDerived();
 
     /// <summary>
-    /// Sort order only. P2-05 removed this page's own search field — the shell's single search
-    /// entry point routes cross-library queries to <c>SearchPage</c>. The redundant kind filter is
-    /// gone too: Timeline is one chronological mixed feed, matching macOS.
+    /// One chronological mixed feed, newest first, narrowed by the macOS date and app filters.
+    /// P2-05 removed this page's own search field — the shell's single search entry point routes
+    /// cross-library queries to <c>SearchPage</c>.
     /// </summary>
     private void ApplyFilterAndSort()
     {
-        var query = Snapshot.Timeline.AsEnumerable();
-        Entries = SortIndex == 1
-            ? query.OrderBy(item => item.Timestamp).ToList()
-            : query.OrderByDescending(item => item.Timestamp).ToList();
+        Apps = DictationTargetApps.Distinct(Snapshot.Timeline.Select(item => item.TargetApp));
+        var start = HistoryFormat.DateFilterStart(DateFilterIndex, DateTime.Now);
+        var query = Snapshot.Timeline.Where(item => start is null || item.Timestamp.ToLocalTime() >= start);
+        if (AppFilter is { } app)
+            query = query.Where(item => !item.IsMeeting && DictationTargetApps.Same(item.TargetApp, app));
+        Entries = query.OrderByDescending(item => item.Timestamp).ToList();
 
-        Groups = Entries
+        Groups.Reset(Entries
             .GroupBy(item => item.Timestamp.ToLocalTime().Date)
             .Select(group => new TimelineGroup(
-                FormatDateHeading(group.Key),
+                HistoryFormat.DayHeading(group.Key, DateTime.Today),
                 group.ToList()))
-            .ToList();
-    }
-
-    private static string FormatDateHeading(DateTime date)
-    {
-        var localDate = date.Date;
-        var today = DateTime.Today;
-        return localDate == today
-            ? "TODAY"
-            : localDate == today.AddDays(-1)
-                ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
+            .ToList());
     }
 
     private void NotifyDerived()
     {
         OnPropertyChanged(nameof(Entries));
-        OnPropertyChanged(nameof(Groups));
         OnPropertyChanged(nameof(HasEntries));
+        OnPropertyChanged(nameof(Apps));
+        OnPropertyChanged(nameof(ShowAppFilter));
+        OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(ResultCountLabel));
         OnPropertyChanged(nameof(DictationWordsLabel));
         OnPropertyChanged(nameof(AveragePaceLabel));
@@ -105,6 +144,45 @@ public partial class TimelinePageViewModel : ObservableObject
 }
 
 public sealed record TimelineGroup(string Name, IReadOnlyList<WinUiTimelineEntry> Items);
+
+/// <summary>
+/// Day groups shown a page of rows at a time. The history lists sit inside their page's
+/// ScrollViewer, which turns ListView virtualization off, so building every row of a long history
+/// made each visit to Timeline or Dictations take seconds. Pages call <see cref="ShowMore"/> as the
+/// user nears the bottom; appending only builds the new rows.
+/// </summary>
+public sealed class IncrementalGroups<TGroup>(Func<TGroup, int> rowCount) : System.Collections.ObjectModel.ObservableCollection<TGroup>
+{
+    public const int PageRows = 40;
+    private IReadOnlyList<TGroup> _all = [];
+
+    public bool HasMore => Count < _all.Count;
+
+    public void Reset(IReadOnlyList<TGroup> all)
+    {
+        _all = all;
+        Clear();
+        ShowMore();
+    }
+
+    public void ShowMore()
+    {
+        for (var rows = 0; rows < PageRows && Count < _all.Count;) rows += Add(_all[Count]);
+    }
+
+    /// <summary>Reveals groups up to and including the first one matching <paramref name="contains"/>.</summary>
+    public void ShowThrough(Func<TGroup, bool> contains)
+    {
+        var index = _all.ToList().FindIndex(group => contains(group));
+        while (Count <= index) Add(_all[Count]);
+    }
+
+    private new int Add(TGroup group)
+    {
+        base.Add(group);
+        return Math.Max(1, rowCount(group));
+    }
+}
 
 public partial class DictationsPageViewModel : ObservableObject, IDisposable
 {
@@ -114,6 +192,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     private readonly WinUiDictationContext _dictation;
     private readonly IUiDispatcher _dispatcher;
     private IReadOnlyList<DictationListItem> _allItems = [];
+    private IReadOnlyList<PersistedDictation> _allDictations = [];
 
     public DictationsPageViewModel(
         WinUiLibraryContext library,
@@ -138,11 +217,26 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial IReadOnlyList<DictationListItem> Items { get; private set; }
 
+    public IncrementalGroups<DictationGroup> Groups { get; } = new(group => group.Items.Count);
+
+    /// <summary>macOS DictationsView date filter; only ranges the history can fill are offered.</summary>
     [ObservableProperty]
-    public partial IReadOnlyList<DictationGroup> Groups { get; private set; } = [];
+    public partial int DateFilterIndex { get; set; }
 
     [ObservableProperty]
-    public partial int SortIndex { get; set; }
+    public partial IReadOnlyList<string> DateFilters { get; private set; } = [HistoryFormat.DateFilters[0]];
+
+    /// <summary>macOS TargetApplicationFilterMenu: only dictations pasted into this app.</summary>
+    [ObservableProperty]
+    public partial DictationTargetApp? AppFilter { get; set; }
+
+    public IReadOnlyList<DictationTargetApp> Apps { get; private set; } = [];
+
+    public bool ShowAppFilter => Apps.Count > 0 || AppFilter is not null;
+
+    public bool IsFiltered => DateFilterIndex > 0 || AppFilter is not null;
+
+    public string EmptyStateTitle => AppFilter is { } app ? $"No dictations for {app.Name}" : "No dictations yet";
 
     [ObservableProperty]
     public partial string StatusMessage { get; private set; } = "";
@@ -171,7 +265,8 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string DictationStatus { get; private set; } = "Ready";
 
-    public string RecordButtonLabel => IsRecording ? "Stop Dictation" : "Start Dictation";
+    /// <summary>macOS voiceNoteButton: records, transcribes and saves without pasting anywhere.</summary>
+    public string RecordButtonLabel => IsRecording ? "Stop Voice Note" : "Record Voice Note";
     public bool CanToggleDictation => IsRecording || !IsDictationBusy;
     public bool HasActiveRuntimeStatus => IsRecording || IsDictationBusy;
 
@@ -189,12 +284,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         !string.IsNullOrWhiteSpace(id) &&
         _allItems.Any(item => string.Equals(item.Id, id, StringComparison.Ordinal));
 
-    [RelayCommand]
-    private void Refresh()
-    {
-        Reload();
-        ShowStatus("Dictation history refreshed.");
-    }
+    public void Refresh() => Reload();
 
     [RelayCommand(CanExecute = nameof(CanToggleDictation))]
     private async Task ToggleDictationAsync()
@@ -226,10 +316,10 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     private async Task CopyAsync(DictationListItem? item, CancellationToken cancellationToken)
     {
         if (item is null) return;
+        // macOS copies silently; only a failure is reported.
         try
         {
             await _clipboard.SetTextAsync(item.Text, cancellationToken);
-            ShowStatus("Dictation copied to the clipboard.");
         }
         catch (Exception exception)
         {
@@ -238,16 +328,27 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task CopyTraceAsync(DictationListItem? item, CancellationToken cancellationToken)
+    {
+        if (item?.Run is not { } run) return;
+        try
+        {
+            await _clipboard.SetTextAsync(run.TraceText(item.Text), cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            ShowStatus($"Could not copy the trace: {WinUiClipboardService.DescribeFailure(exception)}", isError: true);
+        }
+    }
+
+    [RelayCommand]
     private async Task DeleteAsync(DictationListItem? item, CancellationToken cancellationToken)
     {
         if (item is null) return;
-        // Row actions are revealed on hover, so the confirmation has to repeat which record is
-        // about to go: the dialog is the last point at which the user can tell that the pointer
-        // was over the row they meant.
+        // macOS DictationRowView's alert, word for word.
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete this dictation permanently?\n\n{item.TimeLabel} · “{Snippet(item.Text)}”\n\n" +
-            "This removes its saved transcript from this profile.",
-            "Delete dictation",
+            "Are you sure you want to delete this dictation? This cannot be undone.",
+            "Delete Dictation",
             cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
 
@@ -256,7 +357,6 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
             if (_library.DeleteDictation(item.Id))
             {
                 Reload();
-                ShowStatus("Dictation deleted.");
             }
             else
             {
@@ -270,12 +370,8 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>One line of the transcript, short enough to stay readable inside a dialog.</summary>
-    private static string Snippet(string text)
-    {
-        var single = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        return single.Length <= 90 ? single : single[..90].TrimEnd() + "…";
-    }
+    private ComputerUseRun? LoadRun(PersistedDictation item) =>
+        item.ModelProfile == ComputerUseConfiguration.HistoryLabel ? ComputerUseRun.Load(_library.Profile.RootDirectory, item.Id) : null;
 
     partial void OnItemsChanged(IReadOnlyList<DictationListItem> value)
     {
@@ -283,52 +379,61 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ResultCountLabel));
     }
 
-    partial void OnSortIndexChanged(int value) => ApplyFilterAndSort();
+    partial void OnDateFilterIndexChanged(int value) => ApplyFilterAndSort();
+
+    partial void OnAppFilterChanged(DictationTargetApp? value) => ApplyFilterAndSort();
 
     private void Reload()
     {
         var snapshot = _library.ReadSnapshot();
-        _allItems = snapshot.Dictations.Select(DictationListItem.From).ToList();
-        DictationWordsLabel = snapshot.DictationWords.ToString("N0");
-        CurrentStreakLabel = snapshot.CurrentStreak.ToString("N0");
-        // P2-01: the pace is read from the shared snapshot calculation rather than recomputed
-        // here, which is how this page came to disagree with Timeline and Insights.
-        AveragePaceLabel = snapshot.AverageWordsPerMinute == 0
-            ? "—"
-            : snapshot.AverageWordsPerMinute.ToString("N0");
+        _allDictations = snapshot.Dictations;
+        _allItems = snapshot.Dictations.Select(item => DictationListItem.From(item) with
+        {
+            Run = LoadRun(item),
+            TargetApp = snapshot.TargetApps.GetValueOrDefault(item.Id),
+        }).ToList();
+        Apps = DictationTargetApps.Distinct(_allItems.Select(item => item.TargetApp));
+        var filters = HistoryFormat.AvailableDateFilters(
+            _allItems.Count == 0 ? null : _allItems.Min(item => item.Timestamp.ToLocalTime()), DateTime.Now);
+        if (!filters.SequenceEqual(DateFilters, StringComparer.Ordinal)) DateFilters = filters;
+        if (DateFilterIndex >= DateFilters.Count) DateFilterIndex = 0;
         ApplyFilterAndSort();
     }
 
     /// <summary>
-    /// Sort order only. P2-05 removed this page's own search field in favour of the shell's
-    /// single search entry point, so the text predicate that used to live here went with it.
-    /// Ordering is unchanged.
+    /// Newest first, narrowed by the macOS date and app filters. P2-05 removed this page's own
+    /// search field in favour of the shell's single search entry point.
     /// </summary>
     private void ApplyFilterAndSort()
     {
-        IEnumerable<DictationListItem> query = _allItems;
+        var start = HistoryFormat.DateFilterStart(DateFilterIndex, DateTime.Now);
+        Items = _allItems
+            .Where(item => start is null || item.Timestamp.ToLocalTime() >= start)
+            .Where(item => AppFilter is null || DictationTargetApps.Same(item.TargetApp, AppFilter))
+            .OrderByDescending(item => item.Timestamp)
+            .ToList();
 
-        Items = SortIndex == 1
-            ? query.OrderBy(item => item.Timestamp).ToList()
-            : query.OrderByDescending(item => item.Timestamp).ToList();
-
-        Groups = Items
+        Groups.Reset(Items
             .GroupBy(item => item.Timestamp.ToLocalTime().Date)
             .Select(group => new DictationGroup(
-                FormatDateHeading(group.Key),
+                HistoryFormat.DayHeading(group.Key, DateTime.Today),
                 group.ToList()))
-            .ToList();
-    }
+            .ToList());
 
-    private static string FormatDateHeading(DateTime date)
-    {
-        var localDate = date.Date;
-        var today = DateTime.Today;
-        return localDate == today
-            ? "TODAY"
-            : localDate == today.AddDays(-1)
-                ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
+        // macOS filteredDictationStats: the cards describe the dictations the filters show, with
+        // the same word, streak and pace rules as Timeline and Insights (LibraryMetrics, P2-01).
+        var shown = Items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+        var dictations = _allDictations.Where(item => shown.Contains(item.Id)).ToList();
+        var words = dictations.Sum(item => LibraryMetrics.CountWords(item.Text));
+        var pace = LibraryMetrics.AverageWordsPerMinute(words, dictations.Sum(item => Math.Max(0, item.DurationMs)));
+        DictationWordsLabel = words.ToString("N0");
+        CurrentStreakLabel = LibraryMetrics.CurrentStreakDays(dictations.Select(item => item.Timestamp.Date), DateTime.Today).ToString("N0");
+        AveragePaceLabel = pace == 0 ? "—" : pace.ToString("N0");
+
+        OnPropertyChanged(nameof(Apps));
+        OnPropertyChanged(nameof(ShowAppFilter));
+        OnPropertyChanged(nameof(IsFiltered));
+        OnPropertyChanged(nameof(EmptyStateTitle));
     }
 
     private void ShowStatus(string message, bool isError = false)
@@ -360,6 +465,18 @@ public sealed record DictationListItem(
     string ModelLabel)
 {
     public string TimeLabel => Timestamp.ToLocalTime().ToString("hh:mm tt");
+
+    /// <summary>The run behind a Computer Use command, or null for a dictation.</summary>
+    public ComputerUseRun? Run { get; init; }
+    public bool IsComputerUse => ModelLabel == ComputerUseConfiguration.HistoryLabel;
+    public bool HasRun => Run is not null;
+
+    /// <summary>The app the dictation was pasted into, when known.</summary>
+    public DictationTargetApp? TargetApp { get; init; }
+    public bool HasTargetApp => TargetApp is not null;
+
+    /// <summary>The text with macOS "Show more".</summary>
+    public ExpandableText Body => field ??= new(Text);
 
     public static DictationListItem From(PersistedDictation item) => new(
         item.Id,
@@ -423,48 +540,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial IReadOnlyList<MeetingFolderListItem> Folders { get; private set; } = [];
-    /// <summary>
-    /// The parent picker binds <c>SelectedItem</c>, not <c>SelectedValue</c>. A ComboBox resolves
-    /// <c>SelectedValue</c> against its items only while the item set is stable, and this list is
-    /// rebuilt on every reload and on every folder selection — which is why the control rendered
-    /// blank even though a valid parent was selected. The id stays the value the save path reads.
-    /// </summary>
-    [ObservableProperty] public partial MeetingFolderListItem? SelectedParentFolder { get; set; }
-    [ObservableProperty] public partial IReadOnlyList<MeetingFolderListItem> ParentFolders { get; private set; } = [];
-
-    public string SelectedParentFolderId => SelectedParentFolder?.Id ?? "";
-
-    partial void OnSelectedParentFolderChanged(MeetingFolderListItem? value) =>
-        OnPropertyChanged(nameof(SelectedParentFolderId));
-
-    /// <summary>
-    /// P3-06. A ComboBox clears its own selection when <c>ItemsSource</c> is replaced, and it does
-    /// so during the same change notification that replaced the list — so restoring the value in
-    /// line is overwritten again, and the control renders blank with no value at all. Restoring on
-    /// the next dispatcher turn lands after the control has settled. The value is re-pushed with an
-    /// explicit change notification rather than an assignment, because the view model usually
-    /// already holds the right value and an equal assignment raises nothing.
-    /// </summary>
-    private void RepublishPickerSelections() => _dispatcher.TryEnqueue(() =>
-    {
-        if (TimeRangeIndex < 0 && TimeRangeOptions.Count > 0)
-        {
-            TimeRangeIndex = 0;
-        }
-
-        OnPropertyChanged(nameof(TimeRangeIndex));
-        OnPropertyChanged(nameof(SelectedParentFolder));
-    });
-
-    /// <summary>Points the parent picker at <paramref name="folderId"/>, defaulting to top level.</summary>
-    private void SetParentSelection(string? folderId)
-    {
-        SelectedParentFolder =
-            ParentFolders.FirstOrDefault(folder => string.Equals(folder.Id, folderId ?? "", StringComparison.Ordinal))
-            ?? ParentFolders.FirstOrDefault(folder => folder.IsAllMeetings);
-        RepublishPickerSelections();
-    }
-
     [ObservableProperty]
     public partial bool IsRecording { get; private set; }
 
@@ -563,9 +638,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     public partial IReadOnlyList<RecoverableMeetingListItem> RecoverableSessions { get; private set; } = [];
 
     [ObservableProperty]
-    public partial string SearchText { get; set; } = "";
-
-    [ObservableProperty]
     public partial int SortIndex { get; set; }
 
     /// <summary>
@@ -583,22 +655,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string SelectedFolderId { get; private set; } = "";
 
-    [ObservableProperty]
-    public partial string FolderName { get; set; } = "";
-
-    /// <summary>
-    /// Validation and confirmation for the folder editor, rendered next to the editor's own
-    /// controls. Folder problems used to be written to <see cref="MeetingStatus"/>, which surfaces
-    /// in the recording InfoBar at the top of the page — a duplicate-name refusal appeared far away
-    /// from the field that caused it, or not at all.
-    /// </summary>
-    [ObservableProperty]
-    public partial string FolderEditorStatus { get; private set; } = "";
-
-    public bool HasFolderEditorStatus => !string.IsNullOrWhiteSpace(FolderEditorStatus);
-
-    partial void OnFolderEditorStatusChanged(string value) => OnPropertyChanged(nameof(HasFolderEditorStatus));
-
     public bool IsActive => IsRecording || IsBusy || IsPaused;
     public bool CanStart => !IsActive && !IsImporting;
     public bool CanStop => (IsRecording || IsPaused) && !IsBusy;
@@ -608,14 +664,33 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
 
     public bool HasItems => Items.Count > 0;
 
-    public bool HasIdleNotice =>
-        !IsActive &&
-        !IsImporting &&
-        !string.IsNullOrWhiteSpace(MeetingStatus) &&
-        !string.Equals(MeetingStatus, "Ready", StringComparison.Ordinal);
+    /// <summary>Only a failure is shown; macOS says nothing when an action works.</summary>
+    public bool HasIdleNotice => !IsActive && !IsImporting && IsFailure(MeetingStatus);
 
-    public string ResultCountHint =>
-        $"{(Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings")}  •  Open a meeting to review notes, transcript, and template-driven summaries";
+    private static bool IsFailure(string status) =>
+        status.StartsWith("Could not", StringComparison.Ordinal) ||
+        status.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
+        status.Contains("without a transcript", StringComparison.Ordinal) ||
+        status.Contains("cancelled", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>macOS browserHeaderMeta: "N meeting(s)".</summary>
+    public string ResultCountLabel => Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings";
+
+    /// <summary>The meeting being recorded, which the banner's Open Notes and a Quick Note open.</summary>
+    public string? ActiveMeetingId => _meetingRuntime.ActiveMeetingId;
+    public bool HasActiveMeeting => ActiveMeetingId is not null && (IsRecording || IsPaused || IsBusy);
+    public bool ShowBanner => IsActive || IsImporting || IsStarting;
+
+    [ObservableProperty] public partial bool IsStarting { get; private set; }
+    [ObservableProperty] public partial string BannerTitle { get; private set; } = "";
+
+    /// <summary>macOS activeMeetingStatusText: Recording now / Recording paused / Finalizing notes.</summary>
+    public string BannerStatus =>
+        IsImporting ? MeetingStatus
+        : IsStarting && !IsActive ? "Meeting transcription will start shortly."
+        : IsPaused ? _meetingRuntime.FinalizationFailed ? "Saving failed · audio kept. Choose Stop to retry." : "Recording paused"
+        : IsRecording ? "Recording now"
+        : "Finalizing notes";
 
     /// <summary>Current sort, shown on the compact sort pill (MeetingsView.swift parity).</summary>
     public string SortLabel => SortIndex == 1 ? "Oldest first" : "Newest first";
@@ -637,35 +712,29 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     /// </summary>
     public string CurrentFolderLabel => _currentFolderLabel;
 
-    public string EmptyStateTitle
-    {
-        get
-        {
-            if (!string.IsNullOrWhiteSpace(SelectedFolderId)) return "No meetings in this folder";
-            if (SearchText.Trim().Length > 0) return "No meetings match your search";
-            if (TimeRangeIndex != 0) return "No meetings in this time range";
-            return "No meetings yet";
-        }
-    }
+    public string EmptyStateTitle =>
+        string.IsNullOrWhiteSpace(SelectedFolderId) ? "No meetings yet" : "No meetings in this folder";
 
-    public string EmptyStateInstruction
-    {
-        get
-        {
-            if (SearchText.Trim().Length > 0 || !string.IsNullOrWhiteSpace(SelectedFolderId) || TimeRangeIndex != 0)
-                return "Try another source, time range, or folder.";
-            return "Start a Quick Note or import audio to create your first meeting.";
-        }
-    }
+    public string EmptyStateInstruction =>
+        TimeRangeIndex > 0 ? "Try another time range or folder."
+        : string.IsNullOrWhiteSpace(SelectedFolderId) ? "Start a Quick Note or import audio to create your first meeting note."
+        : "Choose another folder or move a meeting here from the browser.";
 
-    [RelayCommand]
-    private void Refresh() => Reload();
+    /// <summary>macOS person.2.wave.2 for the library, folder inside one.</summary>
+    public string EmptyStateGlyph => string.IsNullOrWhiteSpace(SelectedFolderId) ? "\uE716" : "\uE8B7";
+
+    public void Refresh() => Reload();
+
+    /// <summary>Raised once a Quick Note is recording, so the page can open its notes as macOS does.</summary>
+    public event EventHandler? QuickNoteStarted;
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartQuickNoteAsync(CancellationToken cancellationToken)
     {
         try
         {
+            IsStarting = true;
+            BannerTitle = "Quick Note";
             MeetingStatus = "Starting recording…";
             await _meetingRuntime.StartQuickNoteAsync(cancellationToken);
             MeetingStatus = "Recording Quick Note";
@@ -676,8 +745,10 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            IsStarting = false;
             UpdateRuntimeState();
         }
+        if (HasActiveMeeting) QuickNoteStarted?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand(CanExecute = nameof(CanStop))]
@@ -802,6 +873,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
                 cancellationToken);
             if (picked is null) return;
             IsImporting = true;
+            BannerTitle = picked.DisplayName;
             ImportProgress = 0;
             MeetingStatus = $"Transcribing {picked.DisplayName}…";
             var progress = new Progress<TranscriptionProgress>(report =>
@@ -851,14 +923,52 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     partial void OnItemsChanged(IReadOnlyList<MeetingListItem> value)
     {
         OnPropertyChanged(nameof(HasItems));
-        OnPropertyChanged(nameof(ResultCountHint));
+        OnPropertyChanged(nameof(ResultCountLabel));
     }
 
-    partial void OnSearchTextChanged(string value)
+    partial void OnIsStartingChanged(bool value) => NotifyBanner();
+
+    private void NotifyBanner()
     {
-        ApplyFilterAndSort();
-        OnPropertyChanged(nameof(EmptyStateTitle));
-        OnPropertyChanged(nameof(EmptyStateInstruction));
+        OnPropertyChanged(nameof(ShowBanner));
+        OnPropertyChanged(nameof(BannerStatus));
+        OnPropertyChanged(nameof(HasActiveMeeting));
+        OnPropertyChanged(nameof(ActiveMeetingId));
+    }
+
+    /// <summary>MeetingListItemView folder popover: a folder, or null for Unfiled.</summary>
+    public void MoveMeeting(string meetingId, string? folderId)
+    {
+        if (_library.FindMeeting(meetingId) is not { } meeting) return;
+        try
+        {
+            if (_library.UpdateMeeting(meeting with { FolderId = string.IsNullOrWhiteSpace(folderId) ? null : folderId })) Reload();
+        }
+        catch (Exception exception) { MeetingStatus = $"Could not move the meeting: {exception.Message}"; }
+    }
+
+    /// <summary>MeetingListItemView "New Folder...": create a top-level folder and move the meeting into it.</summary>
+    public void CreateFolderAndMove(string meetingId, string name)
+    {
+        try
+        {
+            var folder = _library.SaveMeetingFolder(null, name);
+            MoveMeeting(meetingId, folder.Id);
+        }
+        catch (Exception exception) { MeetingStatus = $"Could not create the folder: {exception.Message}"; }
+    }
+
+    public async Task DeleteMeetingAsync(string meetingId)
+    {
+        var choice = await _dialogs.ConfirmAsync(
+            "Are you sure you want to delete this meeting? Saved notes, transcript, and any retained recording will be removed.",
+            "Delete Meeting");
+        if (choice != AppDialogChoice.Primary) return;
+        try
+        {
+            if (_library.DeleteMeeting(meetingId)) Reload();
+        }
+        catch (Exception exception) { MeetingStatus = $"Could not delete the meeting: {exception.Message}"; }
     }
 
     partial void OnSortIndexChanged(int value)
@@ -890,13 +1000,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     public void SelectFolder(string? folderId)
     {
         SelectedFolderId = folderId ?? "";
-        FolderEditorStatus = "";
-        FolderName = Folders.FirstOrDefault(folder => folder.Id == SelectedFolderId)?.Name ?? "";
-        var folders = _library.History.LoadMeetingFolders();
-        var excluded = MeetingFolderHierarchy.Subtree(folders, SelectedFolderId);
-        // A folder may not be moved inside itself or one of its own descendants.
-        ParentFolders = Folders.Where(folder => folder.Id.Length == 0 || !excluded.Contains(folder.Id)).ToList();
-        SetParentSelection(folders.FirstOrDefault(folder => folder.Id == SelectedFolderId)?.ParentId);
         UpdateFolderContext();
         ApplyFilterAndSort();
     }
@@ -907,102 +1010,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CurrentFolderLabel));
         OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(EmptyStateInstruction));
-    }
-
-    [RelayCommand]
-    private void NewFolder()
-    {
-        SelectedFolderId = "";
-        FolderName = "";
-        ParentFolders = Folders;
-        SetParentSelection(null);
-        FolderEditorStatus = "";
-        UpdateFolderContext();
-    }
-
-    /// <summary>
-    /// Abandons an in-progress rename or move. Nothing has been written yet — the editor is a
-    /// staging area — so this just puts the fields back to what is stored for the selected folder
-    /// and says so, which is what makes "cancel a rename" observable rather than implicit.
-    /// </summary>
-    [RelayCommand]
-    private void CancelFolderEdit()
-    {
-        if (string.IsNullOrWhiteSpace(SelectedFolderId))
-        {
-            NewFolder();
-            FolderEditorStatus = "Cleared.";
-            return;
-        }
-
-        SelectFolder(SelectedFolderId);
-        FolderEditorStatus = "Edit cancelled; the folder is unchanged.";
-    }
-
-    [RelayCommand]
-    private void SaveFolder()
-    {
-        var name = FolderName.Trim();
-        if (name.Length == 0)
-        {
-            FolderEditorStatus = "Enter a folder name.";
-            return;
-        }
-
-        if (string.Equals(name, "All Meetings", StringComparison.CurrentCultureIgnoreCase))
-        {
-            FolderEditorStatus = "“All Meetings” is the name of the whole library. Choose another name.";
-            return;
-        }
-
-        // Duplicate names are rejected among siblings only: two folders may both be called "Notes"
-        // as long as they sit under different parents, which is the point of nesting. A clash with
-        // a folder somewhere else in the tree is not a clash the user can see.
-        var stored = _library.History.LoadMeetingFolders();
-        var parentId = string.IsNullOrWhiteSpace(SelectedParentFolderId) ? null : SelectedParentFolderId;
-        var duplicate = stored.Any(folder =>
-            !string.Equals(folder.Id, SelectedFolderId, StringComparison.Ordinal) &&
-            string.Equals(folder.ParentId ?? "", parentId ?? "", StringComparison.Ordinal) &&
-            string.Equals(folder.Name, name, StringComparison.CurrentCultureIgnoreCase));
-        if (duplicate)
-        {
-            var where = parentId is null
-                ? "at the top level"
-                : $"inside “{stored.FirstOrDefault(folder => folder.Id == parentId)?.Name ?? "that folder"}”";
-            FolderEditorStatus = $"A folder called “{name}” already exists {where}.";
-            return;
-        }
-
-        try
-        {
-            var saved = _library.SaveMeetingFolder(
-                string.IsNullOrWhiteSpace(SelectedFolderId) ? null : SelectedFolderId,
-                name, parentId);
-            _library.MoveMeetingFolder(saved.Id, SelectedParentFolderId);
-            Reload();
-            SelectFolder(saved.Id);
-            FolderEditorStatus = $"Saved “{saved.Name}”.";
-        }
-        catch (Exception exception) { FolderEditorStatus = $"Could not save folder: {exception.Message}"; }
-    }
-
-    [RelayCommand]
-    private async Task DeleteFolderAsync(CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(SelectedFolderId)) return;
-        var folder = Folders.FirstOrDefault(item => item.Id == SelectedFolderId);
-        if (folder is null) return;
-        var choice = await _dialogs.ConfirmAsync(
-            $"Delete the folder “{folder.Name}”? Its meetings will remain in All Meetings.",
-            "Delete meeting folder", cancellationToken);
-        if (choice != AppDialogChoice.Primary) return;
-        if (_library.DeleteMeetingFolder(folder.Id))
-        {
-            Reload();
-            SelectFolder("");
-            FolderEditorStatus = $"Deleted “{folder.Name}”; its meetings remain in All Meetings.";
-        }
-        else FolderEditorStatus = $"“{folder.Name}” could not be deleted.";
+        OnPropertyChanged(nameof(EmptyStateGlyph));
     }
 
     private void Reload()
@@ -1011,18 +1019,16 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         var folderNameById = snapshot.Folders
             .GroupBy(folder => folder.Id)
             .ToDictionary(group => group.Key, group => group.First().Name);
+        var (predecessors, parents) = _library.ThreadLinks(snapshot.Meetings.Select(item => item.Id));
         _allItems = snapshot.Meetings.Select(item => MeetingListItem.From(
             item,
-            string.IsNullOrWhiteSpace(item.FolderId) || !folderNameById.TryGetValue(item.FolderId, out var name)
-                ? null
-                : name)).ToList();
+            FolderPath(snapshot.Folders, item.FolderId)) with
+        {
+            IsFollowUp = predecessors.Contains(item.Id),
+            HasFollowUps = parents.Contains(item.Id)
+        }).ToList();
         Folders = MeetingFolderListItem.BuildTree(snapshot);
-
-        // P3-06: replacing a ComboBox's ItemsSource clears its selection, and the TwoWay binding
-        // writes that -1 straight back here. Capture the intent first and restore it after the new
-        // list has been published, so a refresh cannot leave the filter rendering blank.
         var desiredTimeRange = TimeRangeIndex < 0 ? 0 : TimeRangeIndex;
-        var desiredParent = SelectedParentFolderId;
 
         // Only republish the range options when they actually changed. Handing a ComboBox an equal
         // but new list is what made it drop its selection on every refresh in the first place.
@@ -1032,9 +1038,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
             TimeRangeOptions = options;
         }
 
-        ParentFolders = Folders;
         TimeRangeIndex = desiredTimeRange >= TimeRangeOptions.Count ? 0 : desiredTimeRange;
-        SetParentSelection(desiredParent);
         ApplyFilterAndSort();
         UpdateFolderContext();
     }
@@ -1044,23 +1048,23 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     /// a meeting at least a day old, "Last week" needs three days, and so on. Reproducing that
     /// keeps the filter truthful instead of offering ranges that are guaranteed empty.
     /// </summary>
-    private static IReadOnlyList<string> BuildTimeRangeOptions(IReadOnlyList<PersistedMeeting> meetings)
+    /// <summary>macOS currentFolderName breadcrumb: "Grandparent / Parent / Folder".</summary>
+    public static string? FolderPath(IReadOnlyList<PersistedMeetingFolder> folders, string? folderId)
     {
-        var options = new List<string> { "All time" };
-        var oldest = meetings.Select(meeting => meeting.CreatedAt).DefaultIfEmpty().Min();
-        if (oldest == default)
+        var byId = folders.GroupBy(folder => folder.Id).ToDictionary(group => group.Key, group => group.First());
+        if (string.IsNullOrWhiteSpace(folderId) || !byId.TryGetValue(folderId, out var folder)) return null;
+        var parts = new List<string> { folder.Name };
+        var seen = new HashSet<string> { folder.Id };
+        while (folder.ParentId is { } parentId && byId.TryGetValue(parentId, out var parent) && seen.Add(parentId))
         {
-            return options;
+            parts.Insert(0, parent.Name);
+            folder = parent;
         }
-
-        var days = (DateTime.Now.Date - oldest.Date).Days;
-        if (days >= 1) options.Add("Last 2 days");
-        if (days >= 3) options.Add("Last week");
-        if (days >= 8) options.Add("Last 2 weeks");
-        if (days >= 15) options.Add("Last month");
-        if (days >= 31) options.Add("Last 3 months");
-        return options;
+        return string.Join(" / ", parts);
     }
+
+    private static IReadOnlyList<string> BuildTimeRangeOptions(IReadOnlyList<PersistedMeeting> meetings) =>
+        HistoryFormat.AvailableDateFilters(meetings.Count == 0 ? null : meetings.Min(meeting => meeting.CreatedAt), DateTime.Now);
 
     private void ApplyFilterAndSort()
     {
@@ -1069,13 +1073,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         {
             var subtree = MeetingFolderHierarchy.Subtree(_library.History.LoadMeetingFolders(), SelectedFolderId);
             query = query.Where(item => item.FolderId is not null && subtree.Contains(item.FolderId));
-        }
-        var search = SearchText.Trim();
-        if (search.Length > 0)
-        {
-            query = query.Where(item =>
-                item.Title.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
-                item.Summary.Contains(search, StringComparison.CurrentCultureIgnoreCase));
         }
         var threshold = TimeRangeThreshold(TimeRangeIndex);
         if (threshold is not null)
@@ -1087,15 +1084,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
             : query.OrderByDescending(item => item.Timestamp).ToList();
     }
 
-    private static DateTime? TimeRangeThreshold(int index) => index switch
-    {
-        1 => DateTime.Now.AddDays(-2),
-        2 => DateTime.Now.AddDays(-7),
-        3 => DateTime.Now.AddDays(-14),
-        4 => DateTime.Now.AddMonths(-1),
-        5 => DateTime.Now.AddMonths(-3),
-        _ => null
-    };
+    private static DateTime? TimeRangeThreshold(int index) => HistoryFormat.DateFilterStart(index, DateTime.Now);
 
     private void UpdateRuntimeState()
     {
@@ -1141,6 +1130,8 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
             ? "Saving failed · audio kept. Choose Stop to retry."
             : "Paused · audio retained";
         if (wasActive && !IsActive) Reload();
+        if (IsActive && _meetingRuntime.ActiveTitle is { Length: > 0 } title) BannerTitle = title;
+        NotifyBanner();
         NotifyCommandState();
         OnPropertyChanged(nameof(IsActive));
         OnPropertyChanged(nameof(CanStart));
@@ -1151,10 +1142,15 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasIdleNotice));
     }
 
-    partial void OnMeetingStatusChanged(string value) => OnPropertyChanged(nameof(HasIdleNotice));
+    partial void OnMeetingStatusChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasIdleNotice));
+        OnPropertyChanged(nameof(BannerStatus));
+    }
 
     partial void OnIsImportingChanged(bool value)
     {
+        NotifyBanner();
         NotifyCommandState();
         OnPropertyChanged(nameof(HasIdleNotice));
     }
@@ -1192,6 +1188,16 @@ public sealed record MeetingListItem(
 {
     public DateTime Timestamp { get; init; }
 
+    /// <summary>Badge colours, as macOS MeetingStatus.displayColor: success, warning, tertiary or accent.</summary>
+    public string StatusTone { get; init; } = "tertiary";
+    public string SourceTone { get; init; } = "secondary";
+    public string SourceBadgeHelp { get; init; } = "";
+    public bool IsFollowUp { get; init; }
+    public bool HasFollowUps { get; init; }
+
+    /// <summary>macOS folder.fill when filed, folder.badge.plus when not.</summary>
+    public string FolderGlyph => FolderName is null ? "\uE8F4" : "\uE8B7";
+
     /// <summary>The folder badge renders only when the meeting lives in a folder, like the macOS
     /// browser's accent folder chip on each card.</summary>
     public bool ShowFolderBadge => FolderName is not null;
@@ -1227,7 +1233,8 @@ public sealed record MeetingListItem(
 
     public static MeetingListItem From(PersistedMeeting item, string? folderName)
     {
-        var source = RecordingBadge(item);
+        var imported = item.SystemCaptureMode == "imported-media";
+        var source = imported ? ("Imported", "\uE896") : RecordingBadge(item);
         return new(
             item.Id,
             item.FolderId,
@@ -1246,7 +1253,15 @@ public sealed record MeetingListItem(
             source?.Label,
             source?.Glyph)
         {
-            Timestamp = item.CreatedAt
+            Timestamp = item.CreatedAt,
+            StatusTone = item.SessionState switch
+            {
+                MeetingSessionState.Completed => "success",
+                MeetingSessionState.Failed or MeetingSessionState.RecoverableInterruption => "warning",
+                _ => "tertiary"
+            },
+            SourceTone = imported ? "accent" : "secondary",
+            SourceBadgeHelp = imported ? "Imported audio" : "Saved recording available"
         };
     }
 
@@ -1297,7 +1312,7 @@ public sealed record MeetingListItem(
     private static string SessionStateLabel(MeetingSessionState state, bool recovered) => state switch
     {
         MeetingSessionState.Completed => recovered ? "Recovered" : "Completed",
-        MeetingSessionState.NoteOnly => "Notes only",
+        MeetingSessionState.NoteOnly => "Note only",
         MeetingSessionState.Failed => "Needs attention",
         MeetingSessionState.RecoverableInterruption => "Recoverable",
         MeetingSessionState.Cancelled => "Cancelled",

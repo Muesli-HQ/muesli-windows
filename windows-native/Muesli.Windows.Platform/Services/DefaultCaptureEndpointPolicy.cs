@@ -91,6 +91,9 @@ internal static class DefaultCaptureEndpointPolicy
     public static bool ShouldFollowDefaultChange(Role? role) =>
         role is null or Role.Multimedia or Role.Console;
 
+    /// <summary>A Bluetooth hands-free (call-mode) endpoint; opening it switches the headset's profile.</summary>
+    internal static bool IsHandsFree(string friendlyName) => ContainsAny(friendlyName, "Hands-Free", "Handsfree");
+
     internal static bool IsUnusableAsDefault(string friendlyName)
     {
         if (string.IsNullOrWhiteSpace(friendlyName))

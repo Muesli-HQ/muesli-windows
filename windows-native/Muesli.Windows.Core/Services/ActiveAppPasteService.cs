@@ -33,6 +33,21 @@ public sealed class ActiveAppPasteService
 
     public IntPtr CaptureForegroundWindow() => _windows.ForegroundWindow;
 
+    /// <summary>
+    /// macOS pastes into whatever is frontmost when the transcript is ready, so clicking into a text
+    /// box after starting to speak sends the words there. Muesli's own windows (the app, the pill)
+    /// are never a target; then, or when nothing is focused, the window from the start is kept.
+    /// </summary>
+    public IntPtr ResolvePasteTarget(IntPtr startTarget)
+    {
+        var current = _windows.ForegroundWindow;
+        if (current == IntPtr.Zero || current == startTarget || !_windows.Exists(current)) return startTarget;
+        var info = DescribeWindow(current);
+        var isMuesli = info.ProcessId == (uint)Environment.ProcessId ||
+            info.ProcessName.StartsWith("Muesli.Windows", StringComparison.OrdinalIgnoreCase);
+        return isMuesli ? startTarget : current;
+    }
+
     public PasteTargetInfo DescribeWindow(IntPtr targetWindow) =>
         _windows is IWindowDescriptionAdapter description
             ? description.DescribeWindow(targetWindow)
@@ -67,6 +82,12 @@ public sealed class ActiveAppPasteService
         {
             throw new InvalidOperationException(
                 "The app that was active when dictation started is no longer available. The transcript was saved in Muesli history and the clipboard was left unchanged.");
+        }
+
+        if (DescribeWindow(targetWindow).RunsAboveMuesli)
+        {
+            // Windows drops input sent to a higher-integrity window without reporting an error.
+            throw new PasteBlockedByElevationException();
         }
 
         _windows.RequestForeground(targetWindow);
@@ -258,7 +279,11 @@ public sealed record PasteOperationResult(
     long InputMs,
     bool TargetWasForeground);
 
-public sealed record PasteTargetInfo(string ProcessName, uint ProcessId)
+/// <param name="RunsAboveMuesli">The app runs as administrator (higher integrity) and Muesli does not.</param>
+public sealed record PasteTargetInfo(string ProcessName, uint ProcessId, bool RunsAboveMuesli = false)
 {
     public static PasteTargetInfo Unknown { get; } = new("unknown", 0);
 }
+
+public sealed class PasteBlockedByElevationException() : InvalidOperationException(
+    "The app runs as administrator, so Windows blocks Muesli from typing into it.");
