@@ -337,9 +337,12 @@ public partial class App : Application
         Dictation.RegisterHotkey();
         ApplyMeetingDetection(Settings.Load().AutoMeetingDetectionEnabled);
         StartFirstRunFlows();
+        // macOS opens the dashboard at login too when "Open dashboard on launch" is on; a login
+        // launch that showed nothing looked like Launch at login had not worked.
+        var activation = currentInstance.GetActivatedEventArgs().Kind;
+        _log.Info($"Launch activation={activation}.");
         if (Settings.Load().OnboardingCompleted &&
-            (currentInstance.GetActivatedEventArgs().Kind == ExtendedActivationKind.StartupTask ||
-             Environment.GetCommandLineArgs().Contains("--background") ||
+            (Environment.GetCommandLineArgs().Contains("--background") ||
              !Settings.Load().OpenDashboardOnLaunch))
             mainWindow.HideDashboard();
 
