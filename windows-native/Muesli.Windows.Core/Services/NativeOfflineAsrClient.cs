@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.ML.OnnxRuntime;
 using NAudio.Wave;
 using SharpCompress.Archives;
 using SherpaOnnx;
@@ -19,6 +20,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
     private readonly TranscriptionModelDefinition _model;
     private readonly SemaphoreSlim _recognizerGate = new(1, 1);
     private OfflineRecognizer? _recognizer;
+    private BodhanRecognizer? _bodhan;
     private string _provider = "not initialized";
     private long _modelLoadMs;
     private bool _disposed;
@@ -73,6 +75,8 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
         {
             _recognizer?.Dispose();
             _recognizer = null;
+            _bodhan?.Dispose();
+            _bodhan = null;
             await DownloadGate.WaitAsync(cancellationToken);
             FileStream? processLock = null;
             try
@@ -125,7 +129,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
             return await Task.Run(() =>
             {
                 ThrowIfDisposed();
-                var reused = _recognizer is not null;
+                var reused = _recognizer is not null || _bodhan is not null;
                 EnsureRecognizer();
                 return new ModelOperationResult(
                     $"{_model.DisplayName} is ready on {_provider}.",
@@ -196,17 +200,21 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
             return await Task.Run(() =>
             {
                 ThrowIfDisposed();
-                var reused = _recognizer is not null;
+                var reused = _recognizer is not null || _bodhan is not null;
                 EnsureRecognizer();
                 var inference = Stopwatch.StartNew();
                 const int sampleRate = 16000;
-                const int chunkSamples = sampleRate * 25;
+                // Bodhan matches macOS: 28 s windows overlapping by 1 s, so no word is cut at a boundary.
+                var bodhan = _bodhan is not null;
+                var chunkSamples = sampleRate * (bodhan ? BodhanTranscriptMerger.WindowSeconds : 25);
+                var strideSamples = sampleRate * (bodhan ? BodhanTranscriptMerger.StrideSeconds : 25);
+                var mergedWords = new List<string>();
                 var texts = new List<string>();
                 var segments = new List<TranscriptSegment>();
                 var timestampModes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var chunkCount = 0;
                 var throttle = new ThrottledTranscriptionProgress(progress);
-                for (var offset = 0; offset < samples.Length; offset += chunkSamples)
+                for (var offset = 0; offset < samples.Length; offset += strideSamples)
                 {
                     // Decoding is chunked, so cancellation lands within one chunk rather than at the
                     // end of the file. Partial work is discarded: the caller gets no transcript at all.
@@ -214,11 +222,20 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                     throttle.Report(TranscriptionStage.Transcribing, offset / (double)samples.Length);
                     var length = Math.Min(chunkSamples, samples.Length - offset);
                     var chunk = samples.AsSpan(offset, length).ToArray();
-                    using var stream = _recognizer!.CreateStream();
-                    stream.AcceptWaveform(sampleRate, chunk);
-                    _recognizer.Decode(stream);
-                    var result = stream.Result;
-                    var chunkText = result.Text?.Trim() ?? "";
+                    OfflineRecognizerResult? result = null;
+                    string chunkText;
+                    if (bodhan)
+                    {
+                        chunkText = BodhanTranscriptMerger.Append(mergedWords, RecognizeBodhan(chunk));
+                    }
+                    else
+                    {
+                        using var stream = _recognizer!.CreateStream();
+                        stream.AcceptWaveform(sampleRate, chunk);
+                        _recognizer.Decode(stream);
+                        result = stream.Result;
+                        chunkText = result.Text?.Trim() ?? "";
+                    }
                     if (!string.IsNullOrWhiteSpace(chunkText))
                     {
                         texts.Add(chunkText);
@@ -229,9 +246,9 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                     var chunkSegmentation = ParakeetTimestampSegmenter.Build(
                         title,
                         chunkText,
-                        result.Tokens,
-                        result.Timestamps,
-                        result.Durations,
+                        result?.Tokens,
+                        result?.Timestamps,
+                        result?.Durations,
                         chunkDurationMs);
                     timestampModes.Add(chunkSegmentation.Mode);
                     foreach (var segment in chunkSegmentation.Segments)
@@ -245,6 +262,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                     }
 
                     chunkCount++;
+                    if (offset + length == samples.Length) break;
                 }
                 inference.Stop();
 
@@ -265,7 +283,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                         $"Audio preprocessing: {preprocessing}",
                         $"Audio duration ms: {durationMs}",
                         $"Inference duration ms: {inferenceMs}",
-                        $"Decode chunks: {chunkCount} (25 second maximum)",
+                        $"Decode chunks: {chunkCount} ({chunkSamples / sampleRate} second maximum, {(chunkSamples - strideSamples) / sampleRate} second overlap)",
                         $"Segments: {segments.Count}",
                         $"Timestamp segmentation: {string.Join(", ", timestampModes)}"),
                     durationMs,
@@ -280,8 +298,14 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
 
     private void EnsureRecognizer()
     {
-        if (_recognizer is not null)
+        if (_recognizer is not null || _bodhan is not null)
         {
+            return;
+        }
+
+        if (_model.Kind == NativeAsrModelKind.Bodhan)
+        {
+            EnsureBodhan();
             return;
         }
 
@@ -380,6 +404,124 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
         stream.AcceptWaveform(sampleRate, samples);
         recognizer.Decode(stream);
         _ = stream.Result.Text;
+    }
+
+    /// <summary>
+    /// Bodhan runs its own exported graphs through ONNX Runtime rather than a sherpa recognizer.
+    /// Each precision has exactly one provider: FP16 on CUDA, INT8 on the CPU. A GPU session is
+    /// accepted only after a profiled warm-up proves the graph ran on CUDA, as for sherpa models.
+    /// </summary>
+    private void EnsureBodhan()
+    {
+        // Selecting the native runtime first binds ONNX Runtime's managed API to the same
+        // onnxruntime.dll; any earlier ONNX Runtime call would bind it on its own.
+        if (!NativeSherpaRuntime.IsAvailable)
+        {
+            throw new InvalidOperationException(NativeSherpaRuntime.Diagnostic);
+        }
+
+        const ExecutionProviderRole role = ExecutionProviderRole.OfflineTranscription;
+        var gpu = BodhanModels.NeedsGpu(_model);
+        var candidate = ExecutionProviderService.PreferredProviders(role, _model.Kind)
+            .FirstOrDefault(request => request.IsGpu == gpu)
+            ?? throw new InvalidOperationException(
+                $"{_model.DisplayName} needs an NVIDIA GPU with the CUDA acceleration pack and GPU acceleration allowed in Settings. The INT8 variant runs on any PC.");
+        var started = Stopwatch.StartNew();
+        try
+        {
+            ProviderEvidence? evidence = null;
+            if (gpu && !ExecutionProviderService.TryGetQualifiedCudaEvidence(_model.Id, out evidence))
+            {
+                var probe = ExecutionProviderService.BeginWarmUp(candidate.Provider, _model.Id);
+                try
+                {
+                    using (var options = BodhanSessionOptions(candidate, probe.ProfilePrefix))
+                    using (var probeRecognizer = new BodhanRecognizer(_model.ModelPath, BodhanModels.Precision(_model), options))
+                    {
+                        WarmUp(probeRecognizer);
+                    }
+
+                    evidence = probe.Complete();
+                }
+                catch (Exception probeException)
+                {
+                    probe.Abandon(probeException);
+                    throw;
+                }
+
+                if (!evidence.ConfirmedGpuInference)
+                {
+                    throw new InvalidOperationException(evidence.Detail);
+                }
+
+                ExecutionProviderService.StoreQualifiedCudaEvidence(_model.Id, evidence);
+            }
+
+            var load = Stopwatch.StartNew();
+            using (var options = BodhanSessionOptions(candidate, null))
+            {
+                _bodhan = new BodhanRecognizer(_model.ModelPath, BodhanModels.Precision(_model), options);
+            }
+
+            _provider = candidate.Provider;
+            _modelLoadMs = load.ElapsedMilliseconds;
+            ExecutionProviderService.RecordActive(role, candidate.Provider, _model.Id, _modelLoadMs, gpu ? evidence : null);
+        }
+        catch (Exception exception)
+        {
+            ExecutionProviderService.RecordFailure(role, candidate.Provider, _model.Id, started.ElapsedMilliseconds, exception.Message);
+            throw new InvalidOperationException($"{_model.DisplayName} could not initialize on {candidate.Provider}.", exception);
+        }
+    }
+
+    private static SessionOptions BodhanSessionOptions(ExecutionProviderRequest candidate, string? profilePrefix)
+    {
+        var options = new SessionOptions { IntraOpNumThreads = ThreadCount(candidate.Provider) };
+        if (profilePrefix is not null)
+        {
+            // The prefix is read when profiling is switched on, so it must be set first.
+            options.ProfileOutputPathPrefix = profilePrefix;
+            options.EnableProfiling = true;
+        }
+
+        if (candidate.IsGpu)
+        {
+            BodhanRecognizer.UseCuda(options);
+        }
+
+        return options;
+    }
+
+    private string RecognizeBodhan(float[] chunk)
+    {
+        var language = TranscriptionLanguageSelection.Resolve(_model);
+        var mode = BodhanModels.OutputModeFor(_model);
+        return _bodhan!.Recognize(
+            chunk,
+            language == ModelLanguageSupport.AutomaticCode ? null : language,
+            mode,
+            BodhanModels.MaxTokens(mode),
+            BodhanModels.Detectable(_model)).Text;
+    }
+
+    /// <summary>Runs the encoder and a few decoder steps so the provider executes both graphs.</summary>
+    private static void WarmUp(BodhanRecognizer recognizer)
+    {
+        var samples = new float[BodhanRecognizer.SampleRate / 2];
+        var random = new Random(20260920);
+        for (var i = 0; i < samples.Length; i++)
+        {
+            samples[i] = (float)((random.NextDouble() - 0.5) * 0.002);
+        }
+
+        try
+        {
+            recognizer.Recognize(samples, "en", BodhanOutputMode.Native, 4, []);
+        }
+        catch (InvalidOperationException)
+        {
+            // Noise may not finish within four tokens; the warm-up only needs the graphs to run.
+        }
     }
 
     private OfflineRecognizerConfig BuildRecognizerConfig(string provider)
@@ -835,6 +977,8 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
         _disposed = true;
         _recognizer?.Dispose();
         _recognizer = null;
+        _bodhan?.Dispose();
+        _bodhan = null;
         _recognizerGate.Dispose();
     }
 

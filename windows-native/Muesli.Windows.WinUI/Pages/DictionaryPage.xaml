@@ -72,7 +72,7 @@
                         <TextBlock Text="Dictionary" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <StackPanel x:Name="HeaderBar" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,4,0"
-                                        ToolTipService.ToolTip="Notices when you correct a dictated word and offers it as a dictionary entry.">
+                                        ToolTipService.ToolTip="Briefly reads focused app text after dictation to detect corrections.">
                                 <TextBlock Text="Dictionary suggestions" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
                                 <ToggleSwitch IsOn="{x:Bind ViewModel.SuggestionsEnabled, Mode=TwoWay}"
                                               OnContent="" OffContent="" MinWidth="0" Width="44" VerticalAlignment="Center"
@@ -124,7 +124,7 @@
                     <StackPanel>
                         <StackPanel Padding="16,12" Spacing="3">
                             <TextBlock Text="Suggested Corrections" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="15" FontWeight="SemiBold" />
-                            <TextBlock Text="Corrections Muesli noticed after you edited a dictation."
+                            <TextBlock Text="Corrections Muesli noticed by briefly reading focused app text after dictation."
                                        FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                         <ListView ItemsSource="{x:Bind ViewModel.Suggestions, Mode=OneWay}"
@@ -142,12 +142,17 @@
                                 <DataTemplate x:DataType="svc:DictionarySuggestion">
                                     <Border BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="0,1,0,0" Padding="16,12">
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" AutomationProperties.Name="{x:Bind Display}">
-                                            <TextBlock VerticalAlignment="Center" FontSize="14" MaxLines="1" TextTrimming="CharacterEllipsis"
-                                                       ToolTipService.ToolTip="{x:Bind Display}">
-                                                <Run Text="{x:Bind Observed}" />
-                                                <Run Text="  →  " Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
-                                                <Run Text="{x:Bind Replacement}" />
-                                            </TextBlock>
+                                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                                                <TextBlock FontSize="14" MaxLines="1" TextTrimming="CharacterEllipsis"
+                                                           ToolTipService.ToolTip="{x:Bind Display}">
+                                                    <Run Text="{x:Bind Observed}" />
+                                                    <Run Text="  →  " Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                    <Run Text="{x:Bind Replacement}" />
+                                                </TextBlock>
+                                                <!-- macOS detail: "Seen 2x | App". -->
+                                                <TextBlock Text="{x:Bind Detail}" FontSize="12" MaxLines="1" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                            </StackPanel>
                                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                                                 <Button Command="{Binding ViewModel.AcceptSuggestionCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding}"
@@ -171,28 +176,35 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+                        <!-- macOS suggestionPaginationControls: range caption and chevrons, only past one page. -->
+                        <Grid x:Name="PaginationBar" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4" Padding="16,8"
+                              BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="0,1,0,0"
+                              Visibility="{x:Bind local:DictionaryPage.BoolToVisibility(ViewModel.HasSuggestionPages), Mode=OneWay}">
+                            <TextBlock Text="{x:Bind ViewModel.SuggestionRangeText, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Command="{x:Bind ViewModel.PreviousPageCommand}"
+                                    IsEnabled="{x:Bind ViewModel.HasPreviousPage, Mode=OneWay}"
+                                    Style="{StaticResource DictionaryIconButtonStyle}"
+                                    AutomationProperties.Name="Previous suggestions"
+                                    AutomationProperties.AutomationId="DictionaryPreviousPage">
+                                <FontIcon Glyph="&#xE76B;" FontSize="11" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </Button>
+                            <Button Grid.Column="2" Command="{x:Bind ViewModel.NextPageCommand}"
+                                    IsEnabled="{x:Bind ViewModel.HasNextPage, Mode=OneWay}"
+                                    Style="{StaticResource DictionaryIconButtonStyle}"
+                                    AutomationProperties.Name="Next suggestions"
+                                    AutomationProperties.AutomationId="DictionaryNextPage">
+                                <FontIcon Glyph="&#xE76C;" FontSize="11" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </Button>
+                        </Grid>
                     </StackPanel>
                 </Border>
 
                 <!--
                     macOS wordList: one table with Match → Replace / Threshold columns, an add row on
                     top while adding, and every entry editable in place with save and delete at
-                    the end of the row. The search box is Windows-only: it appears once the
-                    dictionary outgrows a single page.
+                    the end of the row.
                 -->
                 <StackPanel Spacing="12">
-                    <Grid x:Name="SearchWell" ColumnDefinitions="Auto,*" ColumnSpacing="8" HorizontalAlignment="Left" Width="280"
-                          Visibility="{x:Bind local:DictionaryPage.BoolToVisibility(ViewModel.IsSearchUseful), Mode=OneWay}">
-                        <TextBox Grid.ColumnSpan="2"
-                                 Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="Search dictionary"
-                                 Style="{StaticResource DictionaryFieldStyle}"
-                                 Padding="30,5,9,5"
-                                 AutomationProperties.Name="Search dictionary"
-                                 AutomationProperties.AutomationId="DictionarySearchBox" />
-                        <FontIcon Glyph="&#xE721;" FontSize="12" Margin="10,0,0,0" IsHitTestVisible="False"
-                                  Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" />
-                    </Grid>
 
                     <Border Style="{StaticResource MuesliCardStyle}" CornerRadius="10" Padding="0">
                         <StackPanel>
@@ -335,31 +347,12 @@
                             <!-- macOS emptyState: character.book.closed, body secondary, caption tertiary. -->
                             <StackPanel x:Name="EmptyState" Spacing="8" Padding="32" HorizontalAlignment="Center">
                                 <FontIcon Glyph="&#xE82D;" FontSize="28" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
-                                <TextBlock x:Name="EmptyStateTitle" Text="{x:Bind ViewModel.EmptyStateTitle, Mode=OneWay}" FontSize="14"
+                                <TextBlock x:Name="EmptyStateTitle" Text="No custom words yet" FontSize="14"
                                            Foreground="{ThemeResource MuesliTextSecondaryBrush}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-                                <TextBlock x:Name="EmptyStateBody" Text="{x:Bind ViewModel.EmptyStateInstruction, Mode=OneWay}" FontSize="12"
+                                <TextBlock x:Name="EmptyStateBody" Text="Add words that transcription frequently gets wrong" FontSize="12"
                                            Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
                             </StackPanel>
 
-                            <!-- macOS suggestionPaginationControls: range caption and chevrons, only past one page. -->
-                            <Grid x:Name="PaginationBar" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4" Padding="16,8"
-                                  BorderBrush="{ThemeResource MuesliBorderSoftBrush}" BorderThickness="0,1,0,0">
-                                <TextBlock Text="{x:Bind ViewModel.PageLabel, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" />
-                                <Button Grid.Column="1" Command="{x:Bind ViewModel.PreviousPageCommand}"
-                                        IsEnabled="{x:Bind ViewModel.HasPreviousPage, Mode=OneWay}"
-                                        Style="{StaticResource DictionaryIconButtonStyle}"
-                                        AutomationProperties.Name="Previous dictionary page"
-                                        AutomationProperties.AutomationId="DictionaryPreviousPage">
-                                    <FontIcon Glyph="&#xE76B;" FontSize="11" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
-                                </Button>
-                                <Button Grid.Column="2" Command="{x:Bind ViewModel.NextPageCommand}"
-                                        IsEnabled="{x:Bind ViewModel.HasNextPage, Mode=OneWay}"
-                                        Style="{StaticResource DictionaryIconButtonStyle}"
-                                        AutomationProperties.Name="Next dictionary page"
-                                        AutomationProperties.AutomationId="DictionaryNextPage">
-                                    <FontIcon Glyph="&#xE76C;" FontSize="11" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
-                                </Button>
-                            </Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>

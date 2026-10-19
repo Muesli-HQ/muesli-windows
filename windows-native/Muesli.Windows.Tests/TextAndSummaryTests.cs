@@ -74,6 +74,12 @@ public sealed class TextAndSummaryTests
             new MuesliSettings { MeetingSummaryProvider = "openrouter" });
         Assert.True(result.UsedLocalFallback);
         Assert.Equal("missing-key", result.SafeFailureReason);
+
+        // A meeting's automatic notes say the summary failed (macOS summaryFailureNotes) and keep the transcript.
+        var notes = MeetingSummaryService.SummaryFailureNotes("Transcript content.", "Test", result.Provider, result.SafeFailureReason!);
+        Assert.StartsWith("## Summary failed\n\nMeeting: Test\n\n", notes);
+        Assert.Contains("openrouter summary failed (missing-key)", notes);
+        Assert.EndsWith("## Raw Transcript\n\nTranscript content.", notes);
     }
 
     [Fact]

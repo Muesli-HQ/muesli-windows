@@ -26,6 +26,7 @@
             <SolidColorBrush x:Key="MeetingNotificationCloseBorderBrush" Color="#8CFFFFFF" />
             <SolidColorBrush x:Key="MeetingNotificationCloseGlyphBrush" Color="#DBFFFFFF" />
             <SolidColorBrush x:Key="MeetingNotificationActionTextBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="MeetingNotificationSecondaryBrush" Color="#26FFFFFF" />
         </Canvas.Resources>
         <Border
             x:Name="Card"
@@ -114,6 +115,27 @@
                     FontSize="12">
                     <TextBlock
                         x:Name="SingleActionText"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="NoWrap"
+                        FontFamily="{StaticResource MuesliFontFamilyMedium}"
+                        FontSize="12"
+                        Foreground="{StaticResource MeetingNotificationActionTextBrush}" />
+                </Button>
+
+                <!-- Second, neutral action for prompts that offer two answers (Ignore beside Add). -->
+                <Button
+                    x:Name="SecondaryActionButton"
+                    Height="30"
+                    Width="60"
+                    Canvas.Top="15"
+                    Padding="0"
+                    BorderThickness="0"
+                    CornerRadius="6"
+                    Visibility="Collapsed"
+                    Background="{StaticResource MeetingNotificationSecondaryBrush}"
+                    Foreground="{StaticResource MeetingNotificationActionTextBrush}">
+                    <TextBlock
+                        x:Name="SecondaryActionText"
                         TextTrimming="CharacterEllipsis"
                         TextWrapping="NoWrap"
                         FontFamily="{StaticResource MuesliFontFamilyMedium}"

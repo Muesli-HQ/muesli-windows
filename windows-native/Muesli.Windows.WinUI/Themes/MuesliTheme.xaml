@@ -36,6 +36,8 @@
                 <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#BDFFFFFF" />
                 <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
+                <!-- The Default accent swatch: AccentPalette never recolours this key. -->
+                <SolidColorBrush x:Key="MuesliDefaultAccentBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
                 <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#34D399" />
@@ -199,6 +201,8 @@
                 <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#BDFFFFFF" />
                 <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
+                <!-- The Default accent swatch: AccentPalette never recolours this key. -->
+                <SolidColorBrush x:Key="MuesliDefaultAccentBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
                 <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#34D399" />
@@ -339,6 +343,8 @@
                 <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#A8000000" />
                 <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8C000000" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#2563EB" />
+                <!-- The Default accent swatch: AccentPalette never recolours this key. -->
+                <SolidColorBrush x:Key="MuesliDefaultAccentBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#1F2563EB" />
                 <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#1F62D6" />
                 <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#0F9F6E" />
@@ -492,6 +498,7 @@
                 <StaticResource x:Key="MuesliTextSecondaryBrush" ResourceKey="SystemColorWindowTextColorBrush" />
                 <StaticResource x:Key="MuesliTextTertiaryBrush" ResourceKey="SystemColorGrayTextColorBrush" />
                 <StaticResource x:Key="MuesliAccentBrush" ResourceKey="SystemColorHotlightColorBrush" />
+                <StaticResource x:Key="MuesliDefaultAccentBrush" ResourceKey="SystemColorHotlightColorBrush" />
                 <StaticResource x:Key="MuesliAccentMutedBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliAccentStrongBrush" ResourceKey="SystemColorHighlightColorBrush" />
                 <StaticResource x:Key="MuesliSuccessBrush" ResourceKey="SystemColorWindowTextColorBrush" />

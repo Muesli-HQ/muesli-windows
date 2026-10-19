@@ -50,6 +50,44 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="UseSystemFocusVisuals" Value="True" />
         </Style>
+        <!-- MeetingDetailView.swift header controls: 12pt semibold, 12x7 padding, 6pt corners. -->
+        <Style x:Key="MeetingPillButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Background" Value="{ThemeResource MuesliSurfacePrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="MeetingAccentPillButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliPrimaryButtonStyle}">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- macOS Export and Copy: accent text on an accent tint. -->
+        <Style x:Key="MeetingAccentTintButtonStyle" TargetType="Button" BasedOn="{StaticResource MeetingPillButtonStyle}">
+            <Setter Property="Foreground" Value="{ThemeResource MuesliAccentBrush}" />
+            <Setter Property="Background" Value="{ThemeResource MuesliAccentMutedBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource MuesliAccentMutedBrush}" />
+        </Style>
+        <Style x:Key="MeetingFolderPillStyle" TargetType="Button" BasedOn="{StaticResource MeetingPillButtonStyle}">
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="FontWeight" Value="Medium" />
+        </Style>
+        <Style x:Key="MeetingThreadLinkStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Foreground" Value="{ThemeResource MuesliAccentBrush}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
     </Page.Resources>
 
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
@@ -72,6 +110,132 @@
                     </StackPanel>
                 </Button>
 
+
+                <!--
+                    MeetingDetailView.swift compactQuickNotesHeader: the meeting being recorded opens as
+                    its notes document. Title and capture status left; a 7pt dot (red recording, amber
+                    paused), Pause/Resume, a red Stop, the live window and Discard right.
+                -->
+                <StackPanel x:Name="RecordingView" Spacing="14" Visibility="Collapsed" AutomationProperties.AutomationId="MeetingRecordingView">
+                    <Grid x:Name="RecordingHeader" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+                        <StackPanel Spacing="4" MinWidth="0">
+                            <TextBlock Text="{x:Bind Recording.BannerTitle, Mode=OneWay}" FontSize="26" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ProgressRing Width="14" Height="14" IsActive="{x:Bind Recording.IsBusy, Mode=OneWay}"
+                                              Visibility="{x:Bind BoolToVisibility(Recording.IsBusy), Mode=OneWay}" />
+                                <TextBlock Text="{x:Bind Recording.BannerStatus, Mode=OneWay}" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Text="{x:Bind Recording.CaptureStatus, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource MuesliTextTertiaryBrush}" AutomationProperties.AutomationId="MeetingCaptureStatusLabel" />
+                        </StackPanel>
+                        <StackPanel x:Name="RecordingActions" Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Top" HorizontalAlignment="Right">
+                            <Ellipse Width="7" Height="7" Fill="#EF4444" VerticalAlignment="Center" ToolTipService.ToolTip="Recording"
+                                     Visibility="{x:Bind BoolToVisibility(Recording.CanPause), Mode=OneWay}" />
+                            <Ellipse Width="7" Height="7" Fill="#F59E0B" VerticalAlignment="Center" ToolTipService.ToolTip="Recording paused"
+                                     Visibility="{x:Bind BoolToVisibility(Recording.CanResume), Mode=OneWay}" />
+                            <Button Style="{StaticResource MeetingPillButtonStyle}"
+                                    Command="{x:Bind Recording.PauseRecordingCommand, Mode=OneWay}"
+                                    Visibility="{x:Bind BoolToVisibility(Recording.CanPause), Mode=OneWay}"
+                                    ToolTipService.ToolTip="Pause recording"
+                                    AutomationProperties.Name="Pause meeting recording"
+                                    AutomationProperties.AutomationId="PauseMeetingButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE769;" FontSize="10" />
+                                    <TextBlock Text="Pause" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MeetingAccentPillButtonStyle}"
+                                    Command="{x:Bind Recording.ResumeRecordingCommand, Mode=OneWay}"
+                                    Visibility="{x:Bind BoolToVisibility(Recording.CanResume), Mode=OneWay}"
+                                    ToolTipService.ToolTip="Resume recording"
+                                    AutomationProperties.Name="Resume meeting recording"
+                                    AutomationProperties.AutomationId="ResumeMeetingButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE768;" FontSize="10" />
+                                    <TextBlock Text="Resume" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MeetingAccentPillButtonStyle}"
+                                    Background="#EF4444"
+                                    BorderBrush="#EF4444"
+                                    Command="{x:Bind Recording.StopRecordingCommand, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Stop recording and save"
+                                    AutomationProperties.Name="Stop and save meeting"
+                                    AutomationProperties.AutomationId="StopMeetingButton">
+                                <Button.Resources>
+                                    <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#DC2626" />
+                                    <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#B91C1C" />
+                                    <SolidColorBrush x:Key="AccentButtonBorderBrushPointerOver" Color="#DC2626" />
+                                    <SolidColorBrush x:Key="AccentButtonBorderBrushPressed" Color="#B91C1C" />
+                                </Button.Resources>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE71A;" FontSize="10" />
+                                    <TextBlock Text="Stop" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource MeetingIconButtonStyle}"
+                                    Command="{x:Bind Recording.ShowLiveTranscriptCommand, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Show live transcript window"
+                                    AutomationProperties.Name="Show live transcript window"
+                                    AutomationProperties.AutomationId="ShowLiveTranscriptButton">
+                                <FontIcon Glyph="&#xE8A7;" FontSize="12" />
+                            </Button>
+                            <Button Style="{StaticResource MeetingIconButtonStyle}"
+                                    Command="{x:Bind Recording.DiscardRecordingCommand, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Discard"
+                                    AutomationProperties.Name="Discard meeting recording"
+                                    AutomationProperties.AutomationId="DiscardMeetingButton">
+                                <FontIcon Glyph="&#xE711;" FontSize="12" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <InfoBar IsOpen="{x:Bind Recording.IsSourceMissing, Mode=OneWay}" IsClosable="False" Severity="Warning"
+                             Title="Meeting signal lost" Message="Recording continues. Stop if the meeting ended."
+                             AutomationProperties.AutomationId="MeetingSignalLostNotice">
+                        <InfoBar.ActionButton>
+                            <Button Content="Keep recording" Command="{x:Bind Recording.KeepRecordingCommand, Mode=OneWay}"
+                                    AutomationProperties.AutomationId="KeepMeetingRecordingButton" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                    <Border Background="{ThemeResource MuesliSurfacePrimaryBrush}" BorderBrush="{ThemeResource MuesliBorderBrush}"
+                            BorderThickness="1" CornerRadius="10" Padding="8">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                            <controls:NotesFormattingBar Editor="{x:Bind RecordingNotesEditor}" VerticalAlignment="Center"
+                                                         Visibility="{x:Bind BoolToVisibility(Recording.ShowRecordingNotes), Mode=OneWay}" />
+                            <TextBlock Grid.Column="1" Text="{x:Bind Recording.NotesSaveStatus, Mode=OneWay}" FontSize="12"
+                                       Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                       Visibility="{x:Bind BoolToVisibility(Recording.ShowRecordingNotes), Mode=OneWay}"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="MeetingNotesSaveStatus" />
+                            <Border Grid.Column="2" Style="{StaticResource MuesliSegmentedContainerStyle}">
+                                <SelectorBar x:Name="RecordingModeBar" SelectionChanged="RecordingMode_SelectionChanged"
+                                             AutomationProperties.AutomationId="MeetingRecordingTabs"
+                                             AutomationProperties.Name="Meeting recording content">
+                                    <SelectorBarItem x:Name="RecordingNotesTab" Text="Notes" IsSelected="True" AutomationProperties.AutomationId="MeetingRecordingNotesTab" />
+                                    <SelectorBarItem x:Name="RecordingLiveTab" Text="Live" AutomationProperties.AutomationId="MeetingRecordingLiveTab" />
+                                </SelectorBar>
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <StackPanel Spacing="8" Visibility="{x:Bind BoolToVisibility(Recording.ShowRecordingNotes), Mode=OneWay}">
+                        <controls:MarkdownNotesEditor x:Name="PreviousNotes" IsReadOnly="True" MaxHeight="200" Padding="16"
+                                                      Visibility="Collapsed" BorderThickness="1" AutomationProperties.Name="Previous meeting notes" />
+                        <controls:MarkdownNotesEditor x:Name="RecordingNotesEditor" Markdown="{x:Bind Recording.ManualNotes, Mode=TwoWay}"
+                                 IsEnabled="{x:Bind Recording.CanEditRecordingNotes, Mode=OneWay}" AcceptsReturn="True" TextWrapping="Wrap"
+                                 MinHeight="320" FontSize="16" Padding="24,20" VerticalContentAlignment="Top"
+                                 PlaceholderText="Write notes here…"
+                                 AutomationProperties.Name="My meeting notes" AutomationProperties.AutomationId="MeetingRecordingNotesEditor" />
+                    </StackPanel>
+                    <Grid Height="420" Visibility="{x:Bind BoolToVisibility(Recording.ShowLiveTab), Mode=OneWay}">
+                        <controls:LiveTranscriptFeed x:Name="LiveFeed" Margin="0,36,0,0"
+                                                     AutomationProperties.AutomationId="MeetingLiveCaptionList" AutomationProperties.Name="Live meeting captions" />
+                        <Button x:Name="LiveCopyButton" Content="Copy" Click="CopyLive_Click"
+                                Style="{StaticResource MeetingAccentTintButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                AutomationProperties.Name="Copy live transcript" AutomationProperties.AutomationId="MeetingLiveCopyButton" />
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel x:Name="StandardView" Spacing="16">
                 <Border x:Name="MissingState"
                         Style="{StaticResource MeetingSectionCardStyle}"
                         Padding="28"
@@ -97,11 +261,10 @@
                                    Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
                     </StackPanel>
                 </Border>
-
                 <Grid x:Name="MeetingChrome"
                       Visibility="{x:Bind BoolToVisibility(ViewModel.HasMeeting), Mode=OneWay}"
                       ColumnSpacing="16"
-                      RowSpacing="10">
+                      RowSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -112,20 +275,15 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel x:Name="TitleBlock" MinWidth="0" Spacing="4">
-                        <TextBox Text="{x:Bind ViewModel.Title, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                    <StackPanel x:Name="TitleBlock" MinWidth="0" Spacing="6">
+                        <TextBox x:Name="TitleEditor"
+                                 Text="{x:Bind ViewModel.Title, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                  Style="{StaticResource MeetingTitleEditorStyle}"
                                  PlaceholderText="Untitled meeting"
+                                 KeyDown="TitleEditor_KeyDown"
                                  ToolTipService.ToolTip="Click to rename this meeting"
                                  AutomationProperties.Name="Meeting title"
                                  AutomationProperties.AutomationId="MeetingTitleEditor" />
-                        <TextBlock Text="{x:Bind ViewModel.TitleOwnershipLabel, Mode=OneWay}"
-                                   Style="{StaticResource MuesliRowSecondaryStyle}"
-                                   FontSize="11"
-                                   Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                   TextWrapping="Wrap"
-                                   Visibility="{x:Bind BoolToVisibility(ViewModel.HasManualTitle), Mode=OneWay}"
-                                   AutomationProperties.Name="Your title · kept when notes are regenerated" />
                         <!-- macOS meetingIdentity metadata: 10pt icons, callout text, tertiary "·" dividers. -->
                         <StackPanel Orientation="Horizontal" Spacing="8" AutomationProperties.Name="Meeting metadata">
                             <StackPanel Orientation="Horizontal" Spacing="5">
@@ -143,83 +301,139 @@
                                 <TextBlock Text="{x:Bind ViewModel.MetadataWords, Mode=OneWay}" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
                             </StackPanel>
                         </StackPanel>
+                        <!-- macOS threadBreadcrumb. -->
+                        <StackPanel Spacing="4" Visibility="{x:Bind BoolToVisibility(ViewModel.HasThread), Mode=OneWay}"
+                                    AutomationProperties.AutomationId="MeetingThreadBreadcrumb">
+                            <Button Style="{StaticResource MeetingThreadLinkStyle}"
+                                    Tag="{x:Bind ViewModel.ThreadPredecessor.Id, Mode=OneWay, FallbackValue=''}"
+                                    Click="RelatedMeeting_Click"
+                                    Visibility="{x:Bind BoolToVisibility(ViewModel.HasThreadPredecessor), Mode=OneWay}"
+                                    ToolTipService.ToolTip="Open this meeting">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <FontIcon Glyph="&#xE7A7;" FontSize="9" />
+                                    <TextBlock Text="{x:Bind ViewModel.ThreadPredecessor.Text, Mode=OneWay, FallbackValue=''}" FontSize="11" FontWeight="Medium" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="{x:Bind ViewModel.ThreadCountLabel, Mode=OneWay}" FontSize="11" FontWeight="Medium" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                            <TextBlock Text="{x:Bind ViewModel.FollowUpsHeading, Mode=OneWay}" FontSize="11" FontWeight="Medium" Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                       Visibility="{x:Bind BoolToVisibility(ViewModel.HasManySuccessors), Mode=OneWay}" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.ThreadSuccessors, Mode=OneWay}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:MeetingThreadLink">
+                                        <Button Style="{StaticResource MeetingThreadLinkStyle}" Tag="{x:Bind Id}" Click="RelatedMeeting_Click"
+                                                ToolTipService.ToolTip="Open this meeting" AutomationProperties.Name="{x:Bind Text}">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <FontIcon Glyph="&#xE7A6;" FontSize="9" />
+                                                <TextBlock Text="{x:Bind Text}" FontSize="11" FontWeight="Medium" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
 
                     <StackPanel x:Name="ChromeActions"
                                 Grid.Column="1"
-                                Spacing="10"
                                 VerticalAlignment="Top"
                                 HorizontalAlignment="Right">
                         <StackPanel x:Name="HeaderCommands" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-                            <Button x:Name="SaveButton"
-                                    Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                    Command="{x:Bind ViewModel.SaveCommand}"
-                                    Content="Save"
-                                    AutomationProperties.Name="Save meeting"
-                                    AutomationProperties.AutomationId="MeetingSaveButton" />
-                            <Button x:Name="CopyTranscriptButton"
-                                    Style="{StaticResource MeetingToolbarButtonStyle}"
-                                    Command="{x:Bind ViewModel.CopyTranscriptCommand}"
-                                    AutomationProperties.Name="Copy Transcript"
-                                    AutomationProperties.AutomationId="MeetingCopyTranscriptButton">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                                    <TextBlock Text="Copy Transcript" />
+                            <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsWorking, Mode=OneWay}"
+                                          Visibility="{x:Bind BoolToVisibility(ViewModel.IsWorking), Mode=OneWay}"
+                                          AutomationProperties.Name="Working" />
+                            <!-- macOS resume split button: Resume, with Start a follow-up behind the chevron. -->
+                            <SplitButton x:Name="ResumeButton"
+                                         Command="{x:Bind ViewModel.ResumeFinishedCommand}"
+                                         Visibility="{x:Bind BoolToVisibility(ViewModel.CanContinueMeeting), Mode=OneWay}"
+                                         Background="{ThemeResource MuesliAccentBrush}"
+                                         Foreground="White"
+                                         FontSize="12"
+                                         CornerRadius="6"
+                                         Padding="12,6"
+                                         ToolTipService.ToolTip="Resume recording into this meeting"
+                                         AutomationProperties.Name="Resume recording"
+                                         AutomationProperties.AutomationId="MeetingResumeFinishedButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE768;" FontSize="10" />
+                                    <TextBlock Text="Resume" FontWeight="SemiBold" />
                                 </StackPanel>
-                            </Button>
+                                <SplitButton.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuFlyoutItem Text="Resume recording" Command="{x:Bind ViewModel.ResumeFinishedCommand}" />
+                                        <MenuFlyoutItem Text="Start a follow-up" Command="{x:Bind ViewModel.StartFollowUpCommand}"
+                                                        AutomationProperties.AutomationId="MeetingStartFollowUpButton" />
+                                    </MenuFlyout>
+                                </SplitButton.Flyout>
+                            </SplitButton>
                             <Button x:Name="ExportButton"
-                                    Style="{StaticResource MeetingToolbarButtonStyle}"
-                                    Command="{x:Bind ViewModel.ExportMarkdownCommand}"
+                                    Style="{StaticResource MeetingAccentTintButtonStyle}"
                                     AutomationProperties.Name="Export"
                                     AutomationProperties.AutomationId="MeetingExportButton">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <FontIcon Glyph="&#xE74E;" FontSize="14" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                                    <TextBlock Text="Export" />
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuFlyoutItem Text="{x:Bind ViewModel.ExportCurrentLabel, Mode=OneWay}" Command="{x:Bind ViewModel.ExportCurrentCommand}"
+                                                        AutomationProperties.AutomationId="MeetingExportCurrentButton">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A5;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="Export Full Meeting" Command="{x:Bind ViewModel.ExportFullCommand}"
+                                                        AutomationProperties.AutomationId="MeetingExportFullButton">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE72D;" FontSize="11" />
+                                    <TextBlock Text="Export" FontWeight="SemiBold" />
                                 </StackPanel>
                             </Button>
-                            <!--
-                                P4-03. Delete is not a peer of Save. The macOS detail view keeps
-                                it behind the "…" more-actions menu
-                                (MeetingDetailView.swift:877-916, `moreActionsMenu`), so the only
-                                irreversible action on the page is one deliberate step away from
-                                the primary one instead of sitting beside it at the same weight.
-                            -->
+                            <!-- macOS moreActionsMenu: template, re-summarize, re-transcribe, edit, then the recording and delete. -->
                             <Button x:Name="MoreActionsButton"
-                                    Style="{StaticResource MeetingToolbarButtonStyle}"
+                                    Style="{StaticResource MeetingPillButtonStyle}"
+                                    Width="34"
+                                    Padding="0,6"
                                     AutomationProperties.Name="More actions"
                                     AutomationProperties.AutomationId="MeetingMoreActionsButton"
                                     ToolTipService.ToolTip="More actions">
                                 <Button.Flyout>
-                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                        <MenuFlyoutItem Text="Resume recording" Command="{x:Bind ViewModel.ResumeFinishedCommand}"
-                                                        AutomationProperties.AutomationId="MeetingResumeFinishedButton" />
-                                        <MenuFlyoutItem Text="Start follow-up" Command="{x:Bind ViewModel.StartFollowUpCommand}"
-                                                        AutomationProperties.AutomationId="MeetingStartFollowUpButton" />
+                                    <MenuFlyout x:Name="MoreActionsMenu" Placement="BottomEdgeAlignedRight" Opening="MoreActionsMenu_Opening">
+                                        <MenuFlyoutSubItem x:Name="TemplateMenu" Text="Template">
+                                            <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xE8A5;" /></MenuFlyoutSubItem.Icon>
+                                        </MenuFlyoutSubItem>
+                                        <MenuFlyoutItem Text="{x:Bind ViewModel.SummaryActionLabel, Mode=OneWay}" Command="{x:Bind ViewModel.GenerateSummaryCommand}"
+                                                        AutomationProperties.AutomationId="GenerateMeetingSummaryButton">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE72C;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="Re-transcribe" Command="{x:Bind ViewModel.RetranscribeCommand}"
+                                                        AutomationProperties.AutomationId="MeetingRetranscribeButton">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="{x:Bind ViewModel.EditLabel, Mode=OneWay}" Command="{x:Bind ViewModel.ToggleEditingCommand}"
+                                                        AutomationProperties.AutomationId="MeetingEditButton">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE70F;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
                                         <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Text="Show Recording" Command="{x:Bind ViewModel.ShowRecordingCommand}"
+                                                        Visibility="{x:Bind BoolToVisibility(ViewModel.HasRecordingFile), Mode=OneWay}"
+                                                        AutomationProperties.AutomationId="MeetingShowRecordingButton">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B7;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
                                         <MenuFlyoutItem x:Name="DeleteMenuItem"
-                                                        Text="Delete meeting"
+                                                        Text="Delete Meeting"
                                                         Command="{x:Bind ViewModel.DeleteMeetingCommand}"
                                                         Foreground="{ThemeResource MuesliErrorBrush}"
                                                         AutomationProperties.Name="Delete meeting"
                                                         AutomationProperties.AutomationId="MeetingDeleteButton">
                                             <MenuFlyoutItem.Icon>
-                                                <FontIcon Glyph="&#xE74D;"
-                                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                          Foreground="{ThemeResource MuesliErrorBrush}" />
+                                                <FontIcon Glyph="&#xE74D;" Foreground="{ThemeResource MuesliErrorBrush}" />
                                             </MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
                                     </MenuFlyout>
                                 </Button.Flyout>
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <FontIcon Glyph="&#xE712;" FontSize="14" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                                    <!-- Stacked full-width, a bare "…" bar says nothing; the label is
-                                         revealed only where the button is no longer a compact icon. -->
-                                    <TextBlock x:Name="MoreActionsLabel" Text="More actions" Visibility="Collapsed" />
-                                </StackPanel>
+                                <FontIcon Glyph="&#xE712;" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
                             </Button>
                         </StackPanel>
                     </StackPanel>
-                    <!-- macOS responsiveContextControls: surfacePrimary strip, 8pt padding, 10pt corners. -->
+                    <!-- macOS responsiveContextControls: folder pill left, Notes/Transcript right. -->
                     <Border x:Name="ContextStrip"
                             Grid.Row="2"
                             Grid.ColumnSpan="2"
@@ -229,40 +443,98 @@
                             CornerRadius="10"
                             Padding="8">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                            <!--
-                                Nesting is shown the way the shell rail and the Meetings page show it,
-                                because the list comes from the same MeetingFolderListItem.BuildTree.
-                                UIA trims the leading spaces, so each option announces its parent
-                                instead — a "Notes" under Archive and a "Notes" under Research are
-                                both legal and are otherwise identical to a screen reader.
-                            -->
-                            <ComboBox x:Name="FolderPicker"
-                                      PlaceholderText="Add to folder"
-                                      ItemsSource="{x:Bind ViewModel.FolderOptions, Mode=OneWay}"
-                                      SelectedItem="{x:Bind ViewModel.SelectedFolder, Mode=TwoWay}"
-                                      MinWidth="160"
-                                      MaxWidth="280"
-                                      HorizontalAlignment="Left"
-                                      VerticalAlignment="Center"
-                                      AutomationProperties.Name="Folder"
-                                      AutomationProperties.AutomationId="MeetingFolderPicker">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:MeetingFolderOption">
-                                        <StackPanel Orientation="Horizontal"
-                                                    Spacing="8"
-                                                    AutomationProperties.Name="{x:Bind AccessibleName}">
-                                            <TextBlock Text="{x:Bind DisplayName}"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       MaxLines="1" />
-                                            <TextBlock Text="{x:Bind ParentSuffix}"
-                                                       Style="{StaticResource MuesliRowSecondaryStyle}"
-                                                       Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                                       MaxLines="1"
-                                                       Visibility="{x:Bind local:MeetingDetailPage.StaticBoolToVisibility(HasParent)}" />
+                            <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                            <Button x:Name="FolderPill"
+                                    Style="{StaticResource MeetingFolderPillStyle}"
+                                    Click="FolderPill_Click"
+                                    VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Move to folder"
+                                    AutomationProperties.Name="{x:Bind ViewModel.FolderLabel, Mode=OneWay}"
+                                    AutomationProperties.AutomationId="MeetingFolderPicker">
+                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                    <FontIcon x:Name="FolderPillIcon" Glyph="&#xE8F4;" FontSize="10" />
+                                    <TextBlock Text="{x:Bind ViewModel.FolderLabel, Mode=OneWay}" FontSize="12" FontWeight="Medium" MaxLines="1" TextTrimming="CharacterEllipsis" MaxWidth="240" />
+                                    <FontIcon Glyph="&#xE70D;" FontSize="8" />
+                                </StackPanel>
+                            </Button>
+                            <!-- macOS MeetingParticipantsView: "Add people", or the first name and +N. -->
+                            <Border Width="1" Height="20" Background="{ThemeResource MuesliBorderBrush}" VerticalAlignment="Center" />
+                            <Button x:Name="PeopleButton"
+                                    Style="{StaticResource MeetingPillButtonStyle}"
+                                    Padding="10,0" Height="28" MaxWidth="220" CornerRadius="6"
+                                    Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                    AutomationProperties.AutomationId="MeetingPeopleButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE716;" FontSize="12" />
+                                    <TextBlock x:Name="PeopleLabel" Text="Add people" FontSize="12" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock x:Name="PeopleMore" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" Visibility="Collapsed" />
+                                </StackPanel>
+                                <Button.Flyout>
+                                    <Flyout x:Name="PeopleFlyout" Placement="BottomEdgeAlignedLeft" Closed="PeopleFlyout_Closed">
+                                        <StackPanel Width="316" Spacing="12">
+                                            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                                                <TextBlock Text="People" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                <TextBlock x:Name="PeopleCount" Grid.Column="1" FontSize="12" VerticalAlignment="Center"
+                                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                <Button x:Name="AddPersonButton" Grid.Column="3"
+                                                        Style="{StaticResource MeetingPillButtonStyle}"
+                                                        Padding="9,0" Height="28" CornerRadius="6"
+                                                        Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                                        Click="AddPerson_Click"
+                                                        AutomationProperties.AutomationId="MeetingAddPersonButton">
+                                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                                        <FontIcon Glyph="&#xE8FA;" FontSize="12" />
+                                                        <TextBlock Text="Add person" FontSize="12" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </Grid>
+                                            <Border Height="1" Background="{ThemeResource MuesliBorderBrush}" />
+                                            <StackPanel x:Name="AddPersonForm" Spacing="8" Visibility="Collapsed">
+                                                <TextBox x:Name="PersonNameBox" PlaceholderText="Name" KeyDown="PersonBox_KeyDown"
+                                                         AutomationProperties.Name="Person name" AutomationProperties.AutomationId="MeetingPersonNameBox" />
+                                                <TextBox x:Name="PersonEmailBox" PlaceholderText="Email (optional)" InputScope="EmailSmtpAddress" KeyDown="PersonBox_KeyDown"
+                                                         AutomationProperties.Name="Person email" AutomationProperties.AutomationId="MeetingPersonEmailBox" />
+                                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                                    <Button Content="Cancel" Style="{StaticResource MuesliSecondaryButtonStyle}" Click="CancelPerson_Click" />
+                                                    <Button Content="Add" Style="{StaticResource MuesliPrimaryButtonStyle}" Click="SavePerson_Click"
+                                                            AutomationProperties.AutomationId="MeetingSavePersonButton" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <TextBlock x:Name="PeopleEmpty" Text="No one has been added yet." FontSize="13" Margin="0,8"
+                                                       Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                            <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                                                <ItemsControl x:Name="PeopleList">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="services:MeetingParticipant">
+                                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                                <FontIcon Glyph="&#xE77B;" FontSize="18" VerticalAlignment="Center"
+                                                                          Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                                                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{x:Bind DisplayName}" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                                                    <TextBlock Text="{x:Bind Email}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                                                               Visibility="{x:Bind local:MeetingDetailPage.EmailVisibility(Email, DisplayName)}" />
+                                                                </StackPanel>
+                                                                <Button Grid.Column="2" Width="24" Height="24" Padding="0" MinWidth="0" MinHeight="0"
+                                                                        Style="{StaticResource MuesliGhostButtonStyle}"
+                                                                        Tag="{x:Bind Id}" Click="RemovePerson_Click"
+                                                                        ToolTipService.ToolTip="{x:Bind local:MeetingDetailPage.RemoveLabel(DisplayName)}"
+                                                                        AutomationProperties.Name="{x:Bind local:MeetingDetailPage.RemoveLabel(DisplayName)}">
+                                                                    <FontIcon Glyph="&#xE711;" FontSize="9" />
+                                                                </Button>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
                                         </StackPanel>
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+                            </StackPanel>
                             <Border x:Name="DetailTabWell" Grid.Column="2" VerticalAlignment="Center" Style="{StaticResource MuesliSegmentedContainerStyle}">
                                 <SelectorBar x:Name="DetailTabBar"
                                              SelectionChanged="DetailTabBar_SelectionChanged"
@@ -282,59 +554,76 @@
                     </Border>
                 </Grid>
 
-                <StackPanel Spacing="8" Visibility="{x:Bind BoolToVisibility(ViewModel.HasRelatedMeetings), Mode=OneWay}">
-                    <TextBlock Text="Related meetings" Style="{StaticResource MuesliSectionLabelStyle}" />
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.RelatedMeetings, Mode=OneWay}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="services:PersistedMeeting">
-                                <Button Content="{x:Bind Title}" Tag="{x:Bind Id}" Click="RelatedMeeting_Click"
-                                        HorizontalAlignment="Left" Margin="0,2" AutomationProperties.Name="{x:Bind Title}"
-                                        AutomationProperties.AutomationId="{x:Bind Id}" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                <StackPanel x:Name="WorkingBanner"
+                            Spacing="6"
+                            Visibility="{x:Bind BoolToVisibility(ViewModel.IsWorking), Mode=OneWay}"
+                            AutomationProperties.Name="Meeting operation in progress">
+                    <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                               FontSize="12"
+                               Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Polite" />
+                    <ProgressBar IsIndeterminate="{x:Bind IsIndeterminate(ViewModel.IsWorking, ViewModel.WorkProgress), Mode=OneWay}"
+                                 Value="{x:Bind ViewModel.WorkProgress, Mode=OneWay}"
+                                 Maximum="100"
+                                 AutomationProperties.Name="Meeting operation progress" />
                 </StackPanel>
-
-                <Border x:Name="WorkingBanner"
-                        Style="{StaticResource MeetingSectionCardStyle}"
-                        Padding="14,12"
-                        Visibility="{x:Bind BoolToVisibility(ViewModel.IsWorking), Mode=OneWay}"
-                        AutomationProperties.Name="Meeting operation in progress">
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                                   Style="{StaticResource MuesliRowTitleStyle}"
-                                   TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <ProgressBar IsIndeterminate="{x:Bind ViewModel.IsWorking, Mode=OneWay}"
-                                     Value="{x:Bind ViewModel.WorkProgress, Mode=OneWay}"
-                                     Maximum="100"
-                                     AutomationProperties.Name="Meeting operation progress" />
-                    </StackPanel>
-                </Border>
 
                 <InfoBar x:Name="StatusBar"
                          IsOpen="{x:Bind ViewModel.IsStatusOpen, Mode=TwoWay}"
                          Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                         Severity="Success"
+                         Severity="Warning"
                          AutomationProperties.AutomationId="MeetingDetailStatus"
                          AutomationProperties.LiveSetting="Polite" />
 
                 <!--
                     MeetingRecordingPlayerView.swift: one raised row with a round play/pause button,
-                    the waveform as the seek bar, and a monospaced time readout. Windows keeps its
-                    You/Others track picker beside the section label.
+                    the waveform as the seek bar, and a monospaced time readout. Windows adds its
+                    You/Others track picker when a meeting kept both tracks.
                 -->
-                <StackPanel Spacing="8"
-                            Visibility="{x:Bind BoolToVisibility(ViewModel.HasRecording), Mode=OneWay}"
-                            AutomationProperties.Name="Meeting recording"
-                            AutomationProperties.AutomationId="MeetingRecordingCard">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                        <TextBlock Text="RECORDING" Style="{StaticResource MuesliSectionLabelStyle}" VerticalAlignment="Center" />
+                <Border Background="{ThemeResource MuesliBackgroundRaisedBrush}"
+                        BorderBrush="{ThemeResource MuesliBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="12,8"
+                        Visibility="{x:Bind BoolToVisibility(ViewModel.HasRecording), Mode=OneWay}"
+                        AutomationProperties.Name="Meeting recording"
+                        AutomationProperties.AutomationId="MeetingRecordingCard">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
+                        <Button Width="34" Height="34" MinWidth="34" MinHeight="34" Padding="0"
+                                CornerRadius="17"
+                                Background="{ThemeResource MuesliSurfacePrimaryBrush}"
+                                BorderBrush="{ThemeResource MuesliBorderBrush}"
+                                BorderThickness="1"
+                                VerticalAlignment="Center"
+                                Command="{x:Bind ViewModel.TogglePlaybackCommand}"
+                                ToolTipService.ToolTip="{x:Bind ViewModel.PlayPauseLabel, Mode=OneWay}"
+                                AutomationProperties.Name="{x:Bind ViewModel.PlayPauseLabel, Mode=OneWay}"
+                                AutomationProperties.AutomationId="MeetingPlaybackToggle">
+                            <FontIcon Glyph="{x:Bind ViewModel.PlayPauseGlyph, Mode=OneWay}" FontSize="13"
+                                      Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                        </Button>
+                        <controls:RecordingWaveform Grid.Column="1"
+                                                    Height="44"
+                                                    Peaks="{x:Bind ViewModel.WaveformPeaks, Mode=OneWay}"
+                                                    Progress="{x:Bind ViewModel.PlaybackProgress, Mode=OneWay}"
+                                                    Seeked="Waveform_Seeked"
+                                                    AutomationProperties.AutomationId="MeetingPlaybackSeek" />
+                        <TextBlock Grid.Column="2"
+                                   Text="{x:Bind ViewModel.PlaybackTimeLabel, Mode=OneWay}"
+                                   FontFamily="Consolas"
+                                   FontSize="12"
+                                   FontWeight="Medium"
+                                   Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                                   MinWidth="88"
+                                   TextAlignment="Right"
+                                   VerticalAlignment="Center" />
                         <ComboBox x:Name="TrackPicker"
-                                  Grid.Column="1"
+                                  Grid.Column="3"
                                   ItemsSource="{x:Bind ViewModel.PlaybackTracks, Mode=OneWay}"
                                   SelectedItem="{x:Bind ViewModel.SelectedPlaybackTrack, Mode=TwoWay}"
-                                  MinWidth="200"
+                                  Visibility="{x:Bind BoolToVisibility(ViewModel.HasTrackChoice), Mode=OneWay}"
+                                  VerticalAlignment="Center"
                                   AutomationProperties.Name="Recording track"
                                   AutomationProperties.AutomationId="MeetingRecordingTrack">
                             <!-- DisplayMemberPath reflects over a plain C# record, which WinUI 3 cannot bind. -->
@@ -345,84 +634,29 @@
                             </ComboBox.ItemTemplate>
                         </ComboBox>
                     </Grid>
-                    <Border Background="{ThemeResource MuesliBackgroundRaisedBrush}"
-                            BorderBrush="{ThemeResource MuesliBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="10"
-                            Padding="12,8">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                            <Button Width="34" Height="34" MinWidth="34" MinHeight="34" Padding="0"
-                                    CornerRadius="17"
-                                    Background="{ThemeResource MuesliSurfacePrimaryBrush}"
-                                    BorderBrush="{ThemeResource MuesliBorderBrush}"
-                                    BorderThickness="1"
-                                    VerticalAlignment="Center"
-                                    Command="{x:Bind ViewModel.TogglePlaybackCommand}"
-                                    ToolTipService.ToolTip="{x:Bind ViewModel.PlayPauseLabel, Mode=OneWay}"
-                                    AutomationProperties.Name="{x:Bind ViewModel.PlayPauseLabel, Mode=OneWay}"
-                                    AutomationProperties.AutomationId="MeetingPlaybackToggle">
-                                <FontIcon Glyph="{x:Bind ViewModel.PlayPauseGlyph, Mode=OneWay}" FontSize="13"
-                                          Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
-                            </Button>
-                            <controls:RecordingWaveform Grid.Column="1"
-                                                        Height="44"
-                                                        Peaks="{x:Bind ViewModel.WaveformPeaks, Mode=OneWay}"
-                                                        Progress="{x:Bind ViewModel.PlaybackProgress, Mode=OneWay}"
-                                                        Seeked="Waveform_Seeked"
-                                                        AutomationProperties.AutomationId="MeetingPlaybackSeek" />
-                            <TextBlock Grid.Column="2"
-                                       Text="{x:Bind ViewModel.PlaybackTimeLabel, Mode=OneWay}"
-                                       FontFamily="Consolas"
-                                       FontSize="12"
-                                       FontWeight="Medium"
-                                       Foreground="{ThemeResource MuesliTextSecondaryBrush}"
-                                       MinWidth="88"
-                                       TextAlignment="Right"
-                                       VerticalAlignment="Center" />
-                        </Grid>
-                    </Border>
-                    <TextBlock Text="{x:Bind ViewModel.PlaybackStatus, Mode=OneWay}"
-                               FontSize="12"
-                               Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                               TextWrapping="Wrap"
-                               AutomationProperties.LiveSetting="Polite" />
-                </StackPanel>
-
-                <Border Style="{StaticResource MeetingSectionCardStyle}"
-                        Padding="12,10"
-                        Background="{ThemeResource MuesliAccentMutedBrush}"
-                        BorderBrush="{ThemeResource MuesliWarningBrush}"
-                        Visibility="{x:Bind BoolToVisibility(ViewModel.HasHealthWarnings), Mode=OneWay}"
-                        AutomationProperties.Name="Recording warnings">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Recording warnings"
-                                   Style="{StaticResource MuesliRowTitleStyle}"
-                                   FontSize="12"
-                                   Foreground="{ThemeResource MuesliWarningBrush}" />
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.HealthWarnings, Mode=OneWay}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,4">
-                                        <FontIcon Glyph="&#xE7BA;"
-                                                  FontSize="12"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  Foreground="{ThemeResource MuesliWarningBrush}"
-                                                  VerticalAlignment="Top"
-                                                  Margin="0,2,0,0" />
-                                        <TextBlock Text="{Binding}"
-                                                   Style="{StaticResource MuesliBodyStyle}"
-                                                   Foreground="{ThemeResource MuesliWarningBrush}"
-                                                   TextWrapping="Wrap" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
                 </Border>
 
-                <!-- Post-meeting automation diagnostics (HOOK-01/AUTO-01). Renders the persisted
-                     automation result exactly as POST_MEETING_AUTOMATION.md promises; hidden until a
-                     run exists so an untouched meeting does not show an empty card. -->
+                <!-- macOS audio warning banner: orange 12% fill, 35% outline, a filled triangle. -->
+                <Border Background="#1FFF9F43"
+                        BorderBrush="#59FF9F43"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="12"
+                        Visibility="{x:Bind BoolToVisibility(ViewModel.HasHealthWarnings), Mode=OneWay}"
+                        AutomationProperties.Name="Recording warnings">
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.HealthWarnings, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="0,0,0,2">
+                                    <FontIcon Glyph="&#xE7BA;" FontSize="13" Foreground="#FF9F43" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <TextBlock Grid.Column="1" Text="{Binding}" FontSize="13"
+                                               Foreground="{ThemeResource MuesliTextPrimaryBrush}" TextWrapping="Wrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+
                 <Border Style="{StaticResource MeetingSectionCardStyle}"
                         Padding="12,10"
                         Visibility="{x:Bind BoolToVisibility(ViewModel.HasAutomationResult), Mode=OneWay}"
@@ -476,145 +710,84 @@
                     </StackPanel>
                 </Border>
 
+                <!-- The document row: the raw-transcript call to action left, Copy (current tab, with the metadata header) right. -->
+                <Grid x:Name="DocumentToolbar" ColumnDefinitions="*,Auto" ColumnSpacing="12"
+                      Visibility="{x:Bind BoolToVisibility(ViewModel.HasMeeting), Mode=OneWay}">
+                    <Border Background="{ThemeResource MuesliAccentMutedBrush}" CornerRadius="6" Padding="12"
+                            Visibility="{x:Bind CtaVisibility(ViewModel.ShowTranscriptCta, ViewModel.ShowNotesTab), Mode=OneWay}"
+                            AutomationProperties.AutomationId="MeetingTranscriptCta">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                            <FontIcon Glyph="&#xE945;" FontSize="13" Foreground="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.TranscriptCta, Mode=OneWay}" FontSize="13"
+                                       Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" />
+                        </Grid>
+                    </Border>
+                    <Button Grid.Column="1"
+                            Style="{StaticResource MeetingAccentTintButtonStyle}"
+                            VerticalAlignment="Top"
+                            Command="{x:Bind ViewModel.CopyCurrentCommand}"
+                            ToolTipService.ToolTip="Copy with the meeting details"
+                            AutomationProperties.Name="Copy"
+                            AutomationProperties.AutomationId="MeetingCopyButton">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE8C8;" FontSize="11" />
+                            <TextBlock Text="Copy" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
                 <StackPanel x:Name="NotesPanel"
-                            Spacing="12"
+                            Spacing="16"
                             Visibility="{x:Bind BoolToVisibility(ViewModel.ShowNotesContent), Mode=OneWay}">
-                    <Grid x:Name="NotesToolbar" ColumnSpacing="10" RowSpacing="8"
-                          Visibility="{x:Bind BoolToVisibility(ViewModel.ShowGeneratedNotes), Mode=OneWay}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Text="NOTES"
-                                   Style="{StaticResource MuesliSectionLabelStyle}"
-                                   VerticalAlignment="Center"
-                                   AutomationProperties.Name="Meeting summary heading" />
-                        <ComboBox x:Name="SummaryTemplatePicker"
-                                  Grid.Column="1"
-                                  ItemsSource="{x:Bind ViewModel.TemplateNames}"
-                                  SelectedItem="{x:Bind ViewModel.SelectedTemplate, Mode=TwoWay}"
-                                  MinWidth="180"
-                                  MaxWidth="260"
-                                  VerticalAlignment="Center"
-                                  AutomationProperties.Name="Meeting summary template"
-                                  AutomationProperties.AutomationId="MeetingSummaryTemplate" />
-                        <Button x:Name="GenerateNotesButton"
-                                Grid.Column="2"
-                                Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                Command="{x:Bind ViewModel.GenerateSummaryCommand}"
-                                ToolTipService.ToolTip="{x:Bind ViewModel.GenerateSummaryHint, Mode=OneWay}"
-                                AutomationProperties.Name="Generate Notes"
-                                AutomationProperties.HelpText="{x:Bind ViewModel.GenerateSummaryHint, Mode=OneWay}"
-                                AutomationProperties.AutomationId="GenerateMeetingSummaryButton">
-                            <StackPanel Orientation="Horizontal" Spacing="7">
-                                <FontIcon Glyph="&#xE70F;" FontSize="14" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                                <TextBlock Text="Generate Notes" />
-                            </StackPanel>
-                        </Button>
-                    </Grid>
-
-                    <Border Style="{StaticResource MeetingSectionCardStyle}"
-                            AutomationProperties.Name="Meeting summary"
-                            Visibility="{x:Bind BoolToVisibility(ViewModel.ShowGeneratedNotes), Mode=OneWay}"
-                            AutomationProperties.AutomationId="MeetingSummaryCard">
-                        <StackPanel Spacing="8">
-                            <controls:MarkdownNotesEditor Markdown="{x:Bind ViewModel.Summary, Mode=OneWay}"
-                                       TextWrapping="Wrap" IsReadOnly="True" BorderThickness="0" Padding="0"
-                                       Background="Transparent" MinHeight="80" MaxHeight="560"
-                                       Visibility="{x:Bind BoolToVisibility(ViewModel.HasGeneratedSummary), Mode=OneWay}"
-                                       AutomationProperties.AutomationId="MeetingSummaryText" />
-                            <StackPanel Spacing="6"
-                                        Visibility="{x:Bind InvertBoolToVisibility(ViewModel.HasGeneratedSummary), Mode=OneWay}">
-                                <TextBlock Text="No summary has been generated."
-                                           Style="{StaticResource MuesliRowTitleStyle}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Text="Generate Notes writes a summary from this meeting's transcript. Nothing is invented when the transcript is empty."
-                                           Style="{StaticResource MuesliBodyStyle}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource MeetingSectionCardStyle}"
-                            AutomationProperties.Name="Private meeting notes"
-                            AutomationProperties.AutomationId="MeetingNotesCard">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="My notes" Style="{StaticResource MuesliRowTitleStyle}" />
-                            <TextBlock Text="Your own notes. Kept exactly as written when notes are regenerated."
-                                       Style="{StaticResource MuesliBodyStyle}"
-                                       Foreground="{ThemeResource MuesliTextTertiaryBrush}"
-                                       FontSize="11" />
-                            <controls:NotesFormattingBar Editor="{x:Bind ManualNotesEditor}" />
-                            <controls:MarkdownNotesEditor x:Name="ManualNotesEditor" Markdown="{x:Bind ViewModel.ManualNotes, Mode=TwoWay}"
-                                     FontSize="16" Padding="24,20" TextWrapping="Wrap" AcceptsReturn="True"
-                                     MinHeight="180"
-                                     PlaceholderText="Add private notes…"
-                                     AutomationProperties.Name="Manual meeting notes"
-                                     AutomationProperties.AutomationId="MeetingManualNotesEditor" />
-                        </StackPanel>
-                    </Border>
+                    <controls:MarkdownNotesEditor Markdown="{x:Bind ViewModel.NotesMarkdown, Mode=OneWay}"
+                               TextWrapping="Wrap" IsReadOnly="True" BorderThickness="0" Padding="0"
+                               Background="Transparent" FontSize="15"
+                               Visibility="{x:Bind BoolToVisibility(ViewModel.ShowNotesDocument), Mode=OneWay}"
+                               AutomationProperties.Name="Meeting notes"
+                               AutomationProperties.AutomationId="MeetingSummaryText" />
+                    <StackPanel Spacing="8" Visibility="{x:Bind BoolToVisibility(ViewModel.ShowSummaryEditor), Mode=OneWay}">
+                        <controls:NotesFormattingBar Editor="{x:Bind SummaryEditor}" />
+                        <controls:MarkdownNotesEditor x:Name="SummaryEditor" Markdown="{x:Bind ViewModel.Summary, Mode=TwoWay}"
+                                 FontSize="15" Padding="24,20" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="240"
+                                 AutomationProperties.Name="Edit meeting notes"
+                                 AutomationProperties.AutomationId="MeetingSummaryEditor" />
+                    </StackPanel>
+                    <StackPanel Spacing="8"
+                                Visibility="{x:Bind BoolToVisibility(ViewModel.ShowManualNotes), Mode=OneWay}"
+                                AutomationProperties.Name="Private meeting notes"
+                                AutomationProperties.AutomationId="MeetingNotesCard">
+                        <TextBlock Text="My notes" Style="{StaticResource MuesliRowTitleStyle}" />
+                        <controls:NotesFormattingBar Editor="{x:Bind ManualNotesEditor}"
+                                                     Visibility="{x:Bind BoolToVisibility(ViewModel.IsEditing), Mode=OneWay}" />
+                        <controls:MarkdownNotesEditor x:Name="ManualNotesEditor" Markdown="{x:Bind ViewModel.ManualNotes, Mode=TwoWay}"
+                                 FontSize="15" Padding="24,20" TextWrapping="Wrap" AcceptsReturn="True"
+                                 IsReadOnly="{x:Bind Not(ViewModel.IsEditing), Mode=OneWay}"
+                                 PlaceholderText="Add private notes…"
+                                 AutomationProperties.Name="Manual meeting notes"
+                                 AutomationProperties.AutomationId="MeetingManualNotesEditor" />
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel x:Name="TranscriptPanel"
                             Spacing="12"
                             Visibility="{x:Bind BoolToVisibility(ViewModel.ShowTranscriptTab), Mode=OneWay}">
-                    <Grid x:Name="TranscriptToolbar" ColumnSpacing="8" RowSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Text="TRANSCRIPT"
-                                   Style="{StaticResource MuesliSectionLabelStyle}"
-                                   VerticalAlignment="Center"
-                                   AutomationProperties.Name="Transcript heading" />
-                        <Button x:Name="SaveTranscriptButton"
-                                Grid.Column="1"
-                                Style="{StaticResource MeetingToolbarButtonStyle}"
-                                Command="{x:Bind ViewModel.SaveTranscriptCommand}"
-                                Content="Save Transcript"
-                                AutomationProperties.Name="Save Transcript"
-                                AutomationProperties.AutomationId="MeetingSaveTranscriptButton" />
-                        <Button x:Name="RetranscribeButton"
-                                Grid.Column="2"
-                                Style="{StaticResource MeetingToolbarButtonStyle}"
-                                Command="{x:Bind ViewModel.RetranscribeCommand}"
-                                Content="Re-transcribe Audio"
-                                AutomationProperties.Name="Re-transcribe Audio"
-                                AutomationProperties.AutomationId="MeetingRetranscribeButton" />
-                    </Grid>
-
-                    <Border Style="{StaticResource MeetingSectionCardStyle}"
-                            AutomationProperties.Name="Meeting transcript"
-                            AutomationProperties.AutomationId="MeetingTranscriptCard">
-                        <StackPanel Spacing="8">
-                            <StackPanel Spacing="6"
-                                        Visibility="{x:Bind InvertBoolToVisibility(ViewModel.HasTranscriptText), Mode=OneWay}">
-                                <TextBlock Text="This meeting has no transcript yet."
-                                           Style="{StaticResource MuesliRowTitleStyle}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Text="Re-transcribe Audio uses a retained recording when one exists. The editor stays empty until there is real transcript text."
-                                           Style="{StaticResource MuesliBodyStyle}" />
-                            </StackPanel>
-                            <controls:LiveTranscriptFeed x:Name="SavedTranscriptFeed" MinHeight="120" MaxHeight="560"
-                                                         AutomationProperties.AutomationId="MeetingTranscriptReadView" AutomationProperties.Name="Meeting transcript" />
-                            <Expander Header="Edit transcript" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                                      AutomationProperties.AutomationId="MeetingTranscriptEditExpander">
-                                <TextBox x:Name="TranscriptEditor" Text="{x:Bind ViewModel.Transcript, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         Style="{StaticResource MeetingBodyEditorStyle}" MinHeight="120" MaxHeight="560"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Editable meeting transcript"
-                                         AutomationProperties.AutomationId="MeetingTranscriptEditor" />
-                            </Expander>
-                        </StackPanel>
-                    </Border>
+                    <StackPanel Spacing="6"
+                                Visibility="{x:Bind InvertBoolToVisibility(ViewModel.HasTranscriptText), Mode=OneWay}">
+                        <TextBlock Text="This meeting has no transcript yet."
+                                   Style="{StaticResource MuesliRowTitleStyle}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="Re-transcribe in the … menu uses the saved recording when there is one."
+                                   Style="{StaticResource MuesliBodyStyle}" />
+                    </StackPanel>
+                    <!-- MeetingTranscriptView: You on the right in accent bubbles, others on the left. -->
+                    <controls:LiveTranscriptFeed x:Name="SavedTranscriptFeed" MinHeight="120" MaxHeight="720"
+                                                 Visibility="{x:Bind BoolToVisibility(ViewModel.ShowTranscriptFeed), Mode=OneWay}"
+                                                 AutomationProperties.AutomationId="MeetingTranscriptReadView" AutomationProperties.Name="Meeting transcript" />
+                    <TextBox x:Name="TranscriptEditor" Text="{x:Bind ViewModel.Transcript, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource MeetingBodyEditorStyle}" MinHeight="240" MaxHeight="720"
+                             Visibility="{x:Bind BoolToVisibility(ViewModel.IsEditingTranscript), Mode=OneWay}"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Editable meeting transcript"
+                             AutomationProperties.AutomationId="MeetingTranscriptEditor" />
 
                     <Border Style="{StaticResource MeetingSectionCardStyle}"
                             BorderBrush="{ThemeResource MuesliAccentBrush}"
@@ -717,6 +890,8 @@
                             </ItemsControl>
                         </StackPanel>
                     </Border>
+
+                </StackPanel>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>

@@ -1,6 +1,10 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Muesli.Windows.Core.Insights;
+using Muesli.Windows.Services;
+using Muesli.Windows.WinUI.Services;
 using Muesli.Windows.WinUI.ViewModels;
+using Windows.System;
 
 namespace Muesli.Windows.WinUI.Pages;
 
@@ -11,16 +15,15 @@ public sealed partial class AboutPage : Page
         App.Settings,
         App.Clipboard,
         App.FilePickers,
-        App.Dialogs,
-        () => App.ShowOnboarding(explicitResume: true),
-        App.ShowFeatureTour);
+        App.Dialogs);
 
     public AboutPage()
     {
         InitializeComponent();
-        Loaded += async (_, _) =>
+        Loaded += (_, _) =>
         {
-            await ViewModel.LoadAsync();
+            ViewModel.Load();
+            AutoReportToggle.IsOn = App.Settings.Load().EnableAutomaticDiagnosticIssuePrompts;
             ApplyResponsiveLayout(ActualWidth);
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
@@ -33,6 +36,31 @@ public sealed partial class AboutPage : Page
 
     public static InfoBarSeverity StatusSeverity(bool isError) =>
         isError ? InfoBarSeverity.Error : InfoBarSeverity.Success;
+
+    private void Donate_Click(object sender, RoutedEventArgs e) =>
+        _ = Launcher.LaunchUriAsync(new Uri(ContributionShare.DonateUrl));
+
+    private void GitHub_Click(object sender, RoutedEventArgs e) =>
+        _ = Launcher.LaunchUriAsync(new Uri(ContributionShare.GitHubUrl));
+
+    /// <summary>macOS openManualDiagnosticReport; the support bundle stays one click away.</summary>
+    private void OpenReport_Click(object sender, RoutedEventArgs e) =>
+        _ = DiagnosticIncidentPrompts.ShowAsync(
+            DiagnosticIncident.Create(DiagnosticIncident.ManualReport, DiagnosticIncident.ManualReport),
+            "Support Bundle…",
+            () => ViewModel.ExportSupportBundleCommand.Execute(null));
+
+    /// <summary>macOS setAutomaticDiagnosticIssuePrompts.</summary>
+    private void AutoReportToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        var settings = App.Settings.Load();
+        if (settings.EnableAutomaticDiagnosticIssuePrompts != AutoReportToggle.IsOn)
+            App.Settings.Save(settings with { EnableAutomaticDiagnosticIssuePrompts = AutoReportToggle.IsOn });
+    }
+
+    private void PostOnX_Click(object sender, RoutedEventArgs e) => _ = ViewModel.ShareAsync(linkedIn: false);
+
+    private void PostOnLinkedIn_Click(object sender, RoutedEventArgs e) => _ = ViewModel.ShareAsync(linkedIn: true);
 
     private void ApplyResponsiveLayout(double pageWidth)
     {

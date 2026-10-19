@@ -94,26 +94,12 @@
                         Spacing="20"
                         HorizontalAlignment="Left"
                         MaxWidth="{StaticResource MuesliPageContentMaxWidth}">
-                <!--
-                    macOS hierarchy: title, one subtitle, a centred segmented control, then cards.
-                    Refresh stays a ghost icon so the qualification AutomationId stays on the title row.
-                -->
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                    <StackPanel Spacing="6" MinWidth="0">
-                        <TextBlock Text="Models" Style="{StaticResource MuesliPageTitleStyle}" />
-                        <TextBlock Text="Choose the dictation, live meeting, and cleanup models that fit how you speak and work."
-                                   Style="{StaticResource MuesliPageSubtitleStyle}" />
-                    </StackPanel>
-                    <Button Grid.Column="1"
-                            VerticalAlignment="Top"
-                            Command="{x:Bind ViewModel.RefreshCommand}"
-                            Style="{StaticResource MuesliGhostButtonStyle}"
-                            ToolTipService.ToolTip="Refresh model state"
-                            AutomationProperties.Name="Refresh model state"
-                            AutomationProperties.AutomationId="ModelsRefreshButton">
-                        <FontIcon Glyph="&#xE72C;" FontSize="15" />
-                    </Button>
-                </Grid>
+                <!-- macOS hierarchy: title, one subtitle, a centred segmented control, then cards. -->
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Models" Style="{StaticResource MuesliPageTitleStyle}" />
+                    <TextBlock Text="Choose the dictation, live meeting, and cleanup models that fit how you speak and work."
+                               Style="{StaticResource MuesliPageSubtitleStyle}" />
+                </StackPanel>
 
                 <Border Style="{StaticResource MuesliSegmentedContainerStyle}" HorizontalAlignment="Center">
                     <SelectorBar x:Name="CategoryBar"
@@ -132,6 +118,15 @@
                          AutomationProperties.AutomationId="ModelsStatus" />
 
                 <StackPanel x:Name="ModelsPanel" Spacing="12">
+                    <!-- macOS labels each role's list; the text says what the role actually drives on Windows. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{x:Bind ViewModel.RoleSectionTitle, Mode=OneWay}"
+                                   Style="{StaticResource MuesliSectionLabelStyle}" />
+                        <TextBlock Text="{x:Bind ViewModel.RoleDescription, Mode=OneWay}"
+                                   Style="{StaticResource MuesliBodyStyle}"
+                                   TextWrapping="WrapWholeWords"
+                                   AutomationProperties.AutomationId="ModelsRoleDescription" />
+                    </StackPanel>
                     <Border x:Name="EmptyState"
                             Style="{StaticResource ModelCardStyle}"
                             Padding="24"
@@ -142,7 +137,7 @@
                             <TextBlock Text="No transcription models to show"
                                        Style="{StaticResource MuesliRowTitleStyle}" />
                             <!-- No card is on screen here, so this must not promise per-card actions. -->
-                            <TextBlock Text="Refresh to reload the local catalog."
+                            <TextBlock Text="The local model catalog could not be loaded."
                                        Style="{StaticResource MuesliBodyStyle}" />
                         </StackPanel>
                     </Border>
@@ -270,14 +265,35 @@
                                                           ItemsSource="{Binding SelectedVariant.LanguageOptions}"
                                                           DisplayMemberPath="Label"
                                                           SelectedValuePath="Code"
-                                                          SelectedValue="{Binding SelectedVariant.SelectedLanguageCode, Mode=TwoWay}"
+                                                          SelectedValue="{Binding SelectedVariant.SelectedLanguageCode, Mode=OneWay}"
                                                           AutomationProperties.Name="{Binding SelectedVariant.LanguageAccessibleName}"
                                                           SelectionChanged="ModelLanguage_SelectionChanged" />
+                                            </Grid>
+
+                                            <!-- macOS Bodhan Flex: native script, mixed scripts, or all Latin letters. -->
+                                            <Grid ColumnDefinitions="64,Auto" ColumnSpacing="12"
+                                                  Visibility="{Binding SelectedVariant.IsOutputSelectable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock Text="Output" Style="{StaticResource ModelMetaLabelStyle}" />
+                                                <ComboBox Grid.Column="1"
+                                                          Style="{StaticResource ModelPickerStyle}"
+                                                          ItemsSource="{Binding SelectedVariant.OutputOptions}"
+                                                          DisplayMemberPath="Label"
+                                                          SelectedValuePath="Code"
+                                                          SelectedValue="{Binding SelectedVariant.SelectedOutputCode, Mode=OneWay}"
+                                                          ToolTipService.ToolTip="Native script, mixed Indic and English scripts, or all Latin letters."
+                                                          AutomationProperties.Name="{Binding SelectedVariant.OutputAccessibleName}"
+                                                          AutomationProperties.AutomationId="BodhanOutputPicker"
+                                                          SelectionChanged="ModelOutput_SelectionChanged" />
                                             </Grid>
 
                                             <TextBlock Text="{Binding VariantDescription}"
                                                        Style="{StaticResource ModelCaptionStyle}"
                                                        Visibility="{Binding HasVariantDescription, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                            <TextBlock Text="{Binding SelectedVariant.AttributionNotice}"
+                                                       Style="{StaticResource ModelCaptionStyle}"
+                                                       AutomationProperties.AutomationId="ModelAttributionNotice"
+                                                       Visibility="{Binding SelectedVariant.HasAttributionNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
                                             <StackPanel Spacing="4"
                                                         Visibility="{Binding SelectedVariant.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">

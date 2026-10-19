@@ -4,7 +4,7 @@ Status: **inventory-not-qualified**. This document is the Wave 1 Agent A design
 and fixture inventory for module L10. It does **not** mark ledger row MOD-02
 Complete. QUAL-01 stays Partial.
 
-The twelve advertised Windows offline CPU families already exist in
+The fourteen advertised Windows offline CPU families already exist in
 `TranscriptionModelCatalog`. The remaining L10 exit is physical: every advertised
 ID must complete real-speech inference on the packaged CPU provider, with
 provider-specific gates, without silently skipping a family.
@@ -51,10 +51,13 @@ contract.
 | `sensevoice-small-int8` | Both | `native-asr\sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` | `7D1EFA2138A65B0B488DF37F8B89E3D91A60676E416F515B952358D83DFD347E` | Chinese, English, Japanese, Korean, Cantonese · automatic | Same. English slot only in the placeholder template. | Same. Non-English advertised languages have **no** fixtures. | Prepare + CPU English smoke, then advertised-language fixtures or honest scope reduction. |
 | `qwen3-asr-0.6b-int8` | Both | `native-asr\sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25` | `393F8A14E2F5FB96746AAAB342997A40641001FBD5BF9592A080A8329178EE96` | 30 languages plus Chinese dialects · automatic | Same. English slot only in the placeholder template. | Same. Extra advertised languages have **no** fixtures. | Prepare + CPU English smoke, then advertised-language fixtures or honest scope reduction. |
 | `cohere-transcribe-int8-en` | Both; Windows selects English (`language=en`) | `native-asr\sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01` | `BD582588D50685A795DCD2807AB77E11361B8312D96C53884682DEF45AB4206D` | English selected (weights support 14 languages) | Same. | Same. Non-English support is not a Windows advertised role. | Prepare + CPU English real-speech smoke with provider `cpu`. |
+| `bodhan-core-int8` | Both; Hindi selected by default with a language picker | `native-asr\indic-transcribe-core-int8` | `CFB31255807DF2CEF1AB75A7ED9D31AAAA2105451B2E9A88E8F0CF41F4A8C6D3` | 25 Indian languages · automatic | Catalog/hash tests. Opt-in `BodhanRecognizerTests` parity against the upstream PyTorch model (12 clips, en/hi/ta) when model files are supplied. No checked-in reviewed WAV. | Parity fact skips without `MUESLI_BODHAN_MODEL_DIR`/`MUESLI_BODHAN_REFS`. | Prepare + CPU Hindi real-speech smoke with provider `cpu`; reviewed fixtures for advertised languages. |
+| `bodhan-flex-int8` | Both; Hindi selected by default, native/mixed/romanized output | `native-asr\indic-transcribe-flex-int8` | `4C3B35D413C70D388604D51001D8011AAAB7565A09F5E36F78512375478B7DF0` | 27 Indian languages · automatic | Same as Core, across native, mixed and romanized output. | Same. | Same. |
 
 Required file SHA-256 values are pinned in `TranscriptionModelCatalog` and
 copied into `advertised-cpu-models.json`. `CpuCatalogInventoryTests` fails if
-either side drifts.
+either side drifts. The Bodhan FP16 variants run only on CUDA and stay outside
+this CPU inventory (`TranscriptionModelCatalog.CpuModels`).
 
 ## How smoke selection works
 
@@ -82,17 +85,17 @@ thresholds). A later run must pass an explicit reviewed WAV, not rely on
 
 | Test / script | Runs today? | Relation to L10 |
 |---|---|---|
-| `TranscriptionModelPlatformTests` | Yes, hardware-free | Pins 12 IDs, archive/file hashes, lifecycle. No real audio. |
+| `TranscriptionModelPlatformTests` | Yes, hardware-free | Pins 16 IDs (14 CPU plus the CUDA-only Bodhan FP16 variants), archive/file hashes, lifecycle. No real audio. |
 | `ModelAndSingleInstanceTests.TranscriptionCatalogHasUniqueSafeModelDefinitions` | Yes | Unique IDs and hash format. |
 | `CpuCatalogInventoryTests` | Yes (this slice) | Fails if advertised IDs/hashes/languages drift from the catalog, smoke script, or inventory doc. |
-| `PackageDisclosureAndNativeInventoryTests` | Yes | Public package remains CPU-only. Not twelve-family ASR evidence. |
+| `PackageDisclosureAndNativeInventoryTests` | Yes | Public package remains CPU-only. Not fourteen-family ASR evidence. |
 | `smoke-transcription-models.ps1` | Operator script; not in xUnit | **Does not skip.** Throws if audio, exe, or any model fails. |
 | `QualificationFact("MUESLI_MEDIA_FIXTURE_DIR")` | Skips unless env dir exists | Import transcodes (IMP-01). Not L10. |
 | `QualificationFact("MUESLI_MULTISPEAKER_FIXTURE_SOURCE")` | Skips unless env dir exists | Diarization (DIA-01). Not L10. |
 | `QualificationFact("MUESLI_STREAMING_QUALIFICATION_MODEL")` | Skips unless env dir exists | Live Nemotron (MOD-04). Not L10. |
-| L14 dictation corpus template | ValidateOnly fails on placeholders | Phase 2 human corpus, default model `parakeet-v3` only. Not the twelve-family matrix. |
+| L14 dictation corpus template | ValidateOnly fails on placeholders | Phase 2 human corpus, default model `parakeet-v3` only. Not the fourteen-family matrix. |
 
-No xUnit test currently executes real ASR for these twelve IDs. That is
+No xUnit test currently executes real ASR for these fourteen IDs. That is
 intentional: real speech is a physical gate, not a silent pass.
 
 ## Fixtures that exist vs missing
@@ -108,7 +111,7 @@ Missing (required before L10 can exit):
 - Any checked-in or operator-reviewed WAV for `english-speech.wav`
 - Human-written `references/english-speech.txt`
 - Non-English reviewed audio for Parakeet, SenseVoice, and Qwen advertised languages
-- Prepared/verified model caches for all twelve IDs on the qualification machine
+- Prepared/verified model caches for all fourteen IDs on the qualification machine
 - Per-model smoke reports under `artifacts/benchmarks/phase1-model-smoke/` on this tree
 - CPU provider identity, RTF, WER/CER, cancellation, and corrupt-file failure evidence named in the launch-plan L10 exit
 
@@ -124,7 +127,7 @@ From `docs/WINDOWS_MULTI_AGENT_LAUNCH_PLAN.md`:
 
 Still open:
 
-1. Prepare and SHA-verify all twelve caches.
+1. Prepare and SHA-verify all fourteen caches.
 2. Record or select real speech; human-listen; write references.
 3. Run smoke against that WAV for every advertised ID on the packaged CPU
    provider (`-ExpectedProvider cpu` / report `WarmBackend=cpu`).

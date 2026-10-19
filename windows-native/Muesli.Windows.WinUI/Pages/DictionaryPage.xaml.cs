@@ -11,7 +11,7 @@ namespace Muesli.Windows.WinUI.Pages;
 
 public sealed partial class DictionaryPage : Page
 {
-    public DictionaryPageViewModel ViewModel { get; } = new(App.Library, App.Settings, App.FilePickers, App.Dialogs);
+    public DictionaryPageViewModel ViewModel { get; } = new(App.Library, App.Settings, App.FilePickers, App.Dialogs, App.DictionarySuggestions);
 
     /// <summary>Per-row threshold drafts, keyed by entry id, until the row is saved.</summary>
     private readonly Dictionary<string, double> _thresholdDrafts = new(StringComparer.Ordinal);
@@ -26,6 +26,9 @@ public sealed partial class DictionaryPage : Page
             if (args.PropertyName == nameof(ViewModel.Items)) _thresholdDrafts.Clear();
             UpdateState();
         };
+        // A post-paste prompt or the switch elsewhere changes the suggestions while this page is open.
+        Loaded += (_, _) => App.Settings.Changed += OnSettingsChanged;
+        Unloaded += (_, _) => App.Settings.Changed -= OnSettingsChanged;
         Loaded += (_, _) =>
         {
             ViewModel.Load();
@@ -51,9 +54,11 @@ public sealed partial class DictionaryPage : Page
         EmptyState.Visibility = showEmpty ? Visibility.Visible : Visibility.Collapsed;
         DictionaryList.Visibility = ViewModel.HasItems ? Visibility.Visible : Visibility.Collapsed;
         SuggestionPanel.Visibility = ViewModel.HasSuggestions ? Visibility.Visible : Visibility.Collapsed;
-        PaginationBar.Visibility = ViewModel.HasPreviousPage || ViewModel.HasNextPage ? Visibility.Visible : Visibility.Collapsed;
-        StatusBar.Severity = ViewModel.IsStatusError ? InfoBarSeverity.Error : InfoBarSeverity.Success;
+        StatusBar.Severity = InfoBarSeverity.Error;
     }
+
+    private void OnSettingsChanged(object? sender, MuesliSettings settings) =>
+        DispatcherQueue.TryEnqueue(ViewModel.Reload);
 
     private void SetAdding(bool adding)
     {
@@ -114,12 +119,12 @@ public sealed partial class DictionaryPage : Page
         if ((sender as FrameworkElement)?.Tag is DictionaryListItem item) SaveRow(item);
     }
 
-    private async void RowDelete_Click(object sender, RoutedEventArgs e)
+    private void RowDelete_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not DictionaryListItem item) return;
         SetAdding(false);
         ViewModel.Select(item);
-        await ViewModel.DeleteEntryCommand.ExecuteAsync(null);
+        ViewModel.DeleteEntryCommand.Execute(null);
         ViewModel.NewEntryCommand.Execute(null);
     }
 

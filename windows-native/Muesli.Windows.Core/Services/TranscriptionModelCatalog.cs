@@ -9,7 +9,8 @@ public enum NativeAsrModelKind
     Whisper,
     SenseVoice,
     Qwen3Asr,
-    CohereTranscribe
+    CohereTranscribe,
+    Bodhan
 }
 
 /// <summary>
@@ -280,8 +281,90 @@ public static class TranscriptionModelCatalog
                 ["decoder.int8.onnx"] = "8372CA6C8FF4DB8B916CA3592F5C757A715E691B9EDEC751BA19B29FC854BAF9",
                 ["tokens.txt"] = "013EDE043AE2480E3A9205CC34550D9686100CC682BACC90F702FACDFBB93035"
             },
-            "en")
+            "en"),
+        // Bodhan (Indic-Transcribe) ONNX ports, exported from the official PyTorch models by
+        // muesli-bodhan tools; FP16 at the repo root runs on CUDA, the 8-bit variant on the CPU.
+        new(
+            "bodhan-core-int8",
+            "Bodhan Core INT8",
+            "Runs on the CPU on any PC.",
+            "25 Indian languages · automatic",
+            "1.7 GB download · ~1.7 GB installed",
+            NativeAsrModelKind.Bodhan,
+            "indic-transcribe-core-int8",
+            "https://huggingface.co/Mvkd2k06/indic-transcribe-core-onnx/resolve/main/variants/int8/indic-transcribe-core-int8.tar",
+            "CFB31255807DF2CEF1AB75A7ED9D31AAAA2105451B2E9A88E8F0CF41F4A8C6D3",
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["encoder.int8.onnx"] = "41063CB8BCB001802231BADA7DB6E6FCE7C7013980B6E4861542B0B2055869C1",
+                ["encoder.int8.onnx.data"] = "033A3DB4E7389423C8A8FFCE8C4477CBDCA32EF9E2901FE50928F56ADA405F26",
+                ["decoder.int8.onnx"] = "1D893261BF22A6C7A3F96A5283143236301653F35E565CFE3841BE478306477E",
+                ["decoder.int8.onnx.data"] = "4444A21819421CB93653DC22A2F9028DAB0C3770825EB173C43F158488B0CF95",
+                ["tokenizer.json"] = "F2D3799B8F4104C2D36F92CF0DA32AC7A55BF46D82B9CD5563C13505BB4D1404"
+            },
+            "hi"),
+        new(
+            "bodhan-core-fp16",
+            "Bodhan Core FP16",
+            "Faster; needs an NVIDIA GPU with the CUDA pack.",
+            "25 Indian languages · automatic",
+            "2.5 GB download · ~2.5 GB installed",
+            NativeAsrModelKind.Bodhan,
+            "indic-transcribe-core-fp16",
+            "https://huggingface.co/Mvkd2k06/indic-transcribe-core-onnx/resolve/main/indic-transcribe-core-fp16.tar",
+            "31F24AD80E1DA4AA307B4B935F3B8D33D04EF8713ECF53807A1B00D272C7BF19",
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["encoder.fp16.onnx"] = "137FD04AFD208601F027F9B9D17F541EA9B852A1B43C131EFBAB0793B75DD026",
+                ["encoder.fp16.onnx.data"] = "7D5323D2F5FBC04213068BDA3CED314AFC5269DF38D3C228CF39494D62754536",
+                ["decoder.fp16.onnx"] = "0383311BEB7FB983389DA5AD3F1642059161224F755BF519CAC710B5E34B035C",
+                ["decoder.fp16.onnx.data"] = "9036D310E16F12EBC5E4CE681FB8F8A1682DD0FC90F0A8EAE7F293717238E689",
+                ["tokenizer.json"] = "F2D3799B8F4104C2D36F92CF0DA32AC7A55BF46D82B9CD5563C13505BB4D1404"
+            },
+            "hi"),
+        new(
+            "bodhan-flex-int8",
+            "Bodhan Flex INT8",
+            "Runs on the CPU on any PC.",
+            "27 Indian languages · automatic",
+            "1.7 GB download · ~1.7 GB installed",
+            NativeAsrModelKind.Bodhan,
+            "indic-transcribe-flex-int8",
+            "https://huggingface.co/Mvkd2k06/indic-transcribe-flex-onnx/resolve/main/variants/int8/indic-transcribe-flex-int8.tar",
+            "4C3B35D413C70D388604D51001D8011AAAB7565A09F5E36F78512375478B7DF0",
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["encoder.int8.onnx"] = "41063CB8BCB001802231BADA7DB6E6FCE7C7013980B6E4861542B0B2055869C1",
+                ["encoder.int8.onnx.data"] = "2437DA2E912A5DE62E90079C9444B80CCA291410C8CD63A05FC7BE31CBCE5DC1",
+                ["decoder.int8.onnx"] = "1D893261BF22A6C7A3F96A5283143236301653F35E565CFE3841BE478306477E",
+                ["decoder.int8.onnx.data"] = "80963270D3C5A8AD4CAEB0EA0CA2F51C832CA09736E259343088BA34217EEAB2",
+                ["tokenizer.json"] = "505ADBC3D4802D3FACF343CB59419BC568871EF87C7ACB3A09D36DEEEE50DA62"
+            },
+            "hi"),
+        new(
+            "bodhan-flex-fp16",
+            "Bodhan Flex FP16",
+            "Faster; needs an NVIDIA GPU with the CUDA pack.",
+            "27 Indian languages · automatic",
+            "2.5 GB download · ~2.5 GB installed",
+            NativeAsrModelKind.Bodhan,
+            "indic-transcribe-flex-fp16",
+            "https://huggingface.co/Mvkd2k06/indic-transcribe-flex-onnx/resolve/main/indic-transcribe-flex-fp16.tar",
+            "750958B469D9A2E0A07F01867FD79AE65E5909D185F57D494DA035DA8456BA2D",
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["encoder.fp16.onnx"] = "37A9537847454F98E960B511BEF813F923A50FFE5920E7C5DDC94AFF0A1E00C8",
+                ["encoder.fp16.onnx.data"] = "FBE69AB66D5A54FB09589453D9F972848E325B54BE3BAA8AD0173E13EC8F3AC7",
+                ["decoder.fp16.onnx"] = "80AD73B20CCDD5601ABD7D22D8DCFD9CC72B0670C209AB33321131686BE44266",
+                ["decoder.fp16.onnx.data"] = "29D065C501E498D0697970189F59584ADCCFCE9E9DFFE4DC666BFDA30B3A94F7",
+                ["tokenizer.json"] = "505ADBC3D4802D3FACF343CB59419BC568871EF87C7ACB3A09D36DEEEE50DA62"
+            },
+            "hi")
     ];
+
+    /// <summary>The CPU-runnable models: the qualification inventory. Bodhan FP16 needs CUDA.</summary>
+    public static IReadOnlyList<TranscriptionModelDefinition> CpuModels { get; } =
+        Models.Where(model => !(model.Kind == NativeAsrModelKind.Bodhan && BodhanModels.NeedsGpu(model))).ToArray();
 
     public static TranscriptionModelDefinition Get(string? modelId)
     {
@@ -304,6 +387,26 @@ public static class TranscriptionModelCatalog
     }
 
     public static string NormalizeId(string? modelId) => Get(modelId).Id;
+
+    /// <summary>
+    /// A readable name for a model id stored on a dictation, including the ids older builds
+    /// recorded: the sherpa folder name ("parakeet-tdt-0.6b-v3-int8") or a bare Whisper size
+    /// ("base", "medium.en"). Anything else is shown as stored.
+    /// </summary>
+    public static string DisplayNameFor(string? modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId)) return "";
+        if (TryGet(modelId, out var model)) return model.DisplayName;
+        var byFolder = Models.FirstOrDefault(candidate => candidate.DirectoryName.EndsWith(modelId, StringComparison.OrdinalIgnoreCase));
+        if (byFolder is not null) return byFolder.DisplayName;
+        var size = modelId.Trim().ToLowerInvariant();
+        var english = size.EndsWith(".en", StringComparison.Ordinal);
+        if (english) size = size[..^3];
+        if (size is "large-v3-turbo" or "turbo") return "Whisper Large-v3 Turbo";
+        return size is "tiny" or "base" or "small" or "medium" or "large" or "large-v2" or "large-v3"
+            ? $"Whisper {char.ToUpperInvariant(size[0])}{size[1..]}{(english ? " English" : "")}"
+            : modelId;
+    }
 
     public static long CacheSizeBytes()
     {

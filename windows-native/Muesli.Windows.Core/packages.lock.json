@@ -34,6 +34,15 @@
           "SQLitePCLRaw.core": "2.1.12"
         }
       },
+      "Microsoft.ML.OnnxRuntime.Managed": {
+        "type": "Direct",
+        "requested": "[1.24.4, )",
+        "resolved": "1.24.4",
+        "contentHash": "e5jsEo0HcCKDMkuRsMSievKoMv10Odv4MGmxbCin8SEm4Pto1qTpwti47xRwMtk9I/zVvfAiFIWquOq/0+22DA==",
+        "dependencies": {
+          "System.Numerics.Tensors": "9.0.0"
+        }
+      },
       "NAudio": {
         "type": "Direct",
         "requested": "[2.2.1, )",

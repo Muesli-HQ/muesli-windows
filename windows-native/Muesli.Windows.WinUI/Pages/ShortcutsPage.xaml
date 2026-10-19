@@ -75,10 +75,18 @@
                 <!-- Dictation: the configurable push-to-talk shortcut and its activation delay. -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Dictation shortcut">
                     <StackPanel Spacing="16">
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Dictation" Style="{StaticResource ShortcutTitleStyle}" />
-                            <TextBlock Text="{x:Bind ViewModel.PushToTalkDescription, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
-                        </StackPanel>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Dictation" Style="{StaticResource ShortcutTitleStyle}" />
+                                <TextBlock Text="{x:Bind ViewModel.PushToTalkDescription, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="PushToTalkToggle" Grid.Column="1"
+                                          Style="{StaticResource ShortcutToggleStyle}"
+                                          IsOn="{x:Bind ViewModel.PushToTalkEnabled, Mode=OneWay}"
+                                          Toggled="PushToTalk_Toggled"
+                                          AutomationProperties.Name="Push to Talk enabled"
+                                          AutomationProperties.AutomationId="PushToTalkToggle" />
+                        </Grid>
                         <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
                         <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12" RowDefinitions="Auto,Auto" RowSpacing="8">
                             <Border x:Name="PushKeycapWell" Style="{StaticResource ShortcutBadgeStyle}"
@@ -94,6 +102,7 @@
                                     AutomationProperties.AutomationId="ChangePushToTalkButton"
                                     ToolTipService.ToolTip="Press to capture a new Windows shortcut. Escape cancels." />
                             <StackPanel x:Name="PttHoldRow" Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                        Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.PushToTalkEnabled), Mode=OneWay}"
                                         ToolTipService.ToolTip="How long to hold the shortcut before it activates.">
                                 <TextBlock Text="Activation delay" Style="{StaticResource ShortcutCaptionStyle}" />
                                 <NumberBox Width="76" Minimum="50" Maximum="2000" SmallChange="25" LargeChange="50"
@@ -111,13 +120,17 @@
                                        Style="{StaticResource ShortcutCaptionStyle}"
                                        Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.IsCapturing), Mode=OneWay}"
                                        AutomationProperties.LiveSetting="Assertive" />
+                            <TextBlock Grid.Row="1" Grid.ColumnSpan="4"
+                                       Text="Push to Talk is turned off."
+                                       Style="{StaticResource ShortcutCaptionStyle}"
+                                       Foreground="{ThemeResource MuesliWarningBrush}"
+                                       Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.PushToTalkOff), Mode=OneWay}" />
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <!-- Computer Use: a fixed shortcut, enabled here once its configuration validates.
-                     Hidden for v1: it does not yet match the macOS feature. -->
-                <Border Style="{StaticResource ShortcutSectionStyle}" Visibility="Collapsed" AutomationProperties.Name="Computer Use Command shortcut">
+                <!-- Computer Use: its own configurable shortcut, enabled once ChatGPT is signed in. -->
+                <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Computer Use Command shortcut">
                     <StackPanel Spacing="16">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                             <StackPanel Spacing="4">
@@ -130,15 +143,24 @@
                                           IsEnabled="{x:Bind ViewModel.ComputerUseConfigured, Mode=OneWay}"
                                           Toggled="ComputerUse_Toggled"
                                           AutomationProperties.Name="Computer Use shortcut enabled"
-                                          AutomationProperties.HelpText="Enable the fixed Computer Use shortcut for focused allowed apps." />
+                                          AutomationProperties.HelpText="Enable the Computer Use shortcut." />
                         </Grid>
                         <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                            <Border Style="{StaticResource ShortcutBadgeStyle}">
-                                <TextBlock Text="Ctrl + Shift + F8" Style="{StaticResource ShortcutBadgeTextStyle}" />
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12">
+                            <Border x:Name="ComputerUseKeycapWell" Style="{StaticResource ShortcutBadgeStyle}"
+                                    AutomationProperties.Name="Current Computer Use shortcut"
+                                    AutomationProperties.LiveSetting="Polite">
+                                <TextBlock Text="{x:Bind local:ShortcutsPage.Keys(ViewModel.ComputerUseHotkeyParts), Mode=OneWay}" Style="{StaticResource ShortcutBadgeTextStyle}" />
                             </Border>
-                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.ComputerUseShortcutState, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
-                            <Button Grid.Column="2" Content="Configure…" Click="ComputerUseConfigure_Click"
+                            <Button x:Name="ChangeComputerUseButton" Grid.Column="1"
+                                    Click="ChangeComputerUseShortcut_Click"
+                                    Content="{x:Bind ViewModel.ComputerUseCapturePrompt, Mode=OneWay}"
+                                    Style="{StaticResource ShortcutLinkStyle}"
+                                    AutomationProperties.Name="Change Computer Use shortcut"
+                                    AutomationProperties.AutomationId="ChangeComputerUseShortcutButton"
+                                    ToolTipService.ToolTip="Press to capture a new Windows shortcut. Escape cancels." />
+                            <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.ComputerUseShortcutState, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" VerticalAlignment="Center" />
+                            <Button Grid.Column="3" Content="Configure…" Click="ComputerUseConfigure_Click"
                                     Style="{StaticResource ShortcutLinkStyle}"
                                     Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.ComputerUseNeedsConfiguration), Mode=OneWay}"
                                     AutomationProperties.Name="Configure Computer Use in Settings" />
@@ -146,42 +168,77 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Quill: no Windows runtime yet, so the card says so instead of offering a dead control. -->
+                <!-- Quill: hold to speak an editing instruction; ChatGPT rewrites the selection. -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Quill shortcut">
                     <StackPanel Spacing="16">
-                        <StackPanel Spacing="4">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE70F;" FontSize="15" Foreground="{ThemeResource MuesliAccentBrush}" AutomationProperties.AccessibilityView="Raw" />
-                                <TextBlock Text="Quill" Style="{StaticResource ShortcutTitleStyle}" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <StackPanel Spacing="4">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE70F;" FontSize="15" Foreground="{ThemeResource MuesliAccentBrush}" AutomationProperties.AccessibilityView="Raw" />
+                                    <TextBlock Text="Quill" Style="{StaticResource ShortcutTitleStyle}" />
+                                </StackPanel>
+                                <TextBlock Text="Highlight text, hold to speak an editing instruction, then release to replace" Style="{StaticResource ShortcutCaptionStyle}" />
                             </StackPanel>
-                            <TextBlock Text="Highlight text, hold to speak an editing instruction, then release to replace" Style="{StaticResource ShortcutCaptionStyle}" />
-                        </StackPanel>
+                            <ToggleSwitch x:Name="QuillToggle" Grid.Column="1"
+                                          Style="{StaticResource ShortcutToggleStyle}"
+                                          IsOn="{x:Bind ViewModel.QuillEnabled, Mode=OneWay}"
+                                          Toggled="Quill_Toggled"
+                                          AutomationProperties.Name="Quill enabled"
+                                          AutomationProperties.AutomationId="QuillToggle" />
+                        </Grid>
                         <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Opacity="0.7">
-                            <Border Style="{StaticResource ShortcutBadgeStyle}">
-                                <TextBlock Text="None" Style="{StaticResource ShortcutBadgeTextStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="12">
+                            <Border x:Name="QuillKeycapWell" Style="{StaticResource ShortcutBadgeStyle}"
+                                    AutomationProperties.Name="Current Quill shortcut"
+                                    AutomationProperties.LiveSetting="Polite">
+                                <TextBlock Text="{x:Bind local:ShortcutsPage.Keys(ViewModel.QuillHotkeyParts), Mode=OneWay}" Style="{StaticResource ShortcutBadgeTextStyle}" />
                             </Border>
-                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.QuillUnavailableReason, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
+                            <Button x:Name="ChangeQuillButton" Grid.Column="1"
+                                    Click="ChangeQuillShortcut_Click"
+                                    Content="{x:Bind ViewModel.QuillCapturePrompt, Mode=OneWay}"
+                                    Style="{StaticResource ShortcutLinkStyle}"
+                                    AutomationProperties.Name="Change Quill shortcut"
+                                    AutomationProperties.AutomationId="ChangeQuillShortcutButton"
+                                    ToolTipService.ToolTip="Press to capture a new Windows shortcut. Escape cancels." />
+                            <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.QuillState, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <!-- Meeting Recording: no dedicated Windows global shortcut yet. -->
+                <!-- Meeting Recording: macOS meeting_shortcut, off until the user turns it on. -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Meeting Recording shortcut">
                     <StackPanel Spacing="16">
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Meeting Recording" Style="{StaticResource ShortcutTitleStyle}" />
-                            <TextBlock Text="Toggle meeting recording on/off" Style="{StaticResource ShortcutCaptionStyle}" />
-                        </StackPanel>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Meeting Recording" Style="{StaticResource ShortcutTitleStyle}" />
+                                <TextBlock Text="Toggle meeting recording on/off" Style="{StaticResource ShortcutCaptionStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="MeetingShortcutToggle" Grid.Column="1"
+                                          Style="{StaticResource ShortcutToggleStyle}"
+                                          IsOn="{x:Bind ViewModel.MeetingShortcutEnabled, Mode=OneWay}"
+                                          Toggled="MeetingShortcut_Toggled"
+                                          AutomationProperties.Name="Meeting recording shortcut enabled"
+                                          AutomationProperties.AutomationId="MeetingShortcutToggle" />
+                        </Grid>
                         <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                            <Border Style="{StaticResource ShortcutBadgeStyle}" Opacity="0.7">
-                                <TextBlock Text="None" Style="{StaticResource ShortcutBadgeTextStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="12" RowDefinitions="Auto,Auto" RowSpacing="8">
+                            <Border x:Name="MeetingKeycapWell" Style="{StaticResource ShortcutBadgeStyle}"
+                                    AutomationProperties.Name="Current meeting recording shortcut"
+                                    AutomationProperties.LiveSetting="Polite">
+                                <TextBlock Text="{x:Bind local:ShortcutsPage.Keys(ViewModel.MeetingHotkeyParts), Mode=OneWay}" Style="{StaticResource ShortcutBadgeTextStyle}" />
                             </Border>
-                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.MeetingRecordingUnavailableReason, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
-                            <Button Grid.Column="2" Content="Open Meetings" Click="OpenMeetings_Click"
+                            <Button x:Name="ChangeMeetingButton" Grid.Column="1"
+                                    Click="ChangeMeetingShortcut_Click"
+                                    Content="{x:Bind ViewModel.MeetingCapturePrompt, Mode=OneWay}"
                                     Style="{StaticResource ShortcutLinkStyle}"
-                                    AutomationProperties.Name="Open the Meetings page to start or stop recording" />
+                                    AutomationProperties.Name="Change meeting recording shortcut"
+                                    AutomationProperties.AutomationId="ChangeMeetingShortcutButton"
+                                    ToolTipService.ToolTip="Press to capture a new Windows shortcut. Escape cancels." />
+                            <TextBlock Grid.Row="1" Grid.ColumnSpan="3"
+                                       Text="Global shortcuts take the key from every other app while on, so pick one you don't use elsewhere."
+                                       Style="{StaticResource ShortcutCaptionStyle}"
+                                       Foreground="{ThemeResource MuesliWarningBrush}"
+                                       Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.MeetingShortcutEnabled), Mode=OneWay}" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -198,9 +255,17 @@
                                       IsOn="{x:Bind ViewModel.HandsFreeEnabled, Mode=OneWay}"
                                       Toggled="HandsFree_Toggled"
                                       AutomationProperties.Name="Hands-free dictation enabled"
+                                      AutomationProperties.AutomationId="HandsFreeToggle"
                                       AutomationProperties.HelpText="Double-tap the dictation shortcut to lock recording hands-free." />
                     </Grid>
                 </Border>
+                <!-- macOS resetButton: plain secondary text, disabled when nothing differs. -->
+                <Button Content="Reset to Defaults" Click="ResetDefaults_Click"
+                        Style="{StaticResource ShortcutLinkStyle}"
+                        Foreground="{ThemeResource MuesliTextSecondaryBrush}"
+                        Padding="0" Margin="0,-8,0,0"
+                        IsEnabled="{x:Bind local:ShortcutsPage.Not(ViewModel.IsAtDefaults), Mode=OneWay}"
+                        AutomationProperties.AutomationId="ResetShortcutDefaultsButton" />
                 <InfoBar x:Name="StatusBar"
                          IsOpen="{x:Bind ViewModel.IsStatusOpen, Mode=TwoWay}"
                          Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"

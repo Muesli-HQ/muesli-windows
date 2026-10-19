@@ -290,6 +290,60 @@
         "decoder.int8.onnx": "8372CA6C8FF4DB8B916CA3592F5C757A715E691B9EDEC751BA19B29FC854BAF9",
         "tokens.txt": "013EDE043AE2480E3A9205CC34550D9686100CC682BACC90F702FACDFBB93035"
       }
+    },
+    {
+      "id": "bodhan-core-int8",
+      "displayName": "Bodhan Core INT8",
+      "kind": "Bodhan",
+      "allowedRoles": [
+        "dictation",
+        "final-meeting-import"
+      ],
+      "defaultForRoles": [],
+      "recommendedUse": "Indian-language speech in its native script; Hindi by default with a language picker. Still selectable for either role.",
+      "qualificationStatus": "inventory-not-qualified",
+      "qualificationPrerequisites": "Requires human-reviewed speech references for each advertised language claim, CPU real-audio inference, WER ≤0.15, CER ≤0.08, RTF ≤0.20, deterministic output, and model reuse.",
+      "languages": "25 Indian languages · automatic",
+      "languageTag": "hi",
+      "sizeLabel": "1.7 GB download · ~1.7 GB installed",
+      "directoryName": "indic-transcribe-core-int8",
+      "cacheRoot": "native-asr",
+      "archiveUrl": "https://huggingface.co/Mvkd2k06/indic-transcribe-core-onnx/resolve/main/variants/int8/indic-transcribe-core-int8.tar",
+      "archiveSha256": "CFB31255807DF2CEF1AB75A7ED9D31AAAA2105451B2E9A88E8F0CF41F4A8C6D3",
+      "requiredFileSha256": {
+        "encoder.int8.onnx": "41063CB8BCB001802231BADA7DB6E6FCE7C7013980B6E4861542B0B2055869C1",
+        "encoder.int8.onnx.data": "033A3DB4E7389423C8A8FFCE8C4477CBDCA32EF9E2901FE50928F56ADA405F26",
+        "decoder.int8.onnx": "1D893261BF22A6C7A3F96A5283143236301653F35E565CFE3841BE478306477E",
+        "decoder.int8.onnx.data": "4444A21819421CB93653DC22A2F9028DAB0C3770825EB173C43F158488B0CF95",
+        "tokenizer.json": "F2D3799B8F4104C2D36F92CF0DA32AC7A55BF46D82B9CD5563C13505BB4D1404"
+      }
+    },
+    {
+      "id": "bodhan-flex-int8",
+      "displayName": "Bodhan Flex INT8",
+      "kind": "Bodhan",
+      "allowedRoles": [
+        "dictation",
+        "final-meeting-import"
+      ],
+      "defaultForRoles": [],
+      "recommendedUse": "Mixed-language Indian dictation with native, mixed or romanized output; Hindi by default. Still selectable for either role.",
+      "qualificationStatus": "inventory-not-qualified",
+      "qualificationPrerequisites": "Requires human-reviewed speech references for each advertised language claim, CPU real-audio inference, WER ≤0.15, CER ≤0.08, RTF ≤0.20, deterministic output, and model reuse.",
+      "languages": "27 Indian languages · automatic",
+      "languageTag": "hi",
+      "sizeLabel": "1.7 GB download · ~1.7 GB installed",
+      "directoryName": "indic-transcribe-flex-int8",
+      "cacheRoot": "native-asr",
+      "archiveUrl": "https://huggingface.co/Mvkd2k06/indic-transcribe-flex-onnx/resolve/main/variants/int8/indic-transcribe-flex-int8.tar",
+      "archiveSha256": "4C3B35D413C70D388604D51001D8011AAAB7565A09F5E36F78512375478B7DF0",
+      "requiredFileSha256": {
+        "encoder.int8.onnx": "41063CB8BCB001802231BADA7DB6E6FCE7C7013980B6E4861542B0B2055869C1",
+        "encoder.int8.onnx.data": "2437DA2E912A5DE62E90079C9444B80CCA291410C8CD63A05FC7BE31CBCE5DC1",
+        "decoder.int8.onnx": "1D893261BF22A6C7A3F96A5283143236301653F35E565CFE3841BE478306477E",
+        "decoder.int8.onnx.data": "80963270D3C5A8AD4CAEB0EA0CA2F51C832CA09736E259343088BA34217EEAB2",
+        "tokenizer.json": "505ADBC3D4802D3FACF343CB59419BC568871EF87C7ACB3A09D36DEEEE50DA62"
+      }
     }
   ]
 }

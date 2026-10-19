@@ -64,6 +64,8 @@ public sealed class WinUiLibraryContext : IDisposable
         if (removed)
         {
             History.SaveDictations(dictations, afterExplicitDeletion: true);
+            ComputerUseRun.Delete(Profile.RootDirectory, id);
+            DictationTargetApps.Remove(Profile.RootDirectory, id);
         }
 
         return removed;
@@ -119,6 +121,7 @@ public sealed class WinUiLibraryContext : IDisposable
         if (meeting is null) return false;
         meetings.Remove(meeting);
         History.SaveMeetings(meetings, afterExplicitDeletion: true);
+        MeetingParticipants.RemoveMeeting(Profile.RootDirectory, id);
         // macOS deletes the saved recording with the meeting. Only Muesli-owned capture files under
         // recordings/<id> are touched; imported originals are never deleted.
         var cleanup = new CaptureStorageService(Profile.CaptureDirectory).DeleteOwnedMeetingAudio(
@@ -145,14 +148,59 @@ public sealed class WinUiLibraryContext : IDisposable
         ? sqlite.Store.Meetings.ListFollowUpsLinkedTo(id).Where(link => link.Id == $"meeting_thread_{id}")
             .Select(link => FindMeeting(link.MeetingId)).FirstOrDefault() : null;
 
+    /// <summary>
+    /// The meetings that follow up another (<c>FollowUps</c>) and the meetings that have follow-ups
+    /// (<c>Parents</c>), for the browser's relationship icons.
+    /// </summary>
+    // ponytail: one follow-up query per meeting; a single join if libraries grow into the thousands.
+    public (HashSet<string> FollowUps, HashSet<string> Parents) ThreadLinks(IEnumerable<string> ids)
+    {
+        var followUps = new HashSet<string>(StringComparer.Ordinal);
+        var parents = new HashSet<string>(StringComparer.Ordinal);
+        if (History is not SqliteLibraryHistoryAdapter sqlite) return (followUps, parents);
+        foreach (var id in ids)
+        {
+            foreach (var link in sqlite.Store.Meetings.ListFollowUps(id))
+            {
+                if (link.LinkedMeetingId is not { } child || link.Id != $"meeting_thread_{child}") continue;
+                followUps.Add(child);
+                parents.Add(id);
+            }
+        }
+        return (followUps, parents);
+    }
+
     public IReadOnlyList<PersistedMeeting> RelatedMeetings(string id)
     {
-        if (History is not SqliteLibraryHistoryAdapter sqlite) return [];
         var parent = Predecessor(id);
-        var children = sqlite.Store.Meetings.ListFollowUps(id)
-            .Where(link => link.LinkedMeetingId is { } childId && link.Id == $"meeting_thread_{childId}")
-            .Select(link => FindMeeting(link.LinkedMeetingId!)).OfType<PersistedMeeting>();
+        var children = FollowUps(id);
         return (parent is null ? children : new[] { parent }.Concat(children)).OrderBy(meeting => meeting.CreatedAt).ToList();
+    }
+
+    /// <summary>The direct follow-ups of a meeting, oldest first.</summary>
+    public IReadOnlyList<PersistedMeeting> FollowUps(string id) => History is SqliteLibraryHistoryAdapter sqlite
+        ? sqlite.Store.Meetings.ListFollowUps(id)
+            .Where(link => link.LinkedMeetingId is { } childId && link.Id == $"meeting_thread_{childId}")
+            .Select(link => FindMeeting(link.LinkedMeetingId!)).OfType<PersistedMeeting>()
+            .OrderBy(meeting => meeting.CreatedAt).ToList()
+        : [];
+
+    /// <summary>Every meeting in the thread this one belongs to, root included (macOS threadContext.count).</summary>
+    public int ThreadSize(string id)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { id };
+        var root = id;
+        while (Predecessor(root) is { } parent && seen.Add(parent.Id)) root = parent.Id;
+        var count = 0;
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Stack<string>([root]);
+        while (pending.TryPop(out var current))
+        {
+            if (!visited.Add(current)) continue;
+            count++;
+            foreach (var child in FollowUps(current)) pending.Push(child.Id);
+        }
+        return count;
     }
 
     public int ClearDictations()
@@ -160,6 +208,10 @@ public sealed class WinUiLibraryContext : IDisposable
         var count = History.LoadDictations().Count;
         if (count == 0) return 0;
         History.SaveDictations([], afterExplicitDeletion: true);
+        var runs = Path.GetDirectoryName(ComputerUseConfiguration.RunStepsPath(Profile.RootDirectory, "x"))!;
+        try { if (Directory.Exists(runs)) Directory.Delete(runs, recursive: true); }
+        catch (IOException) { }
+        DictationTargetApps.Clear(Profile.RootDirectory);
         return count;
     }
 
@@ -221,6 +273,8 @@ public sealed class WinUiLibraryContext : IDisposable
         var dictionary = History.LoadDictionary();
         var templates = History.LoadMeetingTemplates();
 
+        var targetApps = DictationTargetApps.LoadAll(Profile.RootDirectory);
+
         // P2-02: a dictation row has one piece of text. Passing item.Text as both Title and
         // Detail printed every transcript twice — once bold, once as the secondary line.
         // The transcript is the row's title; only a meeting carries a separate summary line.
@@ -233,7 +287,11 @@ public sealed class WinUiLibraryContext : IDisposable
                 item.DurationMs,
                 item.ModelProfile,
                 null,
-                item.Id))
+                item.Id)
+            {
+                Run = item.ModelProfile == ComputerUseConfiguration.HistoryLabel ? ComputerUseRun.Load(Profile.RootDirectory, item.Id) : null,
+                TargetApp = targetApps.GetValueOrDefault(item.Id),
+            })
             .Concat(meetings.Select(item => new WinUiTimelineEntry(
                 WinUiTimelineKind.Meeting,
                 item.CreatedAt,
@@ -275,7 +333,10 @@ public sealed class WinUiLibraryContext : IDisposable
             // Prompt 9: dictation-only streak, one definition shared with Insights (LibraryMetrics).
             LibraryMetrics.CurrentStreakDays(dictations.Select(item => item.Timestamp.Date), DateTime.Today),
             LibraryMetrics.LongestStreakDays(dictations.Select(item => item.Timestamp.Date)),
-            History.LastWarning);
+            History.LastWarning)
+        {
+            TargetApps = targetApps,
+        };
     }
 
     public void Dispose()
@@ -305,6 +366,18 @@ public sealed record WinUiTimelineEntry(
 {
     public bool IsMeeting => Kind == WinUiTimelineKind.Meeting;
 
+    /// <summary>The run behind a Computer Use command, or null for a dictation or meeting.</summary>
+    public ComputerUseRun? Run { get; init; }
+    public bool IsComputerUse => ModelProfile == ComputerUseConfiguration.HistoryLabel;
+    public bool HasRun => Run is not null;
+
+    /// <summary>The app the dictation was pasted into, when known.</summary>
+    public DictationTargetApp? TargetApp { get; init; }
+    public bool HasTargetApp => TargetApp is not null;
+
+    /// <summary>The dictation text with macOS "Show more".</summary>
+    public ExpandableText Body => field ??= new(Title);
+
     public string KindLabel => IsMeeting ? "Meeting" : "Dictation";
 
     public string TimeLabel => Timestamp.ToLocalTime().ToString("hh:mm tt");
@@ -330,7 +403,16 @@ public sealed record WinUiTimelineEntry(
             ? TimeSpan.FromMilliseconds(DurationMs).ToString(@"h\:mm\:ss")
             : TimeSpan.FromMilliseconds(DurationMs).ToString(@"m\:ss");
 
-    public string StatusLabel => string.IsNullOrWhiteSpace(Status) ? "Local" : Status!;
+    /// <summary>macOS MeetingStatusDisplay.displayLabel for the Windows session states.</summary>
+    public string StatusLabel => Status switch
+    {
+        nameof(MeetingSessionState.Recording) or nameof(MeetingSessionState.DegradedRecording) or nameof(MeetingSessionState.Preparing) => "Recording",
+        nameof(MeetingSessionState.Stopping) or nameof(MeetingSessionState.Finalizing) => "Processing",
+        nameof(MeetingSessionState.NoteOnly) => "Note only",
+        nameof(MeetingSessionState.Failed) or nameof(MeetingSessionState.RecoverableInterruption) => "Needs attention",
+        nameof(MeetingSessionState.Cancelled) => "Cancelled",
+        _ => "Completed",
+    };
 }
 
 public sealed record WinUiLibrarySnapshot(
@@ -350,6 +432,9 @@ public sealed record WinUiLibrarySnapshot(
     int LongestStreak,
     string? PersistenceWarning)
 {
+    /// <summary>Destination app per dictation id (<see cref="DictationTargetApps"/>).</summary>
+    public IReadOnlyDictionary<string, DictationTargetApp> TargetApps { get; init; } = new Dictionary<string, DictationTargetApp>();
+
     public int MeetingCount => Meetings.Count;
 
     public int DictationCount => Dictations.Count;

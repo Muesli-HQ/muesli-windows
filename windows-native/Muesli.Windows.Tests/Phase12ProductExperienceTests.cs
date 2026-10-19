@@ -11,38 +11,6 @@ namespace Muesli.Windows.Tests;
 public sealed class Phase12ProductExperienceTests
 {
     [Fact]
-    public void Selection_transitions_clear_only_the_verification_evidence_they_invalidate()
-    {
-        var progress = new OnboardingProgress
-        {
-            MicrophoneVerified = true, ModelsVerified = true, HotkeyVerified = true, PipelineVerified = true,
-            VerifiedMicrophone = "mic-a", VerifiedDictationModelId = "dictation-a", VerifiedFinalModelId = "final-a",
-            VerifiedLiveModelId = "live-a", VerifiedHotkey = "F8"
-        };
-        var original = new OnboardingSelection("mic-a", "dictation-a", "final-a", "live-a", "F8");
-
-        var microphoneChanged = OnboardingProgressReconciler.InvalidateForSelectionChange(progress, original, original with { Microphone = "mic-b" });
-        Assert.False(microphoneChanged.MicrophoneVerified);
-        Assert.False(microphoneChanged.PipelineVerified);
-        Assert.True(microphoneChanged.ModelsVerified);
-        Assert.True(microphoneChanged.HotkeyVerified);
-        Assert.Equal("", microphoneChanged.VerifiedMicrophone);
-
-        var modelChanged = OnboardingProgressReconciler.InvalidateForSelectionChange(progress, original, original with { LiveModelId = null });
-        Assert.False(modelChanged.ModelsVerified);
-        Assert.False(modelChanged.PipelineVerified);
-        Assert.Equal("", modelChanged.VerifiedDictationModelId);
-        Assert.Equal("", modelChanged.VerifiedFinalModelId);
-        Assert.Null(modelChanged.VerifiedLiveModelId);
-
-        var hotkeyChanged = OnboardingProgressReconciler.InvalidateForSelectionChange(progress, original, original with { Hotkey = "F9" });
-        Assert.False(hotkeyChanged.HotkeyVerified);
-        Assert.Equal("", hotkeyChanged.VerifiedHotkey);
-        Assert.True(hotkeyChanged.PipelineVerified);
-        Assert.Equal(progress, OnboardingProgressReconciler.InvalidateForSelectionChange(progress, original, original));
-    }
-
-    [Fact]
     public void Candidate_hook_result_remains_decisive_when_previous_hook_restoration_fails()
     {
         var restored = false;
@@ -50,25 +18,6 @@ public sealed class Phase12ProductExperienceTests
         Assert.True(restored);
         Assert.True(result.CandidateRegistered);
         Assert.False(result.PreviousHookRestored);
-    }
-
-    [Theory]
-    [InlineData("F8", "F8", true)]
-    [InlineData("F8", "F9", false)]
-    public void Reconciliation_invalidates_hotkey_when_selection_changes(string verified, string selected, bool expected)
-    {
-        var progress = new OnboardingProgress { HotkeyVerified = true, VerifiedHotkey = verified };
-        var result = OnboardingProgressReconciler.Reconcile(progress, new("mic", "d", "f", null, selected), _ => true, _ => true);
-        Assert.Equal(expected, result.HotkeyVerified);
-    }
-
-    [Fact]
-    public void Reconciliation_requires_current_model_lifecycle_readiness()
-    {
-        var progress = new OnboardingProgress { ModelsVerified = true, PipelineVerified = true, VerifiedMicrophone = "mic", MicrophoneVerified = true, VerifiedDictationModelId = "d", VerifiedFinalModelId = "f" };
-        var result = OnboardingProgressReconciler.Reconcile(progress, new("mic", "d", "f", null, "F8"), id => id == "d", _ => true);
-        Assert.False(result.ModelsVerified);
-        Assert.False(result.PipelineVerified);
     }
 
     [Theory]
@@ -82,7 +31,7 @@ public sealed class Phase12ProductExperienceTests
     [Fact]
     public void Progress_serialization_never_includes_transcript_or_secrets()
     {
-        var progress = new OnboardingProgress { LastStatus = "Pipeline test passed", VerifiedMicrophone = "mic" };
+        var progress = new OnboardingProgress { LastStatus = "Dictation is working!" };
         var json = System.Text.Json.JsonSerializer.Serialize(progress);
         Assert.DoesNotContain("transcript", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("apiKey", json, StringComparison.OrdinalIgnoreCase);

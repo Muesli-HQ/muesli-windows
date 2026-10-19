@@ -80,7 +80,8 @@ public sealed class WinUiMeetingDetailContext : IDisposable
             settings,
             cancellationToken,
             manualNotes: meeting.ManualNotes,
-            previousMeetingNotes: _library.Predecessor(meeting.Id) is { } predecessor ? MeetingContinuation.CarriedNotes(predecessor) : null);
+            previousMeetingNotes: _library.Predecessor(meeting.Id) is { } predecessor ? MeetingContinuation.CarriedNotes(predecessor) : null,
+            participantNames: MeetingParticipants.Load(_library.Profile.RootDirectory, meeting.Id).Select(person => person.Name));
         var generatedTitle = await MeetingSummaryService.CreateTitleAsync(meeting, settings, cancellationToken);
         // Notes typed while generation ran were saved meanwhile; build on the latest copy.
         var updated = MeetingNotesComposer.ApplyResummarization(

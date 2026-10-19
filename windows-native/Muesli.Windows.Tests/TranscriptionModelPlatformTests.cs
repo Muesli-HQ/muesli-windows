@@ -5,7 +5,7 @@ public sealed class TranscriptionModelPlatformTests
     [Fact]
     public void CatalogPinsArchiveAndEveryRequiredFileAndRejectsUnknownRuntimeIds()
     {
-        Assert.Equal(12, TranscriptionModelCatalog.Models.Count);
+        Assert.Equal(16, TranscriptionModelCatalog.Models.Count);
         Assert.All(TranscriptionModelCatalog.Models, model =>
         {
             Assert.Matches("^[A-F0-9]{64}$", model.ArchiveSha256);

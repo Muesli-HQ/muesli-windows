@@ -200,6 +200,13 @@ public sealed class SettingsStore
             UserName = settings.UserName ?? "",
             Hotkey = DefaultIfBlank(settings.Hotkey, "F8").Trim(),
             PasteBehavior = DefaultIfBlank(settings.PasteBehavior, "active-app").Trim(),
+            PasteShortcut = settings.PasteShortcut is "ctrl-shift-v" or "shift-insert" ? settings.PasteShortcut : "ctrl-v",
+            MeetingRecordingHotkey = DefaultIfBlank(settings.MeetingRecordingHotkey, "Ctrl+Alt+R").Trim(),
+            MeetingRecordingFormat = settings.MeetingRecordingFormat == "m4a" ? "m4a" : "wav",
+            QuillHotkey = DefaultIfBlank(settings.QuillHotkey, "F9").Trim(),
+            CleanupSource = MeetingSummaryService.IsHostedProvider(settings.CleanupSource ?? "") ? settings.CleanupSource! : "local",
+            CustomCleanupPrompts = NormalizeCleanupPrompts(settings.CustomCleanupPrompts),
+            ActiveCleanupPromptId = CleanupPrompts.Resolve(settings.ActiveCleanupPromptId, NormalizeCleanupPrompts(settings.CustomCleanupPrompts)).Id,
             DictationModelId = NormalizePersistedModelId(settings.DictationModelId),
             FinalMeetingModelId = NormalizePersistedModelId(settings.FinalMeetingModelId),
             LiveTranscriptOwnership = NormalizeOwnership(settings.LiveTranscriptOwnership),
@@ -216,6 +223,10 @@ public sealed class SettingsStore
             AutoExportMarkdownContent = NormalizeAutoExportContent(settings.AutoExportMarkdownContent),
             ComputerUsePlannerProvider = NormalizeComputerUseProvider(settings.ComputerUsePlannerProvider),
             ComputerUsePlannerModel = settings.ComputerUsePlannerModel?.Trim() ?? "",
+            ComputerUseReasoningEffort = settings.ComputerUseReasoningEffort?.Trim().ToLowerInvariant() ?? "",
+            ComputerUseTimeoutSeconds = Math.Clamp(settings.ComputerUseTimeoutSeconds, 1, 600),
+            ComputerUseHotkey = DefaultIfBlank(settings.ComputerUseHotkey, ComputerUseConfiguration.DefaultHotkey).Trim(),
+            OnboardingUseCase = OnboardingFlow.Format(OnboardingFlow.Parse(settings.OnboardingUseCase)),
             ComputerUsePlannerTimeoutSeconds = Math.Clamp(settings.ComputerUsePlannerTimeoutSeconds, 5, 120),
             ComputerUsePerActionTimeoutSeconds = Math.Clamp(settings.ComputerUsePerActionTimeoutSeconds, 1, 30),
             ComputerUseMaximumActionCount = Math.Clamp(settings.ComputerUseMaximumActionCount, 1, 20),
@@ -225,7 +236,9 @@ public sealed class SettingsStore
             ComputerUseBrowserEndpoint = NormalizeLoopbackEndpoint(settings.ComputerUseBrowserEndpoint),
             IndicatorAnchor = DefaultIfBlank(settings.IndicatorAnchor, "Middle Right").Trim(),
             DictionarySuggestions = NormalizeDictionarySuggestions(settings.DictionarySuggestions),
+            DismissedDictionarySuggestionKeys = settings.DismissedDictionarySuggestionKeys?.Where(key => !string.IsNullOrWhiteSpace(key)).ToArray() ?? [],
             ModelLanguages = NormalizeModelLanguages(settings.ModelLanguages),
+            BodhanOutputMode = BodhanModels.NormalizeOutputMode(settings.BodhanOutputMode),
             ExecutionProvider = NormalizeExecutionProvider(settings.ExecutionProvider),
             CleanupModelId = CleanupModelCatalog.Normalize(settings.CleanupModelId),
             OpenAIModel = DefaultIfBlank(settings.OpenAIModel, "gpt-5.4-mini").Trim(),
@@ -294,13 +307,23 @@ public sealed class SettingsStore
         return candidate.Length == 64 && candidate.All(Uri.IsHexDigit) ? candidate : "";
     }
 
+    private static IReadOnlyList<CleanupPromptPreset> NormalizeCleanupPrompts(IReadOnlyList<CleanupPromptPreset>? presets) =>
+        (presets ?? []).Where(preset => preset is not null && !string.IsNullOrWhiteSpace(preset.Id) &&
+            !string.IsNullOrWhiteSpace(preset.Name) && !string.IsNullOrWhiteSpace(preset.Prompt)).ToList();
+
     private static IReadOnlyList<DictionarySuggestion> NormalizeDictionarySuggestions(
         IReadOnlyList<DictionarySuggestion>? suggestions) =>
         suggestions is null
             ? []
             : suggestions
                 .Where(item => item is not null)
-                .Select(item => new DictionarySuggestion(item.Observed ?? "", item.Replacement ?? ""))
+                .Select(item => item with
+                {
+                    Observed = item.Observed ?? "",
+                    Replacement = item.Replacement ?? "",
+                    AppContext = item.AppContext ?? "",
+                    OccurrenceCount = Math.Max(1, item.OccurrenceCount)
+                })
                 .Where(item => !string.IsNullOrWhiteSpace(item.Observed))
                 .ToArray();
 
@@ -366,6 +389,7 @@ public sealed class SettingsStore
     private static string NormalizeComputerUseProvider(string? value) => value?.Trim().ToLowerInvariant() switch
     {
         "openai" => "openai",
+        "chatgpt" => "chatgpt",
         _ => "none"
     };
 
@@ -455,20 +479,56 @@ public sealed record MuesliSettings
     public string? LegacyDictationModelProfileForMigration { get; init; }
     public bool OnboardingCompleted { get; init; }
     public int LastCompletedFeatureTourVersion { get; init; }
+    /// <summary>macOS onboarding_use_case: what setup was answered with (see <see cref="OnboardingFlow"/>).</summary>
+    public string OnboardingUseCase { get; init; } = OnboardingFlow.DefaultUseCase;
+    /// <summary>macOS featureTour.lastLaunchedVersion: the app version that last ran.</summary>
+    public string? FeatureTourLastLaunchedVersion { get; init; }
+    /// <summary>macOS featureTour.lastPresentedVersion: the newest What's New tour already offered.</summary>
+    public string? FeatureTourLastPresentedVersion { get; init; }
+    /// <summary>macOS push_to_talk: off releases the dictation shortcut entirely.</summary>
+    public bool PushToTalkEnabled { get; init; } = true;
     public bool EnableDoubleTapDictation { get; init; }
+    /// <summary>macOS meeting_shortcut: off by default, so no key is taken until the user opts in.</summary>
+    public bool MeetingRecordingShortcutEnabled { get; init; }
+    public string MeetingRecordingHotkey { get; init; } = "Ctrl+Alt+R";
+    /// <summary>macOS Quill: off by default; the rewrite needs a ChatGPT sign-in.</summary>
+    public bool QuillEnabled { get; init; }
+    public string QuillHotkey { get; init; } = "F9";
+    public bool PauseMediaDuringDictation { get; init; }
+    public bool MuteAudioDuringDictation { get; init; }
+    /// <summary>Keys sent to paste dictated text: "ctrl-v", "ctrl-shift-v" or "shift-insert".</summary>
+    public string PasteShortcut { get; init; } = "ctrl-v";
     public int HotkeyTriggerThresholdMs { get; init; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
     public string RecordingColorHex { get; init; } = "1e1e2e";
     /// <summary>Idle indicator style: <c>classic</c> pill or macOS-style <c>minimal</c> grip.</summary>
     public string IndicatorStyle { get; init; } = "classic";
     public bool RemoveFillerWords { get; init; } = true;
     public bool EnableLocalCleanup { get; init; }
+    /// <summary>
+    /// macOS cleanup_source: "local" runs the downloaded cleanup model; a summary provider id
+    /// ("chatgpt", "openai", ...) sends the dictation to that provider with its saved key and model.
+    /// </summary>
+    public string CleanupSource { get; init; } = "local";
+    /// <summary>macOS app_context: send the focused app, nearby text and selection with hosted cleanup.</summary>
+    public bool EnableAppContext { get; init; }
+    /// <summary>macOS enable_dictation_ocr_context: add the target window's OCR text to app context.</summary>
+    public bool EnableDictationOcrContext { get; init; }
+    /// <summary>macOS enable_automatic_diagnostic_issue_prompts: offer an anonymized issue after a hard failure.</summary>
+    public bool EnableAutomaticDiagnosticIssuePrompts { get; init; }
+    /// <summary>macOS active_transcript_cleanup_prompt_id: the preset hosted cleanup sends.</summary>
+    public string ActiveCleanupPromptId { get; init; } = CleanupPrompts.DefaultId;
+    /// <summary>macOS custom_transcript_cleanup_prompts.</summary>
+    public IReadOnlyList<CleanupPromptPreset> CustomCleanupPrompts { get; init; } = [];
     public bool StartAtLogin { get; init; }
     public bool AutoMeetingDetectionEnabled { get; init; } = true;
     public string MeetingSummaryProvider { get; init; } = "local";
     public string MeetingSummaryTemplate { get; init; } = "standard";
+    public int MeetingSummaryRetryCount { get; init; } = MeetingSummaryRetryPolicy.DefaultRetryCount;
     public string MeetingSummaryPromptOverride { get; init; } = "";
     public bool OpenDashboardOnLaunch { get; init; } = true;
     public bool SaveMeetingRecordings { get; init; } = true;
+    /// <summary>"wav" keeps lossless tracks; "m4a" compresses them once the transcript is final.</summary>
+    public string MeetingRecordingFormat { get; init; } = "wav";
     public bool PostMeetingHookEnabled { get; init; }
     public string PostMeetingHookExecutablePath { get; init; } = "";
     public string PostMeetingHookTranscriptPolicy { get; init; } = "metadata-only";
@@ -486,6 +546,11 @@ public sealed record MuesliSettings
     public bool ComputerUseEnabled { get; init; }
     public string ComputerUsePlannerProvider { get; init; } = "none";
     public string ComputerUsePlannerModel { get; init; } = "";
+    /// <summary>Planner thinking effort; empty or unsupported uses the model's default.</summary>
+    public string ComputerUseReasoningEffort { get; init; } = "";
+    /// <summary>Limits desktop observation and actions; planning and questions are excluded.</summary>
+    public int ComputerUseTimeoutSeconds { get; init; } = 120;
+    public string ComputerUseHotkey { get; init; } = ComputerUseConfiguration.DefaultHotkey;
     public int ComputerUsePlannerTimeoutSeconds { get; init; } = 30;
     public int ComputerUsePerActionTimeoutSeconds { get; init; } = 10;
     public int ComputerUseMaximumActionCount { get; init; } = 5;
@@ -500,10 +565,19 @@ public sealed record MuesliSettings
     public bool SoundEnabled { get; init; } = true;
     public string IndicatorAnchor { get; init; } = "Middle Right";
     public IReadOnlyList<DictionarySuggestion> DictionarySuggestions { get; init; } = [];
+    /// <summary>
+    /// macOS "Dictionary suggestions": after a paste, briefly read the focused field's text through
+    /// UI Automation to notice corrections. Off by default, as on macOS.
+    /// </summary>
+    public bool EnableDictionaryCorrectionPrompts { get; init; }
+    public IReadOnlyList<string> DismissedDictionarySuggestionKeys { get; init; } = [];
 
     /// <summary>Per-model language code selections, keyed by model id. Empty uses each model's default.</summary>
     public IReadOnlyDictionary<string, string> ModelLanguages { get; init; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>macOS bodhan_output_mode: native, mixed or romanized. Only Bodhan Flex honours it.</summary>
+    public string BodhanOutputMode { get; init; } = "mixed";
     [JsonPropertyName("OpenAIApiKey")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string? PlaintextOpenAIApiKeyForMigration { get; init; }

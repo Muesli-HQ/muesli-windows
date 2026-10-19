@@ -10,6 +10,10 @@ namespace Muesli.Windows.Tests;
 /// </summary>
 public sealed class Phase7NotesTests
 {
+    /// <summary>Retry backoff is real seconds in the app; tests exercise the retries, not the waiting.</summary>
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void SkipRetryDelays() => MeetingSummaryService.RetryDelay = (_, _) => Task.CompletedTask;
+
     private const string Transcript = "[09:00:00] You: we agreed to ship on Friday and Priya will own the release notes.";
 
     private static MuesliSettings Settings(string provider, string? endpoint = null, string? model = null) => new()
@@ -344,17 +348,36 @@ public sealed class Phase7NotesTests
         Assert.All(SummaryProviderDisclosure.Available, info =>
         {
             Assert.False(string.IsNullOrWhiteSpace(info.Disclosure));
-            Assert.Equal(info.SendsTranscriptOffMachine, info.RequiresApiKey);
+            // ChatGPT is the one cloud provider that signs in instead of taking a key.
+            Assert.Equal(info.SendsTranscriptOffMachine && info.Id != SummaryProviderDisclosure.ChatGpt, info.RequiresApiKey);
         });
         Assert.Contains("ollama", SummaryProviderDisclosure.AvailableIds);
     }
 
     [Fact]
-    public void ChatGptSubscriptionIsNotOfferedAndItsBlockerIsRecorded()
+    public async Task ChatGptSummariesNeedASignInAndReadTheStreamedText()
     {
-        Assert.DoesNotContain(SummaryProviderDisclosure.ChatGptSubscription, SummaryProviderDisclosure.AvailableIds);
-        Assert.Contains("no published OAuth client",
-            SummaryProviderDisclosure.ChatGptSubscriptionBlocker, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(SummaryProviderDisclosure.ChatGpt, SummaryProviderDisclosure.AvailableIds);
+        Assert.True(SummaryProviderDisclosure.LeavesMachine(SummaryProviderDisclosure.ChatGpt));
+
+        var previous = MeetingSummaryService.ChatGptCredentials;
+        MeetingSummaryService.ChatGptCredentials = null;
+        try
+        {
+            var result = await MeetingSummaryService.CreateSummaryResultAsync(
+                "We agreed to ship on Friday.", "Planning", new MuesliSettings { MeetingSummaryProvider = "chatgpt" });
+            Assert.True(result.UsedLocalFallback);
+            Assert.Equal("not-signed-in", result.SafeFailureReason);
+        }
+        finally
+        {
+            MeetingSummaryService.ChatGptCredentials = previous;
+        }
+
+        var events = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"## Notes\"}\n\n" +
+                     "data: {\"type\":\"response.output_text.delta\",\"delta\":\" ship Friday\"}\n\ndata: [DONE]\n";
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(events));
+        Assert.Equal("## Notes ship Friday", await MeetingSummaryService.ReadResponsesStreamTextAsync(stream, CancellationToken.None));
     }
 
     [Fact]
@@ -680,7 +703,42 @@ public sealed class Phase7NotesTests
         Assert.Equal("## Summary\n- old", loaded.Summary);
     }
 
+    [Fact]
+    public async Task TransientSummaryFailuresRetryButSetupFailuresDoNot()
+    {
+        Assert.True(MeetingSummaryRetryPolicy.IsTransient(new SummaryProviderException("http-503")));
+        Assert.True(MeetingSummaryRetryPolicy.IsTransient(new SummaryProviderException("http-429")));
+        Assert.False(MeetingSummaryRetryPolicy.IsTransient(new SummaryProviderException("http-401")));
+        Assert.False(MeetingSummaryRetryPolicy.IsTransient(new SummaryProviderException("not-signed-in")));
+        Assert.Equal(3, MeetingSummaryRetryPolicy.EffectiveRetries(3, "chatgpt", new SummaryProviderException("empty-response")));
+        Assert.Equal(1, MeetingSummaryRetryPolicy.EffectiveRetries(3, "ollama", new SummaryProviderException("http-500")));
+        Assert.Equal(0, MeetingSummaryRetryPolicy.EffectiveRetries(0, "chatgpt", new SummaryProviderException("http-500")));
+        Assert.Equal([1d, 2d, 4d, 8d, 8d], Enumerable.Range(1, 5).Select(a => MeetingSummaryRetryPolicy.Delay(a).TotalSeconds));
+
+        var recovering = new SequenceHandler(HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK);
+        using var client = new HttpClient(recovering);
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(Transcript, "Sync", Settings("ollama"), httpClient: client);
+        Assert.False(result.UsedLocalFallback);
+        Assert.Equal(2, recovering.Calls);
+
+        var missing = new SequenceHandler(HttpStatusCode.NotFound, HttpStatusCode.OK);
+        using var missingClient = new HttpClient(missing);
+        Assert.True((await MeetingSummaryService.CreateSummaryResultAsync(Transcript, "Sync", Settings("ollama"), httpClient: missingClient)).UsedLocalFallback);
+        Assert.Equal(1, missing.Calls);
+    }
+
     // ---- fakes -------------------------------------------------------------------
+
+    private sealed class SequenceHandler(params HttpStatusCode[] statuses) : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var status = statuses[Math.Min(Calls++, statuses.Length - 1)];
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent("{\"message\":{\"content\":\"## Summary\\nok\"}}") });
+        }
+    }
 
     private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
     {
