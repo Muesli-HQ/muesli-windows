@@ -303,6 +303,55 @@
                     AllNavItems()/VisibleNavItems(), so keyboard traversal is unchanged.
                 -->
                 <StackPanel Margin="0,10,0,4">
+                    <!--
+                        macOS DownloadStatusRow: whatever is downloading, from any page, then the
+                        outcome for a few seconds. Selecting it opens Models. It is not a nav item
+                        (no selection state), so it stays out of AllNavItems().
+                    -->
+                    <Button x:Name="DownloadStatusRow"
+                            Style="{StaticResource MuesliSidebarButtonStyle}"
+                            Tag="models"
+                            Click="NavButton_Click"
+                            Visibility="{x:Bind Downloads.IsVisible, Mode=OneWay}"
+                            ToolTipService.ToolTip="{x:Bind Downloads.Title, Mode=OneWay}"
+                            AutomationProperties.AutomationId="SidebarDownloadStatus"
+                            AutomationProperties.Name="{x:Bind Downloads.AccessibleName, Mode=OneWay}"
+                            AutomationProperties.LiveSetting="Polite">
+                        <Grid ColumnSpacing="0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Grid x:Name="DownloadStatusIcon" Width="16" Height="16" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                <ProgressRing Width="16" Height="16"
+                                              MinWidth="16" MinHeight="16"
+                                              IsActive="{x:Bind Downloads.ShowRing, Mode=OneWay}"
+                                              IsIndeterminate="{x:Bind Downloads.IsIndeterminate, Mode=OneWay}"
+                                              Value="{x:Bind Downloads.ProgressValue, Mode=OneWay}"
+                                              Maximum="100"
+                                              Foreground="{ThemeResource MuesliAccentBrush}"
+                                              Visibility="{x:Bind Downloads.ShowRing, Mode=OneWay}" />
+                                <FontIcon Glyph="&#xE73E;" FontSize="13"
+                                          Foreground="{ThemeResource MuesliSuccessBrush}"
+                                          Visibility="{x:Bind Downloads.ShowCompleted, Mode=OneWay}" />
+                                <FontIcon Glyph="&#xE7BA;" FontSize="13"
+                                          Foreground="{ThemeResource MuesliErrorBrush}"
+                                          Visibility="{x:Bind Downloads.ShowFailed, Mode=OneWay}" />
+                                <FontIcon Glyph="&#xE769;" FontSize="13"
+                                          Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                          Visibility="{x:Bind Downloads.ShowPaused, Mode=OneWay}" />
+                            </Grid>
+                            <StackPanel x:Name="DownloadStatusText" Grid.Column="1" Spacing="1" VerticalAlignment="Center" MinWidth="0">
+                                <TextBlock Text="{x:Bind Downloads.Title, Mode=OneWay}"
+                                           FontSize="12"
+                                           FontWeight="Medium"
+                                           MaxLines="1"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind Downloads.Detail, Mode=OneWay}"
+                                           FontSize="11"
+                                           Foreground="{ThemeResource MuesliTextTertiaryBrush}"
+                                           MaxLines="1"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
                     <Button x:Name="ModelsNav"
                             Style="{StaticResource MuesliSidebarButtonStyle}"
                             Tag="models"

@@ -870,7 +870,7 @@ public sealed class ModelDownloadCoordinator
 
     // ─── Progress ────────────────────────────────────────────────────────────────────────────
 
-    private sealed class ProgressTracker(ModelDownloadManifest manifest, IProgress<ModelDownloadSnapshot>? sink)
+    internal sealed class ProgressTracker(ModelDownloadManifest manifest, IProgress<ModelDownloadSnapshot>? sink)
     {
         private readonly object _gate = new();
         private IReadOnlyList<ModelDownloadFile> _files = manifest.Files;
@@ -898,11 +898,18 @@ public sealed class ModelDownloadCoordinator
             }
         }
 
+        /// <summary>
+        /// Records bytes already on disk (resumed, verified, or reset to zero). They were not
+        /// transferred in this session, so the speed baseline moves with them; otherwise a resumed
+        /// download reports its saved bytes as speed and a time left that is far too short.
+        /// </summary>
         public void MarkPresent(string file, long bytes, bool completed)
         {
             lock (_gate)
             {
+                var delta = bytes - _bytes.GetValueOrDefault(file);
                 _bytes[file] = bytes;
+                if (_clock.IsRunning) _startBytes += delta;
                 if (completed) _completed.Add(file);
             }
         }

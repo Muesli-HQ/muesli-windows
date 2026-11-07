@@ -19,6 +19,9 @@ public sealed partial class MainPage : Page
 {
     public MainPageViewModel ViewModel { get; } = new(App.Library);
 
+    /// <summary>The sidebar download row, fed by the app-scoped model lifecycle.</summary>
+    public SidebarDownloadStatusViewModel Downloads { get; } = new(() => App.Models, () => App.UiDispatcher);
+
     private int _tourIndex = -1;
     private bool _meetingFoldersExpanded = true;
     private bool _compactRail;
@@ -74,6 +77,8 @@ public sealed partial class MainPage : Page
         Navigate(_selectedTag);
         RefreshNavigationVisuals();
         DrawBrandMark();
+        // Queued so it runs after App.OnLaunched has created the model services.
+        DispatcherQueue.TryEnqueue(Downloads.Start);
         XamlRoot.Changed -= OnXamlRootChanged;
         XamlRoot.Changed += OnXamlRootChanged;
     }
@@ -141,6 +146,10 @@ public sealed partial class MainPage : Page
         BrandNameText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         GreetingText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         SpreadTheWordLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        // The narrow rail keeps the download ring (its tooltip carries the title) and drops the text.
+        DownloadStatusText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ApplyNavButtonCompact(DownloadStatusRow, compact);
+        DownloadStatusIcon.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
         NavigationHeader.Margin = compact ? new Thickness(8, 18, 8, 12) : new Thickness(16, 18, 16, 16);
         SearchBox.PlaceholderText = compact ? string.Empty : "Search...";
         if (compact)
@@ -270,6 +279,7 @@ public sealed partial class MainPage : Page
     {
         App.Settings.Changed -= OnSettingsChanged;
         ShellRoot.SizeChanged -= ShellRoot_SizeChanged;
+        Downloads.Stop();
     }
 
     private void OnSettingsChanged(object? sender, Muesli.Windows.Services.MuesliSettings settings)
