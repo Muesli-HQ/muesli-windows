@@ -72,6 +72,7 @@ public partial class App : Application
     private string? _signalLossPromptId;
     private bool _exiting;
     private readonly AppLogService _log = new();
+    private UiResponsivenessMonitor? _uiResponsiveness;
     private UiExceptionPolicy _uiExceptionPolicy = null!;
     private OnboardingWindow? _onboarding;
     private ComputerUseConfirmationWindow? _computerUseConfirmation;
@@ -183,6 +184,9 @@ public partial class App : Application
         TrackTheme(Window);
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         UiDispatcher = new WinUiDispatcher(DispatcherQueue);
+        // Logs UI-thread stalls against the 50 ms budget (docs/PERFORMANCE_BUDGETS.md).
+        _uiResponsiveness = new UiResponsivenessMonitor(UiDispatcher, _log.Info);
+        _uiResponsiveness.Start();
         Settings.Changed += (_, settings) => DispatcherQueue.TryEnqueue(() => Themes.AccentPalette.Apply(settings.RecordingColorHex));
         _desktopInstance.StartListening(() => UiDispatcher.TryEnqueue(() => ((MainWindow)Window).ShowDashboard()));
         Meetings = new WinUiMeetingContext(Library, Settings, UiDispatcher);
@@ -309,6 +313,7 @@ public partial class App : Application
         });
         Window.Closed += (_, _) =>
         {
+                _uiResponsiveness?.Dispose();
                 _onboarding?.Close();
                 _computerUseConfirmation?.Close();
                 _meetingNotifications?.Dispose();
