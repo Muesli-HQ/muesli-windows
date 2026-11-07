@@ -21,8 +21,8 @@ throttling (EcoQoS) is a real-world condition, not an edge case.
 
 | Area | Metric | Budget (low tier) | How it is measured |
 |---|---|---|---|
-| UI | UI-thread stall (posted callback latency) | No stall over 50 ms in steady state; **zero hangs over 2 s, ever** | `UI responsiveness` lines in `%APPDATA%\muesli\logs\muesli-*.log` (`UiResponsivenessMonitor`); summary every 10 min and at exit |
-| UI | Responsiveness during model download, import, finalization | Same as above while the work runs | Same log, during the operation |
+| UI | UI-thread work per input or update | No UI-thread work item over 50 ms in steady state; **zero hangs over 2 s, ever** | Windows Performance Recorder (WPR) trace of the flow, UI thread CPU and wait analysis in WPA; field hangs from Windows Error Reporting / Partner Center health reports |
+| UI | Responsiveness during model download, import, finalization | Same as above while the work runs | Same, recorded during the operation |
 | Dictation | Hotkey press to first captured sample | ≤ 50 ms (pre-roll covers the gap) | Capture start timestamp vs hotkey event |
 | Dictation | Hotkey release to text inserted, utterance ≤ 10 s, cleanup off | p50 ≤ 400 ms, p95 ≤ 700 ms | Dictation timing log line (`PasteOperationResult` plus transcription timing) |
 | Dictation | Added latency with local cleanup on | ≤ +600 ms p95 | Same, cleanup stage timing |
@@ -49,8 +49,12 @@ These were reproduced or found in code during the macOS comparison and Phase 0 r
 
 ## Engineering rules
 
+Responsiveness comes from the architecture, not from detecting stalls after the fact: the UI thread
+only applies finished, immutable snapshots that services produced elsewhere.
+
 **UI thread**
-- No file, registry, Credential Manager, network, process or COM-to-other-process calls.
+- Only applies results: no file, registry, Credential Manager, network, process or COM-to-other-process calls.
+- Reads state from in-memory snapshots (settings, library, model status) that services keep current.
 - No work proportional to library size in constructors, property getters or event handlers.
 - Coalesce background events before they reach the dispatcher; at most one queued refresh per view.
 - Long lists use virtualizing controls with incremental updates, not wholesale replacement.
@@ -72,4 +76,5 @@ These were reproduced or found in code during the macOS comparison and Phase 0 r
 
 1. State the budgets the change affects and the numbers before and after, on the low tier.
 2. Attach the relevant log excerpt or benchmark output.
-3. Run the app for the affected flow and confirm no new `UI responsiveness` stall lines.
+3. Run the affected flow in the app; for UI changes, record a WPR trace and confirm no UI-thread work
+   item over the 50 ms budget.
