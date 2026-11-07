@@ -26,12 +26,12 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
 {
     private bool _disposed;
     private int _reloadQueued;
+    private int _lingerReloadScheduled;
     private readonly WinUiModelsContext _models;
     private readonly WinUiSettingsContext _settings;
     private readonly IUiDispatcher _dispatcher;
     private readonly IAppDialogService _dialogs;
     private readonly Dictionary<string, ModelFamilyCardItem> _families = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, int?> _progressByModel = new(StringComparer.OrdinalIgnoreCase);
     private bool _resetVariantSelection = true;
 
     public ModelsPageViewModel(
@@ -125,40 +125,48 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
         ShowStatus($"{item.DisplayName} is now active for {RoleLabel}.");
     }
 
-    [RelayCommand]
+    /// <summary>
+    /// Download, and resume after a pause or failure: the engine keeps verified files and partial
+    /// bytes, so there is no separate Retry. Progress is not read from this call; the app-scoped
+    /// lifecycle raises ModelChanged and the card reads the latest snapshot. Several cards may
+    /// download at once, so the command allows concurrent executions.
+    /// </summary>
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task PrepareAsync(ModelVariantItem? item, CancellationToken cancellationToken)
     {
         if (item is null) return;
-        await RunOperationAsync(item, (progress, token) => _models.PrepareAsync(item.Id, progress, token), cancellationToken);
+        try
+        {
+            await _models.PrepareAsync(item.Id, null, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Paused: the card shows the paused state and its saved progress.
+        }
+        catch (Exception)
+        {
+            // The card shows the failure inline, from the lifecycle snapshot.
+        }
+        Reload();
     }
 
+    /// <summary>Stops the transfer and keeps its bytes; Download resumes it.</summary>
     [RelayCommand]
-    private async Task VerifyAsync(ModelVariantItem? item, CancellationToken cancellationToken)
+    private void Pause(ModelVariantItem? item)
     {
-        if (item is null) return;
-        await RunOperationAsync(item, (progress, token) => _models.VerifyAsync(item.Id, progress, token), cancellationToken);
-    }
-
-    [RelayCommand]
-    private async Task RetryAsync(ModelVariantItem? item, CancellationToken cancellationToken)
-    {
-        if (item is null) return;
-        await RunOperationAsync(item, (_, token) => _models.RetryAsync(item.Id, token), cancellationToken);
-    }
-
-    [RelayCommand]
-    private void Cancel(ModelVariantItem? item)
-    {
-        if (item is not null) _models.Cancel(item.Id);
+        if (item is null || !item.CanPause) return;
+        item.MarkPausing();
+        _models.Cancel(item.Id);
     }
 
     [RelayCommand]
     private async Task DeleteAsync(ModelVariantItem? item, CancellationToken cancellationToken)
     {
         if (item is null || item.IsSelectedForAnyRole) return;
+        // macOS ModelsView wording.
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete the local files for {item.DisplayName}? You can download them again later.",
-            "Delete transcription model",
+            "The downloaded model files will be removed from this PC. You can download the model again later.",
+            $"Delete \"{item.DisplayName}\"?",
             cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
         try
@@ -173,40 +181,6 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
         {
             ShowStatus($"Could not delete {item.DisplayName}: {exception.Message}", ModelStatusTone.Error);
         }
-        Reload();
-    }
-
-    private async Task RunOperationAsync(
-        ModelVariantItem item,
-        Func<IProgress<ModelDownloadProgress>, CancellationToken, Task> operation,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var progress = new Progress<ModelDownloadProgress>(value =>
-            {
-                _progressByModel[item.Id] = value.Percent;
-                StatusMessage = $"{item.DisplayName}: {value.DisplayText}";
-                StatusTone = ModelStatusTone.Informational;
-                IsStatusOpen = true;
-                // Progress fires once per downloaded chunk; a synchronous Reload here rebuilt every
-                // card (settings, snapshots, provider probe) per tick on the UI thread.
-                QueueReload();
-            });
-            await operation(progress, cancellationToken);
-            ShowStatus($"{item.DisplayName} is ready and verified.");
-        }
-        catch (OperationCanceledException)
-        {
-            ShowStatus($"{item.DisplayName} operation cancelled.", ModelStatusTone.Informational);
-        }
-        catch (Exception exception)
-        {
-            ShowStatus($"{item.DisplayName} failed: {exception.Message}", ModelStatusTone.Error);
-        }
-        // A stale percentage outlives the operation that produced it and would keep reading as
-        // live progress on the next visit to the card, so the entry is dropped once it ends.
-        _progressByModel.Remove(item.Id);
         Reload();
     }
 
@@ -232,6 +206,7 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
         _resetVariantSelection = false;
 
         var ordered = new List<ModelFamilyCardItem>();
+        var linger = TimeSpan.Zero;
         foreach (var group in _models.Snapshots().GroupBy(snapshot => ModelFamilyCatalog.KeyFor(snapshot.Model)))
         {
             if (!_families.TryGetValue(group.Key, out var family))
@@ -240,17 +215,32 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
                 _families[group.Key] = family;
             }
 
-            family.Update(
+            var familyLinger = family.Update(
                 group.ToList(),
                 activeId,
                 settings.DictationModelId,
                 settings.FinalMeetingModelId,
-                _progressByModel,
                 reset);
+            if (familyLinger > linger) linger = familyLinger;
             ordered.Add(family);
         }
 
         if (!Items.SequenceEqual(ordered)) Items = ordered;
+        if (linger > TimeSpan.Zero) ScheduleReload(linger);
+    }
+
+    // A finished download keeps its full bar on screen briefly (macOS keeps it for 1.5 s); one
+    // reload after that hides it. Nothing else changes in between, so no event would trigger it.
+    private void ScheduleReload(TimeSpan delay)
+    {
+        if (Interlocked.Exchange(ref _lingerReloadScheduled, 1) != 0) return;
+        _ = Task.Delay(delay + TimeSpan.FromMilliseconds(50)).ContinueWith(
+            _ =>
+            {
+                Interlocked.Exchange(ref _lingerReloadScheduled, 0);
+                QueueReload();
+            },
+            TaskScheduler.Default);
     }
 
     private void ShowStatus(string message, ModelStatusTone tone = ModelStatusTone.Success)
@@ -417,14 +407,15 @@ public sealed partial class ModelFamilyCardItem : ObservableObject
         OnPropertyChanged(nameof(AccessibleName));
     }
 
-    internal void Update(
+    /// <returns>How long until a finished download's progress should be hidden, or zero.</returns>
+    internal TimeSpan Update(
         IReadOnlyList<TranscriptionModelSnapshot> snapshots,
         string? activeId,
         string? dictationModelId,
         string? meetingModelId,
-        IReadOnlyDictionary<string, int?> progressByModel,
         bool resetSelection)
     {
+        var linger = TimeSpan.Zero;
         var rebuilt = new List<ModelVariantItem>(snapshots.Count);
         foreach (var snapshot in snapshots)
         {
@@ -434,13 +425,13 @@ public sealed partial class ModelFamilyCardItem : ObservableObject
                 _byId[snapshot.Model.Id] = variant;
             }
 
-            variant.Update(
+            var variantLinger = variant.Update(
                 snapshot,
                 isActive: Matches(snapshot.Model.Id, activeId) &&
                           snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected,
                 isSelectedForDictation: Matches(snapshot.Model.Id, dictationModelId),
-                isSelectedForMeetings: Matches(snapshot.Model.Id, meetingModelId),
-                progressByModel.GetValueOrDefault(snapshot.Model.Id));
+                isSelectedForMeetings: Matches(snapshot.Model.Id, meetingModelId));
+            if (variantLinger > linger) linger = variantLinger;
             rebuilt.Add(variant);
         }
 
@@ -465,6 +456,8 @@ public sealed partial class ModelFamilyCardItem : ObservableObject
             OnPropertyChanged(nameof(HasVariantDescription));
             OnPropertyChanged(nameof(AccessibleName));
         }
+
+        return linger;
     }
 
     private ModelVariantItem? ChooseVariant(string? activeId)
@@ -528,13 +521,24 @@ public sealed partial class ModelVariantItem : ObservableObject
     public bool IsSelectedForMeetings { get; private set; }
     public bool IsBusy { get; private set; }
     public bool CanPrepare { get; private set; }
-    public bool CanCancel { get; private set; }
-    public bool CanRetry { get; private set; }
-    public bool CanVerify { get; private set; }
+    public bool CanPause { get; private set; }
     public bool CanDelete { get; private set; }
     public bool IsReady { get; private set; }
     public bool CanSetActive { get; private set; }
-    public int? ProgressPercent { get; private set; }
+
+    /// <summary>The latest transfer state from the app-scoped lifecycle; null before any download.</summary>
+    public ModelDownloadSnapshot? Download { get; private set; }
+
+    /// <summary>Set by Pause until the operation ends, so the button reads "Pausing…" meanwhile.</summary>
+    public bool IsPausing { get; private set; }
+
+    public bool IsPaused { get; private set; }
+    public bool IsFailed { get; private set; }
+
+    // A completed download keeps its full bar for a moment, as on macOS.
+    internal static readonly TimeSpan CompletionLinger = TimeSpan.FromSeconds(1.5);
+    private ModelDownloadSnapshot? _completedDownload;
+    private long _completedAt;
 
     public bool IsSelectedForAnyRole => IsSelectedForDictation || IsSelectedForMeetings;
 
@@ -550,41 +554,84 @@ public sealed partial class ModelVariantItem : ObservableObject
     public string SizeCaption => HasInstalledSize ? $"{DownloadLabel} · {DiskSize} on disk" : DownloadLabel;
     public bool HasLanguages => !string.IsNullOrWhiteSpace(Languages);
 
-    public string ProgressLabel => ProgressPercent is int value ? $"{value}%" : StatusText;
-    public bool IsProgressIndeterminate => IsBusy && ProgressPercent is null;
-    public double ProgressValue => ProgressPercent ?? 0;
+    private bool IsLingering => _completedDownload is not null &&
+                                System.Diagnostics.Stopwatch.GetElapsedTime(_completedAt) < CompletionLinger;
 
-    public bool HasActions => CanSetActive || CanPrepare || CanVerify || CanRetry || CanCancel || CanDelete;
+    /// <summary>The transfer the status block describes: live, paused, or just finished.</summary>
+    private ModelDownloadSnapshot? ShownDownload => IsLingering ? _completedDownload : Download;
+
+    /// <summary>macOS shows the phase and file while working, the pause hint when paused.</summary>
+    public bool ShowStatusBlock => IsBusy || IsPaused || IsLingering;
+
+    public string StatusPrimary
+    {
+        get
+        {
+            if (IsLingering) return "Downloaded";
+            // After the transfer (archive extraction, final checks) the lifecycle's own text says what is happening.
+            if (IsPaused || Download is null || Download.Phase is ModelDownloadPhase.Ready or ModelDownloadPhase.Failed) return StatusText;
+            if (Status == TranscriptionModelStatus.Verifying)
+            {
+                return Download.Phase == ModelDownloadPhase.Verifying && Download.CurrentFile is { } verifying
+                    ? $"Verifying: {verifying}"
+                    : StatusText;
+            }
+
+            return Download.CurrentFile is { } file
+                ? $"{ModelDownloadFormatting.PhaseLabel(Download.Phase)}: {file}"
+                : ModelDownloadFormatting.PhaseLabel(Download.Phase);
+        }
+    }
+
+    /// <summary>"3 of 12 files · 312.0 MB / 640.0 MB · 328.0 MB left · 12.4 MB/s · 26s left".</summary>
+    public string StatusDetail => ShownDownload is { } download && ShowStatusBlock
+        // The paused and finished states already say so in the primary line.
+        ? ModelDownloadFormatting.DetailLine(download.Phase == ModelDownloadPhase.Downloading ? download : download with { Message = "" })
+        : "";
+
+    public bool HasStatusDetail => !string.IsNullOrWhiteSpace(StatusDetail);
+
+    /// <summary>Hidden while preparing (no transfer numbers yet), as on macOS.</summary>
+    public bool ShowProgressBar => ShowStatusBlock && ShownDownload is not null;
+
+    public double ProgressValue => IsLingering ? 100 : (ShownDownload?.Fraction ?? 0) * 100;
+
+    public bool IsProgressIndeterminate => IsBusy && !IsLingering && ShownDownload?.Fraction is null;
+
+    /// <summary>Paused bars stay still at the saved fraction.</summary>
+    public bool ShowProgressPaused => IsPaused;
+
+    public string PauseLabel => IsPausing ? "Pausing…" : "Pause";
+    public bool IsPauseEnabled => CanPause && !IsPausing;
+
+    public string FailureMessage => IsFailed ? StatusText : "";
+
+    public bool HasActions => CanSetActive || CanPrepare || CanPause || CanDelete;
 
     public bool ShowActiveChip => IsActive;
     public bool ShowDownloadedChip =>
         !IsActive && !IsBusy && Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
-    public bool ShowErrorChip =>
-        !IsBusy && Status is TranscriptionModelStatus.Failed or TranscriptionModelStatus.DeletionFailed;
     public bool ShowUnavailableChip =>
         !IsActive && !IsBusy && Status is TranscriptionModelStatus.RuntimeUnavailable;
 
-    public string StatusChipLabel => ShowActiveChip
-        ? "Active"
-        : ShowErrorChip
-            ? (Status == TranscriptionModelStatus.DeletionFailed ? "Delete failed" : "Failed")
-            : ShowUnavailableChip
-                ? "Unavailable"
-                : ShowDownloadedChip
-                    ? "Downloaded"
-                    : "";
+    public string StatusChipLabel => ShowUnavailableChip
+        ? "Unavailable"
+        : ShowActiveChip
+            ? "Active"
+            : ShowDownloadedChip
+                ? "Downloaded"
+                : "";
 
     /// <summary>
     /// Why an action the card does not offer is missing. Every branch is derived from the real
     /// snapshot, so the card never claims an operation is possible when the service refuses it,
-    /// and never leaves a disabled-looking card unexplained.
+    /// and never leaves a disabled-looking card unexplained. Failures have their own red line.
     /// </summary>
     public string StateNote => Status switch
     {
         TranscriptionModelStatus.RuntimeUnavailable =>
             "The on-device speech runtime is not available on this PC, so no model can be downloaded, verified, or deleted. " +
             StatusText,
-        TranscriptionModelStatus.Failed or TranscriptionModelStatus.DeletionFailed => StatusText,
         _ when IsSelectedForAnyRole && HasFilesOnDisk && !CanDelete && !IsBusy =>
             $"In use for {SelectedRoleLabel}, so it can't be deleted. Choose another model for that first.",
         _ => ""
@@ -604,13 +651,33 @@ public sealed partial class ModelVariantItem : ObservableObject
 
     public override string ToString() => DisplayName;
 
-    internal void Update(
+    internal void MarkPausing()
+    {
+        IsPausing = true;
+        OnPropertyChanged(nameof(IsPausing));
+        OnPropertyChanged(nameof(PauseLabel));
+        OnPropertyChanged(nameof(IsPauseEnabled));
+    }
+
+    /// <returns>How long the finished-download bar has left on screen, or zero.</returns>
+    internal TimeSpan Update(
         TranscriptionModelSnapshot snapshot,
         bool isActive,
         bool isSelectedForDictation,
-        bool isSelectedForMeetings,
-        int? progressPercent)
+        bool isSelectedForMeetings)
     {
+        var finishedDownload = IsBusy && Download is not null &&
+                               snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
+        if (finishedDownload)
+        {
+            _completedDownload = Download! with { Phase = ModelDownloadPhase.Ready, CompletedBytes = Download.TotalBytes ?? Download.CompletedBytes, CompletedFiles = Download.TotalFiles };
+            _completedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        }
+        else if (snapshot.IsBusy)
+        {
+            _completedDownload = null;
+        }
+
         Status = snapshot.Status;
         StatusText = snapshot.StatusText;
         DiskSize = snapshot.DiskSize;
@@ -619,14 +686,22 @@ public sealed partial class ModelVariantItem : ObservableObject
         IsSelectedForDictation = isSelectedForDictation;
         IsSelectedForMeetings = isSelectedForMeetings;
         IsBusy = snapshot.IsBusy;
-        CanPrepare = snapshot.CanPrepare && snapshot.Status == TranscriptionModelStatus.Missing;
-        CanCancel = snapshot.CanCancel;
-        CanRetry = snapshot.CanRetry;
-        CanVerify = snapshot.CanVerify;
+        Download = snapshot.Download;
+        IsPaused = !snapshot.IsBusy && snapshot.Download?.Phase == ModelDownloadPhase.Paused &&
+                   snapshot.Status == TranscriptionModelStatus.Missing;
+        IsFailed = !snapshot.IsBusy && snapshot.Status is TranscriptionModelStatus.Failed or TranscriptionModelStatus.DeletionFailed;
+        if (!snapshot.IsBusy) IsPausing = false;
+        // Download also resumes a paused or failed transfer.
+        CanPrepare = snapshot.CanPrepare && snapshot.Status is TranscriptionModelStatus.Missing or TranscriptionModelStatus.Failed;
+        // Only a transfer can pause; deletion and verification run to completion.
+        CanPause = snapshot.CanCancel && snapshot.Status == TranscriptionModelStatus.Downloading;
         CanDelete = snapshot.CanDelete && !(isSelectedForDictation || isSelectedForMeetings);
         IsReady = snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
         CanSetActive = !isActive && IsReady;
-        ProgressPercent = progressPercent;
         OnPropertyChanged(string.Empty);
+
+        return IsLingering
+            ? CompletionLinger - System.Diagnostics.Stopwatch.GetElapsedTime(_completedAt)
+            : TimeSpan.Zero;
     }
 }
