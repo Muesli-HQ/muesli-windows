@@ -13,8 +13,6 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
 {
     private const string ModelDisplayName = "Parakeet TDT 0.6B v3";
     private const string ModelDirectoryName = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8";
-    private const string ModelArchiveUrl =
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2";
     // Identity of the original release archive. Kept as the cache identity for verified installs;
     // new installs no longer download the archive (sherpa-onnx replaced it on 2026-11-07).
     public const string ModelArchiveSha256 = "5793D0FD397C5778D2CF2126994D58E9D56B1BE7C04D13C7A15BB1B4EAFB16BF";
@@ -62,6 +60,9 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         Path.Combine(MuesliPathService.UserProfileDirectory, ".cache", "muesli", "native-parakeet");
 
     public static string ModelPath => Path.Combine(ModelCacheDirectory, ModelDirectoryName);
+
+    /// <summary>A paused or unfinished download's bytes; moved into <see cref="ModelPath"/> once verified.</summary>
+    public static string ResumePath => Path.Combine(ModelCacheDirectory, $".{ModelDirectoryName}.resume");
 
     private static string VerificationStampPath => Path.Combine(ModelPath, ".muesli-model-verification.json");
 
@@ -211,6 +212,12 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
                 if (Directory.Exists(ModelPath))
                 {
                     Directory.Delete(ModelPath, recursive: true);
+                }
+
+                // Also discard a paused or unfinished download.
+                if (Directory.Exists(ResumePath))
+                {
+                    Directory.Delete(ResumePath, recursive: true);
                 }
             }
             finally
@@ -750,13 +757,15 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
                 }
             }
 
-            var archivePath = Path.Combine(ModelCacheDirectory, $".{ModelDirectoryName}.{Guid.NewGuid():N}.download");
-            var stagingPath = Path.Combine(ModelCacheDirectory, $".{ModelDirectoryName}.{Guid.NewGuid():N}.staging");
+            // A stable folder so a paused or failed download resumes instead of starting over; it is
+            // moved into place only after every file verifies.
+            var resumeRoot = ResumePath;
             try
             {
-                var stagedModelPath = Path.Combine(stagingPath, ModelDirectoryName);
+                var stagedModelPath = resumeRoot;
                 await PinnedModelFileDownloader.DownloadAsync(
                     PinnedFileBaseUrl, ExpectedModelHashes, stagedModelPath, "Parakeet v3 model", progress, cancellationToken);
+                PinnedModelFileDownloader.KeepOnly(stagedModelPath, ExpectedModelHashes.Keys);
                 await VerifyModelFilesAtPathAsync(stagedModelPath, cancellationToken);
                 if (Directory.Exists(ModelPath))
                 {
@@ -780,13 +789,8 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
 
                 throw;
             }
-            finally
-            {
-                TryDelete(archivePath);
-                TryDeleteDirectory(stagingPath);
-            }
         }
-        catch (InvalidDataException exception)
+        catch (Exception exception) when (exception is InvalidDataException or ModelDownloadException { IsIntegrityFailure: true })
         {
             _verificationFailure = exception.Message;
             _modelSetupFailure = null;
@@ -975,88 +979,6 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
     {
         DeleteLegacyModelCache();
         TryDelete(Path.Combine(ModelCacheDirectory, $"{ModelDirectoryName}.tar.bz2"));
-    }
-
-    private static async Task DownloadFileAsync(
-        string url,
-        string destinationPath,
-        string expectedSha256,
-        IProgress<ModelDownloadProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        var uri = new Uri(url, UriKind.Absolute);
-        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Model downloads must use HTTPS.");
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? ModelCacheDirectory);
-        var tempPath = $"{destinationPath}.{Guid.NewGuid():N}.partial";
-        try
-        {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
-            using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            var totalBytes = response.Content.Headers.ContentLength;
-            await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-            await using (var output = new FileStream(
-                             tempPath,
-                             FileMode.CreateNew,
-                             FileAccess.Write,
-                             FileShare.None,
-                             1024 * 1024,
-                             FileOptions.WriteThrough))
-            {
-                var buffer = new byte[1024 * 1024];
-                long received = 0;
-                while (true)
-                {
-                    var read = await input.ReadAsync(buffer, cancellationToken);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                    received += read;
-                    progress?.Report(new ModelDownloadProgress("Downloading Parakeet v3 model", received, totalBytes));
-                }
-
-                output.Flush(flushToDisk: true);
-            }
-
-            await using var verificationStream = File.OpenRead(tempPath);
-            var actualSha256 = Convert.ToHexString(await SHA256.HashDataAsync(verificationStream, cancellationToken));
-            if (!actualSha256.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidDataException(
-                    $"Downloaded Parakeet archive hash mismatch. Expected {expectedSha256}; found {actualSha256}.");
-            }
-
-            File.Move(tempPath, destinationPath, overwrite: true);
-        }
-        finally
-        {
-            TryDelete(tempPath);
-        }
-    }
-
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            var root = Path.GetFullPath(ModelCacheDirectory);
-            var fullPath = Path.GetFullPath(path);
-            var prefix = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
-            if (fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && Directory.Exists(fullPath))
-            {
-                Directory.Delete(fullPath, recursive: true);
-            }
-        }
-        catch
-        {
-            // Staging directories are never used as model inputs.
-        }
     }
 
     private static float[] ReadMonoSamples(Stream audioStream, out int sampleRate, out int durationMs)

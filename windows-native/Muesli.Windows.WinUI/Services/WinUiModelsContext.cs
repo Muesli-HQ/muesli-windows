@@ -21,6 +21,10 @@ public sealed class WinUiModelsContext : IDisposable
     public IReadOnlyList<TranscriptionModelSnapshot> Snapshots() =>
         _lifecycle.Snapshots(TranscriptionModelCatalog.Models.Select(model => model.Id));
 
+    /// <summary>One model's state, or null for ids that are not transcription models (cleanup, provider).</summary>
+    public TranscriptionModelSnapshot? TrySnapshot(string modelId) =>
+        TranscriptionModelCatalog.TryGet(modelId, out var model) ? _lifecycle.Snapshot(model.Id) : null;
+
     public Task PrepareAsync(
         string modelId,
         IProgress<ModelDownloadProgress>? progress,

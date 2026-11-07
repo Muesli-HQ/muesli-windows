@@ -65,6 +65,8 @@ public sealed record TranscriptionModelDefinition(
     public string ModelPath => Kind == NativeAsrModelKind.Parakeet
         ? NativeParakeetClient.ModelPath
         : Path.Combine(TranscriptionModelCatalog.ModelCacheDirectory, DirectoryName);
+    /// <summary>Where a paused or unfinished download keeps its bytes: ".{model folder}.resume" beside the model.</summary>
+    public string ResumePath => Path.Combine(Path.GetDirectoryName(ModelPath)!, $".{Path.GetFileName(ModelPath)}.resume");
     public bool IsCached => RequiredFiles.All(relativePath => File.Exists(Path.Combine(ModelPath, relativePath)));
     public override string ToString() => PickerLabel;
 }

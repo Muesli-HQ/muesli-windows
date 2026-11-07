@@ -893,38 +893,61 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         {
             App.UiDispatcher.TryEnqueue(() =>
             {
-                item.StatusText = value.DisplayText;
-                item.ProgressPercent = value.Percent;
+                if (_disposed) return;
+                var text = DownloadText(item, value.Snapshot) ?? value.DisplayText;
+                item.StatusText = text;
+                item.ProgressPercent = value.Snapshot?.Fraction is { } fraction ? (int)Math.Round(fraction * 100) : value.Percent;
                 item.IsBusy = true;
                 item.NotifyProgressBindings();
-                ApplyStatus($"{item.Role}: {value.DisplayText}");
+                ApplyStatus($"{item.Role}: {text}");
             });
         });
         try
         {
             await operation(item, progress, CancellationToken.None);
-            RefreshCurrentModelGate(announce: true);
-            ApplySnapshot(item);
-            ApplyStatus(item.StatusText, isError: !item.IsReady);
+            if (!_disposed)
+            {
+                RefreshCurrentModelGate(announce: true);
+                ApplySnapshot(item);
+                ApplyStatus(item.StatusText, isError: !item.IsReady);
+            }
         }
         catch (OperationCanceledException)
         {
-            item.StatusText = "Cancelled. You can retry safely.";
-            ApplyStatus(item.StatusText);
+            item.StatusText = "Paused. Prepare resumes from the downloaded bytes.";
+            if (!_disposed) ApplyStatus(item.StatusText);
         }
         catch (Exception exception)
         {
             item.StatusText = exception.Message;
-            ApplyStatus(exception.Message, isError: true);
+            if (!_disposed) ApplyStatus(exception.Message, isError: true);
         }
         finally
         {
             _activeModelOperation = null;
-            IsBusy = false;
-            RefreshModelRoles();
-            PersistProgress();
+            // A download started here may finish after setup has closed; the window is gone by then.
+            if (!_disposed)
+            {
+                IsBusy = false;
+                RefreshModelRoles();
+                PersistProgress();
+            }
         }
     }
+
+    /// <summary>"Downloading Parakeet v3 · 42% · ~4m 05s left" while bytes are moving; null otherwise.</summary>
+    private static string? DownloadText(OnboardingModelRoleItem item, ModelDownloadSnapshot? download) =>
+        download is { Phase: ModelDownloadPhase.Downloading }
+            ? ModelDownloadFormatting.Compact(ModelName(item), download)
+            : null;
+
+    // Live models are not in the transcription catalog; their heading already carries the picker label.
+    private static string ModelName(OnboardingModelRoleItem item) =>
+        !item.IsLive && TranscriptionModelCatalog.TryGet(item.Id, out var model)
+            ? model.DisplayName
+            : item.Heading is { } heading && heading.IndexOf(": ", StringComparison.Ordinal) is var split and >= 0
+                ? heading[(split + 2)..]
+                : item.Id;
 
     private void RefreshPermissionsFromProgress()
     {
@@ -1032,12 +1055,17 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         return list;
     }
 
+    /// <summary>
+    /// Stops work owned by setup when the user moves on. Dictation and meeting model downloads run in
+    /// the app-scoped lifecycle and keep going (macOS "Download &amp; Continue"): the sidebar shows
+    /// their progress, and the model gate updates when they finish. Only the live model, whose
+    /// lifecycle belongs to this window, and the pipeline test are cancelled.
+    /// </summary>
     private void CancelActiveOperations()
     {
-        if (_activeModelOperation is { } active)
+        if (_activeModelOperation is { Live: true } active)
         {
-            if (active.Live) _liveLifecycle.Cancel(active.Id);
-            else _models.Cancel(active.Id);
+            _liveLifecycle.Cancel(active.Id);
             _activeModelOperation = null;
         }
 

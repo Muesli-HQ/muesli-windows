@@ -322,7 +322,7 @@ public sealed class NativeDiarizationClient : IDisposable
             _verificationFailure = null;
             _modelSetupFailure = null;
         }
-        catch (InvalidDataException exception)
+        catch (Exception exception) when (exception is InvalidDataException or ModelDownloadException { IsIntegrityFailure: true })
         {
             _verificationFailure = exception.Message;
             _modelSetupFailure = null;
@@ -395,22 +395,22 @@ public sealed class NativeDiarizationClient : IDisposable
         IProgress<ModelDownloadProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var archivePath = Path.Combine(ModelCacheDirectory, $".{SegmentationDirectoryName}.{Guid.NewGuid():N}.download");
         var stagingPath = Path.Combine(ModelCacheDirectory, $".{SegmentationDirectoryName}.{Guid.NewGuid():N}.staging");
         try
         {
-            await DownloadFileAsync(
+            // Kept in its resume folder until installed, so an interrupted extraction reuses it.
+            var archive = await ModelFileDownloads.FetchAsync(
                 SegmentationArchiveUrl,
-                archivePath,
+                ModelCacheDirectory,
                 SegmentationArchiveSha256,
                 "Downloading verified pyannote segmentation model",
                 progress,
                 cancellationToken);
             progress?.Report(new ModelDownloadProgress("Extracting verified diarization model", 0, null));
             Directory.CreateDirectory(stagingPath);
-            using (var archive = ArchiveFactory.OpenArchive(archivePath, null))
+            using (var opened = ArchiveFactory.OpenArchive(archive.Path, null))
             {
-                SafeArchiveExtractor.ExtractSafely(archive, stagingPath, cancellationToken);
+                SafeArchiveExtractor.ExtractSafely(opened, stagingPath, cancellationToken);
             }
 
             var stagedModelPath = Path.Combine(stagingPath, SegmentationDirectoryName, "model.int8.onnx");
@@ -427,66 +427,22 @@ public sealed class NativeDiarizationClient : IDisposable
                 Directory.Delete(destinationDirectory, recursive: true);
             }
             Directory.Move(Path.Combine(stagingPath, SegmentationDirectoryName), destinationDirectory);
+            archive.Release();
         }
         finally
         {
-            TryDelete(archivePath);
             TryDeleteDirectory(stagingPath);
         }
     }
 
-    private static async Task DownloadFileAsync(
+    private static Task DownloadFileAsync(
         string url,
         string destinationPath,
         string expectedHash,
         string displayName,
         IProgress<ModelDownloadProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        var uri = new Uri(url, UriKind.Absolute);
-        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Model downloads must use HTTPS.");
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? ModelCacheDirectory);
-        var destinationDirectory = Path.GetDirectoryName(destinationPath) ?? ModelCacheDirectory;
-        var destinationName = Path.GetFileName(destinationPath).TrimStart('.');
-        var tempPath = Path.Combine(destinationDirectory, $".{destinationName}.{Guid.NewGuid():N}.partial");
-        try
-        {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
-            using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            var total = response.Content.Headers.ContentLength;
-            await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-            await using (var output = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.WriteThrough))
-            {
-                var buffer = new byte[81920];
-                long received = 0;
-                int read;
-                while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
-                {
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                    received += read;
-                    progress?.Report(new ModelDownloadProgress(displayName, received, total));
-                }
-                output.Flush(flushToDisk: true);
-            }
-
-            var verification = VerifySha256(tempPath, expectedHash);
-            if (!verification.Matches)
-            {
-                throw new InvalidDataException(
-                    $"Downloaded model hash mismatch. Expected {expectedHash}; found {verification.ActualHash ?? "missing"}.");
-            }
-            File.Move(tempPath, destinationPath, overwrite: true);
-        }
-        finally
-        {
-            TryDelete(tempPath);
-        }
-    }
+        CancellationToken cancellationToken) =>
+        ModelFileDownloads.DownloadFileAsync(url, destinationPath, expectedHash, displayName, progress, cancellationToken);
 
     private static bool HasValidVerificationStamp()
     {

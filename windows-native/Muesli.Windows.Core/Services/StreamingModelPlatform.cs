@@ -146,18 +146,21 @@ public sealed class StreamingModelInstaller
                 }
             }
 
-            var archivePath = Path.Combine(StreamingModelCatalog.ModelCacheDirectory, $".{_model.DirectoryName}.{Guid.NewGuid():N}.download");
             var vadPath = Path.Combine(StreamingModelCatalog.ModelCacheDirectory, $".{_model.DirectoryName}.{Guid.NewGuid():N}.vad.download");
             var stagingPath = Path.Combine(StreamingModelCatalog.ModelCacheDirectory, $".{_model.DirectoryName}.{Guid.NewGuid():N}.staging");
             try
             {
-                await DownloadAsync(_model.ArchiveUrl, archivePath, _model.ArchiveSha256, $"Downloading {_model.DisplayName}", progress, cancellationToken).ConfigureAwait(false);
+                // The archive stays in its resume folder until the install succeeds, so pausing
+                // during the VAD download or extraction keeps it for the next attempt.
+                var archive = await ModelFileDownloads.FetchAsync(
+                    _model.ArchiveUrl, StreamingModelCatalog.ModelCacheDirectory, _model.ArchiveSha256,
+                    $"Downloading {_model.DisplayName}", progress, cancellationToken).ConfigureAwait(false);
                 await DownloadAsync(_model.VadUrl, vadPath, _model.VadSha256, "Downloading Silero VAD", progress, cancellationToken).ConfigureAwait(false);
                 progress?.Report(new ModelDownloadProgress($"Extracting {_model.DisplayName}", 0, null));
                 Directory.CreateDirectory(stagingPath);
-                using (var archive = ArchiveFactory.OpenArchive(archivePath, null))
+                using (var opened = ArchiveFactory.OpenArchive(archive.Path, null))
                 {
-                    SafeArchiveExtractor.ExtractSafely(archive, stagingPath, cancellationToken);
+                    SafeArchiveExtractor.ExtractSafely(opened, stagingPath, cancellationToken);
                 }
                 var stagedModelPath = Path.Combine(stagingPath, _model.DirectoryName);
                 if (!Directory.Exists(stagedModelPath)) throw new InvalidDataException("The streaming archive has an unexpected root directory.");
@@ -166,11 +169,11 @@ public sealed class StreamingModelInstaller
                 if (Directory.Exists(_model.ModelPath)) Directory.Delete(_model.ModelPath, true);
                 Directory.Move(stagedModelPath, _model.ModelPath);
                 await WriteStampAsync(cancellationToken).ConfigureAwait(false);
+                archive.Release();
                 progress?.Report(new ModelDownloadProgress($"{_model.DisplayName} verified", 1, 1));
             }
             finally
             {
-                TryDeleteFile(archivePath);
                 TryDeleteFile(vadPath);
                 TryDeleteDirectory(stagingPath);
             }
@@ -195,6 +198,8 @@ public sealed class StreamingModelInstaller
         try
         {
             if (Directory.Exists(_model.ModelPath)) Directory.Delete(_model.ModelPath, true);
+            // Also discard a paused or unfinished archive download.
+            ModelFileDownloads.DeleteResumeFolder(ArchiveResumeFolder);
         }
         finally
         {
@@ -202,8 +207,14 @@ public sealed class StreamingModelInstaller
         }
     }
 
-    public long DiskSizeBytes() => Directory.Exists(_model.ModelPath)
-        ? Directory.EnumerateFiles(_model.ModelPath, "*", SearchOption.AllDirectories).Sum(path => new FileInfo(path).Length)
+    private string ArchiveResumeFolder =>
+        ModelFileDownloads.ResumeFolderFor(_model.ArchiveUrl, StreamingModelCatalog.ModelCacheDirectory);
+
+    /// <summary>Installed files plus any saved partial download, so a paused download can be deleted.</summary>
+    public long DiskSizeBytes() => FolderBytes(_model.ModelPath) + FolderBytes(ArchiveResumeFolder);
+
+    private static long FolderBytes(string path) => Directory.Exists(path)
+        ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length)
         : 0;
 
     private async Task VerifyFilesAsync(string root, IProgress<ModelDownloadProgress>? progress, CancellationToken cancellationToken)
@@ -262,33 +273,8 @@ public sealed class StreamingModelInstaller
         finally { TryDeleteFile(temporary); }
     }
 
-    private static async Task DownloadAsync(string url, string destination, string expectedHash, string label, IProgress<ModelDownloadProgress>? progress, CancellationToken token)
-    {
-        var uri = new Uri(url);
-        if (uri.Scheme != Uri.UriSchemeHttps) throw new InvalidOperationException("Streaming model downloads require HTTPS.");
-        using var client = new HttpClient { Timeout = TimeSpan.FromHours(2) };
-        using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        var total = response.Content.Headers.ContentLength;
-        await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        await using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, true))
-        {
-            var buffer = new byte[1024 * 1024];
-            long received = 0;
-            while (true)
-            {
-                var read = await input.ReadAsync(buffer, token).ConfigureAwait(false);
-                if (read == 0) break;
-                await output.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
-                received += read;
-                progress?.Report(new ModelDownloadProgress(label, received, total));
-            }
-        }
-        await using var verify = File.OpenRead(destination);
-        var actual = Convert.ToHexString(await SHA256.HashDataAsync(verify, token));
-        if (!actual.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"{label} checksum failed. Expected {expectedHash}; found {actual}.");
-    }
+    private static Task DownloadAsync(string url, string destination, string expectedHash, string label, IProgress<ModelDownloadProgress>? progress, CancellationToken token) =>
+        ModelFileDownloads.DownloadFileAsync(url, destination, expectedHash, label, progress, token);
 
     private static void TryDeleteFile(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
     private static void TryDeleteDirectory(string path) { try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } }
@@ -306,7 +292,11 @@ public sealed record StreamingModelSnapshot(
     bool CanCancel,
     bool CanRetry,
     bool CanVerify,
-    bool CanDelete);
+    bool CanDelete)
+{
+    /// <summary>Latest transfer state while downloading, or the last state of a paused/failed download.</summary>
+    public ModelDownloadSnapshot? Download { get; init; }
+}
 
 public sealed class StreamingModelLifecycleService : IDisposable
 {
@@ -317,6 +307,8 @@ public sealed class StreamingModelLifecycleService : IDisposable
         public TranscriptionModelStatus? Status;
         public string? Detail;
         public Func<CancellationToken, Task>? Retry;
+        public ModelDownloadSnapshot? Download;
+        public long LastProgressEventTimestamp;
     }
     private readonly ConcurrentDictionary<string, State> _states = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<string?> _selected;
@@ -337,7 +329,8 @@ public sealed class StreamingModelLifecycleService : IDisposable
         TranscriptionModelStatus? active;
         string? detail;
         bool retry;
-        lock (state.Gate) { active = state.Status; detail = state.Detail; retry = state.Retry is not null; }
+        ModelDownloadSnapshot? download;
+        lock (state.Gate) { active = state.Status; detail = state.Detail; retry = state.Retry is not null; download = state.Download; }
         var installer = new StreamingModelInstaller(model);
         var selected = id.Equals(_selected(), StringComparison.OrdinalIgnoreCase);
         var status = active ?? (!NativeParakeetClient.IsRuntimeAvailable ? TranscriptionModelStatus.RuntimeUnavailable : installer.IsVerified ? selected ? TranscriptionModelStatus.Selected : TranscriptionModelStatus.Ready : TranscriptionModelStatus.Missing);
@@ -359,7 +352,8 @@ public sealed class StreamingModelLifecycleService : IDisposable
             $"Pinned ASR files: {model.RequiredFiles.Count}", "Runtime: packaged sherpa-onnx online transducer + Silero VAD");
         return new(model, status, text, bytes, TranscriptionModelLifecycleService.FormatBytes(bytes), diagnostics, busy,
             !busy && status != TranscriptionModelStatus.RuntimeUnavailable, busy, retry && !busy,
-            !busy && model.IsCached, !busy && bytes > 0);
+            !busy && model.IsCached, !busy && bytes > 0)
+        { Download = download };
     }
 
     public Task PrepareAsync(string id, IProgress<ModelDownloadProgress>? progress = null, CancellationToken token = default) =>
@@ -391,18 +385,19 @@ public sealed class StreamingModelLifecycleService : IDisposable
         {
             if (state.Cancellation is not null) throw new InvalidOperationException("A live-model operation is already running.");
             linked = CancellationTokenSource.CreateLinkedTokenSource(token);
-            state.Cancellation = linked; state.Status = status; state.Detail = detail;
+            state.Cancellation = linked; state.Status = status; state.Detail = detail; state.Download = null;
             state.Retry = retryToken => RunAsync(id, status, detail, operation, deletion, retryToken);
         }
         ModelChanged?.Invoke(this, id);
         try
         {
             await Task.Run(() => operation(new StreamingModelInstaller(model), linked.Token), linked.Token).ConfigureAwait(false);
-            lock (state.Gate) { state.Status = null; state.Detail = null; state.Retry = null; }
+            lock (state.Gate) { state.Status = null; state.Detail = null; state.Retry = null; state.Download = null; }
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested)
         {
-            lock (state.Gate) { state.Status = null; state.Detail = "Cancelled; partial artifacts will be cleaned on retry."; }
+            // Partial bytes are kept; Download resumes from them.
+            lock (state.Gate) { state.Status = null; state.Detail = deletion ? "Cancelled." : TranscriptionModelLifecycleService.PausedDetail; }
             throw;
         }
         catch (Exception ex)
@@ -420,14 +415,22 @@ public sealed class StreamingModelLifecycleService : IDisposable
     private void UpdateProgress(string id, ModelDownloadProgress value, TranscriptionModelStatus status, IProgress<ModelDownloadProgress>? external)
     {
         var state = _states.GetOrAdd(id, _ => new());
+        bool raise;
         lock (state.Gate)
         {
             if (state.Cancellation is null) return;
+            if (value.Snapshot is not null) state.Download = value.Snapshot;
+            var phaseChanged = state.Status != status;
             state.Status = status;
             state.Detail = value.DisplayText;
+            // Same throttle as transcription models: progress-only changes at most every 250 ms.
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            raise = phaseChanged ||
+                    System.Diagnostics.Stopwatch.GetElapsedTime(state.LastProgressEventTimestamp, now) >= TranscriptionModelLifecycleService.ProgressEventInterval;
+            if (raise) state.LastProgressEventTimestamp = now;
         }
         external?.Report(value);
-        ModelChanged?.Invoke(this, id);
+        if (raise) ModelChanged?.Invoke(this, id);
     }
 
     public void Dispose()

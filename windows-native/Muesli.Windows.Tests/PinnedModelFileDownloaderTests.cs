@@ -55,9 +55,10 @@ public sealed class PinnedModelFileDownloaderTests
         var pins = new Dictionary<string, string> { ["encoder.int8.onnx"] = new string('A', 64) };
         using var client = new HttpClient(new FakeHub(files));
 
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => PinnedModelFileDownloader.DownloadAsync(
+        var error = await Assert.ThrowsAsync<ModelDownloadException>(() => PinnedModelFileDownloader.DownloadAsync(
             client, Revision, pins, directory.Path, "Test model", null, CancellationToken.None));
 
+        Assert.Equal(ModelDownloadFailure.ChecksumMismatch, error.Failure);
         Assert.Contains("encoder.int8.onnx", error.Message);
         Assert.Empty(Directory.GetFiles(directory.Path, "*", SearchOption.AllDirectories));
     }
@@ -90,8 +91,9 @@ public sealed class PinnedModelFileDownloaderTests
         var files = new Dictionary<string, byte[]> { [relativePath] = Encoding.UTF8.GetBytes("x") };
         using var client = new HttpClient(new FakeHub(files));
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => PinnedModelFileDownloader.DownloadAsync(
+        var error = await Assert.ThrowsAsync<ModelDownloadException>(() => PinnedModelFileDownloader.DownloadAsync(
             client, Revision, Pins(files), Path.Combine(directory.Path, "model"), "Test model", null, CancellationToken.None));
+        Assert.Equal(ModelDownloadFailure.InvalidPath, error.Failure);
     }
 
     [Fact]

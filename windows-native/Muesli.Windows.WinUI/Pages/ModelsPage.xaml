@@ -15,39 +15,50 @@
             <Setter Property="Padding" Value="16" />
             <Setter Property="CornerRadius" Value="10" />
         </Style>
+        <!-- macOS status badges: radius 4, 8×3 padding. -->
         <Style x:Key="ModelStatusChipStyle" TargetType="Border" BasedOn="{StaticResource MuesliBadgeStyle}">
             <Setter Property="Padding" Value="8,3" />
+            <Setter Property="CornerRadius" Value="4" />
             <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
         <Style x:Key="ModelActiveChipStyle" TargetType="Border" BasedOn="{StaticResource MuesliSuccessBadgeStyle}">
             <Setter Property="Padding" Value="8,3" />
+            <Setter Property="CornerRadius" Value="4" />
             <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
-        <Style x:Key="ModelErrorChipStyle" TargetType="Border" BasedOn="{StaticResource MuesliBadgeStyle}">
-            <Setter Property="Background" Value="{ThemeResource MuesliErrorMutedBrush}" />
-            <Setter Property="Padding" Value="8,3" />
-            <Setter Property="VerticalAlignment" Value="Top" />
+        <!-- macOS status block: 12pt medium phase line over an 11pt tertiary detail line. -->
+        <Style x:Key="ModelStatusPrimaryStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="MaxLines" Value="1" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
-        <Style x:Key="ModelErrorChipTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliBadgeTextStyle}">
-            <Setter Property="Foreground" Value="{ThemeResource MuesliErrorBrush}" />
+        <Style x:Key="ModelStatusDetailStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
-        <!-- The family's default/recommended capsule beside the title. -->
+        <!-- The family's recommended chip beside the title (macOS: radius 4, 6×2 padding). -->
         <Style x:Key="ModelFamilyBadgeStyle" TargetType="Border" BasedOn="{StaticResource MuesliAccentBadgeStyle}">
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <!-- macOS: 15pt semibold name, 12pt secondary description, 12pt tertiary size. -->
         <Style x:Key="ModelTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliRowTitleStyle}">
-            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="TextWrapping" Value="NoWrap" />
         </Style>
         <Style x:Key="ModelCaptionStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliBodyStyle}">
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="12" />
         </Style>
         <Style x:Key="ModelMetaLabelStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="12" />
         </Style>
         <!--
             P6-02. The variant is a popup button (macOS ModelsView picker, menu style, 220 wide);
@@ -64,14 +75,16 @@
         <Style x:Key="ModelAccentPillStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
             <Setter Property="Background" Value="{ThemeResource MuesliAccentMutedBrush}" />
             <Setter Property="Foreground" Value="{ThemeResource MuesliAccentBrush}" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Padding" Value="12,4" />
             <Setter Property="MinHeight" Value="28" />
             <Setter Property="MinWidth" Value="0" />
         </Style>
         <Style x:Key="ModelNeutralPillStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
             <Setter Property="Background" Value="{ThemeResource MuesliSurfaceRaisedBrush}" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Padding" Value="12,4" />
             <Setter Property="MinHeight" Value="28" />
             <Setter Property="MinWidth" Value="0" />
@@ -221,11 +234,6 @@
                                                             Visibility="{Binding SelectedVariant.ShowDownloadedChip, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                         <TextBlock Text="Downloaded" Style="{StaticResource MuesliBadgeTextStyle}" />
                                                     </Border>
-                                                    <Border Style="{StaticResource ModelErrorChipStyle}"
-                                                            Visibility="{Binding SelectedVariant.ShowErrorChip, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBlock Text="{Binding SelectedVariant.StatusChipLabel}"
-                                                                   Style="{StaticResource ModelErrorChipTextStyle}" />
-                                                    </Border>
                                                     <Border Style="{StaticResource ModelStatusChipStyle}"
                                                             Visibility="{Binding SelectedVariant.ShowUnavailableChip, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                         <TextBlock Text="Unavailable" Style="{StaticResource MuesliBadgeTextStyle}" />
@@ -279,15 +287,27 @@
                                                        Style="{StaticResource ModelCaptionStyle}"
                                                        Visibility="{Binding HasVariantDescription, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
+                                            <!--
+                                                macOS status block: "{Phase}: {file}", the bar (hidden while
+                                                preparing), and the detail line with bytes, speed, time left
+                                                and retries. A paused bar stays at its saved fraction.
+                                            -->
                                             <StackPanel Spacing="4"
-                                                        Visibility="{Binding SelectedVariant.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        AutomationProperties.AutomationId="ModelDownloadStatus"
+                                                        Visibility="{Binding SelectedVariant.ShowStatusBlock, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock Text="{Binding SelectedVariant.StatusPrimary}"
+                                                           Style="{StaticResource ModelStatusPrimaryStyle}" />
                                                 <ProgressBar Value="{Binding SelectedVariant.ProgressValue}"
                                                              Maximum="100"
                                                              IsIndeterminate="{Binding SelectedVariant.IsProgressIndeterminate}"
-                                                             AutomationProperties.Name="{Binding SelectedVariant.ProgressLabel}"
+                                                             ShowPaused="{Binding SelectedVariant.ShowProgressPaused}"
+                                                             Visibility="{Binding SelectedVariant.ShowProgressBar, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                             AutomationProperties.Name="{Binding SelectedVariant.StatusPrimary}"
                                                              AutomationProperties.AutomationId="ModelProgressBar" />
-                                                <TextBlock Text="{Binding SelectedVariant.ProgressLabel}"
-                                                           Style="{StaticResource ModelMetaLabelStyle}" />
+                                                <TextBlock Text="{Binding SelectedVariant.StatusDetail}"
+                                                           Style="{StaticResource ModelStatusDetailStyle}"
+                                                           AutomationProperties.AutomationId="ModelDownloadDetail"
+                                                           Visibility="{Binding SelectedVariant.HasStatusDetail, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             </StackPanel>
 
                                             <!-- Why an operation is unavailable, derived from the live snapshot. -->
@@ -315,38 +335,42 @@
                                                         AutomationProperties.Name="Set model active"
                                                         AutomationProperties.AutomationId="ModelSetActiveButton"
                                                         Content="Set Active" />
-                                                <Button Command="{Binding ViewModel.RetryCommand, ElementName=RootPage}"
-                                                        CommandParameter="{Binding SelectedVariant}"
-                                                        Style="{StaticResource ModelAccentPillStyle}"
-                                                        Visibility="{Binding SelectedVariant.CanRetry, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                        AutomationProperties.Name="Retry model operation"
-                                                        AutomationProperties.AutomationId="ModelRetryButton"
-                                                        Content="Retry" />
-                                                <Button Command="{Binding ViewModel.CancelCommand, ElementName=RootPage}"
+                                                <!-- Pause keeps the bytes; Download resumes from them. -->
+                                                <Button Command="{Binding ViewModel.PauseCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding SelectedVariant}"
                                                         Style="{StaticResource ModelNeutralPillStyle}"
-                                                        Visibility="{Binding SelectedVariant.CanCancel, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                        AutomationProperties.Name="Cancel model operation"
-                                                        AutomationProperties.AutomationId="ModelCancelButton"
-                                                        Content="Cancel" />
-                                                <Button Command="{Binding ViewModel.VerifyCommand, ElementName=RootPage}"
-                                                        CommandParameter="{Binding SelectedVariant}"
-                                                        Style="{StaticResource ModelNeutralPillStyle}"
-                                                        Visibility="{Binding SelectedVariant.CanVerify, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                        ToolTipService.ToolTip="Check the downloaded files against their checksums"
-                                                        AutomationProperties.Name="Verify model files"
-                                                        AutomationProperties.AutomationId="ModelVerifyButton"
-                                                        Content="Verify files" />
+                                                        IsEnabled="{Binding SelectedVariant.IsPauseEnabled}"
+                                                        Visibility="{Binding SelectedVariant.CanPause, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                        AutomationProperties.Name="Pause download"
+                                                        AutomationProperties.AutomationId="ModelPauseButton"
+                                                        Content="{Binding SelectedVariant.PauseLabel}" />
                                                 <Button Command="{Binding ViewModel.DeleteCommand, ElementName=RootPage}"
                                                         CommandParameter="{Binding SelectedVariant}"
                                                         Style="{StaticResource ModelDeleteButtonStyle}"
                                                         Visibility="{Binding SelectedVariant.CanDelete, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                        ToolTipService.ToolTip="Delete local model files"
-                                                        AutomationProperties.Name="Delete transcription model"
+                                                        ToolTipService.ToolTip="Delete model"
+                                                        AutomationProperties.Name="Delete model"
                                                         AutomationProperties.AutomationId="ModelDeleteButton">
                                                     <FontIcon Glyph="&#xE74D;" FontSize="13" />
                                                 </Button>
                                             </StackPanel>
+
+                                            <!-- macOS: a failed download or delete reads in red under the buttons. -->
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6"
+                                                  AutomationProperties.AutomationId="ModelFailure"
+                                                  Visibility="{Binding SelectedVariant.IsFailed, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <FontIcon Glyph="&#xE7BA;"
+                                                          FontSize="12"
+                                                          VerticalAlignment="Top"
+                                                          Margin="0,2,0,0"
+                                                          Foreground="{ThemeResource MuesliErrorBrush}" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding SelectedVariant.FailureMessage}"
+                                                           Foreground="{ThemeResource MuesliErrorBrush}"
+                                                           FontSize="12"
+                                                           TextWrapping="Wrap"
+                                                           IsTextSelectionEnabled="True" />
+                                            </Grid>
                                         </StackPanel>
                                     </Border>
                                     <!-- macOS: the active card's border is the accent at half strength, 1.5pt. -->

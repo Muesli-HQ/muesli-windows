@@ -324,48 +324,16 @@ public sealed class CleanupModelInstaller
         }
     }
 
-    private async Task DownloadAsync(
+    // The completed file keeps the final name only after VerifyPathAsync, so an interrupted
+    // download is never mistaken for an installed model; partial bytes resume from the shared
+    // engine's resume folder.
+    private Task DownloadAsync(
         string destinationPath,
         string partPath,
         IProgress<ModelDownloadProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        var uri = new Uri(_model.DownloadUrl, UriKind.Absolute);
-        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Cleanup model downloads must use HTTPS.");
-        }
-
-        using var httpClient = new HttpClient { Timeout = TimeSpan.FromHours(2) };
-        using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var totalBytes = response.Content.Headers.ContentLength;
-        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using (var output = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, true))
-        {
-            var buffer = new byte[1024 * 1024];
-            long received = 0;
-            while (true)
-            {
-                var read = await input.ReadAsync(buffer, cancellationToken);
-                if (read == 0)
-                {
-                    break;
-                }
-
-                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                received += read;
-                progress?.Report(new ModelDownloadProgress($"Downloading {_model.DisplayName}", received, totalBytes));
-            }
-        }
-
-        // The .part name exists only while a download is in flight; the completed file keeps the
-        // final name so an interrupted download is never mistaken for an installed model.
-        if (File.Exists(partPath))
-        {
-            File.Delete(partPath);
-        }
-    }
+        CancellationToken cancellationToken) =>
+        ModelFileDownloads.DownloadFileAsync(
+            _model.DownloadUrl, destinationPath, null, $"Downloading {_model.DisplayName}", progress, cancellationToken);
 
     private Task<bool> VerifyFileAsync(CancellationToken cancellationToken) =>
         VerifyPathAsync(ModelPath, cancellationToken);

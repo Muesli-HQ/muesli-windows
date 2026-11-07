@@ -60,6 +60,9 @@ public sealed record ModelDownloadProgress(
     long BytesReceived,
     long? TotalBytes)
 {
+    /// <summary>The full download state (files, speed, time left, retries) when this came from a transfer.</summary>
+    public ModelDownloadSnapshot? Snapshot { get; init; }
+
     public int? Percent => TotalBytes is > 0
         ? (int)Math.Clamp(BytesReceived * 100 / TotalBytes.Value, 0, 100)
         : null;
