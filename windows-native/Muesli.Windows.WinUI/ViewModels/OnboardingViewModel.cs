@@ -100,6 +100,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private bool _isRendering;
     private bool _disposed;
     private (string Id, bool Live)? _activeModelOperation;
+    private int _modelRolesRefreshQueued;
     private CancellationTokenSource? _pipelineCancellation;
 
     public OnboardingViewModel(
@@ -138,10 +139,11 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         IndicatorPositionChoices = IndicatorPositions;
 
         ApplyDraftToFields();
+        var startupSnapshots = OfflineSnapshotsById();
         _progress = OnboardingProgressReconciler.Reconcile(
             _progress,
             ToSelection(_draft),
-            id => OfflineReady(id),
+            id => OfflineReady(id, startupSnapshots),
             id => LiveReady(id));
         _ = RefreshStartupAvailabilityAsync();
         Render();
@@ -756,6 +758,10 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
 
     private void RefreshModelRoles()
     {
+        // One catalog snapshot per refresh. Each snapshot set reads settings and probes the model
+        // cache on disk, so resolving it per role (and again per gate check) multiplied the cost of
+        // every refresh and starved the UI thread during downloads.
+        var offline = OfflineSnapshotsById();
         var desired = SelectedModelRoles().ToList();
         for (var index = _modelRoles.Count - 1; index >= 0; index--)
         {
@@ -776,11 +782,14 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
                 _modelRoles.Add(item);
             }
 
-            ApplySnapshot(item);
+            ApplySnapshot(item, offline);
         }
 
-        RefreshCurrentModelGate(announce: false);
+        RefreshCurrentModelGate(announce: false, offline);
     }
+
+    private Dictionary<string, TranscriptionModelSnapshot> OfflineSnapshotsById() =>
+        _models.Snapshots().ToDictionary(entry => entry.Model.Id, StringComparer.OrdinalIgnoreCase);
 
     private IEnumerable<(string Id, bool Live, string Role)> SelectedModelRoles()
     {
@@ -794,7 +803,9 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             yield return (liveId!, true, "Live preview");
     }
 
-    private void ApplySnapshot(OnboardingModelRoleItem item)
+    private void ApplySnapshot(OnboardingModelRoleItem item) => ApplySnapshot(item, OfflineSnapshotsById());
+
+    private void ApplySnapshot(OnboardingModelRoleItem item, IReadOnlyDictionary<string, TranscriptionModelSnapshot> offline)
     {
         if (item.IsLive)
         {
@@ -811,7 +822,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         }
         else
         {
-            var snapshot = _models.Snapshots().First(entry => entry.Model.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase));
+            var snapshot = offline[item.Id];
             item.Heading = $"{item.Role}: {snapshot.Model.PickerLabel}";
             item.StatusText = snapshot.StatusText;
             item.IsBusy = snapshot.IsBusy || (_activeModelOperation?.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase) == true && _activeModelOperation?.Live == false);
@@ -826,10 +837,12 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         item.NotifyProgressBindings();
     }
 
-    private void RefreshCurrentModelGate(bool announce)
+    private void RefreshCurrentModelGate(bool announce) => RefreshCurrentModelGate(announce, OfflineSnapshotsById());
+
+    private void RefreshCurrentModelGate(bool announce, IReadOnlyDictionary<string, TranscriptionModelSnapshot> offline)
     {
         var roles = SelectedModelRoles().ToList();
-        var ready = roles.Count > 0 && roles.All(role => role.Live ? LiveReady(role.Id) : OfflineReady(role.Id));
+        var ready = roles.Count > 0 && roles.All(role => role.Live ? LiveReady(role.Id) : OfflineReady(role.Id, offline));
         _progress = _progress with
         {
             ModelsVerified = ready,
@@ -846,11 +859,9 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         NotifyReadyBindings();
     }
 
-    private bool OfflineReady(string id)
-    {
-        var snapshot = _models.Snapshots().FirstOrDefault(entry => entry.Model.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-        return snapshot is not null && snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
-    }
+    private static bool OfflineReady(string id, IReadOnlyDictionary<string, TranscriptionModelSnapshot> offline) =>
+        offline.TryGetValue(id, out var snapshot) &&
+        snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
 
     private bool LiveReady(string id)
     {
@@ -1036,9 +1047,30 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnOfflineModelChanged(object? sender, string modelId) =>
-        App.UiDispatcher.TryEnqueue(RefreshModelRoles);
+    private void OnOfflineModelChanged(object? sender, string modelId) => QueueModelRolesRefresh();
 
-    private void OnLiveModelChanged(object? sender, string modelId) =>
-        App.UiDispatcher.TryEnqueue(RefreshModelRoles);
+    private void OnLiveModelChanged(object? sender, string modelId) => QueueModelRolesRefresh();
+
+    /// <summary>
+    /// Model lifecycle events fire for every download/verification progress tick, often from a
+    /// worker thread. Queuing one full refresh per event let the dispatcher backlog grow faster
+    /// than it drained, which froze onboarding. Coalesce: at most one refresh is ever queued, and it
+    /// reads the latest state when it runs, so no update is lost.
+    /// </summary>
+    private void QueueModelRolesRefresh()
+    {
+        if (Interlocked.Exchange(ref _modelRolesRefreshQueued, 1) != 0) return;
+        if (!App.UiDispatcher.TryEnqueue(RunQueuedModelRolesRefresh))
+        {
+            Interlocked.Exchange(ref _modelRolesRefreshQueued, 0);
+        }
+    }
+
+    private void RunQueuedModelRolesRefresh()
+    {
+        // Clear first so an event raised during the refresh schedules a follow-up pass.
+        Interlocked.Exchange(ref _modelRolesRefreshQueued, 0);
+        if (_disposed) return;
+        RefreshModelRoles();
+    }
 }

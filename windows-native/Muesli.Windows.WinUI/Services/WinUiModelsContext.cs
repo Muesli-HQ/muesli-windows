@@ -19,7 +19,7 @@ public sealed class WinUiModelsContext : IDisposable
     public MuesliSettings Settings => _settingsStore.Load();
 
     public IReadOnlyList<TranscriptionModelSnapshot> Snapshots() =>
-        TranscriptionModelCatalog.Models.Select(model => _lifecycle.Snapshot(model.Id)).ToList();
+        _lifecycle.Snapshots(TranscriptionModelCatalog.Models.Select(model => model.Id));
 
     public Task PrepareAsync(
         string modelId,

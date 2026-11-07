@@ -134,7 +134,15 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
         public TranscriptionModelStatus? Status;
         public string? Detail;
         public Func<CancellationToken, Task>? Retry;
+        public long LastProgressEventTimestamp;
     }
+
+    /// <summary>
+    /// Archive downloaders report every 1 MB chunk. Each ModelChanged makes listening pages rebuild
+    /// their model status on the UI thread, so progress-only changes are raised at most this often.
+    /// Phase changes and operation start/end are always raised immediately.
+    /// </summary>
+    internal static readonly TimeSpan ProgressEventInterval = TimeSpan.FromMilliseconds(250);
 
     private readonly ITranscriptionModelOperations _operations;
     private readonly ConcurrentDictionary<string, OperationState> _states = new(StringComparer.OrdinalIgnoreCase);
@@ -158,9 +166,25 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
 
     public event EventHandler<string>? ModelChanged;
 
-    public TranscriptionModelSnapshot Snapshot(string modelId)
+    public TranscriptionModelSnapshot Snapshot(string modelId) =>
+        Snapshot(TranscriptionModelCatalog.GetRequired(modelId), _selectedModelIds());
+
+    /// <summary>
+    /// Snapshots several models while reading the selected-model set once. The selection source
+    /// loads settings (including credential-store reads), so resolving it per model made a single
+    /// UI refresh cost one full settings load for every catalog entry.
+    /// </summary>
+    public IReadOnlyList<TranscriptionModelSnapshot> Snapshots(IEnumerable<string> modelIds)
     {
-        var model = TranscriptionModelCatalog.GetRequired(modelId);
+        ArgumentNullException.ThrowIfNull(modelIds);
+        var selected = _selectedModelIds();
+        return modelIds
+            .Select(id => Snapshot(TranscriptionModelCatalog.GetRequired(id), selected))
+            .ToList();
+    }
+
+    private TranscriptionModelSnapshot Snapshot(TranscriptionModelDefinition model, IReadOnlySet<string> selectedModelIds)
+    {
         var operation = _states.GetOrAdd(model.Id, _ => new OperationState());
         TranscriptionModelStatus? activeStatus;
         string? detail;
@@ -173,7 +197,7 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
         }
 
         var verified = _operations.IsVerified(model);
-        var selected = _selectedModelIds().Contains(model.Id);
+        var selected = selectedModelIds.Contains(model.Id);
         var status = activeStatus ?? (!_operations.RuntimeAvailable
             ? TranscriptionModelStatus.RuntimeUnavailable
             : verified
@@ -371,8 +395,19 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
             {
                 return;
             }
+
+            var phaseChanged = state.Status != status;
             state.Status = status;
             state.Detail = detail;
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (!phaseChanged &&
+                System.Diagnostics.Stopwatch.GetElapsedTime(state.LastProgressEventTimestamp, now) < ProgressEventInterval)
+            {
+                // State is current; the next raised event (or the operation's final one) carries it.
+                return;
+            }
+
+            state.LastProgressEventTimestamp = now;
         }
         OnModelChanged(modelId);
     }

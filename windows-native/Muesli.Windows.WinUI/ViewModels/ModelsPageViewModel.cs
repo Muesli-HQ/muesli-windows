@@ -25,6 +25,7 @@ public enum ModelStatusTone
 public partial class ModelsPageViewModel : ObservableObject, IDisposable
 {
     private bool _disposed;
+    private int _reloadQueued;
     private readonly WinUiModelsContext _models;
     private readonly WinUiSettingsContext _settings;
     private readonly IUiDispatcher _dispatcher;
@@ -188,7 +189,9 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
                 StatusMessage = $"{item.DisplayName}: {value.DisplayText}";
                 StatusTone = ModelStatusTone.Informational;
                 IsStatusOpen = true;
-                Reload();
+                // Progress fires once per downloaded chunk; a synchronous Reload here rebuilt every
+                // card (settings, snapshots, provider probe) per tick on the UI thread.
+                QueueReload();
             });
             await operation(progress, cancellationToken);
             ShowStatus($"{item.DisplayName} is ready and verified.");
@@ -258,7 +261,25 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
         IsStatusOpen = true;
     }
 
-    private void OnModelChanged(object? sender, string modelId) => _dispatcher.TryEnqueue(Reload);
+    // Lifecycle events arrive once per download/verification progress tick. Keep at most one
+    // reload queued; it reads the latest state when it runs, so coalescing loses no update.
+    private void OnModelChanged(object? sender, string modelId) => QueueReload();
+
+    private void QueueReload()
+    {
+        if (Interlocked.Exchange(ref _reloadQueued, 1) != 0) return;
+        if (!_dispatcher.TryEnqueue(RunQueuedReload))
+        {
+            Interlocked.Exchange(ref _reloadQueued, 0);
+        }
+    }
+
+    private void RunQueuedReload()
+    {
+        Interlocked.Exchange(ref _reloadQueued, 0);
+        if (_disposed) return;
+        Reload();
+    }
 
     public void Dispose()
     {

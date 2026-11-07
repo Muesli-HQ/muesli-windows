@@ -178,6 +178,61 @@ public sealed class TranscriptionModelPlatformTests
     }
 
     [Fact]
+    public async Task LifecycleBatchSnapshotsResolveSelectionOnceAndMatchSingleSnapshots()
+    {
+        var operations = new FakeModelOperations();
+        var selected = new HashSet<string>(["parakeet-v3"], StringComparer.OrdinalIgnoreCase);
+        var selectionReads = 0;
+        using var lifecycle = new TranscriptionModelLifecycleService(operations, () =>
+        {
+            selectionReads++;
+            return selected;
+        });
+        await lifecycle.PrepareAsync("whisper-tiny-en");
+        selectionReads = 0;
+
+        var ids = TranscriptionModelCatalog.Models.Select(model => model.Id).ToList();
+        var batch = lifecycle.Snapshots(ids);
+
+        // The selection source loads settings and credentials; a refresh must not pay that per model.
+        Assert.Equal(1, selectionReads);
+        Assert.Equal(ids, batch.Select(snapshot => snapshot.Model.Id));
+        foreach (var snapshot in batch)
+        {
+            Assert.Equal(lifecycle.Snapshot(snapshot.Model.Id).Status, snapshot.Status);
+        }
+        Assert.Equal(TranscriptionModelStatus.Selected, batch.Single(s => s.Model.Id == "parakeet-v3").Status);
+        Assert.Equal(TranscriptionModelStatus.Ready, batch.Single(s => s.Model.Id == "whisper-tiny-en").Status);
+    }
+
+    [Fact]
+    public async Task ProgressBurstsAreThrottledButPhaseChangesAndTheFinalStateAreAlwaysRaised()
+    {
+        var operations = new FakeModelOperations
+        {
+            ReportProgress = progress =>
+            {
+                // An archive download reports every 1 MB chunk: 500 reports in a few milliseconds.
+                for (var chunk = 1; chunk <= 500; chunk++)
+                {
+                    progress.Report(new ModelDownloadProgress("Downloading Whisper", chunk, 500));
+                }
+                progress.Report(new ModelDownloadProgress("Verifying Whisper", 0, null));
+            }
+        };
+        using var lifecycle = new TranscriptionModelLifecycleService(operations);
+        var raised = 0;
+        lifecycle.ModelChanged += (_, _) => Interlocked.Increment(ref raised);
+
+        await lifecycle.PrepareAsync("whisper-tiny-en");
+
+        // Start, first progress tick, the Downloading→Verifying phase change and the final event;
+        // never one per chunk.
+        Assert.InRange(raised, 3, 10);
+        Assert.Equal(TranscriptionModelStatus.Ready, lifecycle.Snapshot("whisper-tiny-en").Status);
+    }
+
+    [Fact]
     public async Task LifecycleCancellationRecoversAndCanRetry()
     {
         var operations = new FakeModelOperations
@@ -267,6 +322,7 @@ public sealed class TranscriptionModelPlatformTests
         public bool Verified { get; set; }
         public List<string> Prepared { get; } = [];
         public Func<TranscriptionModelDefinition, CancellationToken, Task>? Prepare { get; set; }
+        public Action<IProgress<ModelDownloadProgress>>? ReportProgress { get; set; }
         public Exception? DeleteFailure { get; set; }
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -274,6 +330,7 @@ public sealed class TranscriptionModelPlatformTests
         {
             Prepared.Add(model.Id);
             Started.TrySetResult();
+            if (progress is not null) ReportProgress?.Invoke(progress);
             if (Prepare is not null) await Prepare(model, cancellationToken);
             Verified = true;
         }
