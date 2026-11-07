@@ -198,11 +198,6 @@ function Rebuild-MsixPayload {
                 if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination (Join-Path $scratch $name) -Force }
             }
         }
-        $companion = Join-Path $LooseDir 'Indicator'
-        if (Test-Path -LiteralPath $companion) {
-            Copy-Item -LiteralPath $companion -Destination (Join-Path $scratch 'Indicator') -Recurse -Force
-        }
-
         # The public package must ship its disclosures and license texts.
         foreach ($document in @(
             @{ Source = (Join-Path $RepoRoot 'THIRD-PARTY-NOTICES.md'); Name = 'THIRD-PARTY-NOTICES.md' },

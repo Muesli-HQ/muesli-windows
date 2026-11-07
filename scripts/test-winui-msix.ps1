@@ -104,7 +104,6 @@ try {
     $requiredEntries = @(
         "Muesli.Windows.WinUI.exe",
         "Muesli.Windows.WinUI.dll",
-        "Indicator/Muesli.Windows.Indicator.Wpf.exe",
         "sherpa-onnx.dll",
         "sherpa-onnx-c-api.dll",
         "onnxruntime.dll",
@@ -115,12 +114,12 @@ try {
         "WINDOWS-PRIVACY.md",
         "licenses/Apache-2.0.txt"
     )
-    # Require each runtime in its actual application directory. Finding the companion's copy
-    # must not hide a missing main-app runtime on a machine with no developer prerequisites.
     foreach ($runtime in @('coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'System.Private.CoreLib.dll')) {
-        foreach ($requiredPath in @($runtime, "Indicator/$runtime")) {
-            if ($entryNames -notcontains $requiredPath) { $failures.Add("MSIX is not .NET self-contained: missing $requiredPath") }
-        }
+        if ($entryNames -notcontains $runtime) { $failures.Add("MSIX is not .NET self-contained: missing $runtime") }
+    }
+    # The floating indicator is drawn in-process; a second bundled runtime must not come back.
+    if (@($entryNames | Where-Object { $_ -like 'Indicator/*' }).Count -gt 0) {
+        $failures.Add("MSIX unexpectedly contains the retired Indicator/ companion payload.")
     }
     foreach ($requiredPath in @('Microsoft.UI.Xaml.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'vcomp140.dll')) {
         if ($entryNames -notcontains $requiredPath) { $failures.Add("MSIX is missing an app-local runtime: $requiredPath") }

@@ -5,49 +5,53 @@ using Xunit;
 namespace Muesli.Windows.Tests;
 
 /// <summary>
-/// Phase C contract: the only renderer is the WPF indicator companion under <c>Indicator\</c>.
-/// When it cannot run, Muesli carries on without a floating pill (the pill is optional). Because
-/// the companion runs in a separate process, these invariants are pinned at the source level; the
-/// live cross-process launch is an explicit operator step in docs/WINDOWS_UI_QUALIFICATION.md.
+/// The floating indicator is drawn by the Muesli process itself. These invariants need a live WinUI
+/// runtime to exercise, so they are pinned at the source level.
 /// </summary>
 public sealed class IndicatorHostContractTests
 {
-    private static string Source() => File.ReadAllText(TestRepositoryLayout.Combine(
+    private static string HostSource() => File.ReadAllText(TestRepositoryLayout.Combine(
         "windows-native", "Muesli.Windows.WinUI", "Services", "WinUiIndicatorHost.cs"));
 
+    private static string WindowSource() => File.ReadAllText(TestRepositoryLayout.Combine(
+        "windows-native", "Muesli.Windows.WinUI", "Indicator", "FloatingIndicatorWindow.cs"));
+
     [Fact]
-    public void A_lost_companion_never_spawns_an_in_process_pill()
+    public void The_indicator_never_runs_as_a_second_process_or_over_a_pipe()
     {
-        var source = Source();
-        Assert.Contains("_companionLost = true;", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("DictationIndicatorWindow", source, StringComparison.Ordinal);
+        var host = HostSource();
+        Assert.DoesNotContain("Process.Start", host, StringComparison.Ordinal);
+        Assert.DoesNotContain("IndicatorPipe", host, StringComparison.Ordinal);
+        Assert.DoesNotContain("Indicator.Wpf", host, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(TestRepositoryLayout.Combine("windows-native", "Muesli.Windows.Indicator.Wpf")),
+            "The retired WPF companion project must not come back.");
     }
 
     [Fact]
-    public void A_lost_companion_stops_publishing()
+    public void Microphone_levels_are_never_marshalled_to_the_ui_thread_per_buffer()
     {
-        var source = Source();
-        // Every state/publish/command path bails out once the companion is gone for good.
-        Assert.Contains("_disposed) != 0 || _companionLost", source, StringComparison.Ordinal);
-        Assert.Contains("_server is null", source, StringComparison.Ordinal);
+        var host = HostSource();
+        Assert.Contains(
+            "private void OnRecordingLevel(object? sender, float peak) => Volatile.Write(ref _amplitude",
+            host,
+            StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Launching_a_companion_kills_any_previous_one()
+    public void The_window_never_activates_and_stays_out_of_the_taskbar_and_switchers()
     {
-        var source = Source();
-        Assert.Contains("Never allow a second companion", source, StringComparison.Ordinal);
-        Assert.Contains("_companion?.Kill()", source, StringComparison.Ordinal);
-        Assert.Contains("Indicator", source, StringComparison.Ordinal);
-        Assert.Contains("Muesli.Windows.Indicator.Wpf.exe", source, StringComparison.Ordinal);
+        var window = WindowSource();
+        Assert.Contains("AppWindow.IsShownInSwitchers = false;", window, StringComparison.Ordinal);
+        Assert.Contains("WsExToolWindow | WsExNoActivate", window, StringComparison.Ordinal);
+        Assert.Contains("AppWindow.Show(false);", window, StringComparison.Ordinal);
+        Assert.Contains("return (IntPtr)MaNoActivate;", window, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Companion_recovery_is_bounded()
+    public void A_window_that_cannot_be_created_leaves_muesli_running_without_a_pill()
     {
-        var source = Source();
-        Assert.Contains("if (_restarts < 1)", source, StringComparison.Ordinal);
-        Assert.Contains("_restarts++;", source, StringComparison.Ordinal);
-        Assert.Contains("disconnected again; continuing without the floating pill", source, StringComparison.Ordinal);
+        var host = HostSource();
+        Assert.Contains("continuing without the floating pill", host, StringComparison.Ordinal);
+        Assert.Contains("_window is null) return;", host, StringComparison.Ordinal);
     }
 }

@@ -23,11 +23,13 @@ public sealed class MsixPayloadContractTests
     }
 
     [Fact]
-    public void MsixPackagingAddsTheWpfIndicatorCompanionToThePayload()
+    public void MsixPackagingNoLongerShipsASeparateIndicatorCompanion()
     {
+        // The floating indicator is drawn in-process; the retired WPF companion bundled a second
+        // self-contained runtime (about 223 MB) under Indicator\.
         var script = PackageScript();
-        Assert.Contains("$companion = Join-Path $LooseDir 'Indicator'", script, StringComparison.Ordinal);
-        Assert.Contains("Join-Path $scratch 'Indicator'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'Indicator'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Join-Path $scratch 'Indicator'", script, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -446,7 +446,8 @@ internal sealed class MuesliWinUiSession : IDisposable
             try
             {
                 using var process = Process.GetProcessById(unchecked((int)owner));
-                if (process.ProcessName == "Muesli.Windows.Indicator.Wpf") handles.Add(handle);
+                // The floating indicator and meeting prompts are top-level windows of the app itself.
+                if (process.ProcessName == "Muesli.Windows.WinUI") handles.Add(handle);
             }
             catch (ArgumentException) { }
             catch (InvalidOperationException) { }
