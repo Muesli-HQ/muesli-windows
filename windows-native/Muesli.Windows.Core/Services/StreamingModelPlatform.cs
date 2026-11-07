@@ -281,7 +281,11 @@ public sealed record StreamingModelSnapshot(
     bool CanCancel,
     bool CanRetry,
     bool CanVerify,
-    bool CanDelete);
+    bool CanDelete)
+{
+    /// <summary>Latest transfer state while downloading, or the last state of a paused/failed download.</summary>
+    public ModelDownloadSnapshot? Download { get; init; }
+}
 
 public sealed class StreamingModelLifecycleService : IDisposable
 {
@@ -292,6 +296,8 @@ public sealed class StreamingModelLifecycleService : IDisposable
         public TranscriptionModelStatus? Status;
         public string? Detail;
         public Func<CancellationToken, Task>? Retry;
+        public ModelDownloadSnapshot? Download;
+        public long LastProgressEventTimestamp;
     }
     private readonly ConcurrentDictionary<string, State> _states = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<string?> _selected;
@@ -312,7 +318,8 @@ public sealed class StreamingModelLifecycleService : IDisposable
         TranscriptionModelStatus? active;
         string? detail;
         bool retry;
-        lock (state.Gate) { active = state.Status; detail = state.Detail; retry = state.Retry is not null; }
+        ModelDownloadSnapshot? download;
+        lock (state.Gate) { active = state.Status; detail = state.Detail; retry = state.Retry is not null; download = state.Download; }
         var installer = new StreamingModelInstaller(model);
         var selected = id.Equals(_selected(), StringComparison.OrdinalIgnoreCase);
         var status = active ?? (!NativeParakeetClient.IsRuntimeAvailable ? TranscriptionModelStatus.RuntimeUnavailable : installer.IsVerified ? selected ? TranscriptionModelStatus.Selected : TranscriptionModelStatus.Ready : TranscriptionModelStatus.Missing);
@@ -334,7 +341,8 @@ public sealed class StreamingModelLifecycleService : IDisposable
             $"Pinned ASR files: {model.RequiredFiles.Count}", "Runtime: packaged sherpa-onnx online transducer + Silero VAD");
         return new(model, status, text, bytes, TranscriptionModelLifecycleService.FormatBytes(bytes), diagnostics, busy,
             !busy && status != TranscriptionModelStatus.RuntimeUnavailable, busy, retry && !busy,
-            !busy && model.IsCached, !busy && bytes > 0);
+            !busy && model.IsCached, !busy && bytes > 0)
+        { Download = download };
     }
 
     public Task PrepareAsync(string id, IProgress<ModelDownloadProgress>? progress = null, CancellationToken token = default) =>
@@ -366,18 +374,19 @@ public sealed class StreamingModelLifecycleService : IDisposable
         {
             if (state.Cancellation is not null) throw new InvalidOperationException("A live-model operation is already running.");
             linked = CancellationTokenSource.CreateLinkedTokenSource(token);
-            state.Cancellation = linked; state.Status = status; state.Detail = detail;
+            state.Cancellation = linked; state.Status = status; state.Detail = detail; state.Download = null;
             state.Retry = retryToken => RunAsync(id, status, detail, operation, deletion, retryToken);
         }
         ModelChanged?.Invoke(this, id);
         try
         {
             await Task.Run(() => operation(new StreamingModelInstaller(model), linked.Token), linked.Token).ConfigureAwait(false);
-            lock (state.Gate) { state.Status = null; state.Detail = null; state.Retry = null; }
+            lock (state.Gate) { state.Status = null; state.Detail = null; state.Retry = null; state.Download = null; }
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested)
         {
-            lock (state.Gate) { state.Status = null; state.Detail = "Cancelled; partial artifacts will be cleaned on retry."; }
+            // Partial bytes are kept; Download resumes from them.
+            lock (state.Gate) { state.Status = null; state.Detail = deletion ? "Cancelled." : TranscriptionModelLifecycleService.PausedDetail; }
             throw;
         }
         catch (Exception ex)
@@ -395,14 +404,22 @@ public sealed class StreamingModelLifecycleService : IDisposable
     private void UpdateProgress(string id, ModelDownloadProgress value, TranscriptionModelStatus status, IProgress<ModelDownloadProgress>? external)
     {
         var state = _states.GetOrAdd(id, _ => new());
+        bool raise;
         lock (state.Gate)
         {
             if (state.Cancellation is null) return;
+            if (value.Snapshot is not null) state.Download = value.Snapshot;
+            var phaseChanged = state.Status != status;
             state.Status = status;
             state.Detail = value.DisplayText;
+            // Same throttle as transcription models: progress-only changes at most every 250 ms.
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            raise = phaseChanged ||
+                    System.Diagnostics.Stopwatch.GetElapsedTime(state.LastProgressEventTimestamp, now) >= TranscriptionModelLifecycleService.ProgressEventInterval;
+            if (raise) state.LastProgressEventTimestamp = now;
         }
         external?.Report(value);
-        ModelChanged?.Invoke(this, id);
+        if (raise) ModelChanged?.Invoke(this, id);
     }
 
     public void Dispose()

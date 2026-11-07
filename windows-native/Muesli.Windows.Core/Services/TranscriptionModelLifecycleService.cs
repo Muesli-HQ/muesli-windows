@@ -27,7 +27,15 @@ public sealed record TranscriptionModelSnapshot(
     bool CanCancel,
     bool CanRetry,
     bool CanVerify,
-    bool CanDelete);
+    bool CanDelete)
+{
+    /// <summary>
+    /// The latest transfer state (bytes, files, speed, time left, retries) while downloading, or the
+    /// last state of a paused or failed download. Lives in the app-scoped lifecycle service, so it
+    /// survives leaving and returning to the Models page.
+    /// </summary>
+    public ModelDownloadSnapshot? Download { get; init; }
+}
 
 public static class TranscriptionModelReadiness
 {
@@ -135,7 +143,11 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
         public string? Detail;
         public Func<CancellationToken, Task>? Retry;
         public long LastProgressEventTimestamp;
+        public ModelDownloadSnapshot? Download;
     }
+
+    /// <summary>Shown after a pause, as on macOS; pressing Download resumes from the saved bytes.</summary>
+    public const string PausedDetail = "Paused — select Download to resume";
 
     /// <summary>
     /// Archive downloaders report every 1 MB chunk. Each ModelChanged makes listening pages rebuild
@@ -189,10 +201,12 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
         TranscriptionModelStatus? activeStatus;
         string? detail;
         bool canRetry;
+        ModelDownloadSnapshot? download;
         lock (operation.Gate)
         {
             activeStatus = operation.Status;
             detail = operation.Detail;
+            download = operation.Download;
             canRetry = operation.Retry is not null && activeStatus is TranscriptionModelStatus.Failed or TranscriptionModelStatus.DeletionFailed;
         }
 
@@ -218,7 +232,10 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
             busy,
             canRetry,
             !busy && model.IsCached,
-            !busy && bytes > 0);
+            !busy && bytes > 0)
+        {
+            Download = download
+        };
     }
 
     public Task PrepareAsync(
@@ -239,7 +256,8 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
                         value.DisplayText.StartsWith("Verifying", StringComparison.OrdinalIgnoreCase) ||
                         value.DisplayText.Contains("verified", StringComparison.OrdinalIgnoreCase)
                             ? TranscriptionModelStatus.Verifying
-                            : TranscriptionModelStatus.Downloading);
+                            : TranscriptionModelStatus.Downloading,
+                        value.Snapshot);
                     progress?.Report(value);
                 }),
                 token),
@@ -341,6 +359,7 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
             state.Cancellation = linked;
             state.Status = runningStatus;
             state.Detail = detail;
+            state.Download = null;
             state.Retry = token => StartOperationAsync(model, runningStatus, detail, operation, token, deletion);
         }
         OnModelChanged(model.Id);
@@ -352,6 +371,7 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
             {
                 state.Status = null;
                 state.Detail = null;
+                state.Download = null;
                 state.Retry = null;
             }
         }
@@ -359,8 +379,9 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
         {
             lock (state.Gate)
             {
+                // Partial bytes are kept; Download resumes from them.
                 state.Status = null;
-                state.Detail = "Cancelled; safe partial artifacts will be cleaned on retry.";
+                state.Detail = deletion ? "Cancelled." : PausedDetail;
             }
             throw;
         }
@@ -386,7 +407,7 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
 
     private void OnModelChanged(string modelId) => ModelChanged?.Invoke(this, modelId);
 
-    private void UpdateProgress(string modelId, string detail, TranscriptionModelStatus status)
+    private void UpdateProgress(string modelId, string detail, TranscriptionModelStatus status, ModelDownloadSnapshot? download = null)
     {
         var state = _states.GetOrAdd(modelId, _ => new OperationState());
         lock (state.Gate)
@@ -396,6 +417,8 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
                 return;
             }
 
+            // Always keep the latest transfer numbers, even when the change event is throttled.
+            if (download is not null) state.Download = download;
             var phaseChanged = state.Status != status;
             state.Status = status;
             state.Detail = detail;
