@@ -1070,6 +1070,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     {
         // Clear first so an event raised during the refresh schedules a follow-up pass.
         Interlocked.Exchange(ref _modelRolesRefreshQueued, 0);
+        if (_disposed) return;
         RefreshModelRoles();
     }
 }

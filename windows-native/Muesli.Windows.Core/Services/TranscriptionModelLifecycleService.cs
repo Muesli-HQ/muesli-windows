@@ -134,7 +134,15 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
         public TranscriptionModelStatus? Status;
         public string? Detail;
         public Func<CancellationToken, Task>? Retry;
+        public long LastProgressEventTimestamp;
     }
+
+    /// <summary>
+    /// Archive downloaders report every 1 MB chunk. Each ModelChanged makes listening pages rebuild
+    /// their model status on the UI thread, so progress-only changes are raised at most this often.
+    /// Phase changes and operation start/end are always raised immediately.
+    /// </summary>
+    internal static readonly TimeSpan ProgressEventInterval = TimeSpan.FromMilliseconds(250);
 
     private readonly ITranscriptionModelOperations _operations;
     private readonly ConcurrentDictionary<string, OperationState> _states = new(StringComparer.OrdinalIgnoreCase);
@@ -387,8 +395,19 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
             {
                 return;
             }
+
+            var phaseChanged = state.Status != status;
             state.Status = status;
             state.Detail = detail;
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (!phaseChanged &&
+                System.Diagnostics.Stopwatch.GetElapsedTime(state.LastProgressEventTimestamp, now) < ProgressEventInterval)
+            {
+                // State is current; the next raised event (or the operation's final one) carries it.
+                return;
+            }
+
+            state.LastProgressEventTimestamp = now;
         }
         OnModelChanged(modelId);
     }
