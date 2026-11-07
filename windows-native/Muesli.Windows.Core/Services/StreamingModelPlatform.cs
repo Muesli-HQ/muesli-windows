@@ -146,18 +146,21 @@ public sealed class StreamingModelInstaller
                 }
             }
 
-            var archivePath = Path.Combine(StreamingModelCatalog.ModelCacheDirectory, $".{_model.DirectoryName}.{Guid.NewGuid():N}.download");
             var vadPath = Path.Combine(StreamingModelCatalog.ModelCacheDirectory, $".{_model.DirectoryName}.{Guid.NewGuid():N}.vad.download");
             var stagingPath = Path.Combine(StreamingModelCatalog.ModelCacheDirectory, $".{_model.DirectoryName}.{Guid.NewGuid():N}.staging");
             try
             {
-                await DownloadAsync(_model.ArchiveUrl, archivePath, _model.ArchiveSha256, $"Downloading {_model.DisplayName}", progress, cancellationToken).ConfigureAwait(false);
+                // The archive stays in its resume folder until the install succeeds, so pausing
+                // during the VAD download or extraction keeps it for the next attempt.
+                var archive = await ModelFileDownloads.FetchAsync(
+                    _model.ArchiveUrl, StreamingModelCatalog.ModelCacheDirectory, _model.ArchiveSha256,
+                    $"Downloading {_model.DisplayName}", progress, cancellationToken).ConfigureAwait(false);
                 await DownloadAsync(_model.VadUrl, vadPath, _model.VadSha256, "Downloading Silero VAD", progress, cancellationToken).ConfigureAwait(false);
                 progress?.Report(new ModelDownloadProgress($"Extracting {_model.DisplayName}", 0, null));
                 Directory.CreateDirectory(stagingPath);
-                using (var archive = ArchiveFactory.OpenArchive(archivePath, null))
+                using (var opened = ArchiveFactory.OpenArchive(archive.Path, null))
                 {
-                    SafeArchiveExtractor.ExtractSafely(archive, stagingPath, cancellationToken);
+                    SafeArchiveExtractor.ExtractSafely(opened, stagingPath, cancellationToken);
                 }
                 var stagedModelPath = Path.Combine(stagingPath, _model.DirectoryName);
                 if (!Directory.Exists(stagedModelPath)) throw new InvalidDataException("The streaming archive has an unexpected root directory.");
@@ -166,11 +169,11 @@ public sealed class StreamingModelInstaller
                 if (Directory.Exists(_model.ModelPath)) Directory.Delete(_model.ModelPath, true);
                 Directory.Move(stagedModelPath, _model.ModelPath);
                 await WriteStampAsync(cancellationToken).ConfigureAwait(false);
+                archive.Release();
                 progress?.Report(new ModelDownloadProgress($"{_model.DisplayName} verified", 1, 1));
             }
             finally
             {
-                TryDeleteFile(archivePath);
                 TryDeleteFile(vadPath);
                 TryDeleteDirectory(stagingPath);
             }
@@ -195,6 +198,8 @@ public sealed class StreamingModelInstaller
         try
         {
             if (Directory.Exists(_model.ModelPath)) Directory.Delete(_model.ModelPath, true);
+            // Also discard a paused or unfinished archive download.
+            ModelFileDownloads.DeleteResumeFolder(ArchiveResumeFolder);
         }
         finally
         {
@@ -202,8 +207,14 @@ public sealed class StreamingModelInstaller
         }
     }
 
-    public long DiskSizeBytes() => Directory.Exists(_model.ModelPath)
-        ? Directory.EnumerateFiles(_model.ModelPath, "*", SearchOption.AllDirectories).Sum(path => new FileInfo(path).Length)
+    private string ArchiveResumeFolder =>
+        ModelFileDownloads.ResumeFolderFor(_model.ArchiveUrl, StreamingModelCatalog.ModelCacheDirectory);
+
+    /// <summary>Installed files plus any saved partial download, so a paused download can be deleted.</summary>
+    public long DiskSizeBytes() => FolderBytes(_model.ModelPath) + FolderBytes(ArchiveResumeFolder);
+
+    private static long FolderBytes(string path) => Directory.Exists(path)
+        ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length)
         : 0;
 
     private async Task VerifyFilesAsync(string root, IProgress<ModelDownloadProgress>? progress, CancellationToken cancellationToken)

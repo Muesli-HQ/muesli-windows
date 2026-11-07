@@ -143,7 +143,17 @@ public sealed class ModelDownloadCoordinator
                         continue;
                     }
 
-                    File.Delete(target.FinalPath);
+                    try
+                    {
+                        File.Delete(target.FinalPath);
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        throw new ModelDownloadException(
+                            ModelDownloadFailure.FileSystem,
+                            $"Could not replace {target.File.RelativePath}: {exception.Message}",
+                            exception);
+                    }
                 }
 
                 tracker.MarkPresent(target.File.RelativePath, ResumableBytes(target, state), completed: false);
@@ -174,19 +184,24 @@ public sealed class ModelDownloadCoordinator
             state.Delete();
             tracker.SetPhase(ModelDownloadPhase.Ready, "Model ready", force: true);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (cancellationToken.IsCancellationRequested &&
+                                          exception is OperationCanceledException or IOException)
         {
+            // A pause, including an I/O error raised by the stream it aborted.
             state?.Save();
             tracker.SetPhase(ModelDownloadPhase.Paused, "Paused", force: true);
-            throw;
+            if (exception is OperationCanceledException) throw;
+            throw new OperationCanceledException("The download was paused.", exception, cancellationToken);
         }
-        catch (ModelDownloadException exception)
+        catch (Exception exception) when (exception is ModelDownloadException or IOException or UnauthorizedAccessException)
         {
+            var failure = Typed(exception);
             // Keep resume state only while there is something to resume.
             if (targets.Any(target => File.Exists(target.PartPath))) state?.Save();
             else state?.Delete();
-            tracker.SetPhase(ModelDownloadPhase.Failed, exception.Message, force: true);
-            throw;
+            tracker.SetPhase(ModelDownloadPhase.Failed, failure.Message, force: true);
+            if (ReferenceEquals(failure, exception)) throw;
+            throw failure;
         }
         finally
         {
@@ -248,9 +263,11 @@ public sealed class ModelDownloadCoordinator
             {
                 await DownloadWithRetriesAsync(target, state, tracker, failFast.Token);
             }
-            catch (ModelDownloadException exception)
+            catch (Exception exception) when (exception is not OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
-                Interlocked.CompareExchange(ref firstFailure, exception, null);
+                // Anything that is not a cancellation stops the siblings and is reported once,
+                // typed; a late I/O error from a sibling cancelled by this failure is not reported.
+                Interlocked.CompareExchange(ref firstFailure, Typed(exception), null);
                 failFast.Cancel();
             }
             finally
@@ -387,10 +404,16 @@ public sealed class ModelDownloadCoordinator
             var resuming = existing > 0 &&
                            response.StatusCode == HttpStatusCode.PartialContent &&
                            response.Content.Headers.ContentRange?.From == existing;
-            if (!resuming) existing = 0;
+            if (!resuming)
+            {
+                // A fresh body replaces the old part. Drop it (and its ETag) before saving the new
+                // ETag, so a failure below cannot pair the old bytes with the new validator.
+                existing = 0;
+                TryDelete(target.PartPath);
+                state.Forget(path);
+            }
 
-            var etag = response.Headers.ETag?.Tag;
-            if (!string.IsNullOrWhiteSpace(etag)) state.SetETag(path, Unquote(etag));
+            if (StrongETag(response) is { } etag) state.SetETag(path, etag);
             state.Save();
 
             var contentLength = response.Content.Headers.ContentLength;
@@ -541,14 +564,24 @@ public sealed class ModelDownloadCoordinator
 
     private sealed class RangeNotHonouredException : Exception;
 
-    /// <summary>Disk errors surface as typed failures: a full disk fails fast, other I/O is retried.</summary>
+    /// <summary>
+    /// Disk errors surface as typed failures: a full disk fails fast, an access error (a file
+    /// locked or not writable) fails fast, other I/O is retried.
+    /// </summary>
     private static Exception MapIo(Exception exception) => exception switch
     {
         IOException io when io.HResult is unchecked((int)0x80070070) or unchecked((int)0x80070027) =>
             new ModelDownloadException(ModelDownloadFailure.InsufficientDiskSpace, "Not enough disk space to finish the download.", io),
         IOException io => new ModelDownloadException(ModelDownloadFailure.Network, io.Message, io),
+        UnauthorizedAccessException access => new ModelDownloadException(ModelDownloadFailure.FileSystem, access.Message, access),
         _ => exception
     };
+
+    /// <summary>Any failure other than cancellation, as the typed exception callers handle.</summary>
+    private static ModelDownloadException Typed(Exception exception) =>
+        exception as ModelDownloadException
+        ?? MapIo(exception) as ModelDownloadException
+        ?? new ModelDownloadException(ModelDownloadFailure.FileSystem, exception.Message, exception);
 
     internal static List<SegmentState> PlanSegments(long size, int count)
     {
@@ -572,14 +605,20 @@ public sealed class ModelDownloadCoordinator
             using var response = await SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode) return null;
             var acceptsRanges = response.Headers.AcceptRanges.Contains("bytes", StringComparer.OrdinalIgnoreCase);
-            var etag = response.Headers.ETag?.Tag;
-            return new Probe(acceptsRanges, string.IsNullOrWhiteSpace(etag) ? null : Unquote(etag), response.Content.Headers.ContentLength);
+            return new Probe(acceptsRanges, StrongETag(response), response.Content.Headers.ContentLength);
         }
         catch (ModelDownloadException)
         {
             return null;
         }
     }
+
+    /// <summary>
+    /// Only a strong ETag can guard a byte-range resume (RFC 9110 §13.1.5). A weak one is treated
+    /// as no validator: the file downloads whole, and an interrupted transfer starts over.
+    /// </summary>
+    private static string? StrongETag(HttpResponseMessage response) =>
+        response.Headers.ETag is { IsWeak: false, Tag: { } tag } && !string.IsNullOrWhiteSpace(tag) ? Unquote(tag) : null;
 
     // ─── Transfer helpers ────────────────────────────────────────────────────────────────────
 

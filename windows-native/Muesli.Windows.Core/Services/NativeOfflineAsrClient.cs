@@ -86,6 +86,12 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                 {
                     Directory.Delete(_model.ModelPath, recursive: true);
                 }
+
+                // Also discard a paused or unfinished download.
+                if (Directory.Exists(_model.ResumePath))
+                {
+                    Directory.Delete(_model.ResumePath, recursive: true);
+                }
             }
             finally
             {
@@ -497,7 +503,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
 
             // A stable folder so a paused or failed download resumes instead of starting over. It is
             // moved into place (pinned files) or deleted (archive) only after a verified install.
-            var resumeRoot = Path.Combine(TranscriptionModelCatalog.ModelCacheDirectory, $".{_model.DirectoryName}.resume");
+            var resumeRoot = _model.ResumePath;
             var stagingPath = Path.Combine(
                 TranscriptionModelCatalog.ModelCacheDirectory,
                 $".{_model.DirectoryName}.{Guid.NewGuid():N}.staging");
@@ -508,6 +514,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                 {
                     await PinnedModelFileDownloader.DownloadAsync(
                         pinnedSource, _model.RequiredFileSha256, resumeRoot, _model.DisplayName, progress, cancellationToken);
+                    PinnedModelFileDownloader.KeepOnly(resumeRoot, _model.RequiredFileSha256.Keys);
                     stagedModelPath = resumeRoot;
                 }
                 else

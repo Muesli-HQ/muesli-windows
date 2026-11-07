@@ -322,7 +322,7 @@ public sealed class NativeDiarizationClient : IDisposable
             _verificationFailure = null;
             _modelSetupFailure = null;
         }
-        catch (InvalidDataException exception)
+        catch (Exception exception) when (exception is InvalidDataException or ModelDownloadException { IsIntegrityFailure: true })
         {
             _verificationFailure = exception.Message;
             _modelSetupFailure = null;
@@ -395,22 +395,22 @@ public sealed class NativeDiarizationClient : IDisposable
         IProgress<ModelDownloadProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var archivePath = Path.Combine(ModelCacheDirectory, $".{SegmentationDirectoryName}.{Guid.NewGuid():N}.download");
         var stagingPath = Path.Combine(ModelCacheDirectory, $".{SegmentationDirectoryName}.{Guid.NewGuid():N}.staging");
         try
         {
-            await DownloadFileAsync(
+            // Kept in its resume folder until installed, so an interrupted extraction reuses it.
+            var archive = await ModelFileDownloads.FetchAsync(
                 SegmentationArchiveUrl,
-                archivePath,
+                ModelCacheDirectory,
                 SegmentationArchiveSha256,
                 "Downloading verified pyannote segmentation model",
                 progress,
                 cancellationToken);
             progress?.Report(new ModelDownloadProgress("Extracting verified diarization model", 0, null));
             Directory.CreateDirectory(stagingPath);
-            using (var archive = ArchiveFactory.OpenArchive(archivePath, null))
+            using (var opened = ArchiveFactory.OpenArchive(archive.Path, null))
             {
-                SafeArchiveExtractor.ExtractSafely(archive, stagingPath, cancellationToken);
+                SafeArchiveExtractor.ExtractSafely(opened, stagingPath, cancellationToken);
             }
 
             var stagedModelPath = Path.Combine(stagingPath, SegmentationDirectoryName, "model.int8.onnx");
@@ -427,10 +427,10 @@ public sealed class NativeDiarizationClient : IDisposable
                 Directory.Delete(destinationDirectory, recursive: true);
             }
             Directory.Move(Path.Combine(stagingPath, SegmentationDirectoryName), destinationDirectory);
+            archive.Release();
         }
         finally
         {
-            TryDelete(archivePath);
             TryDeleteDirectory(stagingPath);
         }
     }

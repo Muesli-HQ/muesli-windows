@@ -61,6 +61,9 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
 
     public static string ModelPath => Path.Combine(ModelCacheDirectory, ModelDirectoryName);
 
+    /// <summary>A paused or unfinished download's bytes; moved into <see cref="ModelPath"/> once verified.</summary>
+    public static string ResumePath => Path.Combine(ModelCacheDirectory, $".{ModelDirectoryName}.resume");
+
     private static string VerificationStampPath => Path.Combine(ModelPath, ".muesli-model-verification.json");
 
     public static string EncoderPath => Path.Combine(ModelPath, "encoder.int8.onnx");
@@ -209,6 +212,12 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
                 if (Directory.Exists(ModelPath))
                 {
                     Directory.Delete(ModelPath, recursive: true);
+                }
+
+                // Also discard a paused or unfinished download.
+                if (Directory.Exists(ResumePath))
+                {
+                    Directory.Delete(ResumePath, recursive: true);
                 }
             }
             finally
@@ -750,12 +759,13 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
 
             // A stable folder so a paused or failed download resumes instead of starting over; it is
             // moved into place only after every file verifies.
-            var resumeRoot = Path.Combine(ModelCacheDirectory, $".{ModelDirectoryName}.resume");
+            var resumeRoot = ResumePath;
             try
             {
                 var stagedModelPath = resumeRoot;
                 await PinnedModelFileDownloader.DownloadAsync(
                     PinnedFileBaseUrl, ExpectedModelHashes, stagedModelPath, "Parakeet v3 model", progress, cancellationToken);
+                PinnedModelFileDownloader.KeepOnly(stagedModelPath, ExpectedModelHashes.Keys);
                 await VerifyModelFilesAtPathAsync(stagedModelPath, cancellationToken);
                 if (Directory.Exists(ModelPath))
                 {
@@ -780,7 +790,7 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
                 throw;
             }
         }
-        catch (InvalidDataException exception)
+        catch (Exception exception) when (exception is InvalidDataException or ModelDownloadException { IsIntegrityFailure: true })
         {
             _verificationFailure = exception.Message;
             _modelSetupFailure = null;

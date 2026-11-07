@@ -280,6 +280,102 @@ public sealed class ModelDownloadCoordinatorTests
         Assert.Equal("Downloading Parakeet v3 · 49% · ~26s left", ModelDownloadFormatting.Compact("Parakeet v3", snapshot));
     }
 
+    [Fact]
+    public async Task Two_callers_of_the_same_url_both_succeed()
+    {
+        using var directory = new TestDirectory();
+        var data = Data(2_000_000, 21);
+        var server = new FakeServer().Add("/vad.onnx", data);
+        var coordinator = Coordinator(server);
+        var hash = Convert.ToHexString(SHA256.HashData(data));
+
+        await Task.WhenAll(
+            ModelFileDownloads.DownloadFileAsync(Host + "/vad.onnx", Path.Combine(directory.Path, "one.download"), hash, "VAD", null, CancellationToken.None, coordinator),
+            ModelFileDownloads.DownloadFileAsync(Host + "/vad.onnx", Path.Combine(directory.Path, "two.download"), hash, "VAD", null, CancellationToken.None, coordinator));
+
+        Assert.Equal(data, File.ReadAllBytes(Path.Combine(directory.Path, "one.download")));
+        Assert.Equal(data, File.ReadAllBytes(Path.Combine(directory.Path, "two.download")));
+    }
+
+    [Fact]
+    public async Task A_fetched_file_is_reused_until_released()
+    {
+        using var directory = new TestDirectory();
+        var data = Data(1_500_000, 22);
+        var server = new FakeServer().Add("/archive.tar.bz2", data);
+        var coordinator = Coordinator(server);
+        var hash = Convert.ToHexString(SHA256.HashData(data));
+
+        var first = await ModelFileDownloads.FetchAsync(Host + "/archive.tar.bz2", directory.Path, hash, "Archive", null, CancellationToken.None, coordinator);
+        // A later install step failed; the next attempt must not download the archive again.
+        server.ClearLog();
+        var again = await ModelFileDownloads.FetchAsync(Host + "/archive.tar.bz2", directory.Path, hash, "Archive", null, CancellationToken.None, coordinator);
+
+        Assert.Equal(first.Path, again.Path);
+        Assert.Equal(data, File.ReadAllBytes(again.Path));
+        Assert.DoesNotContain(server.Log, entry => entry.Method == HttpMethod.Get);
+
+        again.Release();
+        Assert.False(Directory.Exists(Path.GetDirectoryName(again.Path)));
+    }
+
+    [Fact]
+    public async Task Weak_etags_are_not_used_to_resume()
+    {
+        using var directory = new TestDirectory();
+        var server = new FakeServer { WeakETags = true }.Add("/a.bin", Data(3_000_000, 23));
+        var manifest = server.Manifest("model", "v1");
+        using var pause = new CancellationTokenSource();
+        server.StallAfter = _ => 1_000_000;
+        server.OnStall = pause.Cancel;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Coordinator(server).DownloadAsync(manifest, directory.Path, null, pause.Token));
+        server.StallAfter = null;
+        server.ClearLog();
+        await Coordinator(server).DownloadAsync(manifest, directory.Path, null, CancellationToken.None);
+
+        var get = Assert.Single(server.Log, entry => entry.Method == HttpMethod.Get);
+        Assert.Null(get.RangeFrom);
+        Assert.Null(get.IfRange);
+    }
+
+    [Fact]
+    public async Task A_failed_fresh_response_does_not_leave_old_bytes_to_stitch()
+    {
+        using var directory = new TestDirectory();
+        var oldData = Data(3_000_000, 24);
+        var newData = Data(3_000_000, 25);
+        var server = new FakeServer().Add("/a.bin", oldData);
+        var manifest = new ModelDownloadManifest("model", "v1",
+            [new ModelDownloadFile("a.bin", new Uri(Host + "/a.bin"), newData.Length, Convert.ToHexString(SHA256.HashData(newData)))]);
+        using var pause = new CancellationTokenSource();
+        server.StallAfter = _ => 1_000_000;
+        server.OnStall = pause.Cancel;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Coordinator(server).DownloadAsync(manifest, directory.Path, null, pause.Token));
+
+        // The server file changes, and the first fresh response is malformed.
+        server.StallAfter = null;
+        server.Add("/a.bin", newData);
+        server.Intercept = request =>
+        {
+            if (request.Method != HttpMethod.Get) return null;
+            server.Intercept = null;
+            var bad = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(newData) };
+            bad.Headers.ETag = new EntityTagHeaderValue($"\"{server.ETag("/a.bin")}\"");
+            bad.Content.Headers.ContentLength = 123;
+            return bad;
+        };
+        var failure = await Assert.ThrowsAsync<ModelDownloadException>(() =>
+            Coordinator(server).DownloadAsync(manifest, directory.Path, null, CancellationToken.None));
+        Assert.Equal(ModelDownloadFailure.InvalidContentLength, failure.Failure);
+
+        // The next attempt must start over, not append new bytes to the old part.
+        await Coordinator(server).DownloadAsync(manifest, directory.Path, null, CancellationToken.None);
+        Assert.Equal(newData, File.ReadAllBytes(Path.Combine(directory.Path, "a.bin")));
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────────────────────
 
     private static ModelDownloadCoordinator Coordinator(FakeServer server, long segmentThreshold = long.MaxValue, TimeSpan? stall = null) =>
@@ -309,6 +405,7 @@ public sealed class ModelDownloadCoordinatorTests
         public List<LogEntry> Log => [.. _log];
         public void ClearLog() => _log = new ConcurrentQueue<LogEntry>();
         public bool HonourRanges { get; init; } = true;
+        public bool WeakETags { get; init; }
         public Func<HttpRequestMessage, HttpResponseMessage?>? Intercept { get; set; }
         public Func<HttpRequestMessage, long?>? StallAfter { get; set; }
 
@@ -345,7 +442,7 @@ public sealed class ModelDownloadCoordinatorTests
             if (!_files.TryGetValue(path, out var file)) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
 
             var response = new HttpResponseMessage(HttpStatusCode.OK);
-            response.Headers.ETag = new EntityTagHeaderValue($"\"{file.ETag}\"");
+            response.Headers.ETag = new EntityTagHeaderValue($"\"{file.ETag}\"", WeakETags);
             if (HonourRanges) response.Headers.AcceptRanges.Add("bytes");
             if (request.Method == HttpMethod.Head)
             {

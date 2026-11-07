@@ -119,15 +119,19 @@ internal sealed class NativeTranscriptionModelOperations : ITranscriptionModelOp
         }, cancellationToken);
     }
 
-    public long DiskSizeBytes(TranscriptionModelDefinition model)
+    /// <summary>Installed files plus a paused download's saved bytes, so a paused model can be deleted.</summary>
+    public long DiskSizeBytes(TranscriptionModelDefinition model) =>
+        FolderBytes(model.ModelPath) + FolderBytes(model.ResumePath);
+
+    private static long FolderBytes(string path)
     {
-        if (!Directory.Exists(model.ModelPath))
+        if (!Directory.Exists(path))
         {
             return 0;
         }
 
-        return Directory.EnumerateFiles(model.ModelPath, "*", SearchOption.AllDirectories)
-            .Select(path => new FileInfo(path))
+        return Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
+            .Select(file => new FileInfo(file))
             .Where(file => file.Exists)
             .Sum(file => file.Length);
     }

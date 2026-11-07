@@ -78,7 +78,9 @@ public enum ModelDownloadFailure
     ChecksumMismatch,
     InsufficientDiskSpace,
     InvalidPath,
-    InsecureSource
+    InsecureSource,
+    /// <summary>A local file could not be written, replaced or moved (locked, read-only, access denied).</summary>
+    FileSystem
 }
 
 public sealed class ModelDownloadException : Exception
@@ -93,6 +95,9 @@ public sealed class ModelDownloadException : Exception
     public ModelDownloadFailure Failure { get; }
 
     public int? StatusCode { get; }
+
+    /// <summary>The bytes arrived but are not the expected file; reported like a verification failure.</summary>
+    public bool IsIntegrityFailure => Failure is ModelDownloadFailure.ChecksumMismatch or ModelDownloadFailure.SizeMismatch;
 
     /// <summary>
     /// Transient conditions are retried. Integrity, disk-space and client errors fail fast: trying

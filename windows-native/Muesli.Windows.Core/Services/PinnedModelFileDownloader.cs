@@ -68,6 +68,23 @@ internal static partial class PinnedModelFileDownloader
         return coordinator.DownloadAsync(manifest, destinationDirectory, ModelDownloadProgressAdapter.For(displayName, progress), cancellationToken);
     }
 
+    /// <summary>
+    /// Leaves only the pinned files in a downloaded folder before it is moved into place: resume
+    /// bookkeeping, stray part files and files from an older manifest must not become part of the
+    /// installed model.
+    /// </summary>
+    public static void KeepOnly(string directory, IEnumerable<string> relativePaths)
+    {
+        var root = Path.GetFullPath(directory);
+        var keep = new HashSet<string>(
+            relativePaths.Select(path => Path.GetFullPath(Path.Combine(root, path))),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+        {
+            if (!keep.Contains(Path.GetFullPath(file))) File.Delete(file);
+        }
+    }
+
     private static Uri FileUri(string baseUrl, string relativePath) =>
         new($"{baseUrl.TrimEnd('/')}/{string.Join('/', relativePath.Split('/', '\\').Select(Uri.EscapeDataString))}");
 }
