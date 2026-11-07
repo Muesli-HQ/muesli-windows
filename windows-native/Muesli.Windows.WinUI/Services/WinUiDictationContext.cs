@@ -603,8 +603,10 @@ public sealed class WinUiDictationContext : IDisposable
 
     private void RaiseChanged() => _dispatcher.TryEnqueue(() => Changed?.Invoke(this, EventArgs.Empty));
 
+    // Raised on the audio thread, once per capture buffer. Subscribers must be thread-safe and cheap;
+    // marshalling every buffer to the UI thread flooded the dispatcher during dictation.
     private void OnRecordingLevelChanged(object? sender, AudioLevelEventArgs e) =>
-        _dispatcher.TryEnqueue(() => RecordingLevelChanged?.Invoke(this, e.Rms));
+        RecordingLevelChanged?.Invoke(this, e.Rms);
 
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);

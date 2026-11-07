@@ -55,8 +55,8 @@ $appxPackageDir = $OutputDirectory.TrimEnd('\') + '\'
 $dotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe'
 if (-not (Test-Path $dotnet)) { $dotnet = 'dotnet' }
 
-# The shell and its WPF indicator companion lock their own output assemblies while running.
-Get-Process -Name 'Muesli.Windows.WinUI','Muesli.Windows.Indicator.Wpf' -ErrorAction SilentlyContinue | Stop-Process -Force
+# The shell locks its own output assemblies while running.
+Get-Process -Name 'Muesli.Windows.WinUI' -ErrorAction SilentlyContinue | Stop-Process -Force
 
 # The same deterministic publish properties the portable release used, so the MSIX payload is
 # ReadyToRun, deterministic, CI-built, and carries no debug symbols.
@@ -105,9 +105,9 @@ try {
     if ($storeManifestDirectory) { Remove-Item -LiteralPath $storeManifestDirectory -Recurse -Force }
 }
 
-# The single-project MSIX pipeline packs only @(PackagingOutputs); the loose-layout Swift bridge,
-# its runtime closure and the WPF indicator companion are copied after Build and are therefore not
-# in that item set. Repack deterministically so the packaged app actually ships them.
+# The single-project MSIX pipeline packs only @(PackagingOutputs); the loose-layout Swift bridge and
+# its runtime closure are copied after Build and are therefore not in that item set. Repack
+# deterministically so the packaged app actually ships them.
 function Get-MakeAppxPath {
     $candidates = @()
     $fromPackage = Get-ChildItem (Join-Path $env:USERPROFILE '.nuget\packages\microsoft.windows.sdk.buildtools') -Recurse -File -Filter 'makeappx.exe' -ErrorAction SilentlyContinue |
@@ -130,7 +130,7 @@ function Test-MsixContains([string]$MsixPath, [string]$EntryPrefix) {
 
 # The single-project MSIX pipeline packs the loose build output, which includes foreign-RID native
 # libraries (win-arm64, etc.) from transitive NuGet packages but not the post-Build staged Swift
-# bridge, the WPF companion, or the license/notice documents. Every package is therefore unpacked,
+# bridge or the license/notice documents. Every package is therefore unpacked,
 # normalized and repacked.
 $foreignRidSegments = @('win-arm64', 'win-x86', 'win-arm', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64', 'android', 'ios')
 
@@ -198,11 +198,6 @@ function Rebuild-MsixPayload {
                 if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination (Join-Path $scratch $name) -Force }
             }
         }
-        $companion = Join-Path $LooseDir 'Indicator'
-        if (Test-Path -LiteralPath $companion) {
-            Copy-Item -LiteralPath $companion -Destination (Join-Path $scratch 'Indicator') -Recurse -Force
-        }
-
         # The public package must ship its disclosures and license texts.
         foreach ($document in @(
             @{ Source = (Join-Path $RepoRoot 'THIRD-PARTY-NOTICES.md'); Name = 'THIRD-PARTY-NOTICES.md' },
@@ -228,7 +223,7 @@ function Rebuild-MsixPayload {
             Set-ManifestPublisher -ManifestPath (Join-Path $scratch 'AppxManifest.xml') -Publisher $Publisher
         }
 
-        # Reject foreign-RID content last, after the staged bridge/companion copies, so a win-x64
+        # Reject foreign-RID content last, after the staged bridge copies, so a win-x64
         # package can never carry ARM64/x86/foreign runtimes from any source.
         $foreign = @(Get-ChildItem -LiteralPath $scratch -Recurse -File -Force | Where-Object {
             Test-ForeignRidPath -RelativePath (Get-MuesliRelativePath -BasePath $scratch -TargetPath $_.FullName)
@@ -254,7 +249,7 @@ $primaryMsix = Get-ChildItem -Path $OutputDirectory -Recurse -File -Filter 'Mues
 $looseExe = Get-ChildItem (Join-Path $repoRoot "windows-native\Muesli.Windows.WinUI\bin\x64\$Configuration") -Recurse -Filter 'Muesli.Windows.WinUI.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($primaryMsix -and $looseExe -and $makeAppx) {
     if (Rebuild-MsixPayload -MsixPath $primaryMsix.FullName -LooseDir $looseExe.DirectoryName -MakeAppx $makeAppx -RepoRoot $repoRoot -Publisher $Publisher) {
-        Write-Host "Added the WPF companion and any pinned Swift bridge, pruned foreign-RID content, and included notices/licenses." -ForegroundColor Cyan
+        Write-Host "Added any pinned Swift bridge, pruned foreign-RID content, and included notices/licenses." -ForegroundColor Cyan
     }
 
     # Publish one stable top-level filename. Selecting the first recursive result previously
@@ -266,7 +261,7 @@ if ($primaryMsix -and $looseExe -and $makeAppx) {
         $primaryMsix = Get-Item -LiteralPath $canonicalMsixPath
     }
 } elseif (-not $makeAppx) {
-    throw 'MakeAppx.exe was not found; the MSIX cannot be normalized (bridge, companion, licenses, foreign-RID pruning).'
+    throw 'MakeAppx.exe was not found; the MSIX cannot be normalized (bridge, licenses, foreign-RID pruning).'
 } else {
     throw 'The WinUI MSIX or loose executable was not found; the package cannot be normalized.'
 }

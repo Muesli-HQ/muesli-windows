@@ -89,13 +89,11 @@ public sealed class IndicatorDragSessionTests
     [Fact]
     public void Window_wires_capture_loss_and_guards_positioning_while_dragging()
     {
-        var directory = TestRepositoryLayout.Combine(
-            "windows-native", "Muesli.Windows.Indicator.Wpf");
-        var xaml = File.ReadAllText(Path.Combine(directory, "IndicatorWindow.xaml"));
-        var code = File.ReadAllText(Path.Combine(directory, "IndicatorWindow.xaml.cs"));
+        var code = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "Indicator", "FloatingIndicatorWindow.cs"));
 
-        Assert.Contains("LostMouseCapture=\"Pill_LostMouseCapture\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("private void Pill_LostMouseCapture", code, StringComparison.Ordinal);
+        Assert.Contains("_pill.PointerCaptureLost += OnPointerCaptureLost;", code, StringComparison.Ordinal);
+        Assert.Contains("private void OnPointerCaptureLost", code, StringComparison.Ordinal);
         Assert.Contains("_drag.IsDragging", code, StringComparison.Ordinal);
         Assert.Contains("FloatingIndicatorDragSession", code, StringComparison.Ordinal);
         // The old independent flag must be gone so capture loss cannot strand it.

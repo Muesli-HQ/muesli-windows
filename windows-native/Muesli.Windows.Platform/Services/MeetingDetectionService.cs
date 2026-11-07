@@ -500,7 +500,6 @@ public sealed class MeetingDetectionService : IDisposable
     private static bool IsSelfProcess(string processName)
     {
         return processName.Equals("Muesli.Windows.WinUI", StringComparison.OrdinalIgnoreCase) ||
-               processName.Equals("Muesli.Windows.Indicator.Wpf", StringComparison.OrdinalIgnoreCase) ||
                processName.Equals("Muesli.Windows.CommandHost", StringComparison.OrdinalIgnoreCase) ||
                processName.Equals("Muesli", StringComparison.OrdinalIgnoreCase);
     }

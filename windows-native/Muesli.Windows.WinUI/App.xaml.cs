@@ -206,7 +206,6 @@ public partial class App : Application
         Share = new WinUiShareService(() => WindowHandle);
         IndicatorHost = new WinUiIndicatorHost(Dictation, Meetings, ComputerUse, UiDispatcher);
         IndicatorHost.Start();
-        _meetingNotifications.UseWpfHost(IndicatorHost);
         LiveTranscript = new MeetingLiveTranscriptWindow(Meetings, UiDispatcher, Clipboard);
         TrackTheme(LiveTranscript);
         var mainWindow = (MainWindow)Window;

@@ -107,7 +107,7 @@ No Python, virtual environment, or external transcription worker is required. Mo
 | **Microphone** | Record speech during dictation and meeting recording. |
 | **Meeting audio capture** | Capture the other side of a call after you explicitly start meeting recording. Endpoint-loopback fallback can include unrelated system sounds. |
 | **Global shortcut** | Start dictation and deliver text to the active app. |
-| **Notifications and indicator** | Show meeting prompts and recording state through the packaged app and its WPF companion. |
+| **Notifications and indicator** | Show meeting prompts and recording state in the packaged app's floating windows. |
 | **Network access** | Explicitly download models, or contact an optional cloud summary provider when configured. Transcription itself runs locally. |
 
 ---
@@ -119,12 +119,11 @@ windows-native/
   Muesli.Windows.WinUI/          Packaged app, pages, view models, and XAML resources
   Muesli.Windows.Core/           Domain, persistence, and transcription behavior
   Muesli.Windows.Platform/       Windows audio, hotkeys, shell, and OS integrations
-  Muesli.Windows.Indicator.Wpf/  Floating indicator and meeting-notification companion
   Muesli.Windows.Tests/          Automated regression tests
   Muesli.Windows.UITests/        Interactive Windows UI automation
 ```
 
-WinUI is the only shipping product shell. The retired WPF product shell has been removed; the WPF indicator companion remains active.
+WinUI is the only shipping product shell. The retired WPF product shell and WPF indicator companion have been removed; the floating indicator is drawn in-process.
 
 Windows SQLite remains authoritative for persistence. Selected portable text algorithms can use the shared Swift `MuesliCoreABI.dll`, loaded by full path from the application directory. The current [shared-core lock](windows-native/shared-core.lock.json) ships the parity-tested managed fallback; the bridge stays optional until an approved upstream ABI revision is pinned. Swift dictation-store exports are not connected to the live Windows database.
 

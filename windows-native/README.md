@@ -44,7 +44,7 @@ dotnet build .\windows-native\Muesli.Windows.WinUI\Muesli.Windows.WinUI.csproj -
 ```
 
 This uses the supported packaged launch path and opens the production `%APPDATA%\muesli` profile.
-The retired WPF product shell was removed. `Muesli.Windows.Indicator.Wpf` remains the active floating indicator and meeting-notification companion.
+The retired WPF product shell and WPF indicator companion were removed. The floating indicator and meeting prompts are WinUI windows in the app process.
 
 ## Deterministic benchmark
 

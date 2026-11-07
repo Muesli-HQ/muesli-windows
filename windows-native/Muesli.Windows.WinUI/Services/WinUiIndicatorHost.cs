@@ -1,20 +1,17 @@
-using Microsoft.UI.Dispatching;
 using Muesli.Windows.Core.Contracts;
 using Muesli.Windows.Core.Profiles;
 using Muesli.Windows.Core.Services;
 using Muesli.Windows.Services;
-using System.Diagnostics;
+using Muesli.Windows.WinUI.Indicator;
 using Windows.UI.ViewManagement;
 
 namespace Muesli.Windows.WinUI.Services;
 
 /// <summary>
-/// Owns the WPF indicator companion on behalf of the WinUI shell. It keeps the product state in
-/// the WinUI process (dictation, meeting and computer-use contexts), renders only idempotent
-/// <see cref="IndicatorSnapshot"/> frames down a current-user-only named pipe, and marshals every
-/// product command the companion sends back into the owning context. If the companion cannot start
-/// or restarts without success, Muesli carries on without a floating pill (it is optional, like
-/// turning "Show floating indicator" off).
+/// Drives the in-process floating indicator from the dictation, meeting and computer-use contexts.
+/// It derives one idempotent <see cref="IndicatorSnapshot"/> per state change, applies it to the
+/// <see cref="FloatingIndicatorWindow"/>, and routes the window's commands back into the owning
+/// context. If the window cannot be created, Muesli carries on without a floating pill.
 /// </summary>
 public sealed class WinUiIndicatorHost : IDisposable
 {
@@ -24,32 +21,23 @@ public sealed class WinUiIndicatorHost : IDisposable
     private readonly IUiDispatcher _dispatcher;
     private readonly AppLogService _log = new();
 
-    private IndicatorPipeServer? _server;
-    private Process? _companion;
-    private bool _companionLost;
-    private CancellationTokenSource? _lifetime;
+    private FloatingIndicatorWindow? _window;
     private CancellationTokenSource? _dwell;
     private FileSystemWatcher? _probeWatcher;
-    private string _instanceId = "";
-    private int _restarts;
     private int _disposed;
 
     private FloatingIndicatorState _state = FloatingIndicatorState.Idle;
     private string _owner = IndicatorOwnerKind.None;
     private bool _meetingPaused;
     private long _sessionId;
+    // Written by the audio pipeline, read by the window's 30 fps animation; never marshalled per buffer.
     private float _amplitude;
-    private IndicatorSnapshot? _latest;
-    private IndicatorMeetingNotification? _meetingNotification;
-    private MeetingNotificationCallbacks? _meetingNotificationCallbacks;
     private string? _dismissedOutcomeStatus;
     private string? _pendingOutcomeStatus;
     private FloatingIndicatorState? _probeState;
     private string _indicatorAnchor = "Middle Right";
     private double? _savedLeft;
     private double? _savedTop;
-    private long _lastAmplitudePublishTicks;
-    private volatile bool _connectedThisLaunch;
 
     public WinUiIndicatorHost(
         WinUiDictationContext dictation,
@@ -69,40 +57,24 @@ public sealed class WinUiIndicatorHost : IDisposable
         App.Settings.Changed += OnSettingsChanged;
     }
 
-    public bool CanPresentMeetingNotification => !_companionLost && _server is not null && Volatile.Read(ref _disposed) == 0;
-    public bool IsMeetingNotificationVisible => _meetingNotification is not null;
-
-    public void PresentMeetingNotification(MeetingNotificationRequest request, MeetingNotificationCallbacks callbacks)
-    {
-        _meetingNotification = new IndicatorMeetingNotification(
-            request.PromptId, request.Title, request.Subtitle, request.Platform, request.Glyph,
-            request.AccentHex, request.ShortLabel, request.ActionLabel, request.HasSplitAction,
-            request.DefaultAction, request.DismissAfterSeconds, request.SingleAction);
-        _meetingNotificationCallbacks = callbacks;
-        Publish();
-    }
-
-    public void CloseMeetingNotification()
-    {
-        _meetingNotification = null;
-        _meetingNotificationCallbacks = null;
-        Publish();
-    }
-
+    /// <summary>Creates the hidden indicator window. Must run on the UI thread.</summary>
     public void Start()
     {
         if (Volatile.Read(ref _disposed) != 0) return;
 
-        _lifetime = new CancellationTokenSource();
-        _instanceId = Guid.NewGuid().ToString("N");
-        _server = new IndicatorPipeServer(_instanceId, OnCommand);
-        _server.Connected += (_, _) => { _connectedThisLaunch = true; Publish(); };
-        _server.Disconnected += (_, _) => HandleCompanionGone();
-        _server.Start();
+        try
+        {
+            _window = new FloatingIndicatorWindow(OnCommand, () => Volatile.Read(ref _amplitude), OnWindowFailure);
+            _log.Info("Floating indicator ready (in-process).");
+        }
+        catch (Exception exception)
+        {
+            _log.Error("Floating indicator window could not be created; continuing without the floating pill.", exception);
+            _window = null;
+        }
 
         _probeWatcher = TryStartPresentationProbe();
         LoadPosition();
-        LaunchCompanion();
         UpdateState();
     }
 
@@ -112,17 +84,12 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void OnSettingsChanged(object? sender, MuesliSettings settings) => _dispatcher.TryEnqueue(UpdateState);
 
-    private void OnRecordingLevel(object? sender, float peak)
-    {
-        _amplitude = Math.Clamp(peak, 0f, 1f);
-        _dispatcher.TryEnqueue(PublishAmplitude);
-    }
+    private void OnRecordingLevel(object? sender, float peak) => Volatile.Write(ref _amplitude, Math.Clamp(peak, 0f, 1f));
 
     private void UpdateState()
     {
-        if (Volatile.Read(ref _disposed) != 0 || _companionLost) return;
+        if (Volatile.Read(ref _disposed) != 0 || _window is null) return;
 
-        var settings = App.Settings.Load();
         var status = _dictation.Status ?? "";
         var state = FloatingIndicatorStateClassifier.Classify(status, _dictation.IsRecording, _dictation.IsTranscribing);
         var owner = IndicatorOwnerKind.Dictation;
@@ -133,8 +100,10 @@ public sealed class WinUiIndicatorHost : IDisposable
             owner = IndicatorOwnerKind.Meeting;
             meetingPaused = _meetings.IsPaused;
             state = FloatingIndicatorState.Recording;
-            // ponytail: levels arrive with live-transcript snapshots only; a flat pill means live transcription is off.
-            _amplitude = meetingPaused ? 0f : (float)Math.Clamp(Math.Max(_meetings.MicrophoneLevel, _meetings.SystemLevel), 0, 1);
+            // Levels arrive with live-transcript snapshots only; a flat pill means live transcription is off.
+            Volatile.Write(ref _amplitude, meetingPaused
+                ? 0f
+                : (float)Math.Clamp(Math.Max(_meetings.MicrophoneLevel, _meetings.SystemLevel), 0, 1));
         }
         else if (_meetings.IsBusy)
         {
@@ -173,9 +142,33 @@ public sealed class WinUiIndicatorHost : IDisposable
         _meetingPaused = meetingPaused;
 
         UpdateReturnDwell(state, status);
-
         LoadPosition();
-        Publish();
+        try
+        {
+            _window.Apply(BuildSnapshot());
+        }
+        catch (Exception exception)
+        {
+            OnWindowFailure(exception);
+        }
+    }
+
+    /// <summary>
+    /// The pill is optional: any rendering failure (state update, pointer input, timer, display
+    /// change) drops it and logs, and never takes dictation or meetings down.
+    /// </summary>
+    private void OnWindowFailure(Exception exception)
+    {
+        var window = _window;
+        if (window is null) return;
+        _window = null;
+        _log.Error("Floating indicator failed to render; continuing without the floating pill.", exception);
+        // Closed from a fresh dispatcher turn: the failure may be raised inside one of the window's
+        // own event handlers.
+        _dispatcher.TryEnqueue(() =>
+        {
+            try { window.Close(); } catch (Exception) { }
+        });
     }
 
     private void UpdateReturnDwell(FloatingIndicatorState state, string status)
@@ -213,13 +206,12 @@ public sealed class WinUiIndicatorHost : IDisposable
     private IndicatorSnapshot BuildSnapshot()
     {
         var settings = App.Settings.Load();
-        var visible = _state != FloatingIndicatorState.Idle || settings.ShowFloatingIndicator;
         return new IndicatorSnapshot
         {
             SessionId = _sessionId,
             State = StateName(_state),
             Owner = _owner,
-            Visible = visible,
+            Visible = _state != FloatingIndicatorState.Idle || settings.ShowFloatingIndicator,
             HotkeyLabel = string.IsNullOrWhiteSpace(settings.Hotkey) ? "shortcut" : settings.Hotkey,
             Message = ComposeMessage(_state, _dictation.Status ?? ""),
             RecordingColorHex = settings.RecordingColorHex,
@@ -230,31 +222,8 @@ public sealed class WinUiIndicatorHost : IDisposable
             SavedLeft = _savedLeft,
             SavedTop = _savedTop,
             Theme = settings.Theme,
-            HighContrast = new AccessibilitySettings().HighContrast,
-            Amplitude = _state == FloatingIndicatorState.Recording ? _amplitude : 0f,
-            MeetingNotification = _meetingNotification
+            HighContrast = new AccessibilitySettings().HighContrast
         };
-    }
-
-    private void Publish()
-    {
-        if (Volatile.Read(ref _disposed) != 0 || _companionLost || _server is null) return;
-        var snapshot = BuildSnapshot();
-        _latest = snapshot;
-        _server.Publish(snapshot);
-    }
-
-    private void PublishAmplitude()
-    {
-        if (_state != FloatingIndicatorState.Recording || _companionLost || _latest is null) return;
-        var now = Stopwatch.GetTimestamp();
-        if (Stopwatch.GetElapsedTime(_lastAmplitudePublishTicks, now).TotalMilliseconds < 1000.0 / FloatingIndicatorLayout.WaveformUpdateFramesPerSecond)
-        {
-            return;
-        }
-        _lastAmplitudePublishTicks = now;
-        _latest = _latest with { Amplitude = _amplitude };
-        _server?.Publish(_latest);
     }
 
     private static string ComposeMessage(FloatingIndicatorState state, string status) =>
@@ -268,7 +237,6 @@ public sealed class WinUiIndicatorHost : IDisposable
     private static string StateName(FloatingIndicatorState state) =>
         state switch
         {
-            FloatingIndicatorState.Idle => "idle",
             FloatingIndicatorState.Preparing => "preparing",
             FloatingIndicatorState.Recording => "recording",
             FloatingIndicatorState.Transcribing => "transcribing",
@@ -296,114 +264,68 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void OnCommand(IndicatorCommand command)
     {
-        if (Volatile.Read(ref _disposed) != 0 || _companionLost) return;
-        if (command.Type is IndicatorCommandType.MeetingNotificationAction or
-            IndicatorCommandType.MeetingNotificationDismiss or
-            IndicatorCommandType.MeetingNotificationAutoDismiss)
-        {
-            _dispatcher.TryEnqueue(() => HandleMeetingNotificationCommand(command));
-            return;
-        }
-        if (IndicatorProtocol.IsStaleSession(command.SessionId, _sessionId)) return;
+        if (Volatile.Read(ref _disposed) != 0 || IndicatorProtocol.IsStaleSession(command.SessionId, _sessionId)) return;
 
         switch (command.Type)
         {
-            case IndicatorCommandType.Ready:
-                Publish();
-                break;
-
             case IndicatorCommandType.Stop:
-                _dispatcher.TryEnqueue(() =>
-                {
-                    if (_owner == IndicatorOwnerKind.Meeting) _ = _meetings.StopAndSaveAsync();
-                    else if (_owner == IndicatorOwnerKind.ComputerUse) _ = _computerUse.ToggleVoiceAsync();
-                    else _ = _dictation.StopRecordingAsync();
-                });
+                if (_owner == IndicatorOwnerKind.Meeting) _ = _meetings.StopAndSaveAsync();
+                else if (_owner == IndicatorOwnerKind.ComputerUse) _ = _computerUse.ToggleVoiceAsync();
+                else _ = _dictation.StopRecordingAsync();
                 break;
 
             case IndicatorCommandType.Cancel:
-                _dispatcher.TryEnqueue(() =>
-                {
-                    if (_owner == IndicatorOwnerKind.Meeting) _ = DiscardMeetingWithConfirmationAsync();
-                    else if (_owner == IndicatorOwnerKind.ComputerUse) _ = _computerUse.CancelAsync();
-                    else _ = _dictation.CancelAsync();
-                });
+                if (_owner == IndicatorOwnerKind.Meeting) _ = DiscardMeetingWithConfirmationAsync();
+                else if (_owner == IndicatorOwnerKind.ComputerUse) _ = _computerUse.CancelAsync();
+                else _ = _dictation.CancelAsync();
                 break;
 
             case IndicatorCommandType.Pause:
-                _dispatcher.TryEnqueue(() => _ = _meetings.PauseAsync());
+                _ = _meetings.PauseAsync();
                 break;
 
             case IndicatorCommandType.Resume:
-                _dispatcher.TryEnqueue(() => _ = _meetings.ResumeAsync());
+                _ = _meetings.ResumeAsync();
                 break;
 
             case IndicatorCommandType.Drag:
-                _dispatcher.TryEnqueue(() => ApplyCustomPosition(command.DragLeft, command.DragTop));
+                ApplyCustomPosition(command.DragLeft, command.DragTop);
                 break;
 
             case IndicatorCommandType.HoverEnter:
-                _dispatcher.TryEnqueue(() =>
+                if (_owner == IndicatorOwnerKind.Meeting && App.Settings.Load().ShowLiveWaveformOnHover &&
+                    command.IndicatorX is { } x && command.IndicatorY is { } y &&
+                    command.IndicatorWidth is > 0 and < 2000 && command.IndicatorHeight is > 0 and < 2000)
                 {
-                    if (_owner == IndicatorOwnerKind.Meeting && App.Settings.Load().ShowLiveWaveformOnHover &&
-                        command.IndicatorX is { } x && command.IndicatorY is { } y &&
-                        command.IndicatorWidth is > 0 and < 2000 && command.IndicatorHeight is > 0 and < 2000)
-                        App.LiveTranscript.ShowOnIndicatorHover(new global::Windows.Graphics.RectInt32(x, y, command.IndicatorWidth.Value, command.IndicatorHeight.Value));
-                });
+                    App.LiveTranscript.ShowOnIndicatorHover(new global::Windows.Graphics.RectInt32(x, y, command.IndicatorWidth.Value, command.IndicatorHeight.Value));
+                }
                 break;
-            case IndicatorCommandType.HoverExit:
-                _dispatcher.TryEnqueue(() => App.LiveTranscript.ScheduleHoverExit());
-                break;
-            case IndicatorCommandType.Heartbeat:
-            case IndicatorCommandType.Exit:
-            default:
-                // Hover is rendered locally by the companion; heartbeat/exit only inform lifecycle.
-                break;
-        }
-    }
 
-    private void HandleMeetingNotificationCommand(IndicatorCommand command)
-    {
-        if (_meetingNotification is null ||
-            !string.Equals(_meetingNotification.PromptId, command.NotificationPromptId, StringComparison.Ordinal)) return;
-        MeetingNotificationAction? action = null;
-        if (command.Type == IndicatorCommandType.MeetingNotificationAction)
-        {
-            if (!Enum.TryParse<MeetingNotificationAction>(command.NotificationAction, out var parsed) ||
-                (_meetingNotification.HasSplitAction
-                    ? parsed is not (MeetingNotificationAction.JoinAndRecord or MeetingNotificationAction.JoinOnly or MeetingNotificationAction.TranscribeOnly)
-                    : parsed != MeetingNotificationAction.StartTranscribing)) return;
-            action = parsed;
+            case IndicatorCommandType.HoverExit:
+                App.LiveTranscript.ScheduleHoverExit();
+                break;
         }
-        var callbacks = _meetingNotificationCallbacks;
-        CloseMeetingNotification();
-        if (callbacks is null) return;
-        if (command.Type == IndicatorCommandType.MeetingNotificationDismiss) callbacks.OnDismiss();
-        else if (command.Type == IndicatorCommandType.MeetingNotificationAutoDismiss) callbacks.OnAutoDismiss();
-        else if (action is { } validAction) callbacks.OnAction(validAction);
     }
 
     private void ApplyCustomPosition(double? left, double? top)
     {
-        if (left is not null && double.IsFinite(left.Value) &&
-            top is not null && double.IsFinite(top.Value))
+        if (left is not { } x || !double.IsFinite(x) || top is not { } y || !double.IsFinite(y)) return;
+
+        _savedLeft = x;
+        _savedTop = y;
+        _indicatorAnchor = "Custom";
+        try
         {
-            _savedLeft = left;
-            _savedTop = top;
-            _indicatorAnchor = "Custom";
-            try
+            App.Settings.Save(App.Settings.Load() with
             {
-                var settings = App.Settings.Load();
-                App.Settings.Save(settings with
-                {
-                    IndicatorAnchor = _indicatorAnchor,
-                    IndicatorLeft = _savedLeft,
-                    IndicatorTop = _savedTop
-                });
-            }
-            catch (Exception)
-            {
-            }
+                IndicatorAnchor = _indicatorAnchor,
+                IndicatorLeft = _savedLeft,
+                IndicatorTop = _savedTop
+            });
+        }
+        catch (Exception exception)
+        {
+            _log.Error("Could not save the floating indicator position.", exception);
         }
     }
 
@@ -415,92 +337,7 @@ public sealed class WinUiIndicatorHost : IDisposable
         _savedTop = settings.IndicatorTop;
     }
 
-    // ─── Companion lifecycle ──────────────────────────────────────────────────────────────────
-
-    private void LaunchCompanion()
-    {
-        // Never allow a second companion, even across a crash/restart cycle.
-        try { _companion?.Kill(); } catch (InvalidOperationException) { } catch (NotSupportedException) { }
-        _companion?.Dispose();
-        _companion = null;
-
-        try
-        {
-            var exe = CompanionExecutablePath();
-            if (exe is null || !File.Exists(exe))
-            {
-                _log.Error("WPF indicator companion is missing from the layout; continuing without the floating pill.", null);
-                _companionLost = true;
-                return;
-            }
-
-            var startInfo = new ProcessStartInfo(exe, $"--pipe={_instanceId} --parent-pid={Environment.ProcessId}")
-            {
-                UseShellExecute = false,
-                WorkingDirectory = Path.GetDirectoryName(exe)!
-            };
-            _connectedThisLaunch = false;
-            _companion = Process.Start(startInfo);
-            if (_companion is not null)
-            {
-                // A companion that dies before connecting never raises the pipe's Disconnected.
-                var launched = _companion;
-                launched.EnableRaisingEvents = true;
-                launched.Exited += (_, _) => _dispatcher.TryEnqueue(() =>
-                {
-                    if (ReferenceEquals(launched, _companion) && !_connectedThisLaunch) HandleCompanionGone();
-                });
-            }
-            _log.Info($"Started WPF indicator companion pid={_companion?.Id} instance={_instanceId}");
-        }
-        catch (Exception exception)
-        {
-            _log.Error("WPF indicator companion failed to start; continuing without the floating pill.", exception);
-            _companionLost = true;
-        }
-    }
-
-    private void HandleCompanionGone()
-    {
-        if (Volatile.Read(ref _disposed) != 0 || _companionLost) return;
-        if (_restarts < 1)
-        {
-            _restarts++;
-            _log.Info("WPF indicator companion disconnected; restarting once.");
-            _dispatcher.TryEnqueue(() =>
-            {
-                RecreateServer();
-                LaunchCompanion();
-            });
-        }
-        else
-        {
-            _log.Info("WPF indicator companion disconnected again; continuing without the floating pill.");
-            _companionLost = true;
-        }
-    }
-
-    private void RecreateServer()
-    {
-        _server?.Dispose();
-        _server = new IndicatorPipeServer(_instanceId, OnCommand);
-        _server.Connected += (_, _) => { _connectedThisLaunch = true; Publish(); };
-        _server.Disconnected += (_, _) => HandleCompanionGone();
-        _server.Start();
-    }
-
-    private static string? CompanionExecutablePath()
-    {
-        var root = AppContext.BaseDirectory;
-        var candidates = new[]
-        {
-            Path.Combine(root, "Indicator", "Muesli.Windows.Indicator.Wpf.exe"),
-            Path.Combine(root, "Muesli.Windows.Indicator.Wpf.exe")
-        };
-        return candidates.FirstOrDefault(File.Exists);
-    }
-
-    // ─── Presentation probe ───────────────────────────────────────────────────────────────────
+    // ─── Presentation probe (UI automation tests) ─────────────────────────────────────────────
 
     private FileSystemWatcher? TryStartPresentationProbe()
     {
@@ -561,11 +398,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
         _probeWatcher?.Dispose();
         _dwell?.Cancel();
-        _lifetime?.Cancel();
-
-        try { _companion?.Kill(); } catch (InvalidOperationException) { } catch (NotSupportedException) { }
-        _companion?.Dispose();
-
-        _server?.Dispose();
+        try { _window?.Close(); } catch (Exception) { }
+        _window = null;
     }
 }

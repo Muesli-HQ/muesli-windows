@@ -1,7 +1,7 @@
 # Validates an unsigned WinUI MSIX payload without installing it.
 #
 # This is the MSIX replacement for the retired portable-zip smoke test. It proves the package
-# contains the shipping shell, the WPF indicator companion and the CPU-only native runtime catalog,
+# contains the shipping shell (including the in-process floating indicator) and the CPU-only native runtime catalog,
 # plus the shared Swift bridge closure when the lock pins it, and that the package identity matches
 # the release properties. Installing an unsigned MSIX needs Developer Mode plus elevation, so launch
 # verification is recorded honestly as performed / unavailable and is never counted as a pass.
@@ -104,7 +104,6 @@ try {
     $requiredEntries = @(
         "Muesli.Windows.WinUI.exe",
         "Muesli.Windows.WinUI.dll",
-        "Indicator/Muesli.Windows.Indicator.Wpf.exe",
         "sherpa-onnx.dll",
         "sherpa-onnx-c-api.dll",
         "onnxruntime.dll",
@@ -115,12 +114,12 @@ try {
         "WINDOWS-PRIVACY.md",
         "licenses/Apache-2.0.txt"
     )
-    # Require each runtime in its actual application directory. Finding the companion's copy
-    # must not hide a missing main-app runtime on a machine with no developer prerequisites.
     foreach ($runtime in @('coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'System.Private.CoreLib.dll')) {
-        foreach ($requiredPath in @($runtime, "Indicator/$runtime")) {
-            if ($entryNames -notcontains $requiredPath) { $failures.Add("MSIX is not .NET self-contained: missing $requiredPath") }
-        }
+        if ($entryNames -notcontains $runtime) { $failures.Add("MSIX is not .NET self-contained: missing $runtime") }
+    }
+    # The floating indicator is drawn in-process; a second bundled runtime must not come back.
+    if (@($entryNames | Where-Object { $_ -like 'Indicator/*' }).Count -gt 0) {
+        $failures.Add("MSIX unexpectedly contains the retired Indicator/ companion payload.")
     }
     foreach ($requiredPath in @('Microsoft.UI.Xaml.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'vcomp140.dll')) {
         if ($entryNames -notcontains $requiredPath) { $failures.Add("MSIX is missing an app-local runtime: $requiredPath") }
@@ -197,7 +196,6 @@ try {
         & (Join-Path $PSScriptRoot "generate-native-runtime-inventory.ps1") `
             -PackageDirectory $WorkDir `
             -OutputPath $inventoryPath `
-            -ExcludeDirectory Indicator `
             -AllowPlatformRuntime
         $report.nativeInventoryPassed = $true
         if (-not [string]::IsNullOrWhiteSpace($NativeInventoryPath)) {

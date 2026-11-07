@@ -5,8 +5,8 @@ using Xunit;
 namespace Muesli.Windows.Tests;
 
 /// <summary>
-/// The single-project MSIX pipeline packs only @(PackagingOutputs); the Swift bridge/runtime and the
-/// WPF indicator companion are staged after Build and must be added to the payload explicitly.
+/// The single-project MSIX pipeline packs only @(PackagingOutputs); the Swift bridge/runtime is
+/// staged after Build and must be added to the payload explicitly.
 /// </summary>
 public sealed class MsixPayloadContractTests
 {
@@ -23,11 +23,13 @@ public sealed class MsixPayloadContractTests
     }
 
     [Fact]
-    public void MsixPackagingAddsTheWpfIndicatorCompanionToThePayload()
+    public void MsixPackagingNoLongerShipsASeparateIndicatorCompanion()
     {
+        // The floating indicator is drawn in-process; the retired WPF companion bundled a second
+        // self-contained runtime (about 223 MB) under Indicator\.
         var script = PackageScript();
-        Assert.Contains("$companion = Join-Path $LooseDir 'Indicator'", script, StringComparison.Ordinal);
-        Assert.Contains("Join-Path $scratch 'Indicator'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'Indicator'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Join-Path $scratch 'Indicator'", script, StringComparison.Ordinal);
     }
 
     [Fact]

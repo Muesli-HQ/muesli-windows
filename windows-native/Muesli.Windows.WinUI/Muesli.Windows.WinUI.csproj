@@ -108,33 +108,6 @@
   </PropertyGroup>
 
   <!--
-    Builds the WPF indicator companion and stages its self-contained output into the packaged
-    layout. The companion is copied to both the loose winapp layout (used by scripts\run-windows.ps1)
-    and the nested AppX layout that the packaged application actually executes from. This is done
-    with a direct copy rather than a ProjectReference so the companion's runtime does not leak,
-    flattened and incomplete, into the package root.
-  -->
-  <Target Name="BuildIndicatorCompanion" BeforeTargets="StageIndicatorCompanion">
-    <MSBuild Projects="$(MSBuildProjectDirectory)\..\Muesli.Windows.Indicator.Wpf\Muesli.Windows.Indicator.Wpf.csproj"
-             Targets="Restore;Build"
-             Properties="Configuration=$(Configuration)"
-             BuildInParallel="false" />
-  </Target>
-
-  <Target Name="StageIndicatorCompanion" AfterTargets="Build">
-    <ItemGroup>
-      <_IndicatorCompanionFiles Include="$(MSBuildProjectDirectory)\..\Muesli.Windows.Indicator.Wpf\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*"
-                                Exclude="$(MSBuildProjectDirectory)\..\Muesli.Windows.Indicator.Wpf\bin\$(Configuration)\net10.0-windows\win-x64\**\*.pdb" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_IndicatorCompanionFiles)"
-          DestinationFiles="@(_IndicatorCompanionFiles->'$(OutDir)Indicator\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_IndicatorCompanionFiles)"
-          DestinationFiles="@(_IndicatorCompanionFiles->'$(OutDir)AppX\Indicator\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
-
-  <!--
     Stage the shared Swift MuesliCoreABI bridge and its native dependency closure
     beside the packaged application (loose winapp layout and nested AppX layout).
     The Swift toolchain and shared package are resolved by
