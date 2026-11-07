@@ -178,6 +178,34 @@ public sealed class TranscriptionModelPlatformTests
     }
 
     [Fact]
+    public async Task LifecycleBatchSnapshotsResolveSelectionOnceAndMatchSingleSnapshots()
+    {
+        var operations = new FakeModelOperations();
+        var selected = new HashSet<string>(["parakeet-v3"], StringComparer.OrdinalIgnoreCase);
+        var selectionReads = 0;
+        using var lifecycle = new TranscriptionModelLifecycleService(operations, () =>
+        {
+            selectionReads++;
+            return selected;
+        });
+        await lifecycle.PrepareAsync("whisper-tiny-en");
+        selectionReads = 0;
+
+        var ids = TranscriptionModelCatalog.Models.Select(model => model.Id).ToList();
+        var batch = lifecycle.Snapshots(ids);
+
+        // The selection source loads settings and credentials; a refresh must not pay that per model.
+        Assert.Equal(1, selectionReads);
+        Assert.Equal(ids, batch.Select(snapshot => snapshot.Model.Id));
+        foreach (var snapshot in batch)
+        {
+            Assert.Equal(lifecycle.Snapshot(snapshot.Model.Id).Status, snapshot.Status);
+        }
+        Assert.Equal(TranscriptionModelStatus.Selected, batch.Single(s => s.Model.Id == "parakeet-v3").Status);
+        Assert.Equal(TranscriptionModelStatus.Ready, batch.Single(s => s.Model.Id == "whisper-tiny-en").Status);
+    }
+
+    [Fact]
     public async Task LifecycleCancellationRecoversAndCanRetry()
     {
         var operations = new FakeModelOperations
