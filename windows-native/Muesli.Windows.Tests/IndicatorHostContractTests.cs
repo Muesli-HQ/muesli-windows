@@ -23,7 +23,9 @@ public sealed class IndicatorHostContractTests
         Assert.DoesNotContain("Process.Start", host, StringComparison.Ordinal);
         Assert.DoesNotContain("IndicatorPipe", host, StringComparison.Ordinal);
         Assert.DoesNotContain("Indicator.Wpf", host, StringComparison.Ordinal);
-        Assert.False(Directory.Exists(TestRepositoryLayout.Combine("windows-native", "Muesli.Windows.Indicator.Wpf")),
+        // The project file, not the folder: ignored bin/obj output survives a branch switch.
+        Assert.False(File.Exists(TestRepositoryLayout.Combine(
+                "windows-native", "Muesli.Windows.Indicator.Wpf", "Muesli.Windows.Indicator.Wpf.csproj")),
             "The retired WPF companion project must not come back.");
     }
 
@@ -53,5 +55,20 @@ public sealed class IndicatorHostContractTests
         var host = HostSource();
         Assert.Contains("continuing without the floating pill", host, StringComparison.Ordinal);
         Assert.Contains("_window is null) return;", host, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Rendering_failures_from_input_timers_and_display_changes_drop_the_pill_instead_of_crashing()
+    {
+        var window = WindowSource();
+        Assert.Contains("_waveTimer.Tick += (_, _) => Guarded(AnimateWaveform);", window, StringComparison.Ordinal);
+        Assert.Contains("_collapseTimer.Tick += (_, _) => Guarded(CollapseHover);", window, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueue.TryEnqueue(() => Guarded(", window, StringComparison.Ordinal);
+        foreach (var handler in new[] { "OnPointerEntered", "OnPointerExited", "OnPointerPressed", "OnPointerMoved", "OnPointerReleased", "OnPointerCaptureLost", "OnRightTapped" })
+        {
+            Assert.Matches($@"private void {handler}\([^)]*\) => Guarded\(", window);
+        }
+
+        Assert.Contains("OnWindowFailure", HostSource(), StringComparison.Ordinal);
     }
 }

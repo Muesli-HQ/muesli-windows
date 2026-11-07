@@ -3,8 +3,7 @@ param(
     [string]$PackageDirectory,
     [string]$OutputPath = "",
     [string]$CatalogPath = "",
-    # Top-level directory names to skip. The MSIX carries the WPF indicator companion under
-    # Indicator\; its self-contained runtime DLLs are not part of the main app's CPU catalog.
+    # Top-level directory names to skip from the inventory.
     [string[]]$ExcludeDirectory = @(),
     # Recognize the Microsoft platform runtime carried by the Windows App SDK/WebView2/DirectML.
     # These are not Muesli native components; they are recorded as platform-runtime rather than

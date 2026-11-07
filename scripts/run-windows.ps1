@@ -33,7 +33,7 @@ if (-not (Get-Command winapp -ErrorAction SilentlyContinue)) {
 . (Join-Path $PSScriptRoot 'select-packaged-layout.ps1')
 $outputRoot = Join-Path (Split-Path -Parent $project) "bin\x64\$Configuration"
 
-Get-Process -Name 'Muesli','Muesli.Windows.WinUI','Muesli.Windows.Indicator.Wpf' -ErrorAction SilentlyContinue | ForEach-Object {
+Get-Process -Name 'Muesli','Muesli.Windows.WinUI' -ErrorAction SilentlyContinue | ForEach-Object {
     Write-Host "Stopping running Muesli shell (pid $($_.Id))..." -ForegroundColor DarkGray
     $_ | Stop-Process -Force
     $_.WaitForExit(10000) | Out-Null

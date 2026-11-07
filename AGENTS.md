@@ -6,7 +6,7 @@
 - OG macOS reference repo: `C:\Users\madha\Downloads\muesli-main\muesli-main`.
 - Shipping app: `windows-native/Muesli.Windows.WinUI/`.
 - Shared product code: `windows-native/Muesli.Windows.Core/` and `windows-native/Muesli.Windows.Platform/`.
-- The retired WPF product shell has been removed. `Muesli.Windows.Indicator.Wpf` remains the active notification and indicator companion.
+- The retired WPF product shell and WPF indicator companion have been removed. The floating indicator and meeting prompts are WinUI windows in the app process.
 - Legacy Electron/web files exist on disk but are excluded from git.
 
 ## User Preferences

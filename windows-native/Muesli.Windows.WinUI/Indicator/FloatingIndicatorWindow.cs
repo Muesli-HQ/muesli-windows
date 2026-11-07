@@ -35,6 +35,7 @@ internal sealed class FloatingIndicatorWindow : Window
 {
     private readonly Action<IndicatorCommand> _sendCommand;
     private readonly Func<float> _liveLevel;
+    private readonly Action<Exception> _onFailure;
     private readonly IntPtr _hwnd;
     private readonly Grid _root = new();
     private readonly Border _pill = new() { BorderThickness = new Thickness(1) };
@@ -72,10 +73,11 @@ internal sealed class FloatingIndicatorWindow : Window
     private double? _savedTop;
     private long _sessionId;
 
-    public FloatingIndicatorWindow(Action<IndicatorCommand> sendCommand, Func<float> liveLevel)
+    public FloatingIndicatorWindow(Action<IndicatorCommand> sendCommand, Func<float> liveLevel, Action<Exception> onFailure)
     {
         _sendCommand = sendCommand;
         _liveLevel = liveLevel;
+        _onFailure = onFailure;
         Title = "Muesli floating indicator";
         SystemBackdrop = new TransparentBackdrop();
 
@@ -94,11 +96,11 @@ internal sealed class FloatingIndicatorWindow : Window
         var queue = DispatcherQueue.GetForCurrentThread();
         _waveTimer = queue.CreateTimer();
         _waveTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / FloatingIndicatorLayout.WaveformUpdateFramesPerSecond);
-        _waveTimer.Tick += (_, _) => AnimateWaveform();
+        _waveTimer.Tick += (_, _) => Guarded(AnimateWaveform);
         _collapseTimer = queue.CreateTimer();
         _collapseTimer.Interval = TimeSpan.FromMilliseconds(140);
         _collapseTimer.IsRepeating = false;
-        _collapseTimer.Tick += (_, _) => CollapseHover();
+        _collapseTimer.Tick += (_, _) => Guarded(CollapseHover);
 
         _pill.PointerEntered += OnPointerEntered;
         _pill.PointerExited += OnPointerExited;
@@ -169,10 +171,10 @@ internal sealed class FloatingIndicatorWindow : Window
                 return (IntPtr)1;
             case WmDisplayChange:
             case WmDpiChanged:
-                DispatcherQueue.TryEnqueue(() =>
+                DispatcherQueue.TryEnqueue(() => Guarded(() =>
                 {
-                    if (_visible && !_closed) Render();
-                });
+                    if (_visible) Render();
+                }));
                 break;
         }
 
@@ -683,17 +685,11 @@ internal sealed class FloatingIndicatorWindow : Window
         return new DipPoint(AppWindow.Position.X / scale, AppWindow.Position.Y / scale);
     }
 
-    private DipRect CurrentWorkAreaDip()
-    {
-        var display = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest);
-        var scale = DisplayScale(display);
-        var work = display.WorkArea;
-        return new DipRect(work.X / scale, work.Y / scale, work.Width / scale, work.Height / scale);
-    }
-
     // ─── Interaction ─────────────────────────────────────────────────────────────────────────
 
-    private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
+    private void OnPointerEntered(object sender, PointerRoutedEventArgs e) => Guarded(() => PointerEnteredCore());
+
+    private void PointerEnteredCore()
     {
         _pointerInside = true;
         if (_visible && _state == FloatingIndicatorState.Recording && _owner == IndicatorOwnerKind.Meeting)
@@ -719,7 +715,9 @@ internal sealed class FloatingIndicatorWindow : Window
         Render();
     }
 
-    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+    private void OnPointerExited(object sender, PointerRoutedEventArgs e) => Guarded(() => PointerExitedCore());
+
+    private void PointerExitedCore()
     {
         _pointerInside = false;
         if (_state == FloatingIndicatorState.Recording && _owner == IndicatorOwnerKind.Meeting)
@@ -742,42 +740,47 @@ internal sealed class FloatingIndicatorWindow : Window
         Render();
     }
 
-    private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
+    private void OnPointerPressed(object sender, PointerRoutedEventArgs e) => Guarded(() =>
     {
         if (!e.GetCurrentPoint(_pill).Properties.IsLeftButtonPressed) return;
-        // Movement is measured from a fixed screen-pixel origin, never from the window's own moves.
+        // The gesture runs in physical screen pixels from a fixed origin: crossing onto a monitor with
+        // a different scale must not rescale the origin and make the pill jump.
         GetCursorPos(out var cursor);
-        _drag.Begin(new DipPoint(cursor.X, cursor.Y), WindowTopLeftDip());
+        _drag.Begin(new DipPoint(cursor.X, cursor.Y), new DipPoint(AppWindow.Position.X, AppWindow.Position.Y));
         _pill.CapturePointer(e.Pointer);
         e.Handled = true;
-    }
+    });
 
-    private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
+    private void OnPointerMoved(object sender, PointerRoutedEventArgs e) => Guarded(() =>
     {
         if (!_drag.IsDragging) return;
         GetCursorPos(out var cursor);
-        var scale = Scale();
+        // Clamp to the monitor under the cursor (not the one the pill is on) so it can be dragged
+        // across monitors, as with the WPF renderer.
+        var display = DisplayArea.GetFromPoint(new PointInt32(cursor.X, cursor.Y), DisplayAreaFallback.Nearest);
+        var scale = DisplayScale(display);
+        var work = display.WorkArea;
         var target = _drag.Move(
             new DipPoint(cursor.X, cursor.Y),
-            scale,
-            new DipSize(_widthDip, _heightDip, _cornerRadiusDip),
-            CurrentWorkAreaDip());
+            1.0,
+            new DipSize(_widthDip * scale, _heightDip * scale, _cornerRadiusDip * scale),
+            new DipRect(work.X, work.Y, work.Width, work.Height));
         if (target is { } point)
         {
-            AppWindow.Move(new PointInt32(
-                FloatingIndicatorLayout.ToPixels(point.X, scale),
-                FloatingIndicatorLayout.ToPixels(point.Y, scale)));
+            AppWindow.Move(new PointInt32((int)Math.Round(point.X), (int)Math.Round(point.Y)));
         }
-    }
+    });
 
-    private void OnPointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    private void OnPointerCaptureLost(object sender, PointerRoutedEventArgs e) => Guarded(() =>
     {
         // Losing capture without a release must still end the gesture, or the pill could never be
         // positioned automatically again.
         if (_drag.IsDragging) PersistDragIfMoved();
-    }
+    });
 
-    private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
+    private void OnPointerReleased(object sender, PointerRoutedEventArgs e) => Guarded(() => PointerReleasedCore(e));
+
+    private void PointerReleasedCore(PointerRoutedEventArgs e)
     {
         var persisted = _drag.IsDragging && PersistDragIfMoved();
         _pill.ReleasePointerCapture(e.Pointer);
@@ -806,11 +809,32 @@ internal sealed class FloatingIndicatorWindow : Window
         return true;
     }
 
-    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
+    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e) => Guarded(() =>
     {
         if (FloatingIndicatorStateClassifier.IsActive(_state))
         {
             _sendCommand(new IndicatorCommand { SessionId = _sessionId, Type = IndicatorCommandType.Cancel });
+        }
+    });
+
+    /// <summary>
+    /// Every entry point that is not a host-driven <see cref="Apply"/> (pointer input, timers,
+    /// display changes) runs through here. The pill is optional: a failure is reported to the owner,
+    /// which drops the pill, instead of reaching the app's fatal exception handler mid-dictation.
+    /// </summary>
+    private void Guarded(Action action)
+    {
+        if (_closed) return;
+        try
+        {
+            action();
+        }
+        catch (Exception exception)
+        {
+            _closed = true;
+            _waveTimer.Stop();
+            _collapseTimer.Stop();
+            _onFailure(exception);
         }
     }
 

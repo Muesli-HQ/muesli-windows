@@ -5,8 +5,8 @@ using Xunit;
 namespace Muesli.Windows.Tests;
 
 /// <summary>
-/// The single-project MSIX pipeline packs only @(PackagingOutputs); the Swift bridge/runtime and the
-/// WPF indicator companion are staged after Build and must be added to the payload explicitly.
+/// The single-project MSIX pipeline packs only @(PackagingOutputs); the Swift bridge/runtime is
+/// staged after Build and must be added to the payload explicitly.
 /// </summary>
 public sealed class MsixPayloadContractTests
 {

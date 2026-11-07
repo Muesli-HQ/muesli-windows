@@ -1,7 +1,7 @@
 # Validates an unsigned WinUI MSIX payload without installing it.
 #
 # This is the MSIX replacement for the retired portable-zip smoke test. It proves the package
-# contains the shipping shell, the WPF indicator companion and the CPU-only native runtime catalog,
+# contains the shipping shell (including the in-process floating indicator) and the CPU-only native runtime catalog,
 # plus the shared Swift bridge closure when the lock pins it, and that the package identity matches
 # the release properties. Installing an unsigned MSIX needs Developer Mode plus elevation, so launch
 # verification is recorded honestly as performed / unavailable and is never counted as a pass.
@@ -196,7 +196,6 @@ try {
         & (Join-Path $PSScriptRoot "generate-native-runtime-inventory.ps1") `
             -PackageDirectory $WorkDir `
             -OutputPath $inventoryPath `
-            -ExcludeDirectory Indicator `
             -AllowPlatformRuntime
         $report.nativeInventoryPassed = $true
         if (-not [string]::IsNullOrWhiteSpace($NativeInventoryPath)) {

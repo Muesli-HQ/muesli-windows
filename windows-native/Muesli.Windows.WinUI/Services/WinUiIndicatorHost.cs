@@ -64,7 +64,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
         try
         {
-            _window = new FloatingIndicatorWindow(OnCommand, () => Volatile.Read(ref _amplitude));
+            _window = new FloatingIndicatorWindow(OnCommand, () => Volatile.Read(ref _amplitude), OnWindowFailure);
             _log.Info("Floating indicator ready (in-process).");
         }
         catch (Exception exception)
@@ -149,11 +149,26 @@ public sealed class WinUiIndicatorHost : IDisposable
         }
         catch (Exception exception)
         {
-            // The pill is optional: a rendering failure must never take dictation or meetings down.
-            _log.Error("Floating indicator failed to render; continuing without the floating pill.", exception);
-            try { _window.Close(); } catch (Exception) { }
-            _window = null;
+            OnWindowFailure(exception);
         }
+    }
+
+    /// <summary>
+    /// The pill is optional: any rendering failure (state update, pointer input, timer, display
+    /// change) drops it and logs, and never takes dictation or meetings down.
+    /// </summary>
+    private void OnWindowFailure(Exception exception)
+    {
+        var window = _window;
+        if (window is null) return;
+        _window = null;
+        _log.Error("Floating indicator failed to render; continuing without the floating pill.", exception);
+        // Closed from a fresh dispatcher turn: the failure may be raised inside one of the window's
+        // own event handlers.
+        _dispatcher.TryEnqueue(() =>
+        {
+            try { window.Close(); } catch (Exception) { }
+        });
     }
 
     private void UpdateReturnDwell(FloatingIndicatorState state, string status)

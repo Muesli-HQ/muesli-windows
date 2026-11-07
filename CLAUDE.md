@@ -2,7 +2,7 @@
 
 Muesli is a local-first Windows dictation and meeting-transcription app. The shipping product is
 the packaged WinUI 3 application in `windows-native/Muesli.Windows.WinUI/`, targeting .NET 10 and
-x64. The old WPF product shell has been removed. The separate WPF indicator companion remains active.
+x64. The old WPF product shell and WPF indicator companion have been removed; the floating indicator is drawn in-process.
 
 Shared behavior belongs in `Muesli.Windows.Core` or `Muesli.Windows.Platform`. The WinUI project
 owns active pages, view models, dialogs, activation, and packaged Windows App SDK integration.
