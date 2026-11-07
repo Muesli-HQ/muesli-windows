@@ -124,16 +124,20 @@ public sealed class SettingsStore
         }
     }
 
-    public void Save(MuesliSettings settings)
+    /// <summary>
+    /// Persists <paramref name="settings"/> and returns the normalized form that was written (without
+    /// resolved secrets), or <c>null</c> when saving is suppressed to protect unreadable or newer data.
+    /// </summary>
+    public MuesliSettings? Save(MuesliSettings settings)
     {
         if (_saveSuppressedToPreserveUnreadableOrFutureData)
         {
-            return;
+            return null;
         }
-        SaveSanitized(settings, AtomicJsonSaveMode.Recoverable);
+        return SaveSanitized(settings, AtomicJsonSaveMode.Recoverable);
     }
 
-    private void SaveSanitized(MuesliSettings settings, AtomicJsonSaveMode saveMode)
+    private MuesliSettings SaveSanitized(MuesliSettings settings, AtomicJsonSaveMode saveMode)
     {
         settings = NormalizeAfterDeserialization(settings);
         var sanitized = settings with
@@ -169,6 +173,7 @@ public sealed class SettingsStore
             ResolvedCustomLlmApiKey = ""
         };
         _json.Save(_settingsPath, sanitized, saveMode);
+        return sanitized;
     }
 
     public void SaveSecret(string key, string? value)
