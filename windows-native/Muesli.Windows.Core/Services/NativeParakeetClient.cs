@@ -15,7 +15,13 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
     private const string ModelDirectoryName = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8";
     private const string ModelArchiveUrl =
         "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2";
+    // Identity of the original release archive. Kept as the cache identity for verified installs;
+    // new installs no longer download the archive (sherpa-onnx replaced it on 2026-11-07).
     public const string ModelArchiveSha256 = "5793D0FD397C5778D2CF2126994D58E9D56B1BE7C04D13C7A15BB1B4EAFB16BF";
+
+    // Immutable revision holding exactly the files in ExpectedModelHashes.
+    public const string PinnedFileBaseUrl =
+        "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/2bda32ec70b097a55adaa07d9a7173915b43cc78";
     private const string LegacyModelDirectoryName = "sherpa-onnx-nemo-parakeet_tdt_ctc_110m-en-36000-int8";
 
     // Pinned hashes for the four model files in the upstream sherpa-onnx v3 INT8 archive.
@@ -748,13 +754,9 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
             var stagingPath = Path.Combine(ModelCacheDirectory, $".{ModelDirectoryName}.{Guid.NewGuid():N}.staging");
             try
             {
-                await DownloadFileAsync(ModelArchiveUrl, archivePath, ModelArchiveSha256, progress, cancellationToken);
-                progress?.Report(new ModelDownloadProgress("Extracting Parakeet v3 model", 0, null));
-                Directory.CreateDirectory(stagingPath);
-                using var archive = ArchiveFactory.OpenArchive(archivePath, null);
-                SafeArchiveExtractor.ExtractSafely(archive, stagingPath, cancellationToken);
-
                 var stagedModelPath = Path.Combine(stagingPath, ModelDirectoryName);
+                await PinnedModelFileDownloader.DownloadAsync(
+                    PinnedFileBaseUrl, ExpectedModelHashes, stagedModelPath, "Parakeet v3 model", progress, cancellationToken);
                 await VerifyModelFilesAtPathAsync(stagedModelPath, cancellationToken);
                 if (Directory.Exists(ModelPath))
                 {

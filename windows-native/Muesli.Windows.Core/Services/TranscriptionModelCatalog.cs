@@ -52,7 +52,11 @@ public sealed record TranscriptionModelDefinition(
     IReadOnlyDictionary<string, string> RequiredFileSha256,
     string Language = "auto",
     string QualificationStatus = TranscriptionQualificationContract.InventoryStatus,
-    string QualificationPrerequisites = TranscriptionQualificationContract.RequiredEvidenceSummary)
+    string QualificationPrerequisites = TranscriptionQualificationContract.RequiredEvidenceSummary,
+    // Immutable per-file source (Hugging Face resolve/<commit>). When set, setup downloads the
+    // pinned files directly instead of the mutable release archive. ArchiveSha256 stays as the
+    // cache identity so existing verified installs are not re-downloaded.
+    string? PinnedFileBaseUrl = null)
 {
     public IReadOnlyList<string> RequiredFiles => RequiredFileSha256.Keys.ToArray();
     public string PickerLabel => $"{DisplayName} · {SizeLabel}";
@@ -91,7 +95,8 @@ public static class TranscriptionModelCatalog
                 ["decoder.int8.onnx"] = "179E50C43D1A9DE79C8A24149A2F9BAC6EB5981823F2A2ED88D655B24248DB4E",
                 ["joiner.int8.onnx"] = "3164C13FC2821009440D20FCB5FDC78BFF28B4DB2F8D0F0B329101719C0948B3",
                 ["tokens.txt"] = "D58544679EA4BC6AC563D1F545EB7D474BD6CFA467F0A6E2C1DC1C7D37E3C35D"
-            }),
+            },
+            PinnedFileBaseUrl: NativeParakeetClient.PinnedFileBaseUrl),
         new(
             "parakeet-unified-en-int8",
             "Parakeet Unified English INT8",
@@ -127,7 +132,10 @@ public static class TranscriptionModelCatalog
                 ["joiner.int8.onnx"] = "7946164367946E7F9F29A122407C3252B680DBAE9A51343EB2488D057C3C43D2",
                 ["tokens.txt"] = "EC182B70DD42113AFF6C5372C75CAC58C952443EB22322F57BBD7F53977D497D"
             },
-            "en"),
+            "en",
+            // sherpa-onnx re-exported this release archive on 2026-11-07; this revision still holds
+            // exactly the pinned files.
+            PinnedFileBaseUrl: "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2"),
         new(
             "whisper-tiny-multilingual",
             "Whisper Tiny Multilingual",
