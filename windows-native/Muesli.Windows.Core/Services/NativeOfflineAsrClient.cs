@@ -503,14 +503,23 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                 $".{_model.DirectoryName}.{Guid.NewGuid():N}.staging");
             try
             {
-                await DownloadArchiveAsync(archivePath, progress, cancellationToken);
-                progress?.Report(new ModelDownloadProgress($"Extracting {_model.DisplayName}", 0, null));
-                Directory.CreateDirectory(stagingPath);
-                using var archive = ArchiveFactory.OpenArchive(archivePath, null);
-                SafeArchiveExtractor.ExtractSafely(archive, stagingPath, cancellationToken);
-
                 var stagedModelPath = Path.Combine(stagingPath, _model.DirectoryName);
-                await VerifyRequiredFilesAsync(stagedModelPath, progress, cancellationToken);
+                if (_model.PinnedFileBaseUrl is { } pinnedSource)
+                {
+                    // Each file is hash-verified as it streams, so no archive or re-hash is needed.
+                    await PinnedModelFileDownloader.DownloadAsync(
+                        pinnedSource, _model.RequiredFileSha256, stagedModelPath, _model.DisplayName, progress, cancellationToken);
+                }
+                else
+                {
+                    await DownloadArchiveAsync(archivePath, progress, cancellationToken);
+                    progress?.Report(new ModelDownloadProgress($"Extracting {_model.DisplayName}", 0, null));
+                    Directory.CreateDirectory(stagingPath);
+                    using var archive = ArchiveFactory.OpenArchive(archivePath, null);
+                    SafeArchiveExtractor.ExtractSafely(archive, stagingPath, cancellationToken);
+                    await VerifyRequiredFilesAsync(stagedModelPath, progress, cancellationToken);
+                }
+
                 PruneUnusedWhisperWeights(stagedModelPath);
                 Directory.Move(stagedModelPath, _model.ModelPath);
                 await WriteVerificationStampAsync(verificationPath, cancellationToken);
