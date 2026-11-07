@@ -103,6 +103,11 @@ public sealed class ModelDownloadCoordinator
         ArgumentNullException.ThrowIfNull(manifest);
         if (manifest.Files.Count == 0) throw new ArgumentException("A model download needs at least one file.", nameof(manifest));
 
+        if (manifest.Files.FirstOrDefault(file => !file.Source.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) is { } insecure)
+        {
+            throw new ModelDownloadException(ModelDownloadFailure.InsecureSource, $"{insecure.RelativePath} must download over HTTPS.");
+        }
+
         var root = Path.GetFullPath(destinationDirectory);
         if (!_inFlight.TryAdd(root, 0))
         {
@@ -111,11 +116,17 @@ public sealed class ModelDownloadCoordinator
 
         var tracker = new ProgressTracker(manifest, progress);
         DownloadState? state = null;
+        List<Target> targets = [];
         try
         {
-            var targets = manifest.Files.Select(file => new Target(file, ResolveInside(root, file.RelativePath))).ToList();
+            targets = manifest.Files.Select(file => new Target(file, ResolveInside(root, file.RelativePath))).ToList();
             Directory.CreateDirectory(root);
             state = DownloadState.Load(root, manifest);
+
+            // Unknown sizes are looked up first so totals, the disk-space check and parallel ranges
+            // work for every source. The manifest (and so the resume fingerprint) is unchanged.
+            targets = await ResolveUnknownSizesAsync(targets, cancellationToken);
+            tracker.UseFiles(targets.Select(target => target.File).ToList());
 
             // Adopt what is already on disk: a verified final file counts as done; a part file is
             // resumable only with the ETag it was downloaded against.
@@ -171,7 +182,9 @@ public sealed class ModelDownloadCoordinator
         }
         catch (ModelDownloadException exception)
         {
-            state?.Save();
+            // Keep resume state only while there is something to resume.
+            if (targets.Any(target => File.Exists(target.PartPath))) state?.Save();
+            else state?.Delete();
             tracker.SetPhase(ModelDownloadPhase.Failed, exception.Message, force: true);
             throw;
         }
@@ -306,6 +319,25 @@ public sealed class ModelDownloadCoordinator
                     exception.StatusCode);
             }
         }
+    }
+
+    private async Task<List<Target>> ResolveUnknownSizesAsync(List<Target> targets, CancellationToken cancellationToken)
+    {
+        if (targets.All(target => target.File.ExpectedBytes is not null)) return targets;
+        var resolved = new List<Target>(targets.Count);
+        foreach (var target in targets)
+        {
+            if (target.File.ExpectedBytes is null && await ProbeAsync(target.File.Source, cancellationToken) is { Length: > 0 } probe)
+            {
+                resolved.Add(target with { File = target.File with { ExpectedBytes = probe.Length } });
+            }
+            else
+            {
+                resolved.Add(target);
+            }
+        }
+
+        return resolved;
     }
 
     private bool UseSegments(ModelDownloadFile file) =>
@@ -841,6 +873,13 @@ public sealed class ModelDownloadCoordinator
     private sealed class ProgressTracker(ModelDownloadManifest manifest, IProgress<ModelDownloadSnapshot>? sink)
     {
         private readonly object _gate = new();
+        private IReadOnlyList<ModelDownloadFile> _files = manifest.Files;
+
+        /// <summary>Uses the size-resolved files for totals.</summary>
+        public void UseFiles(IReadOnlyList<ModelDownloadFile> files)
+        {
+            lock (_gate) _files = files;
+        }
         private readonly Dictionary<string, long> _bytes = new(StringComparer.Ordinal);
         private readonly HashSet<string> _completed = new(StringComparer.Ordinal);
         private readonly Stopwatch _clock = new();
@@ -938,8 +977,8 @@ public sealed class ModelDownloadCoordinator
                 _lastEmit = now;
 
                 var completed = _bytes.Values.Sum();
-                long? total = manifest.Files.All(file => file.ExpectedBytes is not null)
-                    ? manifest.Files.Sum(file => file.ExpectedBytes!.Value)
+                long? total = _files.All(file => file.ExpectedBytes is not null)
+                    ? _files.Sum(file => file.ExpectedBytes!.Value)
                     : null;
                 var elapsed = _clock.Elapsed.TotalSeconds;
                 var speed = elapsed > 0.5 ? Math.Max(0, completed - _startBytes) / elapsed : 0;

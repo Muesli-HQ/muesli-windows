@@ -435,58 +435,14 @@ public sealed class NativeDiarizationClient : IDisposable
         }
     }
 
-    private static async Task DownloadFileAsync(
+    private static Task DownloadFileAsync(
         string url,
         string destinationPath,
         string expectedHash,
         string displayName,
         IProgress<ModelDownloadProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        var uri = new Uri(url, UriKind.Absolute);
-        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Model downloads must use HTTPS.");
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? ModelCacheDirectory);
-        var destinationDirectory = Path.GetDirectoryName(destinationPath) ?? ModelCacheDirectory;
-        var destinationName = Path.GetFileName(destinationPath).TrimStart('.');
-        var tempPath = Path.Combine(destinationDirectory, $".{destinationName}.{Guid.NewGuid():N}.partial");
-        try
-        {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
-            using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            var total = response.Content.Headers.ContentLength;
-            await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-            await using (var output = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.WriteThrough))
-            {
-                var buffer = new byte[81920];
-                long received = 0;
-                int read;
-                while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
-                {
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                    received += read;
-                    progress?.Report(new ModelDownloadProgress(displayName, received, total));
-                }
-                output.Flush(flushToDisk: true);
-            }
-
-            var verification = VerifySha256(tempPath, expectedHash);
-            if (!verification.Matches)
-            {
-                throw new InvalidDataException(
-                    $"Downloaded model hash mismatch. Expected {expectedHash}; found {verification.ActualHash ?? "missing"}.");
-            }
-            File.Move(tempPath, destinationPath, overwrite: true);
-        }
-        finally
-        {
-            TryDelete(tempPath);
-        }
-    }
+        CancellationToken cancellationToken) =>
+        ModelFileDownloads.DownloadFileAsync(url, destinationPath, expectedHash, displayName, progress, cancellationToken);
 
     private static bool HasValidVerificationStamp()
     {

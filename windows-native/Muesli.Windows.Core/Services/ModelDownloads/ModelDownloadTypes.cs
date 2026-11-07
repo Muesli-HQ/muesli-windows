@@ -40,8 +40,32 @@ public sealed record ModelDownloadSnapshot(
         ? Math.Clamp((double)CompletedBytes / TotalBytes.Value, 0, 1)
         : null;
 
-    /// <summary>Bridges to the older progress type the lifecycle services and pages consume.</summary>
-    public ModelDownloadProgress ToProgress(string stage) => new(stage, CompletedBytes, TotalBytes);
+    /// <summary>Bridges to the progress type the lifecycle services and pages consume, keeping the full snapshot.</summary>
+    public ModelDownloadProgress ToProgress(string stage) => new(stage, CompletedBytes, TotalBytes) { Snapshot = this };
+}
+
+/// <summary>Feeds engine snapshots to the lifecycle progress channel with stage text it understands.</summary>
+public static class ModelDownloadProgressAdapter
+{
+    public static IProgress<ModelDownloadSnapshot>? For(
+        string displayName,
+        IProgress<ModelDownloadProgress>? progress,
+        string? downloadingStage = null) =>
+        progress is null
+            ? null
+            : new Relay(snapshot => progress.Report(snapshot.ToProgress(snapshot.Phase switch
+            {
+                ModelDownloadPhase.Verifying => $"Verifying {displayName}",
+                ModelDownloadPhase.Ready => $"{displayName} downloaded",
+                ModelDownloadPhase.Paused => "Download paused",
+                ModelDownloadPhase.Failed => snapshot.Message,
+                _ => downloadingStage ?? $"Downloading {displayName}"
+            })));
+
+    private sealed class Relay(Action<ModelDownloadSnapshot> report) : IProgress<ModelDownloadSnapshot>
+    {
+        public void Report(ModelDownloadSnapshot value) => report(value);
+    }
 }
 
 public enum ModelDownloadFailure
@@ -53,7 +77,8 @@ public enum ModelDownloadFailure
     SizeMismatch,
     ChecksumMismatch,
     InsufficientDiskSpace,
-    InvalidPath
+    InvalidPath,
+    InsecureSource
 }
 
 public sealed class ModelDownloadException : Exception

@@ -495,39 +495,51 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
                 Directory.Delete(_model.ModelPath, recursive: true);
             }
 
-            var archivePath = Path.Combine(
-                TranscriptionModelCatalog.ModelCacheDirectory,
-                $".{_model.DirectoryName}.{Guid.NewGuid():N}.download");
+            // A stable folder so a paused or failed download resumes instead of starting over. It is
+            // moved into place (pinned files) or deleted (archive) only after a verified install.
+            var resumeRoot = Path.Combine(TranscriptionModelCatalog.ModelCacheDirectory, $".{_model.DirectoryName}.resume");
             var stagingPath = Path.Combine(
                 TranscriptionModelCatalog.ModelCacheDirectory,
                 $".{_model.DirectoryName}.{Guid.NewGuid():N}.staging");
             try
             {
-                var stagedModelPath = Path.Combine(stagingPath, _model.DirectoryName);
+                string stagedModelPath;
                 if (_model.PinnedFileBaseUrl is { } pinnedSource)
                 {
-                    // Each file is hash-verified as it streams, so no archive or re-hash is needed.
                     await PinnedModelFileDownloader.DownloadAsync(
-                        pinnedSource, _model.RequiredFileSha256, stagedModelPath, _model.DisplayName, progress, cancellationToken);
+                        pinnedSource, _model.RequiredFileSha256, resumeRoot, _model.DisplayName, progress, cancellationToken);
+                    stagedModelPath = resumeRoot;
                 }
                 else
                 {
-                    await DownloadArchiveAsync(archivePath, progress, cancellationToken);
+                    var archiveName = Path.GetFileName(new Uri(_model.ArchiveUrl, UriKind.Absolute).LocalPath);
+                    await ModelDownloadCoordinator.Shared.DownloadAsync(
+                        new ModelDownloadManifest(
+                            _model.Id,
+                            _model.ArchiveSha256,
+                            [new ModelDownloadFile(archiveName, new Uri(_model.ArchiveUrl, UriKind.Absolute), null, _model.ArchiveSha256)]),
+                        resumeRoot,
+                        ModelDownloadProgressAdapter.For(_model.DisplayName, progress),
+                        cancellationToken);
                     progress?.Report(new ModelDownloadProgress($"Extracting {_model.DisplayName}", 0, null));
                     Directory.CreateDirectory(stagingPath);
-                    using var archive = ArchiveFactory.OpenArchive(archivePath, null);
-                    SafeArchiveExtractor.ExtractSafely(archive, stagingPath, cancellationToken);
+                    using (var archive = ArchiveFactory.OpenArchive(Path.Combine(resumeRoot, archiveName), null))
+                    {
+                        SafeArchiveExtractor.ExtractSafely(archive, stagingPath, cancellationToken);
+                    }
+
+                    stagedModelPath = Path.Combine(stagingPath, _model.DirectoryName);
                     await VerifyRequiredFilesAsync(stagedModelPath, progress, cancellationToken);
                 }
 
                 PruneUnusedWhisperWeights(stagedModelPath);
                 Directory.Move(stagedModelPath, _model.ModelPath);
+                TryDeleteDirectory(resumeRoot);
                 await WriteVerificationStampAsync(verificationPath, cancellationToken);
                 progress?.Report(new ModelDownloadProgress($"{_model.DisplayName} verified", 1, 1));
             }
             finally
             {
-                TryDeleteFile(archivePath);
                 TryDeleteDirectory(stagingPath);
             }
         }
@@ -535,49 +547,6 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
         {
             processLock?.Dispose();
             DownloadGate.Release();
-        }
-    }
-
-    private async Task DownloadArchiveAsync(
-        string destinationPath,
-        IProgress<ModelDownloadProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        var uri = new Uri(_model.ArchiveUrl, UriKind.Absolute);
-        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Model downloads must use HTTPS.");
-        }
-
-        using var httpClient = new HttpClient { Timeout = TimeSpan.FromHours(2) };
-        using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var totalBytes = response.Content.Headers.ContentLength;
-        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using (var output = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, true))
-        {
-            var buffer = new byte[1024 * 1024];
-            long received = 0;
-            while (true)
-            {
-                var read = await input.ReadAsync(buffer, cancellationToken);
-                if (read == 0)
-                {
-                    break;
-                }
-
-                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                received += read;
-                progress?.Report(new ModelDownloadProgress($"Downloading {_model.DisplayName}", received, totalBytes));
-            }
-        }
-
-        await using var stream = File.OpenRead(destinationPath);
-        var actual = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
-        if (!actual.Equals(_model.ArchiveSha256, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException(
-                $"{_model.DisplayName} archive verification failed. Expected {_model.ArchiveSha256}; found {actual}.");
         }
     }
 

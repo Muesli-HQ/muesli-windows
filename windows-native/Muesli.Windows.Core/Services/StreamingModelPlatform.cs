@@ -262,33 +262,8 @@ public sealed class StreamingModelInstaller
         finally { TryDeleteFile(temporary); }
     }
 
-    private static async Task DownloadAsync(string url, string destination, string expectedHash, string label, IProgress<ModelDownloadProgress>? progress, CancellationToken token)
-    {
-        var uri = new Uri(url);
-        if (uri.Scheme != Uri.UriSchemeHttps) throw new InvalidOperationException("Streaming model downloads require HTTPS.");
-        using var client = new HttpClient { Timeout = TimeSpan.FromHours(2) };
-        using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        var total = response.Content.Headers.ContentLength;
-        await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        await using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, true))
-        {
-            var buffer = new byte[1024 * 1024];
-            long received = 0;
-            while (true)
-            {
-                var read = await input.ReadAsync(buffer, token).ConfigureAwait(false);
-                if (read == 0) break;
-                await output.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
-                received += read;
-                progress?.Report(new ModelDownloadProgress(label, received, total));
-            }
-        }
-        await using var verify = File.OpenRead(destination);
-        var actual = Convert.ToHexString(await SHA256.HashDataAsync(verify, token));
-        if (!actual.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"{label} checksum failed. Expected {expectedHash}; found {actual}.");
-    }
+    private static Task DownloadAsync(string url, string destination, string expectedHash, string label, IProgress<ModelDownloadProgress>? progress, CancellationToken token) =>
+        ModelFileDownloads.DownloadFileAsync(url, destination, expectedHash, label, progress, token);
 
     private static void TryDeleteFile(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
     private static void TryDeleteDirectory(string path) { try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } }
