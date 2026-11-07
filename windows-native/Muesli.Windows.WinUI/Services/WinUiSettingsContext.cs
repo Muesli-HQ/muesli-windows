@@ -38,9 +38,7 @@ public sealed class WinUiSettingsContext
         MuesliSettings snapshot;
         lock (_gate)
         {
-            var current = Load();
-            if (_store.LastWarning is { } warning)
-                throw new InvalidOperationException(warning);
+            var current = CurrentForWrite();
             // Save is only suppressed together with LastWarning, which was rejected above.
             var persisted = _store.Save(settings) ?? settings;
             // Secrets never round-trip through the JSON file, so the snapshot keeps the resolved keys.
@@ -60,25 +58,32 @@ public sealed class WinUiSettingsContext
     {
         lock (_gate)
         {
-            var current = Load();
-            if (_store.LastWarning is { } warning)
-                throw new InvalidOperationException(warning);
+            var current = CurrentForWrite();
             var resolvedOpenAI = openAI.Trim();
             var resolvedOpenRouter = openRouter.Trim();
-            _secrets.Write(SettingsStore.OpenAISecretKey, resolvedOpenAI);
-            _secrets.Write(SettingsStore.OpenRouterSecretKey, resolvedOpenRouter);
             var resolvedCustom = current.ResolvedCustomLlmApiKey;
-            if (customLlm is not null)
+            try
             {
-                resolvedCustom = customLlm.Trim();
-                if (resolvedCustom.Length == 0)
+                _secrets.Write(SettingsStore.OpenAISecretKey, resolvedOpenAI);
+                _secrets.Write(SettingsStore.OpenRouterSecretKey, resolvedOpenRouter);
+                if (customLlm is not null)
                 {
-                    _secrets.Delete(SettingsStore.CustomLlmSecretKey);
+                    resolvedCustom = customLlm.Trim();
+                    if (resolvedCustom.Length == 0)
+                    {
+                        _secrets.Delete(SettingsStore.CustomLlmSecretKey);
+                    }
+                    else
+                    {
+                        _secrets.Write(SettingsStore.CustomLlmSecretKey, resolvedCustom);
+                    }
                 }
-                else
-                {
-                    _secrets.Write(SettingsStore.CustomLlmSecretKey, resolvedCustom);
-                }
+            }
+            catch
+            {
+                // Some keys may already be written; re-read so the snapshot matches the credential store.
+                ReloadFromDisk();
+                throw;
             }
 
             Publish(current with
@@ -87,6 +92,35 @@ public sealed class WinUiSettingsContext
                 ResolvedOpenRouterApiKey = resolvedOpenRouter,
                 ResolvedCustomLlmApiKey = resolvedCustom
             });
+        }
+    }
+
+    /// <summary>
+    /// The snapshot to base a write on. A load can leave a one-off warning (a file recovered from
+    /// its backup, a transient Credential Manager failure). Before the snapshot, every save re-read
+    /// the file first, which cleared such warnings; re-read here the same way so they cannot block
+    /// saves for the rest of the session. A persistent condition (a newer schema) still refuses.
+    /// </summary>
+    private MuesliSettings CurrentForWrite()
+    {
+        var current = Load();
+        if (_store.LastWarning is not null)
+        {
+            current = ReloadFromDisk();
+        }
+
+        if (_store.LastWarning is { } warning)
+            throw new InvalidOperationException(warning);
+        return current;
+    }
+
+    private MuesliSettings ReloadFromDisk()
+    {
+        lock (_gate)
+        {
+            var settings = _store.Load();
+            Publish(settings);
+            return settings;
         }
     }
 

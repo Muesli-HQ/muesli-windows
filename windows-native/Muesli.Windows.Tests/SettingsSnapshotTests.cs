@@ -109,6 +109,65 @@ public sealed class SettingsSnapshotTests
         Assert.Equal(3, secrets.Reads);
     }
 
+    [Fact]
+    public void A_settings_file_recovered_at_load_does_not_block_saves_for_the_session()
+    {
+        using var directory = new TestDirectory();
+        using var library = new WinUiLibraryContext(MuesliProfilePaths.Isolated(directory.Path));
+        File.WriteAllText(library.Profile.SettingsPath, "{ this is not json");
+        var settings = new WinUiSettingsContext(library, new InMemorySecretStore());
+        settings.Load();
+
+        settings.Save(settings.Load() with { UserName = "After recovery" });
+        settings.Save(settings.Load() with { UserName = "Second save" });
+
+        Assert.Equal("Second save", new WinUiSettingsContext(library, new InMemorySecretStore()).Load().UserName);
+    }
+
+    [Fact]
+    public void A_newer_schema_still_refuses_saves()
+    {
+        using var directory = new TestDirectory();
+        using var library = new WinUiLibraryContext(MuesliProfilePaths.Isolated(directory.Path));
+        var future = "{ \"SchemaVersion\": 999, \"UserName\": \"from the future\" }";
+        File.WriteAllText(library.Profile.SettingsPath, future);
+        var settings = new WinUiSettingsContext(library, new InMemorySecretStore());
+
+        Assert.Throws<InvalidOperationException>(() => settings.Save(settings.Load() with { UserName = "Overwrite" }));
+        Assert.Equal(future, File.ReadAllText(library.Profile.SettingsPath));
+    }
+
+    [Fact]
+    public void A_partly_failed_key_save_leaves_the_snapshot_matching_the_credential_store()
+    {
+        using var directory = new TestDirectory();
+        using var library = new WinUiLibraryContext(MuesliProfilePaths.Isolated(directory.Path));
+        var secrets = new FailingSecretStore(SettingsStore.OpenRouterSecretKey);
+        var settings = new WinUiSettingsContext(library, secrets);
+        settings.Load();
+
+        Assert.Throws<IOException>(() => settings.SaveProviderKeys("sk-written", "sk-fails"));
+
+        Assert.Equal("sk-written", settings.Load().ResolvedOpenAIApiKey);
+        Assert.Equal("", settings.Load().ResolvedOpenRouterApiKey);
+    }
+
+    private sealed class FailingSecretStore(string failingKey) : ISecretStore
+    {
+        private readonly InMemorySecretStore _inner = new();
+
+        public string? Read(string key) => _inner.Read(key);
+
+        public void Write(string key, string value)
+        {
+            if (key == failingKey) throw new IOException("Credential Manager unavailable.");
+            _inner.Write(key, value);
+        }
+
+        public void Delete(string key) => _inner.Delete(key);
+        public bool IsConfigured(string key) => _inner.IsConfigured(key);
+    }
+
     private sealed class CountingSecretStore : ISecretStore
     {
         private readonly InMemorySecretStore _inner = new();
