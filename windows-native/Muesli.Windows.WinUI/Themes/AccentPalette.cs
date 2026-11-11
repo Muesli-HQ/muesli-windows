@@ -58,6 +58,7 @@ public static class AccentPalette
                 Set(theme, "MuesliAccentTintHoverBrush", Tint(fill, MuesliAccentRoles.TintHover));
                 Set(theme, "MuesliAccentTintPressedBrush", Tint(fill, MuesliAccentRoles.TintPressed));
                 Set(theme, "MuesliBadgeFillBrush", ToColor(roles.BadgeFill));
+                Set(theme, "MuesliAccentBorderHoverBrush", Tint(fill, 0.38));
             }
         }
     }

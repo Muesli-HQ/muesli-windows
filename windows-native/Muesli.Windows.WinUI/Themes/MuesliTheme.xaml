@@ -223,6 +223,8 @@
                 <SolidColorBrush x:Key="ButtonForeground" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#EBFFFFFF" />
+                <!-- macOS stat-card hover border: accent at 38%. -->
+                <SolidColorBrush x:Key="MuesliAccentBorderHoverBrush" Color="#616BA3F7" />
             </ResourceDictionary>
 
             <ResourceDictionary x:Key="Dark">
@@ -407,6 +409,8 @@
                 <SolidColorBrush x:Key="ButtonForeground" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#EBFFFFFF" />
+                <!-- macOS stat-card hover border: accent at 38%. -->
+                <SolidColorBrush x:Key="MuesliAccentBorderHoverBrush" Color="#616BA3F7" />
             </ResourceDictionary>
 
             <ResourceDictionary x:Key="Light">
@@ -597,6 +601,8 @@
                 <SolidColorBrush x:Key="ButtonForeground" Color="#E0000000" />
                 <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#E0000000" />
                 <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#E0000000" />
+                <!-- macOS stat-card hover border: accent at 38%. -->
+                <SolidColorBrush x:Key="MuesliAccentBorderHoverBrush" Color="#612563EB" />
             </ResourceDictionary>
 
             <!--
@@ -666,6 +672,8 @@
                 <StaticResource x:Key="MuesliDestructiveTintPressedBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliStateHoverOverlayBrush" ResourceKey="SystemColorWindowColorBrush" />
                 <StaticResource x:Key="MuesliStatePressedOverlayBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <!-- macOS stat-card hover border: accent at 38%. -->
+                <StaticResource x:Key="MuesliAccentBorderHoverBrush" ResourceKey="SystemColorHighlightColorBrush" />
             </ResourceDictionary>
         </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

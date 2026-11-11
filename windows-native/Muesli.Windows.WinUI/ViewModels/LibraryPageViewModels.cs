@@ -90,7 +90,7 @@ public partial class TimelinePageViewModel : ObservableObject
             ? "TODAY"
             : localDate == today.AddDays(-1)
                 ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
+                : LibraryDayHeading.Format(localDate);
     }
 
     private void NotifyDerived()
@@ -328,7 +328,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
             ? "TODAY"
             : localDate == today.AddDays(-1)
                 ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
+                : LibraryDayHeading.Format(localDate);
     }
 
     private void ShowStatus(string message, bool isError = false)
@@ -1414,5 +1414,19 @@ public sealed record MeetingFolderListItem(string Id, string Name, int Count)
         }
 
         return result;
+    }
+}
+
+/// <summary>
+/// macOS day headings (TimelineView.swift): "TODAY", "YESTERDAY", otherwise the abbreviated
+/// weekday, day and month in the locale's order, uppercased, with no year ("WED, NOV 12").
+/// </summary>
+internal static class LibraryDayHeading
+{
+    public static string Format(DateTime date)
+    {
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        var monthDay = culture.DateTimeFormat.MonthDayPattern.Replace("MMMM", "MMM", StringComparison.Ordinal);
+        return $"{date.ToString("ddd", culture)}, {date.ToString(monthDay, culture)}".ToUpper(culture);
     }
 }
