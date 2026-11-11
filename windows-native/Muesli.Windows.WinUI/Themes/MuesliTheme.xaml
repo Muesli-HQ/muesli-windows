@@ -426,7 +426,7 @@
                 <SolidColorBrush x:Key="MuesliHoverBrush" Color="#E8E8EC" />
                 <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#D6DFFE" />
                 <SolidColorBrush x:Key="MuesliBorderBrush" Color="#14000000" />
-                <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#0F000000" />
+                <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#14000000" />
                 <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#E0000000" />
                 <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#A8000000" />
                 <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8C000000" />

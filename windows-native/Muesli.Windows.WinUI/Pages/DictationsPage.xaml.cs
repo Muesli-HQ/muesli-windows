@@ -46,9 +46,16 @@ public sealed partial class DictationsPage : Page
             ? TimelinePage.CompactCount(count)
             : label;
 
-    /// <summary>macOS voiceNoteButton: accent at rest, the recording red while capturing.</summary>
+    /// <summary>
+    /// macOS voiceNoteButton: .primary (accent with contrast-picked ink) at rest, .recording
+    /// (recordingFill #DC2626 with white) while capturing.
+    /// </summary>
     public static Microsoft.UI.Xaml.Media.Brush RecordBackground(bool isRecording) =>
-        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[isRecording ? "MuesliRecordingBrush" : "MuesliAccentBrush"];
+        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[isRecording ? "MuesliRecordingFillBrush" : "MuesliAccentBrush"];
+
+    public static Microsoft.UI.Xaml.Media.Brush RecordForeground(bool isRecording) => isRecording
+        ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White)
+        : (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MuesliOnAccentBrush"];
 
     public static string RecordGlyph(bool isRecording) => isRecording ? "" : "";
 
@@ -101,7 +108,9 @@ public sealed partial class DictationsPage : Page
         _selectedRowList = null;
 
         EmptyStateTitle.Text = "No dictations yet";
-        EmptyStateBody.Text = "Your first completed dictation will be stored here.";
+        // macOS: the instruction names the dictation shortcut.
+        var hotkey = App.Settings.Load().Hotkey;
+        EmptyStateBody.Text = string.IsNullOrWhiteSpace(hotkey) ? "No dictations yet" : $"Press {hotkey} to dictate";
     }
 
     /// <summary>
