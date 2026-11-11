@@ -38,4 +38,14 @@ public sealed partial class AboutPage : Page
     {
         if (pageWidth > 0) ContentRoot.Padding = MuesliPageMetrics.ContentPadding(pageWidth);
     }
+
+    // The share links moved here from the sidebar, as on macOS (AboutView "Spread the Word").
+    private void Share_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+        var target = string.Equals(tag, "linkedin", StringComparison.OrdinalIgnoreCase)
+            ? "https://www.linkedin.com/sharing/share-offsite/?url=https://muesli.app"
+            : "https://twitter.com/intent/tweet?text=Meet%20Muesli%20%E2%80%94%20private%20on-device%20dictation&url=https://muesli.app";
+        _ = global::Windows.System.Launcher.LaunchUriAsync(new Uri(target));
+    }
 }
