@@ -4,9 +4,11 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Muesli.Windows.WinUI"
-    Title="Set up Muesli">
+    Title="Welcome to muesli">
+    <!-- macOS onboarding is always dark (NSAppearance darkAqua) on backgroundBase. -->
     <Grid
         x:Name="RootGrid"
+        RequestedTheme="Dark"
         Background="{ThemeResource MuesliBackgroundBrush}"
         XYFocusKeyboardNavigation="Enabled"
         SizeChanged="RootGrid_SizeChanged">
@@ -38,13 +40,7 @@
             Background="Transparent"
             IsHitTestVisible="True"
             AutomationProperties.Name="Muesli setup window title bar">
-            <TextBlock
-                Margin="16,0,0,0"
-                VerticalAlignment="Center"
-                Style="{StaticResource MuesliBodyStyle}"
-                FontSize="12"
-                Text="Set up Muesli"
-                IsHitTestVisible="False" />
+            <!-- macOS hides the setup window title; the strip only carries the caption buttons. -->
         </Grid>
 
         <Border
@@ -146,18 +142,23 @@
                     eyebrow and once as an accent badge in a second column. The eyebrow is the one
                     that carries the automation id and the polite live region, so the badge went.
                 -->
-                <StackPanel Spacing="6" MinWidth="0">
-                    <TextBlock Text="{x:Bind ViewModel.StepLabel, Mode=OneWay}" Style="{StaticResource MuesliSectionLabelStyle}" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="OnboardingStepBadge" />
-                    <TextBlock x:Name="TitleText" Text="{x:Bind ViewModel.Title, Mode=OneWay}" Style="{StaticResource MuesliPageTitleStyle}" TextWrapping="Wrap" />
-                    <TextBlock Text="{x:Bind ViewModel.Description, Mode=OneWay}" Style="{StaticResource MuesliPageSubtitleStyle}" />
+                <!--
+                    macOS step header: centred title1 over a 14pt secondary line; Welcome leads with
+                    the 64-pt app icon. There is no eyebrow or progress bar: the dots in the bottom
+                    bar carry progress. The step label stays as an off-screen live region so screen
+                    readers still hear "step n of m".
+                -->
+                <StackPanel Spacing="8" MinWidth="0" HorizontalAlignment="Center" MaxWidth="480" Margin="0,8,0,8">
+                    <Image Source="ms-appx:///Assets/Square44x44Logo.targetsize-256_altform-unplated.png"
+                           Width="64" Height="64"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,8"
+                           Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowName), Mode=OneWay}"
+                           AutomationProperties.AccessibilityView="Raw" />
+                    <TextBlock Text="{x:Bind ViewModel.StepLabel, Mode=OneWay}" Height="0" Opacity="0" IsHitTestVisible="False" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="OnboardingStepBadge" />
+                    <TextBlock x:Name="TitleText" Text="{x:Bind ViewModel.Title, Mode=OneWay}" Style="{StaticResource MuesliPageTitleStyle}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" />
+                    <TextBlock Text="{x:Bind ViewModel.Description, Mode=OneWay}" Style="{StaticResource MuesliPageSubtitleStyle}" TextAlignment="Center" HorizontalAlignment="Center" />
                 </StackPanel>
-
-                <ProgressBar
-                    Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}"
-                    Maximum="{x:Bind ViewModel.ProgressMaximum, Mode=OneWay}"
-                    Height="4"
-                    AutomationProperties.Name="Setup progress"
-                    AutomationProperties.AutomationId="OnboardingProgressBar" />
 
                 <!-- Welcome -->
                 <Border Style="{StaticResource MuesliSettingsGroupStyle}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowName), Mode=OneWay}">
@@ -672,32 +673,33 @@
             Background="{ThemeResource MuesliBackgroundBrush}"
             BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
             BorderThickness="0,1,0,0"
-            Padding="32,14,32,18">
-            <Grid RowDefinitions="Auto,Auto" RowSpacing="12">
+            Padding="32,16,32,16">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                 <ItemsRepeater
                     ItemsSource="{x:Bind ViewModel.StepNavItems, Mode=OneWay}"
-                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
                     AutomationProperties.Name="Setup step indicator">
                     <ItemsRepeater.Layout>
-                        <StackLayout Orientation="Horizontal" Spacing="8" />
+                        <StackLayout Orientation="Horizontal" Spacing="6" />
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate>
-                            <Grid Width="8" Height="8">
+                            <Grid Width="7" Height="7">
                                 <Ellipse Fill="{ThemeResource MuesliAccentBrush}" Visibility="{Binding IsCurrent, Converter={StaticResource BoolVis}}" />
-                                <Ellipse Fill="{ThemeResource MuesliTextTertiaryBrush}" Opacity="0.45" Visibility="{Binding IsCurrent, Converter={StaticResource InvertBoolVis}}" />
+                                <Ellipse Fill="{ThemeResource MuesliTextTertiaryBrush}" Visibility="{Binding IsCurrent, Converter={StaticResource InvertBoolVis}}" />
                             </Grid>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
-                <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
                     <Button
                         x:Name="BackButton"
-                        Style="{StaticResource MuesliGhostButtonStyle}"
+                        Style="{StaticResource MuesliSecondaryButtonStyle}"
+                        Padding="16,8"
+                        Foreground="{ThemeResource MuesliTextSecondaryBrush}"
                         Command="{x:Bind ViewModel.BackCommand}"
                         Content="Back"
-                        MinWidth="80"
-                        MinHeight="36"
+                        MinHeight="0"
                         IsEnabled="{x:Bind ViewModel.CanGoBack, Mode=OneWay}"
                         AutomationProperties.AutomationId="OnboardingBackButton"
                         AutomationProperties.Name="Previous setup step">
@@ -707,25 +709,28 @@
                     </Button>
                     <StackPanel
                         x:Name="FooterActions"
-                        Grid.Column="2"
                         Orientation="Horizontal"
-                        Spacing="10"
+                        Spacing="12"
                         HorizontalAlignment="Right">
                         <Button
                             x:Name="SkipButton"
-                            Style="{StaticResource MuesliGhostButtonStyle}"
+                            Style="{StaticResource MuesliSecondaryButtonStyle}"
+                            Padding="16,8"
+                            Foreground="{ThemeResource MuesliTextSecondaryBrush}"
                             Command="{x:Bind ViewModel.SkipCommand}"
                             Content="Set up later"
-                            MinHeight="36"
+                            MinHeight="0"
                             AutomationProperties.AutomationId="OnboardingSkipButton"
                             AutomationProperties.Name="Pause setup and resume later" />
                         <Button
                             x:Name="NextButton"
-                            Style="{StaticResource MuesliSecondaryButtonStyle}"
+                            Style="{StaticResource MuesliPrimaryButtonStyle}"
+                            FontFamily="{StaticResource MuesliFontFamilyMedium}"
+                            FontWeight="Medium"
+                            Padding="20,8"
                             Command="{x:Bind ViewModel.NextCommand}"
-                            Content="Next"
-                            MinWidth="88"
-                            MinHeight="36"
+                            Content="Continue"
+                            MinHeight="0"
                             Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.CanGoNext), Mode=OneWay}"
                             AutomationProperties.AutomationId="OnboardingNextButton"
                             AutomationProperties.Name="Next setup step">
@@ -736,14 +741,17 @@
                         <Button
                             x:Name="FinishButton"
                             Style="{StaticResource MuesliPrimaryButtonStyle}"
+                            FontFamily="{StaticResource MuesliFontFamilyMedium}"
+                            FontWeight="Medium"
+                            Padding="20,8"
                             Command="{x:Bind ViewModel.FinishCommand}"
-                            Content="Finish setup"
-                            MinHeight="36"
+                            Content="Finish"
+                            MinHeight="0"
                             Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.CanFinish), Mode=OneWay}"
                             AutomationProperties.AutomationId="OnboardingFinishButton"
                             AutomationProperties.Name="Finish setup" />
                     </StackPanel>
-                </Grid>
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

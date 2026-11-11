@@ -5,13 +5,14 @@ public static class OnboardingStepCatalog
 {
     public static IReadOnlyList<OnboardingStepDefinition> Steps { get; } =
     [
-        new(0, "Welcome to Muesli", "Choose a name and review the local-first setup. You can pause safely at any time."),
-        new(1, "Microphone and permissions", "Windows policy is a hint. A short non-retained WASAPI capture is the real microphone check."),
-        new(2, "Separate model roles", "Choosing a model never starts a download. Prepare or verify each selected role when you are ready."),
-        new(3, "Dictation shortcut", "This advisory check detects common conflicts. The actual low-level dictation hook remains decisive."),
-        new(4, "Try live dictation", "Record a short local test. It does not paste or add a history item; setup needs a non-empty transcript."),
-        new(5, "Optional product choices", "Local summaries work without a key. Cloud providers disclose where transcript text may be sent."),
-        new(6, "You are ready", "Finish once all required checks are green, or pause and resume from the dashboard or tray.")
+        // User-facing copy in the macOS onboarding register: lowercase "muesli", no internals.
+        new(0, "Welcome to muesli", "Local-first dictation and meeting transcription for Windows."),
+        new(1, "Microphone", "muesli listens only while you dictate or take meeting notes. Check that Windows lets it hear you."),
+        new(2, "Choose your transcription model", "Start with a fast local model. Larger models can download while you continue setup."),
+        new(3, "Dictation Shortcut", "Choose the key you'll press to dictate. You can change it later in Shortcuts."),
+        new(4, "Test Dictation", "Record a short test and your words appear below. Nothing is saved or pasted."),
+        new(5, "Meeting Summaries", "Summaries run locally without a key. Remote providers may send transcripts off-device."),
+        new(6, "You're all set", "Everything below is ready. Finish to open muesli, or set up the rest later.")
     ];
 
     public static OnboardingStepDefinition Get(int step)

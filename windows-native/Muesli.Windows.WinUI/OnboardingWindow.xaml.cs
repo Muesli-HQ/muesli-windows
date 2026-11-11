@@ -28,14 +28,16 @@ public sealed class OnboardingBoolVisConverter : IValueConverter
 
 public sealed partial class OnboardingWindow : Window
 {
-    private const double DefaultWidthDip = 820;
+    // macOS OnboardingWindowController: a 640 x 520 window. Windows steps carry more controls, so
+    // the default is a little taller; ResizeForDpi clamps to the work area and the content scrolls.
+    private const double DefaultWidthDip = 640;
     // P8-02: the permissions step is the tallest, and at 700 DIP its last row was cut in half by the
     // fixed footer. 780 DIP clears it on a 1080p/125 % display; ResizeForDpi clamps to the work area
     // so a shorter display still gets a window that fits and the ScrollViewer keeps the overflow
     // reachable.
-    private const double DefaultHeightDip = 780;
+    private const double DefaultHeightDip = 600;
     private const double MinimumWidthDip = 560;
-    private const double MinimumHeightDip = 560;
+    private const double MinimumHeightDip = 520;
     private const double RailWidthDip = 236;
 
     private readonly IntPtr _hwnd;
@@ -126,8 +128,9 @@ public sealed partial class OnboardingWindow : Window
 
     private void ApplyCompactLayout(double width)
     {
-        var compact = width > 0 && width < 760;
-        var stackedFooter = width > 0 && width < 640;
+        // macOS onboarding has no step rail: the bottom-bar dots carry progress.
+        var compact = true;
+        var stackedFooter = width > 0 && width < 520;
         StepRail.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         RailSplitter.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         RailColumn.Width = compact ? new GridLength(0) : new GridLength(RailWidthDip);
@@ -138,8 +141,8 @@ public sealed partial class OnboardingWindow : Window
         var contentWidth = Math.Max(0, width - (compact ? 0 : RailWidthDip + 1));
         var padding = MuesliPageMetrics.ContentPadding(contentWidth);
         ContentColumn.Padding = padding;
-        FooterBar.Padding = new Thickness(padding.Left, compact ? 12 : 14, padding.Right, compact ? 16 : 18);
-        TitleText.FontSize = compact ? 26 : 32;
+        FooterBar.Padding = new Thickness(32, 16, 32, 16);
+        TitleText.FontSize = 26;
         IndicatorPreviewActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         Grid.SetColumn(PermissionsToolbar, compact ? 0 : 1);
         Grid.SetRow(PermissionsToolbar, compact ? 1 : 0);

@@ -20,8 +20,8 @@ public sealed class WinUiShellParityTests
     {
         Assert.Equal(7, OnboardingStepCatalog.Steps.Count);
         Assert.Equal(OnboardingProgress.LastStep, OnboardingStepCatalog.Steps[^1].Step);
-        Assert.Equal("Welcome to Muesli", OnboardingStepCatalog.Get(0).Title);
-        Assert.Equal("You are ready", OnboardingStepCatalog.Get(99).Title);
+        Assert.Equal("Welcome to muesli", OnboardingStepCatalog.Get(0).Title);
+        Assert.Equal("You're all set", OnboardingStepCatalog.Get(99).Title);
     }
 
     [Fact]
