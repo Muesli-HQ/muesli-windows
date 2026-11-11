@@ -20,9 +20,9 @@
 
                 Shell geometry:
                   MuesliTitleBarHeight          caption strip reserved above ContentFrame
-                  MuesliSidebarWidthExpanded    268 DIP rail at ≥1280
-                  MuesliSidebarWidthMedium      236 DIP rail at 1008–1279
-                  MuesliSidebarWidthCompact     72 DIP icon rail below 1008
+                  MuesliSidebarWidthExpanded    240 DIP rail (macOS SidebarView)
+                  MuesliSidebarWidthMedium      240 DIP rail at 1008–1279
+                  MuesliSidebarWidthCompact     68 DIP icon rail below 1008 or when collapsed
                   MuesliPageGutter*             page-owned horizontal padding; the shell does
                                                 not apply a second gutter around ContentFrame
 
@@ -92,13 +92,13 @@
             <x:Double x:Key="MuesliIconSizeMedium">16</x:Double>
             <x:Double x:Key="MuesliIconSizeLarge">20</x:Double>
             <x:Double x:Key="MuesliTitleBarHeight">32</x:Double>
-            <x:Double x:Key="MuesliSidebarWidthExpanded">268</x:Double>
-            <x:Double x:Key="MuesliSidebarWidthMedium">236</x:Double>
-            <x:Double x:Key="MuesliSidebarWidthCompact">72</x:Double>
+            <x:Double x:Key="MuesliSidebarWidthExpanded">240</x:Double>
+            <x:Double x:Key="MuesliSidebarWidthMedium">240</x:Double>
+            <x:Double x:Key="MuesliSidebarWidthCompact">68</x:Double>
             <!-- Horizontal halves of the three MuesliPageContentPadding* thicknesses below. They
                  are kept in sync deliberately: a page that needs only the gutter (to align a
                  sibling to the page edge) must not end up 6 DIP off the page's own padding. -->
-            <x:Double x:Key="MuesliPageGutterLarge">34</x:Double>
+            <x:Double x:Key="MuesliPageGutterLarge">32</x:Double>
             <x:Double x:Key="MuesliPageGutterMedium">28</x:Double>
             <x:Double x:Key="MuesliPageGutterCompact">20</x:Double>
 
@@ -117,15 +117,15 @@
                 MuesliPageHeaderSpacing is the gap between the title block and the first
                 content block, so header rhythm matches across pages.
             -->
-            <Thickness x:Key="MuesliPageContentPadding">34,26,34,40</Thickness>
+            <Thickness x:Key="MuesliPageContentPadding">32,8,32,40</Thickness>
             <!--
                 The two narrower tiers of the same gutter. Nine pages recompute their padding
                 from code-behind on every size change; they all resolve it through
                 MuesliPageMetrics.ContentPadding(contentWidth), which picks one of these three
                 and nothing else. Do not reintroduce per-page breakpoints — see MuesliPageMetrics.
             -->
-            <Thickness x:Key="MuesliPageContentPaddingMedium">28,26,28,40</Thickness>
-            <Thickness x:Key="MuesliPageContentPaddingCompact">20,22,20,32</Thickness>
+            <Thickness x:Key="MuesliPageContentPaddingMedium">28,8,28,40</Thickness>
+            <Thickness x:Key="MuesliPageContentPaddingCompact">20,8,20,32</Thickness>
             <x:Double x:Key="MuesliPageContentMaxWidth">1040</x:Double>
             <x:Double x:Key="MuesliPageHeaderSpacing">18</x:Double>
             <Thickness x:Key="MuesliPageHeaderMargin">0,0,0,18</Thickness>
@@ -326,30 +326,84 @@
                 style (rather than replacing the implicit button style) means pages can continue
                 using the WinUI button behaviour while the sidebar retains the WPF/macOS geometry.
             -->
+            <!--
+                macOS sidebar row (SidebarView.swift 545-617): 14 medium label (semibold when
+                selected, set by MainPage), padding 10×8 around a 20-pt icon column, 12 to the label,
+                radius 6, 8 from the rail edge, 4 between rows. Hover and press fills come from the
+                rail's local Button* brushes (MainPage.xaml).
+            -->
             <Style x:Key="MuesliSidebarButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
-                <Setter Property="Height" Value="38" />
-                <Setter Property="MinHeight" Value="38" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="MinHeight" Value="36" />
                 <Setter Property="Margin" Value="8,2" />
-                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="Background" Value="{ThemeResource ControlFillColorTransparentBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource ControlFillColorTransparentBrush}" />
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
-                <Setter Property="CornerRadius" Value="7" />
+                <Setter Property="CornerRadius" Value="6" />
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilyMedium}" />
                 <Setter Property="FontSize" Value="14" />
-                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="FontWeight" Value="Medium" />
                 <Setter Property="UseSystemFocusVisuals" Value="True" />
             </Style>
+            <!-- Folder rows: callout 13, padding 10×6. -->
             <Style x:Key="MuesliSidebarChildButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliSidebarButtonStyle}">
-                <Setter Property="Height" Value="32" />
-                <Setter Property="MinHeight" Value="32" />
-                <Setter Property="Margin" Value="8,1" />
-                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="MinHeight" Value="30" />
+                <Setter Property="Margin" Value="8,0" />
+                <Setter Property="Padding" Value="10,0" />
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
                 <Setter Property="FontSize" Value="13" />
                 <Setter Property="FontWeight" Value="Normal" />
+            </Style>
+            <!-- The Meetings row's disclosure and new-folder targets: 36 wide, 11-pt glyphs, tertiary. -->
+            <Style x:Key="MuesliSidebarRowActionButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+                <Setter Property="Width" Value="32" />
+                <Setter Property="Height" Value="32" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
+                <Setter Property="CornerRadius" Value="6" />
+            </Style>
+            <!-- macOS SidebarToggleButton fallback (.raised circle): 36×36, backgroundRaised, 1pt border. -->
+            <Style x:Key="MuesliSidebarToggleButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="VerticalAlignment" Value="Top" />
+                <Setter Property="Background" Value="{ThemeResource MuesliBackgroundRaisedBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+            </Style>
+            <!-- macOS model-preparation card in the sidebar footer. -->
+            <Style x:Key="MuesliSidebarStatusCardStyle" TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}">
+                <Setter Property="Margin" Value="8,0,8,4" />
+                <Setter Property="Padding" Value="10,8" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Background" Value="{ThemeResource MuesliBackgroundRaisedBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="6" />
+            </Style>
+            <!-- One segment of the sidebar appearance toggle; MainPage tints the selected one. -->
+            <Style x:Key="MuesliAppearanceSegmentStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="22" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
             </Style>
             <Style x:Key="MuesliSidebarIconButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
                 <Setter Property="Width" Value="28" />
@@ -372,10 +426,11 @@
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
                 <Setter Property="Margin" Value="16,18,16,6" />
             </Style>
+            <!-- SF Symbols 14 medium in a 20 column; Segoe Fluent glyphs read about one size smaller, hence 15. -->
             <Style x:Key="MuesliSidebarIconStyle" TargetType="FontIcon">
-                <Setter Property="Width" Value="22" />
+                <Setter Property="Width" Value="20" />
                 <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
-                <Setter Property="FontSize" Value="16" />
+                <Setter Property="FontSize" Value="15" />
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
                 <Setter Property="VerticalAlignment" Value="Center" />
                 <Setter Property="HorizontalAlignment" Value="Left" />
@@ -424,6 +479,7 @@
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
                 <Setter Property="FontSize" Value="13" />
+                <Setter Property="PlaceholderForeground" Value="{ThemeResource TextControlPlaceholderForeground}" />
                 <Setter Property="VerticalAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="UseSystemFocusVisuals" Value="True" />
@@ -465,7 +521,7 @@
                                 <TextBlock x:Name="PlaceholderTextContentPresenter"
                                            VerticalAlignment="Center"
                                            Padding="{TemplateBinding Padding}"
-                                           Foreground="{ThemeResource TextControlPlaceholderForeground}"
+                                           Foreground="{TemplateBinding PlaceholderForeground}"
                                            Text="{TemplateBinding PlaceholderText}"
                                            TextAlignment="{TemplateBinding TextAlignment}"
                                            TextWrapping="NoWrap"

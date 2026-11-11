@@ -18,13 +18,14 @@ public sealed class WinUiShellQualificationTests
     private static readonly (string Page, string Navigation, string Evidence)[] Destinations =
     [
         ("timeline", "NavTimeline", "TimelineRefreshButton"),
-        ("dictations", "NavDictations", "DictationRecordButton"),
-        ("meetings", "NavMeetings", "QuickNoteButton"),
         // P7-06 moved the three unlabelled share-image glyph buttons onto the Share split
         // button's menu, so InsightsPreviewShareButton now lives in a flyout popup and is only
         // realized while that menu is open. The split button itself is the always-present,
-        // Insights-only control, so it is the page sentinel.
-        ("insights", "NavInsights", "InsightsShareButton"),
+        // Insights-only control, so it is the page sentinel. Insights is not a sidebar
+        // destination (macOS parity): it opens from a Timeline stat card, so it follows Timeline.
+        ("insights", "TimelineStatWords", "InsightsShareButton"),
+        ("dictations", "NavDictations", "DictationRecordButton"),
+        ("meetings", "NavMeetings", "QuickNoteButton"),
         ("dictionary", "NavDictionary", "DictionaryAddButton"),
         ("models", "NavModels", "ModelsRefreshButton"),
         ("shortcuts", "NavShortcuts", "ChangePushToTalkButton"),
@@ -110,7 +111,11 @@ public sealed class WinUiShellQualificationTests
             session.RequireAutomationId("DictionarySuggestionList", mustBeOnscreen: true);
             session.CaptureReference("winui-populated-dictionary", "dictionary", "DictionaryEntryList");
 
-            session.NavigateTo("insights", "NavInsights", "InsightsHeroCard");
+            session.NavigateTo("timeline", "NavTimeline", "TimelineRefreshButton");
+
+            // Insights is not a sidebar destination (macOS parity); the Timeline stat cards open it.
+
+            session.NavigateTo("insights", "TimelineStatWords", "InsightsHeroCard");
             session.RequirePageSentinel("insights", "InsightsOverviewCard");
             session.CaptureReference("winui-populated-insights-overview", "insights", "InsightsHeroCard");
             // SelectorBar exposes its selectable child item through UIA, while the container is
@@ -183,7 +188,11 @@ public sealed class WinUiShellQualificationTests
         session.RequireAutomationId("DictionarySuggestionList", mustBeOnscreen: true);
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-dictionary", "dictionary", "DictionaryEntryList");
 
-        session.NavigateTo("insights", "NavInsights", "InsightsHeroCard");
+        session.NavigateTo("timeline", "NavTimeline", "TimelineRefreshButton");
+
+        // Insights is not a sidebar destination (macOS parity); the Timeline stat cards open it.
+
+        session.NavigateTo("insights", "TimelineStatWords", "InsightsHeroCard");
         session.RequirePageSentinel("insights", "InsightsOverviewCard");
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-insights-overview", "insights", "InsightsHeroCard");
         session.RequirePageSentinel("insights", "InsightsHeatmap");
@@ -268,7 +277,9 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.Launch();
         session.Run(() =>
         {
-            session.NavigateTo("insights", "NavInsights", "InsightsShareButton");
+            session.NavigateTo("timeline", "NavTimeline", "TimelineRefreshButton");
+            // Insights is not a sidebar destination (macOS parity); the Timeline stat cards open it.
+            session.NavigateTo("insights", "TimelineStatWords", "InsightsShareButton");
 
             // The preview card only exists once a render succeeds; nothing is shown before then.
             session.RequireAbsentAutomationId(
