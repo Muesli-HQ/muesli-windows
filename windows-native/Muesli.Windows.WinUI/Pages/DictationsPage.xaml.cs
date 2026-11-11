@@ -48,7 +48,7 @@ public sealed partial class DictationsPage : Page
 
     /// <summary>macOS voiceNoteButton: accent at rest, the recording red while capturing.</summary>
     public static Microsoft.UI.Xaml.Media.Brush RecordBackground(bool isRecording) =>
-        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[isRecording ? "MuesliErrorBrush" : "MuesliAccentBrush"];
+        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[isRecording ? "MuesliRecordingBrush" : "MuesliAccentBrush"];
 
     public static string RecordGlyph(bool isRecording) => isRecording ? "" : "";
 

@@ -46,17 +46,23 @@
 
 
             <!--
-                Typography. Inter is loaded from the app package; the family reference points at
-                the folder so all four weights resolve as one family rather than being
-                synthesised from the regular face.
+                Typography: Nunito Sans, the macOS app's typeface (MuesliTheme.font / AppFonts.swift),
+                bundled as the same static faces. Each file is its own face, so every weight has a
+                key; set the key, not only FontWeight, or the weight is synthesised from Regular.
+                Weight mapping as on macOS: below Medium → Regular, Medium, SemiBold, Bold,
+                Heavy and above → ExtraBold. Code and timestamps stay monospaced (Cascadia Mono).
             -->
-            <FontFamily x:Key="MuesliFontFamily">ms-appx:///Assets/fonts/Inter-Regular.ttf#Inter</FontFamily>
-            <FontFamily x:Key="MuesliFontFamilySemiBold">ms-appx:///Assets/fonts/Inter-SemiBold.ttf#Inter</FontFamily>
-            <FontFamily x:Key="MuesliFontFamilyMedium">ms-appx:///Assets/fonts/Inter-Medium.ttf#Inter</FontFamily>
-            <FontFamily x:Key="MuesliFontFamilyBold">ms-appx:///Assets/fonts/Inter-Bold.ttf#Inter</FontFamily>
+            <FontFamily x:Key="MuesliFontFamily">ms-appx:///Assets/fonts/NunitoSans-Regular.ttf#Nunito Sans</FontFamily>
+            <FontFamily x:Key="MuesliFontFamilyMedium">ms-appx:///Assets/fonts/NunitoSans-Medium.ttf#Nunito Sans</FontFamily>
+            <FontFamily x:Key="MuesliFontFamilySemiBold">ms-appx:///Assets/fonts/NunitoSans-SemiBold.ttf#Nunito Sans</FontFamily>
+            <FontFamily x:Key="MuesliFontFamilyBold">ms-appx:///Assets/fonts/NunitoSans-Bold.ttf#Nunito Sans</FontFamily>
+            <FontFamily x:Key="MuesliFontFamilyExtraBold">ms-appx:///Assets/fonts/NunitoSans-ExtraBold.ttf#Nunito Sans</FontFamily>
+            <FontFamily x:Key="MuesliFontFamilyItalic">ms-appx:///Assets/fonts/NunitoSans-Italic.ttf#Nunito Sans</FontFamily>
+            <FontFamily x:Key="MuesliFontFamilyBoldItalic">ms-appx:///Assets/fonts/NunitoSans-BoldItalic.ttf#Nunito Sans</FontFamily>
+            <FontFamily x:Key="MuesliMonoFontFamily">Cascadia Mono, Consolas, monospace</FontFamily>
 
             <!-- Control templates reference this key directly, so inheritance alone is not enough. -->
-            <FontFamily x:Key="ContentControlThemeFontFamily">ms-appx:///Assets/fonts/Inter-Regular.ttf#Inter</FontFamily>
+            <FontFamily x:Key="ContentControlThemeFontFamily">ms-appx:///Assets/fonts/NunitoSans-Regular.ttf#Nunito Sans</FontFamily>
 
             <!--
                 Non-brush chrome for the navigation and segmented control. Zero indicator width
@@ -71,8 +77,11 @@
             <Thickness x:Key="SelectorBarItemPadding">16,7,16,7</Thickness>
             <Thickness x:Key="SelectorBarItemSelectionVisualMargin">0</Thickness>
 
-            <x:Double x:Key="MuesliCardCornerRadiusValue">12</x:Double>
-            <CornerRadius x:Key="MuesliCardCornerRadius">12</CornerRadius>
+            <!-- macOS radii: cornerSmall 6 (controls, rows), cornerMedium 10 (cards), cornerLarge 14, cornerXL 20. -->
+            <x:Double x:Key="MuesliCardCornerRadiusValue">10</x:Double>
+            <CornerRadius x:Key="MuesliCardCornerRadius">10</CornerRadius>
+            <CornerRadius x:Key="MuesliCornerLarge">14</CornerRadius>
+            <CornerRadius x:Key="MuesliCornerXL">20</CornerRadius>
             <CornerRadius x:Key="MuesliControlCornerRadius">6</CornerRadius>
             <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
             <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
@@ -121,12 +130,64 @@
             <x:Double x:Key="MuesliPageHeaderSpacing">18</x:Double>
             <Thickness x:Key="MuesliPageHeaderMargin">0,0,0,18</Thickness>
 
-            <!-- type ramp -->
+            <!--
+                type ramp — macOS MuesliTheme (MuesliTheme.swift 161-205):
+                title1 26 bold, title2 20 semibold, title3 18 semibold, headline 15 semibold,
+                reading 15, body 14, callout 13, caption 12, captionMedium 12 medium,
+                sectionHeading 12 semibold (uppercase), metadata 11 medium.
+            -->
             <Style x:Key="MuesliPageTitleStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilyBold}" />
+                <Setter Property="FontSize" Value="26" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+            </Style>
+            <Style x:Key="MuesliTitle2Style" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
-                <Setter Property="FontSize" Value="32" />
+                <Setter Property="FontSize" Value="20" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+            </Style>
+            <Style x:Key="MuesliTitle3Style" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+                <Setter Property="FontSize" Value="18" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+            </Style>
+            <Style x:Key="MuesliHeadlineStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+                <Setter Property="FontSize" Value="15" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+            </Style>
+            <!-- Long-form text (transcripts, notes): 15pt with +3 line spacing, in a 720 column. -->
+            <Style x:Key="MuesliReadingStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="15" />
+                <Setter Property="LineHeight" Value="23" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="MuesliCalloutStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+            </Style>
+            <Style x:Key="MuesliCaptionStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="MuesliCaptionMediumStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliCaptionStyle}">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilyMedium}" />
+                <Setter Property="FontWeight" Value="Medium" />
+            </Style>
+            <Style x:Key="MuesliMetadataStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilyMedium}" />
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontWeight" Value="Medium" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
             </Style>
             <Style x:Key="MuesliPageSubtitleStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
@@ -134,12 +195,13 @@
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
+            <!-- macOS SettingsSectionHeading: 12 semibold, uppercase (write the text in capitals), no tracking. -->
             <Style x:Key="MuesliSectionLabelStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="CharacterSpacing" Value="180" />
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
+                <Setter Property="Margin" Value="2,0,0,0" />
             </Style>
             <Style x:Key="MuesliBodyStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamily}" />
@@ -161,8 +223,9 @@
                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
             </Style>
             <Style x:Key="MuesliTimestampStyle" TargetType="TextBlock">
-                <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, monospace" />
+                <Setter Property="FontFamily" Value="{StaticResource MuesliMonoFontFamily}" />
                 <Setter Property="FontSize" Value="13" />
+                <Setter Property="FontWeight" Value="Medium" />
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
@@ -181,13 +244,13 @@
                 <Setter Property="HorizontalAlignment" Value="Center" />
             </Style>
 
-            <!-- surfaces -->
+            <!-- surfaces — macOS cards: backgroundRaised, radius 10, 1pt surfaceBorder, padding 16. -->
             <Style x:Key="MuesliCardStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource MuesliSurfaceBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="12" />
-                <Setter Property="Padding" Value="18" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="16" />
             </Style>
             <Style x:Key="MuesliStatCardStyle" TargetType="Border" BasedOn="{StaticResource MuesliCardStyle}">
                 <Setter Property="Padding" Value="16" />
@@ -209,20 +272,36 @@
                 flowing through, and only the chrome that carries the product identity is
                 overridden.
             -->
+            <!--
+                macOS MuesliButtonStyle: primary is the raw accent with contrast-picked ink
+                (black on the dark default), states add the accent state shade 8% / 16%. The
+                AccentButton* and Button* leaf brushes in MuesliTheme.xaml carry those states.
+            -->
             <Style x:Key="MuesliPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Padding" Value="16,7" />
                 <Setter Property="CornerRadius" Value="6" />
-                <Setter Property="Background" Value="{ThemeResource MuesliAccentStrongBrush}" />
-                <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                <Setter Property="Background" Value="{ThemeResource AccentButtonBackground}" />
+                <Setter Property="Foreground" Value="{ThemeResource AccentButtonForeground}" />
             </Style>
             <Style x:Key="MuesliSecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilyMedium}" />
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="Padding" Value="14,7" />
                 <Setter Property="CornerRadius" Value="6" />
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+            </Style>
+            <!-- macOS .tinted: accent at 15% with accent text (hover/press tints come from the theme). -->
+            <Style x:Key="MuesliTintedButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource MuesliAccentMutedBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlFillColorTransparentBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliAccentTextBrush}" />
+            </Style>
+            <!-- macOS .raised: backgroundRaised with a border, for actions on the page background. -->
+            <Style x:Key="MuesliRaisedButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource MuesliBackgroundRaisedBrush}" />
             </Style>
             <Style x:Key="MuesliGhostButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Background" Value="{ThemeResource ControlFillColorTransparentBrush}" />
@@ -231,10 +310,11 @@
                 <Setter Property="Padding" Value="10,6" />
                 <Setter Property="CornerRadius" Value="6" />
             </Style>
+            <!-- macOS .destructiveTinted: recording red at 10% with destructive text. -->
             <Style x:Key="MuesliDestructiveButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
                 <Setter Property="Background" Value="{ThemeResource MuesliErrorMutedBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource MuesliErrorMutedBrush}" />
-                <Setter Property="Foreground" Value="{ThemeResource MuesliErrorBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliDestructiveTextBrush}" />
                 <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Padding" Value="14,7" />
@@ -430,10 +510,18 @@
                 <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
             </Style>
             <Style x:Key="MuesliSuccessBadgeTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliBadgeTextStyle}">
-                <Setter Property="Foreground" Value="{ThemeResource MuesliSuccessBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliSuccessTextBrush}" />
             </Style>
             <Style x:Key="MuesliAccentBadgeTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MuesliBadgeTextStyle}">
-                <Setter Property="Foreground" Value="{ThemeResource MuesliAccentBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliAccentTextBrush}" />
+            </Style>
+            <!-- macOS NewFeatureBadge: "New", 11 semibold white on the badge fill, capsule, padding 5×1. -->
+            <Style x:Key="MuesliNewBadgeStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource MuesliBadgeFillBrush}" />
+                <Setter Property="CornerRadius" Value="9" />
+                <Setter Property="Padding" Value="5,1" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="IsHitTestVisible" Value="False" />
             </Style>
 
             <!-- one settings row: label left, control right, hairline underneath -->
@@ -449,7 +537,7 @@
                 <Setter Property="Background" Value="{ThemeResource MuesliSurfaceBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="CornerRadius" Value="10" />
             </Style>
 
             <!-- Default look for every unstyled Button, TextBox and TextBlock in the shell. -->

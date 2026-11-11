@@ -59,7 +59,7 @@ public sealed partial class TimelinePage : Page
     /// <summary>macOS MeetingStatusDisplay colours: recording red, processing accent, completed green.</summary>
     public static Brush StatusBrush(string status) => (Brush)Application.Current.Resources[status.ToLowerInvariant() switch
     {
-        var s when s.Contains("record") => "MuesliErrorBrush",
+        var s when s.Contains("record") => "MuesliRecordingBrush",
         var s when s.Contains("process") || s.Contains("transcrib") => "MuesliAccentBrush",
         var s when s.Contains("fail") || s.Contains("attention") => "MuesliWarningBrush",
         var s when s.Contains("complete") => "MuesliSuccessBrush",
