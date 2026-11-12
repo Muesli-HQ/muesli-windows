@@ -85,17 +85,15 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <!--
-                            The product brand mark: the 13 bars of the canonical app icon (macOS
-                            MenuBarIconRenderer crops the same mark), 22 tall in the accent.
-                            MainPage.DrawBrandMark snaps every bar and gap to whole pixels.
+                            The brand mark: the 13 rounded bars of the canonical app icon (macOS
+                            MenuBarIconRenderer crops the same mark) in the accent, about the macOS
+                            sidebar size. MainPage.DrawBrandMark lays every bar on whole pixels in the
+                            icon's own proportions, so it stays crisp at every display scale.
                         -->
-                        <Path x:Name="BrandMark"
-                              Stroke="{ThemeResource MuesliAccentBrush}"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              VerticalAlignment="Center"
-                              AutomationProperties.Name="muesli"
-                              AutomationProperties.AccessibilityView="Raw" />
+                        <Canvas x:Name="BrandMark"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="muesli"
+                                AutomationProperties.AccessibilityView="Raw" />
                         <TextBlock x:Name="BrandNameText" Grid.Column="1"
                                    Text="muesli"
                                    Style="{StaticResource MuesliTitle2Style}"

@@ -163,6 +163,33 @@ public static class FloatingIndicatorLayout
         return (bar / scale, gap / scale, heights);
     }
 
+    /// <summary>The sidebar mark's height on macOS: drawn 14 tall in an 18-pt image shown in a 22-pt frame.</summary>
+    public const double SidebarBrandMarkHeight = 14.0 * 22 / 18;
+
+    /// <summary>
+    /// The brand mark at whole physical pixels in the icon's own proportions (bar 32, gap 18, tallest
+    /// bar 513, canonical 1024px icon). The bar pitch is the whole number of pixels closest to
+    /// <paramref name="targetHeight"/> (at least 2, so gaps never vanish); bar, gap and height all
+    /// follow from it, so the mark keeps the icon's aspect instead of growing denser or wider when
+    /// bar and gap round independently. Returns DIPs, with the overall width and height.
+    /// </summary>
+    public static (double BarWidth, double Gap, double[] Heights, double Width, double Height) ProportionalBrandMark(
+        double targetHeight,
+        double scale)
+    {
+        scale = scale > 0 ? scale : 1;
+        var pitch = Math.Max(2, Math.Round(targetHeight * scale * 50 / 513, MidpointRounding.AwayFromZero));
+        var bar = Math.Clamp(Math.Round(pitch * 32 / 50, MidpointRounding.AwayFromZero), 1, pitch - 1);
+        var gap = pitch - bar;
+        var tallest = Math.Round(pitch * 513 / 50);
+        // Bar heights share the tallest bar's parity, so every bar centres on a whole pixel.
+        var heights = BrandMarkBars
+            .Select(m => Math.Max(bar, tallest - 2 * Math.Round((tallest - m * tallest) / 2)) / scale)
+            .ToArray();
+        var width = BrandMarkBars.Length * bar + (BrandMarkBars.Length - 1) * gap;
+        return (bar / scale, gap / scale, heights, width / scale, tallest / scale);
+    }
+
     /// <summary>Stop square size in DIPs (6×6) and its corner radius (1 DIP).</summary>
     public const double StopSquareSize = 6;
     public const double StopSquareRadius = 1;

@@ -64,6 +64,7 @@ public sealed partial class MainPage : Page
         {
             ApplyTourOverlayChrome();
             RefreshNavigationVisuals();
+            DrawBrandMark();
         };
     }
 
@@ -89,23 +90,41 @@ public sealed partial class MainPage : Page
     /// The app icon's mark as tall as the "muesli" title beside it, as on the macOS sidebar,
     /// with each bar and gap a whole number of physical pixels.
     /// </summary>
+    /// <summary>
+    /// Draws the brand mark as 13 rounded bars on whole pixels. The previous version drew it 22 tall
+    /// (wider than its 22-pt column, so it crowded the wordmark), rounded bar and gap separately (so
+    /// the mark lost the icon's proportions), and used stroke caps that render as flat half-tone tips.
+    /// </summary>
     private void DrawBrandMark()
     {
-        var (bar, gap, heights) = FloatingIndicatorLayout.BrandMarkGeometry(22, XamlRoot?.RasterizationScale ?? 1);
-        var tallest = heights.Max();
-        var figures = new PathFigureCollection();
-        for (var index = 0; index < heights.Length; index++)
+        var scale = XamlRoot?.RasterizationScale is > 0 and var s ? s : 1;
+        var mark = FloatingIndicatorLayout.ProportionalBrandMark(FloatingIndicatorLayout.SidebarBrandMarkHeight, scale);
+        var fill = Brush("MuesliAccentBrush");
+        BrandMark.Children.Clear();
+        BrandMark.Width = mark.Width;
+        BrandMark.Height = mark.Height;
+        for (var index = 0; index < mark.Heights.Length; index++)
         {
-            // A round-capped stroke as wide as the bar: the caps make the bar's rounded ends.
-            var x = index * (bar + gap) + bar / 2;
-            var figure = new PathFigure { StartPoint = new(x, (tallest - heights[index] + bar) / 2) };
-            figure.Segments.Add(new LineSegment { Point = new(x, (tallest + heights[index] - bar) / 2) });
-            figures.Add(figure);
+            var bar = new Microsoft.UI.Xaml.Shapes.Rectangle
+            {
+                Width = mark.BarWidth,
+                Height = mark.Heights[index],
+                RadiusX = mark.BarWidth / 2,
+                RadiusY = mark.BarWidth / 2,
+                Fill = fill
+            };
+            Canvas.SetLeft(bar, index * (mark.BarWidth + mark.Gap));
+            Canvas.SetTop(bar, (mark.Height - mark.Heights[index]) / 2);
+            BrandMark.Children.Add(bar);
         }
-        BrandMark.StrokeThickness = bar;
-        BrandMark.Width = heights.Length * bar + (heights.Length - 1) * gap;
-        BrandMark.Height = tallest;
-        BrandMark.Data = new PathGeometry { Figures = figures };
+
+        // The greeting starts under the wordmark: mark width plus the 12-pt gap, as on macOS.
+        if (!_compactRail && BrandRow.ColumnDefinitions.Count > 0)
+        {
+            BrandRow.ColumnDefinitions[0].Width = new GridLength(mark.Width);
+        }
+
+        GreetingText.Margin = new Thickness(mark.Width + 12, 2, 0, 0);
     }
 
     private void ShellRoot_SizeChanged(object sender, SizeChangedEventArgs e) =>
@@ -169,7 +188,7 @@ public sealed partial class MainPage : Page
         {
             BrandRow.ColumnDefinitions[0].Width = compact
                 ? new GridLength(1, GridUnitType.Star)
-                : new GridLength(22);
+                : new GridLength(BrandMark.Width > 0 ? BrandMark.Width : 22);
             BrandRow.ColumnSpacing = compact ? 0 : 12;
             BrandMark.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
         }
@@ -302,6 +321,7 @@ public sealed partial class MainPage : Page
                 RebuildMeetingFolders();
                 ApplyResponsiveLayout(ShellRoot.ActualWidth);
                 RefreshNavigationVisuals();
+                DrawBrandMark();
             });
         });
     }
