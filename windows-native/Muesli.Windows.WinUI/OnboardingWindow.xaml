@@ -15,6 +15,53 @@
         <Grid.Resources>
             <local:OnboardingBoolVisConverter x:Key="BoolVis" />
             <local:OnboardingBoolVisConverter x:Key="InvertBoolVis" Invert="True" />
+            <!-- macOS permission / test action: 14 semibold, padding 24×12, accent fill, radius 6. -->
+            <Style x:Key="OnboardingHeroButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliPrimaryButtonStyle}">
+                <Setter Property="Padding" Value="24,12" />
+                <Setter Property="MinHeight" Value="0" />
+            </Style>
+            <!-- A model radio card's chrome: the card is the whole button. -->
+            <Style x:Key="OnboardingModelCardButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+            </Style>
+            <!--
+                macOS onboarding model card: padding 12, backgroundRaised, radius 10, 1pt border
+                (1.5pt accent when selected), a 16-pt radio, headline name with a "Recommended"
+                badge (9 semibold on the accent, radius 3), caption size and description.
+            -->
+            <DataTemplate x:Key="OnboardingModelChoiceTemplate">
+                <Button Style="{StaticResource OnboardingModelCardButtonStyle}"
+                        Tag="{Binding}"
+                        Click="ModelChoice_Click"
+                        AutomationProperties.Name="{Binding AccessibleName}">
+                    <Grid>
+                        <Border Background="{ThemeResource MuesliBackgroundRaisedBrush}" BorderBrush="{ThemeResource MuesliBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                            <Grid ColumnDefinitions="16,*" ColumnSpacing="12">
+                                <Grid Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0">
+                                    <Ellipse Stroke="{ThemeResource MuesliTextTertiaryBrush}" StrokeThickness="1.5" Visibility="{Binding IsSelected, Converter={StaticResource InvertBoolVis}}" />
+                                    <Ellipse Fill="{ThemeResource MuesliAccentBrush}" Visibility="{Binding IsSelected, Converter={StaticResource BoolVis}}" />
+                                    <Ellipse Width="6" Height="6" Fill="{ThemeResource MuesliOnAccentBrush}" Visibility="{Binding IsSelected, Converter={StaticResource BoolVis}}" />
+                                </Grid>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource MuesliHeadlineStyle}" />
+                                        <Border Background="{ThemeResource MuesliAccentBrush}" CornerRadius="3" Padding="5,1" VerticalAlignment="Center" Visibility="{Binding IsRecommended, Converter={StaticResource BoolVis}}">
+                                            <TextBlock Text="Recommended" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="9" FontWeight="SemiBold" Foreground="{ThemeResource MuesliOnAccentBrush}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding SizeLabel}" Style="{StaticResource MuesliCaptionStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                                    <TextBlock Text="{Binding Description}" Style="{StaticResource MuesliCaptionStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border BorderBrush="{ThemeResource MuesliAccentBrush}" BorderThickness="1.5" CornerRadius="10" IsHitTestVisible="False" Visibility="{Binding IsSelected, Converter={StaticResource BoolVis}}" />
+                    </Grid>
+                </Button>
+            </DataTemplate>
         </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="RailColumn" Width="236" />
@@ -160,329 +207,249 @@
                     <TextBlock Text="{x:Bind ViewModel.Description, Mode=OneWay}" Style="{StaticResource MuesliPageSubtitleStyle}" TextAlignment="Center" HorizontalAlignment="Center" />
                 </StackPanel>
 
-                <!-- Welcome -->
-                <Border Style="{StaticResource MuesliSettingsGroupStyle}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowName), Mode=OneWay}">
-                    <StackPanel>
-                        <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                            <Grid ColumnDefinitions="*,1.2*" ColumnSpacing="16">
-                                <StackPanel MinWidth="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Your name" Style="{StaticResource MuesliRowTitleStyle}" />
-                                    <TextBlock Text="Used to personalize this Windows workspace. You can change it later." Style="{StaticResource MuesliBodyStyle}" FontSize="12" />
-                                </StackPanel>
-                                <TextBox
-                                    Grid.Column="1"
-                                    Header=""
-                                    PlaceholderText="Your name"
-                                    Text="{x:Bind ViewModel.UserName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                    HorizontalAlignment="Stretch"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.AutomationId="OnboardingUserName"
-                                    AutomationProperties.Name="Your name" />
-                            </Grid>
-                        </Border>
-                        <Border Style="{StaticResource MuesliSettingsRowLastStyle}">
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="Local-first" Style="{StaticResource MuesliRowTitleStyle}" />
-                                <TextBlock Text="Dictation, meetings, and models stay on this PC. Setup can be paused and resumed without losing these choices." Style="{StaticResource MuesliBodyStyle}" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </Border>
-
-                <!-- Microphone / permissions -->
-                <StackPanel Spacing="14" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowMicrophone), Mode=OneWay}">
-                    <Border Style="{StaticResource MuesliSettingsGroupStyle}">
-                        <Border Style="{StaticResource MuesliSettingsRowLastStyle}">
-                            <Grid ColumnDefinitions="*,1.1*" ColumnSpacing="16">
-                                <StackPanel MinWidth="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Microphone" Style="{StaticResource MuesliRowTitleStyle}" />
-                                    <TextBlock Text="The device dictation and meetings record from. Settings can change it later." Style="{StaticResource MuesliBodyStyle}" FontSize="12" />
-                                </StackPanel>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    ItemsSource="{x:Bind ViewModel.Microphones, Mode=OneWay}"
-                                    SelectedItem="{x:Bind ViewModel.SelectedMicrophone, Mode=TwoWay}"
-                                    HorizontalAlignment="Stretch"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.AutomationId="OnboardingMicrophone"
-                                    AutomationProperties.Name="Microphone" />
-                            </Grid>
-                        </Border>
-                    </Border>
-                    <Grid
-                        x:Name="PermissionsHeader"
-                        ColumnDefinitions="*,Auto"
-                        RowDefinitions="Auto,Auto"
-                        ColumnSpacing="12"
-                        RowSpacing="8">
-                        <TextBlock Text="PERMISSIONS" Style="{StaticResource MuesliSectionLabelStyle}" VerticalAlignment="Center" />
-                        <StackPanel
-                            x:Name="PermissionsToolbar"
-                            Grid.Column="1"
-                            Orientation="Horizontal"
-                            Spacing="8"
-                            HorizontalAlignment="Right">
-                            <Button
-                                Style="{StaticResource MuesliSecondaryButtonStyle}"
-                                Command="{x:Bind ViewModel.TestMicrophoneCommand}"
-                                Content="Test microphone"
-                                MinHeight="36"
-                                AutomationProperties.AutomationId="OnboardingTestMicrophone"
-                                AutomationProperties.Name="Test microphone" />
-                            <Button
-                                Style="{StaticResource MuesliGhostButtonStyle}"
-                                Command="{x:Bind ViewModel.OpenMicrophonePrivacyCommand}"
-                                Padding="8"
-                                MinWidth="36"
-                                MinHeight="36"
-                                ToolTipService.ToolTip="Open Windows microphone privacy settings"
-                                AutomationProperties.AutomationId="OnboardingOpenMicrophonePrivacy"
-                                AutomationProperties.Name="Open Windows microphone privacy settings">
-                                <FontIcon Glyph="&#xE8A7;" FontSize="12" FontFamily="{ThemeResource SymbolThemeFontFamily}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
-                            </Button>
-                        </StackPanel>
-                    </Grid>
-                    <Border Style="{StaticResource MuesliSettingsGroupStyle}" AutomationProperties.AutomationId="OnboardingPermissionList">
-                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Permissions, Mode=OneWay}">
-                            <ItemsRepeater.Layout>
-                                <StackLayout Spacing="0" />
-                            </ItemsRepeater.Layout>
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <Grid ColumnDefinitions="16,*,Auto" Padding="16,12" ColumnSpacing="10">
-                                            <Ellipse Width="8" Height="8" Fill="{ThemeResource MuesliSuccessBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding Granted, Converter={StaticResource BoolVis}}" />
-                                            <Ellipse Width="8" Height="8" Fill="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding Granted, Converter={StaticResource InvertBoolVis}}" />
-                                            <StackPanel Grid.Column="1" Spacing="2" MinWidth="0">
-                                                <TextBlock Text="{Binding Name}" Style="{StaticResource MuesliRowTitleStyle}" />
-                                                <TextBlock Text="{Binding Help}" Style="{StaticResource MuesliBodyStyle}" FontSize="12" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                                <TextBlock Text="Granted" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{ThemeResource MuesliSuccessBrush}" Visibility="{Binding ShowGranted, Converter={StaticResource BoolVis}}" />
-                                                <TextBlock Text="{Binding Status}" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{ThemeResource MuesliTextTertiaryBrush}" Visibility="{Binding ShowUnavailable, Converter={StaticResource BoolVis}}" />
-                                                <Button
-                                                    Content="Grant"
-                                                    Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                                    Padding="12,5"
-                                                    FontSize="13"
-                                                    MinHeight="32"
-                                                    Click="GrantPermission_Click"
-                                                    Visibility="{Binding ShowGrant, Converter={StaticResource BoolVis}}"
-                                                    AutomationProperties.Name="{Binding Name}"
-                                                    AutomationProperties.AutomationId="OnboardingGrantPermission" />
-                                            </StackPanel>
-                                        </Grid>
-                                        <Border Grid.Row="1" Height="1" Margin="16,0" Background="{ThemeResource MuesliBorderSoftBrush}" Visibility="{Binding IsLast, Converter={StaticResource InvertBoolVis}}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                        </ItemsRepeater>
-                    </Border>
+                <!-- Welcome: macOS "Your name" label over a 280-wide field, centred. -->
+                <StackPanel Spacing="8" Width="280" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowName), Mode=OneWay}">
+                    <TextBlock Text="Your name" Style="{StaticResource MuesliCaptionStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                    <TextBox
+                        PlaceholderText="Enter your name"
+                        Text="{x:Bind ViewModel.UserName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="OnboardingUserName"
+                        AutomationProperties.Name="Your name" />
                 </StackPanel>
 
-                <!-- Models -->
-                <StackPanel Spacing="14" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowModels), Mode=OneWay}">
-                    <Border Style="{StaticResource MuesliSettingsGroupStyle}">
-                        <StackPanel>
-                            <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                                <Grid ColumnDefinitions="*,1.2*" ColumnSpacing="16">
-                                    <StackPanel MinWidth="0" VerticalAlignment="Center">
-                                        <TextBlock Text="Dictation offline model" Style="{StaticResource MuesliRowTitleStyle}" />
-                                        <TextBlock Text="Runs hold-to-talk dictation on this PC." Style="{StaticResource MuesliBodyStyle}" FontSize="12" />
-                                    </StackPanel>
-                                    <ComboBox
-                                        Grid.Column="1"
-                                        ItemsSource="{x:Bind ViewModel.DictationModels, Mode=OneWay}"
-                                        SelectedItem="{x:Bind ViewModel.SelectedDictationModel, Mode=TwoWay}"
-                                        DisplayMemberPath="PickerLabel"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.AutomationId="OnboardingDictationModel"
-                                        AutomationProperties.Name="Dictation offline model" />
-                                </Grid>
-                            </Border>
-                            <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                                <Grid ColumnDefinitions="*,1.2*" ColumnSpacing="16">
-                                    <TextBlock Text="Final meeting and import offline model" Style="{StaticResource MuesliRowTitleStyle}" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                    <ComboBox
-                                        Grid.Column="1"
-                                        ItemsSource="{x:Bind ViewModel.MeetingModels, Mode=OneWay}"
-                                        SelectedItem="{x:Bind ViewModel.SelectedMeetingModel, Mode=TwoWay}"
-                                        DisplayMemberPath="PickerLabel"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.AutomationId="OnboardingMeetingModel"
-                                        AutomationProperties.Name="Final meeting and import offline model" />
-                                </Grid>
-                            </Border>
-                            <Border Style="{StaticResource MuesliSettingsRowLastStyle}">
-                                <Grid ColumnDefinitions="*,1.2*" ColumnSpacing="16">
-                                    <TextBlock Text="Live preview model" Style="{StaticResource MuesliRowTitleStyle}" VerticalAlignment="Center" />
-                                    <ComboBox
-                                        Grid.Column="1"
-                                        ItemsSource="{x:Bind ViewModel.LiveModels, Mode=OneWay}"
-                                        SelectedItem="{x:Bind ViewModel.SelectedLiveModel, Mode=TwoWay}"
-                                        DisplayMemberPath="Label"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.AutomationId="OnboardingLiveModel"
-                                        AutomationProperties.Name="Live preview model" />
-                                </Grid>
-                            </Border>
+                <!--
+                    Microphone: the macOS one-permission screen. A large icon (accent, success once
+                    granted), the big accent action that turns into a green "Granted" pill, the device
+                    picker, and a quiet link to Windows settings.
+                -->
+                <StackPanel Spacing="20" HorizontalAlignment="Center" MaxWidth="440" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowMicrophone), Mode=OneWay}">
+                    <Grid Height="64" HorizontalAlignment="Center">
+                        <FontIcon Glyph="&#xE720;" FontSize="48" Foreground="{ThemeResource MuesliAccentBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                        <FontIcon Glyph="&#xE720;" FontSize="48" Foreground="{ThemeResource MuesliSuccessBrush}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                    </Grid>
+                    <Button
+                        Style="{StaticResource OnboardingHeroButtonStyle}"
+                        HorizontalAlignment="Center"
+                        Command="{x:Bind ViewModel.TestMicrophoneCommand}"
+                        Content="Test Microphone"
+                        Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}"
+                        AutomationProperties.AutomationId="OnboardingTestMicrophone"
+                        AutomationProperties.Name="Test microphone" />
+                    <Border
+                        HorizontalAlignment="Center"
+                        Background="{ThemeResource MuesliSuccessBrush}"
+                        CornerRadius="6"
+                        Padding="24,12"
+                        Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}"
+                        AutomationProperties.Name="Microphone granted">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE73E;" FontSize="12" Foreground="#FF000000" />
+                            <TextBlock Text="Granted" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="14" FontWeight="SemiBold" Foreground="#FF000000" />
                         </StackPanel>
                     </Border>
-                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.ModelRoles, Mode=OneWay}" AutomationProperties.Name="Selected model roles">
+                    <StackPanel Spacing="8" Width="280" HorizontalAlignment="Center">
+                        <TextBlock Text="Microphone" Style="{StaticResource MuesliCaptionStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        <ComboBox
+                            ItemsSource="{x:Bind ViewModel.Microphones, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedMicrophone, Mode=TwoWay}"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.AutomationId="OnboardingMicrophone"
+                            AutomationProperties.Name="Microphone" />
+                    </StackPanel>
+                    <TextBlock
+                        Text="You can change this later in Settings. Dictation and meetings stay unavailable until Windows lets muesli hear you."
+                        Style="{StaticResource MuesliCaptionStyle}"
+                        TextAlignment="Center"
+                        HorizontalAlignment="Center" />
+                    <HyperlinkButton
+                        HorizontalAlignment="Center"
+                        Padding="0"
+                        FontSize="11"
+                        Foreground="{ThemeResource MuesliAccentTextBrush}"
+                        Command="{x:Bind ViewModel.OpenMicrophonePrivacyCommand}"
+                        Content="Not working? Open Windows microphone settings"
+                        AutomationProperties.AutomationId="OnboardingOpenMicrophonePrivacy"
+                        AutomationProperties.Name="Open Windows microphone privacy settings" />
+                </StackPanel>
+
+                <!--
+                    Model: macOS radio cards. The recommended model first, the rest behind "Other
+                    models". The choice sets both dictation and meetings; the primary button reads
+                    "Download &amp; Continue" and the download carries on through the next steps.
+                -->
+                <StackPanel Spacing="8" MaxWidth="520" HorizontalAlignment="Stretch" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowModels), Mode=OneWay}">
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.RecommendedModelChoices}" ItemTemplate="{StaticResource OnboardingModelChoiceTemplate}" AutomationProperties.Name="Recommended model" />
+                    <Button
+                        Style="{StaticResource MuesliGhostButtonStyle}"
+                        HorizontalAlignment="Left"
+                        Padding="8,4"
+                        MinHeight="28"
+                        Margin="0,4,0,0"
+                        Command="{x:Bind ViewModel.ToggleOtherModelsCommand}"
+                        AutomationProperties.AutomationId="OnboardingOtherModels"
+                        AutomationProperties.Name="Other models">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="Other models" Style="{StaticResource MuesliCaptionStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                            <FontIcon Glyph="{x:Bind ViewModel.OtherModelsGlyph, Mode=OneWay}" FontSize="9" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <StackPanel Spacing="8" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowOtherModels), Mode=OneWay}">
+                        <ItemsRepeater ItemsSource="{x:Bind ViewModel.OtherModelChoices}" ItemTemplate="{StaticResource OnboardingModelChoiceTemplate}" AutomationProperties.Name="Other models">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Spacing="8" />
+                            </ItemsRepeater.Layout>
+                        </ItemsRepeater>
+                        <TextBlock Text="More models are available after setup, on the Models page." Style="{StaticResource MuesliMetadataStyle}" />
+                    </StackPanel>
+                    <!-- The chosen model's download state, while it downloads or if it needs a retry. -->
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.ModelRoles, Mode=OneWay}" Margin="0,8,0,0" AutomationProperties.Name="Selected model download">
                         <ItemsRepeater.Layout>
-                            <StackLayout Spacing="10" />
+                            <StackLayout Spacing="8" />
                         </ItemsRepeater.Layout>
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate>
-                                <Border Style="{StaticResource MuesliCardStyle}" Padding="16" AutomationProperties.Name="{Binding AccessibleName}">
-                                    <StackPanel Spacing="8">
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <TextBlock Text="{Binding Heading}" Style="{StaticResource MuesliRowTitleStyle}" TextWrapping="Wrap" />
-                                            <Border Grid.Column="1" Style="{StaticResource MuesliSuccessBadgeStyle}" Visibility="{Binding IsReady, Converter={StaticResource BoolVis}}">
-                                                <TextBlock Text="Ready" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
-                                            </Border>
-                                        </Grid>
-                                        <TextBlock Text="{Binding StatusText}" Style="{StaticResource MuesliBodyStyle}" AutomationProperties.LiveSetting="Polite" />
-                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Visibility="{Binding IsBusy, Converter={StaticResource BoolVis}}">
-                                            <ProgressBar
-                                                Value="{Binding ProgressValue}"
-                                                Maximum="100"
-                                                IsIndeterminate="{Binding IsProgressIndeterminate}"
-                                                VerticalAlignment="Center"
-                                                AutomationProperties.Name="{Binding ProgressLabel}" />
-                                            <TextBlock Grid.Column="1" Text="{Binding ProgressLabel}" Style="{StaticResource MuesliBodyStyle}" VerticalAlignment="Center" />
-                                        </Grid>
-                                        <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{Binding HasActions, Converter={StaticResource BoolVis}}">
-                                            <Button
-                                                Content="Prepare"
-                                                Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                                MinHeight="32"
-                                                Click="PrepareModel_Click"
-                                                Visibility="{Binding CanPrepare, Converter={StaticResource BoolVis}}"
-                                                AutomationProperties.Name="Prepare model"
-                                                AutomationProperties.AutomationId="OnboardingPrepareModel" />
-                                            <Button
-                                                Content="Verify"
-                                                Style="{StaticResource MuesliSecondaryButtonStyle}"
-                                                MinHeight="32"
-                                                Click="VerifyModel_Click"
-                                                Visibility="{Binding CanVerify, Converter={StaticResource BoolVis}}"
-                                                AutomationProperties.Name="Verify model"
-                                                AutomationProperties.AutomationId="OnboardingVerifyModel" />
-                                            <Button
-                                                Content="Retry"
-                                                Style="{StaticResource MuesliSecondaryButtonStyle}"
-                                                MinHeight="32"
-                                                Click="RetryModel_Click"
-                                                Visibility="{Binding CanRetry, Converter={StaticResource BoolVis}}"
-                                                AutomationProperties.Name="Retry model"
-                                                AutomationProperties.AutomationId="OnboardingRetryModel" />
-                                            <Button
-                                                Content="Cancel"
-                                                Style="{StaticResource MuesliGhostButtonStyle}"
-                                                MinHeight="32"
-                                                Click="CancelModel_Click"
-                                                Visibility="{Binding CanCancel, Converter={StaticResource BoolVis}}"
-                                                AutomationProperties.Name="Cancel model operation"
-                                                AutomationProperties.AutomationId="OnboardingCancelModel" />
-                                        </StackPanel>
+                                <StackPanel Spacing="6" AutomationProperties.Name="{Binding AccessibleName}">
+                                    <TextBlock Text="{Binding StatusText}" Style="{StaticResource MuesliCaptionStyle}" AutomationProperties.LiveSetting="Polite" />
+                                    <ProgressBar
+                                        Value="{Binding ProgressValue}"
+                                        Maximum="100"
+                                        IsIndeterminate="{Binding IsProgressIndeterminate}"
+                                        Visibility="{Binding IsBusy, Converter={StaticResource BoolVis}}"
+                                        AutomationProperties.Name="{Binding ProgressLabel}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button
+                                            Content="Retry"
+                                            Style="{StaticResource MuesliTintedButtonStyle}"
+                                            Padding="12,4"
+                                            MinHeight="0"
+                                            FontSize="12"
+                                            Click="RetryModel_Click"
+                                            Visibility="{Binding CanRetry, Converter={StaticResource BoolVis}}"
+                                            AutomationProperties.Name="Retry model download"
+                                            AutomationProperties.AutomationId="OnboardingRetryModel" />
+                                        <Button
+                                            Content="Pause"
+                                            Style="{StaticResource MuesliGhostButtonStyle}"
+                                            Padding="12,4"
+                                            MinHeight="0"
+                                            FontSize="12"
+                                            Click="CancelModel_Click"
+                                            Visibility="{Binding CanCancel, Converter={StaticResource BoolVis}}"
+                                            AutomationProperties.Name="Pause model download"
+                                            AutomationProperties.AutomationId="OnboardingCancelModel" />
                                     </StackPanel>
-                                </Border>
+                                </StackPanel>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
                 </StackPanel>
 
-                <!-- Hotkey -->
-                <Border Style="{StaticResource MuesliSettingsGroupStyle}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowHotkey), Mode=OneWay}">
-                    <StackPanel>
-                        <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                            <Grid ColumnDefinitions="*,1.1*" ColumnSpacing="16">
-                                <StackPanel MinWidth="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Hold-to-talk shortcut" Style="{StaticResource MuesliRowTitleStyle}" />
-                                    <TextBlock Text="Hold this key to dictate, then release to transcribe." Style="{StaticResource MuesliBodyStyle}" FontSize="12" />
-                                </StackPanel>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    ItemsSource="{x:Bind ViewModel.Hotkeys, Mode=OneWay}"
-                                    SelectedItem="{x:Bind ViewModel.SelectedHotkey, Mode=TwoWay}"
-                                    HorizontalAlignment="Stretch"
-                                    AutomationProperties.AutomationId="OnboardingHotkey"
-                                    AutomationProperties.Name="Hold-to-talk shortcut" />
-                            </Grid>
-                        </Border>
-                        <Border Style="{StaticResource MuesliSettingsRowLastStyle}">
-                            <Button
-                                Style="{StaticResource MuesliSecondaryButtonStyle}"
-                                Command="{x:Bind ViewModel.CheckHotkeyCommand}"
-                                Content="Check shortcut"
-                                HorizontalAlignment="Left"
-                                MinHeight="36"
-                                AutomationProperties.AutomationId="OnboardingCheckHotkey"
-                                AutomationProperties.Name="Check shortcut" />
-                        </Border>
+                <!--
+                    Shortcut: the macOS key cap (24 semibold in a raised 10-radius frame), a "Change
+                    Shortcut" control, and the supported keys. Choosing a key checks it at once.
+                -->
+                <StackPanel Spacing="20" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowHotkey), Mode=OneWay}">
+                    <Border
+                        HorizontalAlignment="Center"
+                        Background="{ThemeResource MuesliBackgroundRaisedBrush}"
+                        BorderBrush="{ThemeResource MuesliBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="32,16"
+                        AutomationProperties.Name="Current dictation shortcut">
+                        <TextBlock Text="{x:Bind ViewModel.SelectedHotkey, Mode=OneWay}" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                    </Border>
+                    <Button
+                        x:Name="ChangeShortcutButton"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource MuesliSecondaryButtonStyle}"
+                        Padding="16,8"
+                        Content="Change Shortcut"
+                        AutomationProperties.AutomationId="OnboardingHotkey"
+                        AutomationProperties.Name="Change dictation shortcut">
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="ShortcutFlyout" Placement="Bottom" Opening="ShortcutFlyout_Opening" />
+                        </Button.Flyout>
+                    </Button>
+                    <TextBlock Text="{x:Bind ViewModel.SupportedHotkeysLabel}" Style="{StaticResource MuesliCaptionStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextAlignment="Center" HorizontalAlignment="Center" MaxWidth="420" />
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.HotkeyReady), Mode=OneWay}">
+                        <FontIcon Glyph="&#xEC61;" FontSize="14" Foreground="{ThemeResource MuesliSuccessBrush}" />
+                        <TextBlock Text="Shortcut ready" Foreground="{ThemeResource MuesliSuccessTextBrush}" />
                     </StackPanel>
-                </Border>
+                    <HyperlinkButton
+                        HorizontalAlignment="Center"
+                        Padding="0"
+                        FontSize="11"
+                        Foreground="{ThemeResource MuesliAccentTextBrush}"
+                        Command="{x:Bind ViewModel.CheckHotkeyCommand}"
+                        Content="Check this shortcut"
+                        Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.HotkeyReady), Mode=OneWay}"
+                        AutomationProperties.AutomationId="OnboardingCheckHotkey"
+                        AutomationProperties.Name="Check shortcut" />
+                </StackPanel>
 
-                <!-- Pipeline -->
-                <Border Style="{StaticResource MuesliSettingsGroupStyle}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowPipeline), Mode=OneWay}">
-                    <StackPanel>
-                        <!--
-                            P8-05: this card used to open by repeating the step subtitle word for
-                            word. It now reads back the microphone, model and gate the test will
-                            actually use, which is information the subtitle does not carry.
-                        -->
-                        <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel MinWidth="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Microphone" Style="{StaticResource MuesliRowTitleStyle}" />
-                                    <TextBlock Text="{x:Bind ViewModel.PipelineMicrophoneLabel, Mode=OneWay}" Style="{StaticResource MuesliBodyStyle}" FontSize="12" TextWrapping="Wrap" AutomationProperties.Name="Microphone used by the dictation test" />
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-                        <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel MinWidth="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Dictation model" Style="{StaticResource MuesliRowTitleStyle}" />
-                                    <TextBlock Text="{x:Bind ViewModel.PipelineModelLabel, Mode=OneWay}" Style="{StaticResource MuesliBodyStyle}" FontSize="12" TextWrapping="Wrap" AutomationProperties.Name="Model used by the dictation test" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Style="{StaticResource MuesliSuccessBadgeStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.PipelineReady), Mode=OneWay}">
-                                    <TextBlock Text="passed" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
-                                </Border>
-                                <Border Grid.Column="1" Style="{StaticResource MuesliBadgeStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.PipelineReady), Mode=OneWay}">
-                                    <TextBlock Text="{x:Bind ViewModel.PipelineGateLabel, Mode=OneWay}" Style="{StaticResource MuesliBadgeTextStyle}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Style="{StaticResource MuesliSettingsRowLastStyle}">
-                            <StackPanel Spacing="12">
-                                <TextBlock Text="The recording runs for three seconds on this PC. Nothing is pasted, nothing is added to history, and the audio is not retained." Style="{StaticResource MuesliBodyStyle}" />
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Button
-                                        Style="{StaticResource MuesliSecondaryButtonStyle}"
-                                        Command="{x:Bind ViewModel.RunPipelineTestCommand}"
-                                        Content="{x:Bind ViewModel.PipelineActionLabel, Mode=OneWay}"
-                                        MinHeight="36"
-                                        AutomationProperties.AutomationId="OnboardingPipelineTest"
-                                        AutomationProperties.Name="{x:Bind ViewModel.PipelineActionLabel, Mode=OneWay}" />
-                                    <ProgressRing
-                                        Width="22"
-                                        Height="22"
-                                        IsActive="{x:Bind ViewModel.IsPipelineRunning, Mode=OneWay}"
-                                        Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsPipelineRunning), Mode=OneWay}"
-                                        AutomationProperties.Name="Recording local dictation test" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
+                <!--
+                    Test: the macOS dictation test. A hint, the record action, a result box (max 400,
+                    raised, radius 10; green border once a result arrives), and the success line.
+                -->
+                <StackPanel Spacing="16" HorizontalAlignment="Center" Width="400" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowPipeline), Mode=OneWay}">
+                    <TextBlock Text="Try saying: “testing this one out”" FontFamily="{StaticResource MuesliFontFamilyMedium}" FontSize="13" FontWeight="Medium" Foreground="{ThemeResource MuesliAccentTextBrush}" HorizontalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                        <Button
+                            Style="{StaticResource OnboardingHeroButtonStyle}"
+                            Command="{x:Bind ViewModel.RunPipelineTestCommand}"
+                            Content="{x:Bind ViewModel.PipelineActionLabel, Mode=OneWay}"
+                            AutomationProperties.AutomationId="OnboardingPipelineTest"
+                            AutomationProperties.Name="{x:Bind ViewModel.PipelineActionLabel, Mode=OneWay}" />
+                        <ProgressRing
+                            Width="20"
+                            Height="20"
+                            IsActive="{x:Bind ViewModel.IsPipelineRunning, Mode=OneWay}"
+                            Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsPipelineRunning), Mode=OneWay}"
+                            AutomationProperties.Name="Recording dictation test" />
                     </StackPanel>
-                </Border>
+                    <Grid MinHeight="60" AutomationProperties.AutomationId="OnboardingTestResult" AutomationProperties.Name="Dictation test result">
+                        <Border Background="{ThemeResource MuesliBackgroundRaisedBrush}" BorderBrush="{ThemeResource MuesliBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                            <Grid>
+                                <TextBlock Text="Your transcription will appear here…" FontFamily="{StaticResource MuesliFontFamilyItalic}" FontSize="13" FontStyle="Italic" Foreground="{ThemeResource MuesliTextTertiaryBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.HasPipelineTranscript), Mode=OneWay}" />
+                                <TextBlock Text="{x:Bind ViewModel.PipelineTranscript, Mode=OneWay}" FontFamily="{StaticResource MuesliMonoFontFamily}" FontSize="14" Foreground="{ThemeResource MuesliTextPrimaryBrush}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            </Grid>
+                        </Border>
+                        <Border BorderBrush="{ThemeResource MuesliSuccessBrush}" BorderThickness="1" CornerRadius="10" Opacity="0.5" IsHitTestVisible="False" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.HasPipelineTranscript), Mode=OneWay}" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.PipelineReady), Mode=OneWay}">
+                        <FontIcon Glyph="&#xEC61;" FontSize="14" Foreground="{ThemeResource MuesliSuccessBrush}" />
+                        <TextBlock Text="Dictation is working!" Foreground="{ThemeResource MuesliSuccessTextBrush}" />
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind ViewModel.PipelineMicrophoneLabel, Mode=OneWay}" Style="{StaticResource MuesliMetadataStyle}" HorizontalAlignment="Center" TextAlignment="Center" AutomationProperties.Name="Microphone used by the dictation test" />
+                </StackPanel>
 
-                <!-- Optional -->
-                <StackPanel Spacing="14" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowOptional), Mode=OneWay}">
+                <!--
+                    Meeting summaries: the provider choice and where transcripts go, centred, then the
+                    two Windows-only choices that need setup (launch at login, floating indicator).
+                -->
+                <StackPanel Spacing="16" HorizontalAlignment="Center" Width="420" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowOptional), Mode=OneWay}">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Summary provider" Style="{StaticResource MuesliCaptionStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        <ComboBox
+                            ItemsSource="{x:Bind ViewModel.SummaryProviders, Mode=OneWay}"
+                            SelectedItem="{x:Bind ViewModel.SelectedSummaryProvider, Mode=TwoWay}"
+                            DisplayMemberPath="DisplayName"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.AutomationId="OnboardingSummaryProvider"
+                            AutomationProperties.Name="Meeting summary provider" />
+                        <TextBlock Text="{x:Bind ViewModel.SummaryDisclosure, Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" AutomationProperties.Name="Summary provider transcript disclosure" />
+                        <TextBlock Text="{x:Bind ViewModel.CloudKeyStatus, Mode=OneWay}" Style="{StaticResource MuesliMetadataStyle}" TextWrapping="Wrap" AutomationProperties.Name="Cloud provider key configuration status" />
+                        <HyperlinkButton
+                            Padding="0"
+                            FontSize="11"
+                            Foreground="{ThemeResource MuesliAccentTextBrush}"
+                            Command="{x:Bind ViewModel.OpenSummaryProviderSettingsCommand}"
+                            Content="Add an API key in Settings"
+                            AutomationProperties.AutomationId="OnboardingOpenSummarySettings"
+                            AutomationProperties.Name="Configure summary provider in Settings" />
+                    </StackPanel>
                     <InfoBar
                         IsOpen="{x:Bind ViewModel.ShowStartupNotice, Mode=OneWay}"
                         Severity="Warning"
@@ -490,161 +457,86 @@
                         Message="{x:Bind ViewModel.StartupAvailabilityNotice, Mode=OneWay}"
                         IsClosable="False"
                         AutomationProperties.AutomationId="OnboardingStartupNotice" />
-                    <Border Style="{StaticResource MuesliSettingsGroupStyle}">
+                    <Border Style="{StaticResource MuesliCardStyle}" Padding="16,8">
                         <StackPanel>
-                            <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                                <Grid ColumnDefinitions="*,1.2*" ColumnSpacing="16">
-                                    <StackPanel MinWidth="0" VerticalAlignment="Center">
-                                        <TextBlock Text="Meeting summary provider" Style="{StaticResource MuesliRowTitleStyle}" />
-                                        <TextBlock Text="{x:Bind ViewModel.SummaryDisclosure, Mode=OneWay}" Style="{StaticResource MuesliBodyStyle}" FontSize="12" AutomationProperties.Name="Summary provider transcript disclosure" />
-                                    </StackPanel>
-                                    <ComboBox
-                                        Grid.Column="1"
-                                        ItemsSource="{x:Bind ViewModel.SummaryProviders, Mode=OneWay}"
-                                        SelectedItem="{x:Bind ViewModel.SelectedSummaryProvider, Mode=TwoWay}"
-                                        DisplayMemberPath="DisplayName"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.AutomationId="OnboardingSummaryProvider"
-                                        AutomationProperties.Name="Meeting summary provider" />
-                                </Grid>
-                            </Border>
-                            <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                                <StackPanel Spacing="8">
-                                    <TextBlock Text="{x:Bind ViewModel.CloudKeyStatus, Mode=OneWay}" Style="{StaticResource MuesliBodyStyle}" AutomationProperties.Name="Cloud provider key configuration status" />
-                                    <Button
-                                        Style="{StaticResource MuesliSecondaryButtonStyle}"
-                                        Command="{x:Bind ViewModel.OpenSummaryProviderSettingsCommand}"
-                                        Content="Configure summary provider in Settings"
-                                        HorizontalAlignment="Left"
-                                        MinHeight="36"
-                                        AutomationProperties.AutomationId="OnboardingOpenSummarySettings"
-                                        AutomationProperties.Name="Configure summary provider in Settings" />
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel MinWidth="0" VerticalAlignment="Center">
-                                        <TextBlock Text="Launch at login" Style="{StaticResource MuesliRowTitleStyle}" />
-                                        <TextBlock Text="Uses the Windows startup task when this build has package identity." Style="{StaticResource MuesliBodyStyle}" FontSize="12" />
-                                    </StackPanel>
-                                    <ToggleSwitch
-                                        Grid.Column="1"
-                                        IsOn="{x:Bind ViewModel.StartAtLogin, Mode=TwoWay}"
-                                        IsEnabled="{x:Bind ViewModel.IsStartupAvailable, Mode=OneWay}"
-                                        OffContent=""
-                                        OnContent=""
-                                        MinWidth="40"
-                                        VerticalAlignment="Center"
-                                        AutomationProperties.Name="Launch at login" />
-                                </Grid>
-                            </Border>
-                            <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Text="Show floating indicator" Style="{StaticResource MuesliRowTitleStyle}" VerticalAlignment="Center" />
-                                    <ToggleSwitch
-                                        Grid.Column="1"
-                                        IsOn="{x:Bind ViewModel.ShowIndicator, Mode=TwoWay}"
-                                        OffContent=""
-                                        OnContent=""
-                                        MinWidth="40"
-                                        VerticalAlignment="Center"
-                                        AutomationProperties.Name="Show floating indicator" />
-                                </Grid>
-                            </Border>
-                            <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                                <Grid ColumnDefinitions="*,1.1*" ColumnSpacing="16">
-                                    <TextBlock Text="Floating indicator position" Style="{StaticResource MuesliRowTitleStyle}" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                    <ComboBox
-                                        Grid.Column="1"
-                                        ItemsSource="{x:Bind ViewModel.IndicatorPositionChoices, Mode=OneWay}"
-                                        SelectedItem="{x:Bind ViewModel.SelectedIndicatorPosition, Mode=TwoWay}"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.AutomationId="OnboardingIndicatorPosition"
-                                        AutomationProperties.Name="Floating indicator position" />
-                                </Grid>
-                            </Border>
-                            <Border Style="{StaticResource MuesliSettingsRowLastStyle}">
-                                <StackPanel x:Name="IndicatorPreviewActions" Orientation="Horizontal" Spacing="8">
-                                    <Button
-                                        Style="{StaticResource MuesliSecondaryButtonStyle}"
-                                        Command="{x:Bind ViewModel.PreviewIndicatorCommand}"
-                                        Content="Save indicator position"
-                                        MinHeight="36"
-                                        HorizontalAlignment="Left"
-                                        AutomationProperties.AutomationId="OnboardingPreviewIndicator"
-                                        AutomationProperties.Name="Save indicator position" />
-                                    <Button
-                                        Style="{StaticResource MuesliGhostButtonStyle}"
-                                        Command="{x:Bind ViewModel.ResetIndicatorPositionCommand}"
-                                        Content="Reset custom indicator position"
-                                        MinHeight="36"
-                                        HorizontalAlignment="Left"
-                                        AutomationProperties.AutomationId="OnboardingResetIndicator"
-                                        AutomationProperties.Name="Reset custom indicator position" />
-                                </StackPanel>
-                            </Border>
+                            <Grid ColumnDefinitions="*,Auto" MinHeight="40">
+                                <TextBlock Text="Launch at login" VerticalAlignment="Center" />
+                                <ToggleSwitch
+                                    Grid.Column="1"
+                                    IsOn="{x:Bind ViewModel.StartAtLogin, Mode=TwoWay}"
+                                    IsEnabled="{x:Bind ViewModel.IsStartupAvailable, Mode=OneWay}"
+                                    OffContent=""
+                                    OnContent=""
+                                    MinWidth="40"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Launch at login" />
+                            </Grid>
+                            <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" />
+                            <Grid ColumnDefinitions="*,Auto" MinHeight="40">
+                                <TextBlock Text="Show the floating indicator" VerticalAlignment="Center" />
+                                <ToggleSwitch
+                                    Grid.Column="1"
+                                    IsOn="{x:Bind ViewModel.ShowIndicator, Mode=TwoWay}"
+                                    OffContent=""
+                                    OnContent=""
+                                    MinWidth="40"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Show floating indicator" />
+                            </Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>
 
-                <!-- Ready -->
-                <Border Style="{StaticResource MuesliSettingsGroupStyle}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowReady), Mode=OneWay}">
+                <!-- Ready: what is set up, as a centred checklist. -->
+                <Border Style="{StaticResource MuesliCardStyle}" Width="400" HorizontalAlignment="Center" Padding="16,4" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowReady), Mode=OneWay}">
                     <StackPanel>
-                        <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Text="Microphone" Style="{StaticResource MuesliRowTitleStyle}" />
-                                <Border Grid.Column="1" Style="{StaticResource MuesliSuccessBadgeStyle}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}">
-                                    <TextBlock Text="ready" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
-                                </Border>
-                                <Border Grid.Column="1" Style="{StaticResource MuesliBadgeStyle}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}">
-                                    <TextBlock Text="{x:Bind ViewModel.MicrophoneGateLabel, Mode=OneWay}" Style="{StaticResource MuesliBadgeTextStyle}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Text="Models" Style="{StaticResource MuesliRowTitleStyle}" />
-                                <Border Grid.Column="1" Style="{StaticResource MuesliSuccessBadgeStyle}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ModelsReady), Mode=OneWay}">
-                                    <TextBlock Text="ready" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
-                                </Border>
-                                <Border Grid.Column="1" Style="{StaticResource MuesliBadgeStyle}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.ModelsReady), Mode=OneWay}">
-                                    <TextBlock Text="{x:Bind ViewModel.ModelsGateLabel, Mode=OneWay}" Style="{StaticResource MuesliBadgeTextStyle}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Style="{StaticResource MuesliSettingsRowStyle}">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Text="Shortcut" Style="{StaticResource MuesliRowTitleStyle}" />
-                                <Border Grid.Column="1" Style="{StaticResource MuesliSuccessBadgeStyle}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.HotkeyReady), Mode=OneWay}">
-                                    <TextBlock Text="ready" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
-                                </Border>
-                                <Border Grid.Column="1" Style="{StaticResource MuesliBadgeStyle}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.HotkeyReady), Mode=OneWay}">
-                                    <TextBlock Text="{x:Bind ViewModel.HotkeyGateLabel, Mode=OneWay}" Style="{StaticResource MuesliBadgeTextStyle}" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <Border Style="{StaticResource MuesliSettingsRowLastStyle}">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Text="Dictation test" Style="{StaticResource MuesliRowTitleStyle}" />
-                                <Border Grid.Column="1" Style="{StaticResource MuesliSuccessBadgeStyle}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.PipelineReady), Mode=OneWay}">
-                                    <TextBlock Text="passed" Style="{StaticResource MuesliSuccessBadgeTextStyle}" />
-                                </Border>
-                                <Border Grid.Column="1" Style="{StaticResource MuesliBadgeStyle}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.PipelineReady), Mode=OneWay}">
-                                    <TextBlock Text="{x:Bind ViewModel.PipelineGateLabel, Mode=OneWay}" Style="{StaticResource MuesliBadgeTextStyle}" />
-                                </Border>
-                            </Grid>
-                        </Border>
+                        <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
+                            <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.MicrophoneReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.MicrophoneReady), Mode=OneWay}" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="1" Text="Microphone" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.GateText(ViewModel.MicrophoneReady, ViewModel.MicrophoneGateLabel), Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" />
+                        </Grid>
+                        <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" />
+                        <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
+                            <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.ModelsReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.ModelsReady), Mode=OneWay}" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="1" Text="Transcription model" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.GateText(ViewModel.ModelsReady, ViewModel.ModelsGateLabel), Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" />
+                        </Grid>
+                        <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" />
+                        <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
+                            <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.HotkeyReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.HotkeyReady), Mode=OneWay}" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="1" Text="Dictation shortcut" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.GateText(ViewModel.HotkeyReady, ViewModel.HotkeyGateLabel), Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" />
+                        </Grid>
+                        <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" />
+                        <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
+                            <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.PipelineReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.PipelineReady), Mode=OneWay}" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="1" Text="Dictation test" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.GateText(ViewModel.PipelineReady, ViewModel.PipelineGateLabel), Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 
-                <InfoBar
+                <!-- Status: one centred line, red for problems (macOS shows inline text, not a banner). -->
+                <TextBlock
                     x:Name="StatusBar"
-                    IsOpen="{x:Bind ViewModel.ShowStatus, Mode=OneWay}"
-                    Message="{x:Bind ViewModel.Status, Mode=OneWay}"
-                    IsClosable="False"
-                    Severity="Informational"
+                    Text="{x:Bind ViewModel.Status, Mode=OneWay}"
+                    Style="{StaticResource MuesliCaptionStyle}"
+                    TextAlignment="Center"
+                    HorizontalAlignment="Center"
+                    MaxWidth="440"
+                    Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowStatusInfo), Mode=OneWay}"
                     AutomationProperties.LiveSetting="Polite"
                     AutomationProperties.AutomationId="OnboardingStatus" />
+                <TextBlock
+                    Text="{x:Bind ViewModel.Status, Mode=OneWay}"
+                    Style="{StaticResource MuesliCaptionMediumStyle}"
+                    Foreground="{ThemeResource MuesliDestructiveTextBrush}"
+                    TextAlignment="Center"
+                    HorizontalAlignment="Center"
+                    MaxWidth="440"
+                    Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowStatusError), Mode=OneWay}"
+                    AutomationProperties.LiveSetting="Assertive"
+                    AutomationProperties.AutomationId="OnboardingStatusError" />
             </StackPanel>
         </ScrollViewer>
             <Button

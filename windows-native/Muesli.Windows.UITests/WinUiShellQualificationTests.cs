@@ -452,7 +452,8 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.LaunchOnboarding();
         session.Run(() =>
         {
-            var onboarding = session.RequireSecondaryWindow("OnboardingProgressBar");
+            // The setup window has no progress bar (macOS parity); its step dots and name field identify it.
+            var onboarding = session.RequireSecondaryWindow("OnboardingUserName");
             session.CaptureSecondaryWindow(onboarding, "winui-onboarding-first-run");
         });
     });

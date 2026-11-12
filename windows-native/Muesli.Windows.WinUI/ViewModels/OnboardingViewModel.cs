@@ -33,6 +33,25 @@ public sealed record OnboardingPermissionItem(
     public bool ShowUnavailable => !Granted && !CanOpenSettings;
 }
 
+/// <summary>One macOS-style model radio card: name, size, description, recommended badge.</summary>
+public sealed partial class OnboardingModelChoice : ObservableObject
+{
+    public OnboardingModelChoice(TranscriptionModelDefinition model, bool isRecommended)
+    {
+        Model = model;
+        IsRecommended = isRecommended;
+    }
+
+    public TranscriptionModelDefinition Model { get; }
+    public bool IsRecommended { get; }
+    public string Name => Model.DisplayName;
+    public string SizeLabel => Model.SizeLabel;
+    public string Description => Model.Summary;
+    public string AccessibleName => IsRecommended ? $"{Name}, recommended, {SizeLabel}" : $"{Name}, {SizeLabel}";
+
+    [ObservableProperty] public partial bool IsSelected { get; set; }
+}
+
 public sealed partial class OnboardingModelRoleItem : ObservableObject
 {
     public OnboardingModelRoleItem(string role, string id, bool isLive)
@@ -133,6 +152,11 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
 
         DictationModels = TranscriptionModelCatalog.Models;
         MeetingModels = TranscriptionModelCatalog.Models;
+        RecommendedModelChoice = new OnboardingModelChoice(TranscriptionModelCatalog.GetRequired(TranscriptionModelCatalog.DefaultModelId), isRecommended: true);
+        OtherModelChoices = TranscriptionModelCatalog.Models
+            .Where(model => !model.Id.Equals(TranscriptionModelCatalog.DefaultModelId, StringComparison.OrdinalIgnoreCase))
+            .Select(model => new OnboardingModelChoice(model, isRecommended: false))
+            .ToList();
         LiveModels = [OnboardingLiveChoice.Off, .. StreamingModelCatalog.Models.Select(model => new OnboardingLiveChoice(model.Id, model.PickerLabel))];
         Hotkeys = EnsureHotkeyPreset(_draft.Hotkey);
         SummaryProviders = SummaryProviderDisclosure.Available;
@@ -191,6 +215,59 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     public string SummaryDisclosure => SummaryProviderDisclosure.DisclosureFor(SelectedSummaryProvider?.Id, _draft.OllamaEndpoint);
     public bool ShowStartupNotice => !IsStartupAvailable && !string.IsNullOrWhiteSpace(StartupAvailabilityNotice);
     public bool ShowStatus => !string.IsNullOrWhiteSpace(Status);
+    public bool ShowStatusError => ShowStatus && StatusIsError;
+    public bool ShowStatusInfo => ShowStatus && !StatusIsError;
+
+    /// <summary>macOS model step: the recommended card, then "Other models" behind a disclosure.</summary>
+    public OnboardingModelChoice RecommendedModelChoice { get; }
+    public IReadOnlyList<OnboardingModelChoice> RecommendedModelChoices => [RecommendedModelChoice];
+
+    /// <summary>macOS lists the supported keys under the key cap.</summary>
+    public string SupportedHotkeysLabel => "Supported: " + string.Join(", ", Hotkeys);
+    public IReadOnlyList<OnboardingModelChoice> OtherModelChoices { get; }
+    [ObservableProperty] public partial bool ShowOtherModels { get; set; }
+    public string OtherModelsGlyph => ShowOtherModels ? "\uE70E" : "\uE70D";
+
+    /// <summary>The transcript of the last setup dictation test, shown in the result box.</summary>
+    [ObservableProperty] public partial string PipelineTranscript { get; private set; } = "";
+    public bool HasPipelineTranscript => !string.IsNullOrWhiteSpace(PipelineTranscript);
+
+    /// <summary>
+    /// macOS primary button wording: "Download &amp; Continue" on the model step while the chosen model
+    /// still needs downloading (the download keeps going on later steps), otherwise "Continue".
+    /// </summary>
+    public string NextLabel => Step == 2 && !SelectedModelReady ? "Download & Continue" : "Continue";
+
+    private bool SelectedModelReady =>
+        _modelRoles.Where(role => !role.IsLive).All(role => role.IsReady || role.IsBusy);
+
+    /// <summary>Selecting a card sets the model for dictation and for meetings, as macOS does.</summary>
+    [RelayCommand]
+    private void SelectModelChoice(OnboardingModelChoice? choice)
+    {
+        if (choice is null) return;
+        SelectedDictationModel = choice.Model;
+        SelectedMeetingModel = choice.Model;
+        RefreshModelChoiceSelection();
+    }
+
+    [RelayCommand]
+    private void ToggleOtherModels() => ShowOtherModels = !ShowOtherModels;
+
+    partial void OnShowOtherModelsChanged(bool value) => OnPropertyChanged(nameof(OtherModelsGlyph));
+
+    partial void OnPipelineTranscriptChanged(string value) => OnPropertyChanged(nameof(HasPipelineTranscript));
+
+    private void RefreshModelChoiceSelection()
+    {
+        var selectedId = SelectedDictationModel?.Id ?? _draft.DictationModelId;
+        foreach (var choice in OtherModelChoices.Prepend(RecommendedModelChoice))
+        {
+            choice.IsSelected = choice.Model.Id.Equals(selectedId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        OnPropertyChanged(nameof(NextLabel));
+    }
     public bool ShowName => Step == 0;
     public bool ShowMicrophone => Step == 1;
     public bool ShowModels => Step == 2;
@@ -229,7 +306,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         if (_progress.Step <= 0) return;
         PersistDraft();
         CancelActiveOperations();
-        _progress = _progress with { Step = _progress.Step - 1 };
+        _progress = _progress with { Step = _progress.Step - 1, LastStatus = "" };
         PersistProgress();
         Render();
     }
@@ -239,8 +316,15 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     {
         if (_progress.Step >= OnboardingProgress.LastStep) return;
         PersistDraft();
+        if (_progress.Step == 2 && _activeModelOperation is null &&
+            _modelRoles.FirstOrDefault(role => !role.IsLive && role.CanPrepare && !role.IsReady) is { } pending)
+        {
+            // Download & Continue: the app-scoped download keeps going on the next steps; the
+            // sidebar and the model gate follow it.
+            _ = PrepareModelCommand.ExecuteAsync(pending);
+        }
         CancelActiveOperations();
-        _progress = _progress with { Step = _progress.Step + 1 };
+        _progress = _progress with { Step = _progress.Step + 1, LastStatus = "" };
         PersistProgress();
         Render();
     }
@@ -449,7 +533,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
                 LastStatus = passed ? "Pipeline test passed" : "Pipeline test needs another attempt"
             };
             PersistProgress();
-            ApplyStatus(passed ? $"Test transcript (not saved): {text}" : "No speech was detected. Try again.", isError: !passed);
+            PipelineTranscript = passed ? text!.Trim() : "";
+            ApplyStatus(passed ? "" : "No speech detected. Try again.", isError: !passed);
         }
         catch (OperationCanceledException)
         {
@@ -718,7 +803,10 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowOptional));
         OnPropertyChanged(nameof(ShowReady));
         OnPropertyChanged(nameof(ShowStatus));
+        OnPropertyChanged(nameof(ShowStatusError));
+        OnPropertyChanged(nameof(ShowStatusInfo));
         OnPropertyChanged(nameof(ShowStartupNotice));
+        RefreshModelChoiceSelection();
         OnPropertyChanged(nameof(ProgressValue));
         OnPropertyChanged(nameof(PipelineActionLabel));
         OnPropertyChanged(nameof(SummaryDisclosure));
@@ -786,6 +874,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         }
 
         RefreshCurrentModelGate(announce: false, offline);
+        OnPropertyChanged(nameof(NextLabel));
     }
 
     private Dictionary<string, TranscriptionModelSnapshot> OfflineSnapshotsById() =>
@@ -1005,6 +1094,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         Status = message;
         StatusIsError = isError || LooksLikeError(message);
         OnPropertyChanged(nameof(ShowStatus));
+        OnPropertyChanged(nameof(ShowStatusError));
+        OnPropertyChanged(nameof(ShowStatusInfo));
     }
 
     private static bool LooksLikeError(string? message)

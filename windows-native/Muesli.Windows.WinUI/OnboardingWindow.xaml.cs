@@ -68,10 +68,6 @@ public sealed partial class OnboardingWindow : Window
         };
         ViewModel.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName is nameof(ViewModel.StatusIsError) or nameof(ViewModel.Status) or nameof(ViewModel.ShowStatus))
-            {
-                StatusBar.Severity = ViewModel.StatusIsError ? InfoBarSeverity.Error : InfoBarSeverity.Informational;
-            }
 
             if (args.PropertyName == nameof(ViewModel.Step))
             {
@@ -123,6 +119,43 @@ public sealed partial class OnboardingWindow : Window
 
     public Visibility BoolToVisibility(bool value) => ToVisibility(value);
 
+    /// <summary>Ready checklist: a filled check when done, an empty circle otherwise.</summary>
+    public static string CheckGlyph(bool done) => done ? "\uEC61" : "\uEA3A";
+
+    public static Microsoft.UI.Xaml.Media.Brush CheckBrush(bool done) =>
+        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[done ? "MuesliSuccessBrush" : "MuesliTextTertiaryBrush"];
+
+    public static string GateText(bool done, string gateLabel) => done ? "Ready" : gateLabel;
+
+    private void ModelChoice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: OnboardingModelChoice choice })
+        {
+            ViewModel.SelectModelChoiceCommand.Execute(choice);
+        }
+    }
+
+    /// <summary>"Change Shortcut": pick a supported key; it is checked straight away, as macOS records it.</summary>
+    private void ShortcutFlyout_Opening(object? sender, object e)
+    {
+        ShortcutFlyout.Items.Clear();
+        foreach (var hotkey in ViewModel.Hotkeys)
+        {
+            var item = new RadioMenuFlyoutItem
+            {
+                Text = hotkey,
+                GroupName = "OnboardingShortcut",
+                IsChecked = string.Equals(hotkey, ViewModel.SelectedHotkey, StringComparison.OrdinalIgnoreCase)
+            };
+            item.Click += (_, _) =>
+            {
+                ViewModel.SelectedHotkey = hotkey;
+                if (ViewModel.CheckHotkeyCommand.CanExecute(null)) ViewModel.CheckHotkeyCommand.Execute(null);
+            };
+            ShortcutFlyout.Items.Add(item);
+        }
+    }
+
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e) =>
         ApplyCompactLayout(e.NewSize.Width);
 
@@ -143,10 +176,7 @@ public sealed partial class OnboardingWindow : Window
         ContentColumn.Padding = padding;
         FooterBar.Padding = new Thickness(32, 16, 32, 16);
         TitleText.FontSize = 26;
-        IndicatorPreviewActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
-        Grid.SetColumn(PermissionsToolbar, compact ? 0 : 1);
-        Grid.SetRow(PermissionsToolbar, compact ? 1 : 0);
-        PermissionsToolbar.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+
         FooterActions.Orientation = stackedFooter ? Orientation.Vertical : Orientation.Horizontal;
         SkipButton.HorizontalAlignment = stackedFooter ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         NextButton.HorizontalAlignment = stackedFooter ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
