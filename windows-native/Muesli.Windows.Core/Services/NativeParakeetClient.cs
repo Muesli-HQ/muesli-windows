@@ -387,17 +387,32 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            // Last honest cancellation point: once sherpa-onnx owns the samples the decode is a
-            // single native call that cannot be interrupted.
-            cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(TranscriptionProgress.TranscribingUnmeasured());
-            return await Task.Run(() => TranscribeSamplesCore(
-                title,
-                samples,
-                sampleRate,
-                audioDurationMs,
-                preprocessingStatus,
-                preprocessingMs), cancellationToken);
+            var ranges = ParakeetAudioChunking.Ranges(samples, sampleRate);
+            if (ranges.Count <= 1)
+            {
+                // A native decode cannot be interrupted; short dictations keep their original path.
+                cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(TranscriptionProgress.TranscribingUnmeasured());
+                return await Task.Run(() => TranscribeSamplesCore(
+                    title, samples, sampleRate, audioDurationMs, preprocessingStatus, preprocessingMs),
+                    cancellationToken);
+            }
+
+            var completed = new List<(int StartSample, TranscriptionResult Transcript)>(ranges.Count);
+            for (var index = 0; index < ranges.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var (start, end) = ranges[index];
+                var chunk = samples.AsSpan(start, end - start).ToArray();
+                var durationMs = (int)Math.Round(chunk.Length * 1000.0 / sampleRate);
+                var result = await Task.Run(() => TranscribeSamplesCore(
+                    title, chunk, sampleRate, durationMs, preprocessingStatus,
+                    index == 0 ? preprocessingMs : 0), cancellationToken);
+                completed.Add((start, result));
+                progress?.Report(TranscriptionProgress.Transcribing((index + 1.0) / ranges.Count));
+            }
+
+            return ParakeetAudioChunking.Merge(completed, sampleRate, audioDurationMs);
         }
         finally
         {
@@ -980,6 +995,7 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         DeleteLegacyModelCache();
         TryDelete(Path.Combine(ModelCacheDirectory, $"{ModelDirectoryName}.tar.bz2"));
     }
+
 
     private static float[] ReadMonoSamples(Stream audioStream, out int sampleRate, out int durationMs)
     {

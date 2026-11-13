@@ -52,6 +52,12 @@ $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $appxPackageDir = $OutputDirectory.TrimEnd('\') + '\'
 
+# Windows PowerShell 5.1 splits native -p:Name=Value arguments containing spaces.
+# MSBuild decodes these escapes back to the original property value.
+function Escape-MsBuildPropertyPath([string]$Value) {
+    return $Value.Replace('%', '%25').Replace(' ', '%20').Replace(';', '%3B').Replace(',', '%2C')
+}
+
 $dotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe'
 if (-not (Test-Path $dotnet)) { $dotnet = 'dotnet' }
 
@@ -70,7 +76,7 @@ $arguments = @(
     '-p:ContinuousIntegrationBuild=true',
     '-p:DebugType=None',
     '-p:DebugSymbols=false',
-    "-p:AppxPackageDir=$appxPackageDir"
+    "-p:AppxPackageDir=$(Escape-MsBuildPropertyPath $appxPackageDir)"
 )
 if ($Configuration -eq 'Release') {
     # ReadyToRun is a Release-only publish optimization; the project disables it for Debug.
@@ -97,7 +103,7 @@ try {
         $storeManifest = Join-Path $storeManifestDirectory 'Package.appxmanifest'
         Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $project) 'Package.appxmanifest') -Destination $storeManifest
         Set-MuesliStoreManifestIdentity -ManifestPath $storeManifest -StoreIdentity $storeIdentity
-        $arguments += "-p:MuesliStoreManifest=$storeManifest"
+        $arguments += "-p:MuesliStoreManifest=$(Escape-MsBuildPropertyPath $storeManifest)"
     }
     & $dotnet @arguments
     if ($LASTEXITCODE -ne 0) { throw "MSIX packaging failed with exit code $LASTEXITCODE." }

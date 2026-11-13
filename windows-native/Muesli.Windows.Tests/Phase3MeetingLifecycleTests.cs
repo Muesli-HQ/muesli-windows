@@ -179,6 +179,23 @@ public sealed class Phase3MeetingLifecycleTests
     }
 
     [Fact]
+    public void BrowserJoinLinkHandoffToNativeMeetingDoesNotRaiseSignalLost()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        var tracker = new MeetingAutoStopTracker(MeetingRecordingStartOrigin.DetectedMeeting,
+            "zoom|chrome|https://zoom.us/j/123", sourcePlatform: "Zoom");
+
+        Assert.False(tracker.Observe("zoom|chrome|https://zoom.us/j/123", now, "Zoom"));
+        Assert.False(tracker.Observe(null, now.AddSeconds(3)));
+        Assert.False(tracker.Observe("zoom|Zoom|4200", now.AddSeconds(25), "Zoom"));
+        Assert.False(tracker.Observe("zoom|Zoom|4200", now.AddMinutes(2), "Zoom"));
+        Assert.False(tracker.Observe("teams|ms-teams|9000", now.AddMinutes(2).AddSeconds(3), "Teams"));
+        Assert.False(tracker.Observe(null, now.AddMinutes(2).AddSeconds(6)));
+        Assert.False(tracker.Observe(null, now.AddMinutes(2).AddSeconds(26)));
+        Assert.True(tracker.Observe(null, now.AddMinutes(2).AddSeconds(64)));
+    }
+
+    [Fact]
     public void EndpointPoliciesCoverDefaultDeviceRemovalAndBluetoothStyleUnplug()
     {
         Assert.True(SystemAudioRouteRecoveryPolicy.ShouldRotate(

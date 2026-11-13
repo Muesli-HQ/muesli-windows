@@ -4,6 +4,11 @@ using Muesli.Windows.Core.Insights;
 
 namespace Muesli.Windows.WinUI.Services;
 
+public sealed class MeetingModelNotReadyException(string modelName)
+    : InvalidOperationException($"Download and verify {modelName} in Models before starting transcription.")
+{
+}
+
 /// <summary>
 /// Owns the real meeting capture/transcription lifecycle for the shipping WinUI process. It uses
 /// the active profile and reuses the shared Platform coordinator and Core persistence records.
@@ -71,6 +76,7 @@ public sealed class WinUiMeetingContext : IDisposable
     public string ManualNotes { get; private set; } = "";
     public bool AreNotesSaved { get; private set; } = true;
     public bool IsSourceMissing { get; private set; }
+    public MeetingEndSuggestionTracker EndSuggestions => _coordinator.EndSuggestions;
     public bool IsRollingPreview => string.IsNullOrWhiteSpace(_settings.LiveMeetingModelId);
     public bool IsResumingFinishedMeeting => _coordinator.ResumedMeeting is not null;
     public string LiveTranscriptPrefix => _coordinator.ResumedMeeting?.Transcript ?? "";
@@ -206,6 +212,10 @@ public sealed class WinUiMeetingContext : IDisposable
     private async Task StartCoreAsync(int? processId, CancellationToken cancellationToken, PersistedMeeting? resumedMeeting = null)
     {
         ThrowIfDisposed();
+        // Fail before opening either audio channel. A missing model cannot produce live or final
+        // text, and accepting the recording would make Start Transcribing appear to succeed.
+        if (!_transcription.IsSelectedModelReady)
+            throw new MeetingModelNotReadyException(_transcription.ModelDisplayName);
         _suspendedForPower = false;
         LiveTranscript = "";
         LatestLiveSnapshot = null;

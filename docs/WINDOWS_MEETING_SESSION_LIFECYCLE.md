@@ -48,19 +48,26 @@ is bounded to three attempts with delays of 0, 2, and 5 seconds. When repair is
 exhausted, the other channel may continue in degraded mode; if neither channel
 is available, captured parts are checkpointed as recoverable.
 
-## Health and automatic stop
+## Health and signal-loss warning
 
 Each channel reports bounded PCM metrics to `MeetingAudioHealthMonitor` off the
-WPF dispatcher. It detects unavailable channels, sustained silence, and
+UI dispatcher. It detects unavailable channels, sustained silence, and
 clipping. Silence is only treated as suspicious when the peer channel is
 active, which avoids labelling an ordinary quiet meeting as capture failure.
 Warnings identify the affected channel without transcript text, window titles,
 URLs, or local paths.
 
-Manual recordings never auto-stop. A recording started from meeting detection
-can auto-stop only after its exact source was observed during recording and is
-then absent for at least 20 seconds and three observations. Other visible
-meeting sources do not satisfy the match.
+Manual recordings never track a detected source. A recording started from
+meeting detection warns only after its source is absent for at least 20 seconds
+and three scans. If speech was recognized, at least 45 seconds must also have
+passed since the last transcript activity. The warning says recording continues;
+only an explicit Stop action ends capture.
+Dismissal suppresses the warning for that recording.
+
+Source tracking accepts the original detection key or a newly confirmed
+meeting from the same platform. For example, a Zoom join link in Chrome and
+the resulting Zoom desktop window have different keys but are one continuous
+meeting. A different platform does not satisfy that match.
 
 ## Interruption and ownership
 
@@ -71,13 +78,20 @@ capture exhaustion, cancelled finalization, or a finalization failure after
 audio exists, Muesli checkpoints the available tracks and records
 `RecoverableInterruption`.
 
-On startup, the journal store discovers nonterminal sessions, adopts live WAV
-files, repairs their RIFF/data sizes when possible, rejects path traversal, and
-offers **Recover interrupted** in Meetings. Recovery combines normalized
-16-kHz mono parts and reruns the selected final-meeting transcription path.
+When Meetings loads, the journal store discovers nonterminal sessions, adopts
+live WAV files, repairs their RIFF/data sizes when possible, rejects path
+traversal, and offers **Finalize** for recoverable recordings. Recovery combines
+normalized 16-kHz mono parts and reruns the selected final-meeting transcription
+path.
 Header-only and sub-100 ms tracks are treated as missing channels and never
 reach native ASR or diarization. Recovery never invents a completed record
 from empty or corrupt input.
+
+The selected final-meeting model must be downloaded and verified before a new
+recording opens its audio channels. A detected-meeting Start action opens Models
+with an actionable warning if the model is missing. During recovery, a failed
+finalization retains the adopted microphone and system parts for another
+explicit Finalize attempt.
 
 When **Save meeting recording** is enabled, finalized `microphone.wav` and
 `system.wav` files live under
@@ -93,6 +107,25 @@ bounded phase.
 
 ## Qualification boundary
 
+Meeting-end suggestions (7 November 2026) remain advisory. The detector follows the
+recording's own window and audio sessions before foreground candidates, including
+minimized dedicated meeting clients. Missing-source prompts allow a minute for a
+reconnect and require 45 seconds without audio or transcript activity.
+
+Manual and detected recordings also evaluate a bounded tail of committed English
+transcript segments locally. Two different closing cues (wrap-up, group thanks,
+farewell), fresh audible activity, and 25 seconds of subsequent quiet can suggest
+finishing after the first two minutes. Questions, continued discussion, stale or
+backlogged text, capture stalls, partial text, and isolated thanks/goodbyes do not
+establish an ending. This deliberately conservative phrase vocabulary is not a
+multilingual semantic classifier or an authoritative Zoom connection-status API.
+
+The existing non-activating card says **All done?** / **Recording is still on.**
+with **Stop & save**. It has no countdown bar, fades after 15 seconds (hover pauses
+the timeout), and closes if activity resumes. Either end prompt is offered at most
+once per recording; ignoring or dismissing it continues capture. Pause/resume
+preserves suppression. Only an explicit Stop action saves and ends capture.
+
 Automated tests cover every declared transition plus invalid transitions,
 health thresholds, repair/auto-stop policies, route classification, WAV
 repair/adoption, migration, path rejection, track selection, and process
@@ -101,3 +134,11 @@ with Zoom, Teams, and Meet; Bluetooth/default-route changes; device removal;
 suspend/resume; forced interruption; real remote speakers; and playback on the
 supported Windows hardware matrix. `PHASE3_QUALIFICATION.md` defines the
 fail-closed manual evidence.
+
+On 27 October 2026, a packaged production-profile Zoom recording exposed a
+Chrome-join-link to native-Zoom key change. Its interrupted microphone and
+system WAV files were adopted by recovery, then successfully transcribed and
+saved after the selected Parakeet v3 model was verified and long-audio
+inference was bounded. Both retained playback tracks and a nonempty transcript
+were confirmed in the saved record. This verifies that recovery path on this
+machine; a fresh Zoom join still needs a live check of the warning behavior.

@@ -66,6 +66,7 @@ internal sealed class MeetingCaptureSession : IDisposable
     public bool MicrophoneAvailable => _micAvailable;
     public bool SystemAvailable => _systemAvailable;
     public MeetingLiveTranscriptionResult? LiveResult => _liveResult;
+    public MeetingEndSuggestionTracker EndSuggestions { get; } = new();
 
     public void BindRepairHost(MeetingCaptureRepairHost host) => _repairHost = host;
 
@@ -83,6 +84,7 @@ internal sealed class MeetingCaptureSession : IDisposable
             : microphoneName;
         _targetProcessId = targetProcessId is > 0 ? targetProcessId : null;
         _liveConfiguration = liveConfiguration;
+        EndSuggestions.BeginCapture(DateTimeOffset.UtcNow, newRecording: resetLiveResult);
         if (resetLiveResult)
         {
             _liveResult = null;
@@ -163,7 +165,10 @@ internal sealed class MeetingCaptureSession : IDisposable
     {
         _rollingCommitted = snapshot.Committed;
         if (_liveConfiguration?.OwnershipMode == LiveTranscriptOwnershipMode.UnifiedLiveAndFinal)
+        {
+            EndSuggestions.ObserveTranscript(snapshot, DateTimeOffset.UtcNow);
             LiveTranscriptChanged?.Invoke(this, snapshot);
+        }
         else OnLiveTranscriptSnapshot(sender, snapshot);
     }
 
@@ -643,6 +648,7 @@ internal sealed class MeetingCaptureSession : IDisposable
 
     private void OnLivePcmSamples(object? sender, LivePcmSamplesEventArgs e)
     {
+        EndSuggestions.ObserveAudio(e.Samples, DateTimeOffset.UtcNow);
         _liveSession?.TryEnqueue(e);
         var partOffsetMs = e.Channel == LiveTranscriptChannel.Microphone ? _micPartStartedAtMs : _systemPartStartedAtMs;
         _rollingPreview?.Feed(new LivePcmSamplesEventArgs(e.Channel, e.Samples,
@@ -651,6 +657,7 @@ internal sealed class MeetingCaptureSession : IDisposable
 
     private void OnLiveTranscriptSnapshot(object? sender, LiveTranscriptSnapshot snapshot)
     {
+        EndSuggestions.ObserveTranscript(snapshot, DateTimeOffset.UtcNow);
         lock (_liveCheckpointGate)
         {
             _pendingLiveCheckpoint = snapshot.Committed;

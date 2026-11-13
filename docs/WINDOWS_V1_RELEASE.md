@@ -2,24 +2,25 @@
 
 ## Release policies (v1 / 0.3.0 beta)
 
-- **Updates are manual.** Muesli can check a signed update manifest and download/verify a package, but automatic installation is disabled until a production signing identity exists. Release notes and the project page remain the update channel.
+- **Updates use the Store channel.** Muesli can check a signed update manifest and download/verify a direct-download package, but automatic direct-download installation is disabled without a production signing identity. Store-delivered upgrades still need clean-machine qualification.
 - **No audio interference.** Muesli records without pausing or ducking unrelated media.
 - **PDF export is enabled**: QuestPDF Community-license eligibility was approved on 2026-10-11 (Muesli is open source). `MUESLI_PDF_EXPORT_APPROVED=0` withdraws it.
-- **Support/privacy publication and production signing are not final.** Public support and privacy URLs are pending, the package carries the development publisher, and it is unsigned until a production signing identity is configured.
+- **Microsoft Store is the selected release channel.** Public support and privacy URLs are pending. The Store submission MSIX is unsigned; Microsoft signs the package after certification. See [`WINDOWS_STORE_RELEASE.md`](WINDOWS_STORE_RELEASE.md).
 
 ## Build artifacts (WinUI MSIX)
 
-The shipping artifact is the unsigned/signed WinUI MSIX.
+The shipping artifact is a WinUI MSIX submitted to Microsoft Store. Build the verified,
+unsigned submission package from a clean committed checkout:
 
 ```powershell
-.\scripts\package-winui-msix.ps1
-.\scripts\sign-windows-release.ps1 -MsixPath <path-to.msix>   # production: cert + timestamp required
+.\scripts\build-store-release.ps1
 ```
 
 Expected outputs:
 
 ```text
-artifacts\msix\Muesli.Windows.WinUI_<version>_x64.msix
+artifacts\store\Muesli.Windows.WinUI_<version>_x64.msix
+artifacts\store-submission-report.json
 artifacts\native-runtime-inventory.json
 artifacts\package-content-inventory.json
 ```
@@ -32,7 +33,7 @@ the package carries ARM64/foreign or CUDA content.
 
 ## What Works
 
-- Native Windows WPF shell.
+- Native Windows WinUI 3 shell with in-process floating indicators and meeting prompts.
 - Hold shortcut to dictate and paste into the active app.
 - Native WASAPI microphone capture and best-effort system loopback capture.
 - Seven pinned offline sherpa-onnx choices across Parakeet, Whisper, SenseVoice, Qwen3-ASR, and Cohere, with separate dictation and final meeting/import roles.
@@ -40,7 +41,8 @@ the package carries ARM64/foreign or CUDA content.
 - Native sherpa-onnx diarization for recorded meeting system audio.
 - Persistent dictation and meeting history.
 - Import media into meeting records.
-- Meeting summaries through local fallback, OpenAI, or OpenRouter.
+- Meeting summaries through local, OpenAI, OpenRouter, Ollama, LM Studio, and custom compatible providers.
+- Manual meeting export as Notes, Transcript, or Full Meeting in PDF or Markdown.
 - System tray, startup setting, themes, model cache management, and diagnostics.
 
 ## Runtime Requirements
@@ -67,20 +69,23 @@ the package carries ARM64/foreign or CUDA content.
 - Qwen cleanup is disabled by default and needs an explicitly installed and selected GGUF model. Existing manually placed compatible files remain usable.
 - System loopback capture can be blocked by some Windows audio/device setups; mic recording still works.
 - First use of a model requires network access unless the model is already cached.
-- Installer is not code-signed until a signing certificate is configured.
+- The submission MSIX is unsigned. A Store-certified package is signed by Microsoft;
+  the unsigned package is not a public website installer.
 
-## Clean Install QA
+## Local packaged-app QA
 
 ```powershell
-Expand-Archive .\artifacts\muesli-windows-0.3.0-win-x64.zip -DestinationPath $env:TEMP\muesli-0.3.0 -Force
-cd $env:TEMP\muesli-0.3.0
-.\Muesli.exe
+dotnet build .\windows-native\Muesli.Windows.WinUI\Muesli.Windows.WinUI.csproj --no-restore -p:Platform=x64
+powershell -ExecutionPolicy Bypass -File .\scripts\run-windows.ps1 -SkipBuild
 ```
 
-Automated package smoke test:
+The script launches the development package with WinApp CLI and package identity. It is
+not a substitute for installing the Store-delivered build on a clean Windows profile.
+The Store build wrapper runs product tests, package smoke checks, and identity verification.
+Fast packaging-contract checks can be run separately:
 
 ```powershell
-.\scripts\test-windows-package.ps1
+.\scripts\tests\test-store-packaging.ps1
 ```
 
 Packaged CPU release evidence (CUDA is not included in the public package):
@@ -96,9 +101,9 @@ Pass criteria:
 
 The build, automated tests, package-structure checks, and native diagnostic are automated
 gates. The transcription-quality corpus, target-application paste checks, fresh-account
-installer/uninstaller exercise, CPU/GPU hardware qualification, signing, and SmartScreen
-reputation are separate human or externally provisioned gates and must not be inferred from
-automated benchmark JSON.
+Store install/upgrade/uninstall exercise, CPU/GPU hardware qualification, Windows App
+Certification Kit, and Store listing/certification remain separate gates. See the
+outstanding items in [`WINDOWS_STORE_RELEASE.md`](WINDOWS_STORE_RELEASE.md).
 
 - App opens without crashing.
 - Models page reports native runtime status.
@@ -113,6 +118,6 @@ automated benchmark JSON.
 - Native meeting qualification passes deterministic ASR, diarization, merge, provider, reuse, and latency gates.
 - Approved media-import fixtures pass decoded-duration, determinism, latency, and optional WER/CER gates.
 - About > Open Logs opens `%APPDATA%\muesli\logs`.
-- Startup setting creates/removes the HKCU startup entry.
+- Startup setting enables/disables the packaged startup task.
 - Package QA confirms no Python worker/runtime setup artifacts are included.
 - Package QA executes `--diagnose-native` and fails if the shipped Sherpa/ONNX files exist but cannot actually load.

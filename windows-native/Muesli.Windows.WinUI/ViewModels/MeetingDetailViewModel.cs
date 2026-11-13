@@ -58,6 +58,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
     [ObservableProperty] public partial bool IsStatusOpen { get; set; }
     [ObservableProperty] public partial bool IsStatusError { get; private set; }
+    [ObservableProperty] public partial bool IsStatusWarning { get; private set; }
     [ObservableProperty] public partial bool HasMeeting { get; private set; }
     [ObservableProperty] public partial bool HasRecording { get; private set; }
     [ObservableProperty] public partial bool HasGeneratedSummary { get; private set; }
@@ -296,9 +297,10 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             var result = await _runtime.GenerateSummaryAsync(_meeting, SelectedTemplate, cancellationToken);
             _meeting = _library.FindMeeting(_meeting.Id);
             if (_meeting is not null) ApplyMeeting(_meeting);
-            ShowStatus(result.UsedLocalFallback && result.SafeFailureReason is not null
+            var fellBack = result.UsedLocalFallback && result.SafeFailureReason is not null;
+            ShowStatus(fellBack
                 ? $"Notes generated locally because the selected provider was unavailable ({result.SafeFailureReason})."
-                : $"Notes generated with {result.Provider}.");
+                : $"Notes generated with {result.Provider}.", isWarning: fellBack);
         }
         catch (OperationCanceledException) { ShowStatus("Summary generation cancelled."); }
         catch (Exception exception) { ShowStatus($"Could not generate notes: {exception.Message}", true); }
@@ -362,19 +364,31 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task ExportMarkdownAsync(CancellationToken cancellationToken)
+    private Task ExportNotesAsync(CancellationToken cancellationToken) =>
+        ExportMeetingAsync(MeetingExportMode.Notes, cancellationToken);
+
+    [RelayCommand]
+    private Task ExportTranscriptAsync(CancellationToken cancellationToken) =>
+        ExportMeetingAsync(MeetingExportMode.Transcript, cancellationToken);
+
+    [RelayCommand]
+    private Task ExportFullMeetingAsync(CancellationToken cancellationToken) =>
+        ExportMeetingAsync(MeetingExportMode.FullMeeting, cancellationToken);
+
+    private async Task ExportMeetingAsync(MeetingExportMode mode, CancellationToken cancellationToken)
     {
         if (_meeting is null) return;
         try
         {
             var model = ToMeetingItem(_meeting);
             var suggestedName = Path.ChangeExtension(
-                MeetingExportFormatter.SuggestFilename(model, MeetingExportMode.FullMeeting), ".md");
+                MeetingExportFormatter.SuggestFilename(model, mode),
+                MeetingDocumentWriter.PdfExportApproved ? ".pdf" : ".md");
             // PDF is offered only while the QuestPDF Community-license eligibility gate is approved.
             var picked = await _filePickers.PickSaveFileAsync(
                 new FilePickerRequest("Export meeting", MeetingDocumentWriter.ApprovedExportExtensions, suggestedName), cancellationToken);
             if (picked is null) return;
-            var markdown = MeetingExportFormatter.BuildMarkdown(model, MeetingExportMode.FullMeeting, _meeting.SpeakerAliases);
+            var markdown = MeetingExportFormatter.BuildMarkdown(model, mode, _meeting.SpeakerAliases);
             await Task.Run(() => MeetingDocumentWriter.Write(markdown, picked.Path), cancellationToken);
             ShowStatus($"Meeting exported to {picked.DisplayName}.");
         }
@@ -630,6 +644,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         {
             StatusMessage = status;
             IsStatusError = false;
+            IsStatusWarning = false;
         }
 
         NotifyCommands();
@@ -658,10 +673,11 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanFollowUp));
     }
 
-    private void ShowStatus(string message, bool isError = false)
+    private void ShowStatus(string message, bool isError = false, bool isWarning = false)
     {
         StatusMessage = message;
         IsStatusError = isError;
+        IsStatusWarning = isWarning;
         IsStatusOpen = true;
     }
 

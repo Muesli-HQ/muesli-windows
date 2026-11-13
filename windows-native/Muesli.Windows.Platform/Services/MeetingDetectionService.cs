@@ -30,6 +30,7 @@ public sealed class MeetingDetectionService : IDisposable
     private Task? _loopTask;
     private int _scanCount;
     private int _disposed;
+    private DetectedMeeting? _recordingTarget;
 
     public event EventHandler<DetectedMeeting>? MeetingDetected;
     public event EventHandler<MeetingDetectionScan>? ScanCompleted;
@@ -93,6 +94,8 @@ public sealed class MeetingDetectionService : IDisposable
     /// <summary>Suppresses further prompts for this meeting until it ends and starts again.</summary>
     public void DismissCandidate(string? key) => _resolver.Dismiss(key);
 
+    public void TrackRecording(DetectedMeeting? meeting) => Volatile.Write(ref _recordingTarget, meeting);
+
     public MeetingDetectionScan CheckNow(bool publish = true) =>
         ScanAsync(publish, CancellationToken.None).GetAwaiter().GetResult();
 
@@ -129,6 +132,17 @@ public sealed class MeetingDetectionService : IDisposable
         var stopwatch = Stopwatch.StartNew();
         var candidates = 0;
 
+        // A recording follows its own window before whatever happens to be in the foreground.
+        // Minimized meeting windows still own audio sessions; do not walk their UIA subtrees.
+        if (Volatile.Read(ref _recordingTarget) is { } target &&
+            ObserveWindow(target.WindowHandle) is { } tracked && tracked.ProcessId == target.ProcessId)
+        {
+            var presence = _signals.Capture(MeetingEvidenceStrength.Strong, target.Key, target.ProcessId,
+                isForeground: false, requiresMediaActivity: true, requiresDuplexAudio: !tracked.IsBrowser);
+            if (MeetingCandidateResolver.QualifiesAsMeeting(presence))
+                return CompleteScan(MeetingDetectionScan.Detected(target with { Presence = presence }, "recording source"), stopwatch, 1);
+        }
+
         var foreground = GetForegroundWindow();
         if (foreground != IntPtr.Zero &&
             ObserveWindow(foreground) is { } foregroundObservation &&
@@ -156,7 +170,7 @@ public sealed class MeetingDetectionService : IDisposable
         var visibleWindowCount = 0;
         EnumWindows((handle, _) =>
         {
-            if (!IsWindowVisible(handle) || IsIconic(handle) || IsWindowCloaked(handle) || handle == IntPtr.Zero)
+            if (!IsWindowVisible(handle) || IsWindowCloaked(handle) || handle == IntPtr.Zero)
             {
                 return true;
             }
@@ -164,6 +178,9 @@ public sealed class MeetingDetectionService : IDisposable
             visibleWindowCount++;
             if (ObserveWindow(handle) is { } observation)
             {
+                // Dedicated clients can be corroborated from their audio sessions when minimized.
+                // Unknown minimized browser windows are not candidates for expensive UIA walks.
+                if (IsIconic(handle) && !MeetingPresenceSignals.IsDedicatedMeetingProcess(observation.ProcessName)) return true;
                 observations.Add(observation);
             }
 
