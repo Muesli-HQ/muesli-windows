@@ -83,6 +83,10 @@ public sealed partial class OnboardingWindow : Window
             {
                 ApplyRecordingChrome();
             }
+            else if (args.PropertyName == nameof(ViewModel.MicrophoneLevel))
+            {
+                ApplyMicrophoneLevel(ViewModel.MicrophoneLevel);
+            }
         };
         RootGrid.PreviewKeyDown += RootGrid_PreviewKeyDown;
         RootGrid.PreviewKeyUp += RootGrid_PreviewKeyUp;
@@ -174,12 +178,26 @@ public sealed partial class OnboardingWindow : Window
     }
 
     /// <summary>While listening, the key cap takes the accent tint (macOS .tinted).</summary>
+    /// <summary>
+    /// Lights the signal bars up to the current level, like a phone's signal indicator: the first
+    /// bar for any sound, all six for loud speech. Only opacity changes, so colours stay themed.
+    /// </summary>
+    private void ApplyMicrophoneLevel(double level)
+    {
+        var bars = MicrophoneMeter.Children;
+        for (var index = 0; index < bars.Count; index++)
+        {
+            if (bars[index] is Grid { Children.Count: > 1 } bar)
+            {
+                bar.Children[1].Opacity = level >= (index + 1) / (bars.Count + 1.0) ? 1 : 0;
+            }
+        }
+    }
+
+    /// <summary>The tint itself is markup (theme brushes follow this dark window); start a fresh capture.</summary>
     private void ApplyRecordingChrome()
     {
-        var recording = ViewModel.IsRecordingHotkey;
-        if (recording) _hotkeyRecorder.Reset();
-        ShortcutKeyCap.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[recording ? "MuesliAccentBrush" : "MuesliBorderBrush"];
-        ShortcutKeyCap.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[recording ? "MuesliAccentMutedBrush" : "MuesliBackgroundRaisedBrush"];
+        if (ViewModel.IsRecordingHotkey) _hotkeyRecorder.Reset();
     }
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e) =>

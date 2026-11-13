@@ -271,35 +271,78 @@
                 </StackPanel>
 
                 <!--
-                    Microphone: the macOS one-permission screen. A large icon (accent, success once
-                    granted), the big accent action that turns into a green "Granted" pill, the device
-                    picker, and a quiet link to Windows settings.
+                    Microphone: first allow access (the capture that makes Windows ask), then a live
+                    signal meter that rises with the input level. Hearing speech is the actual test;
+                    the bars turn green and the line confirms it.
                 -->
                 <StackPanel Spacing="20" HorizontalAlignment="Center" MaxWidth="440" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowMicrophone), Mode=OneWay}">
-                    <Grid Height="64" HorizontalAlignment="Center">
-                        <FontIcon Glyph="&#xE720;" FontSize="48" Foreground="{ThemeResource MuesliAccentBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
-                        <FontIcon Glyph="&#xE720;" FontSize="48" Foreground="{ThemeResource MuesliSuccessBrush}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                    <Grid Height="64" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneAccessGranted), Mode=OneWay}">
+                        <FontIcon Glyph="&#xE720;" FontSize="48" Foreground="{ThemeResource MuesliAccentBrush}" />
                     </Grid>
                     <Button
                         Style="{StaticResource OnboardingHeroButtonStyle}"
                         HorizontalAlignment="Center"
-                        Command="{x:Bind ViewModel.TestMicrophoneCommand}"
-                        Content="Test Microphone"
-                        Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}"
+                        Command="{x:Bind ViewModel.AllowMicrophoneCommand}"
+                        Content="Allow Microphone"
+                        Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneAccessGranted), Mode=OneWay}"
                         AutomationProperties.AutomationId="OnboardingTestMicrophone"
-                        AutomationProperties.Name="Test microphone" />
-                    <Border
+                        AutomationProperties.Name="Allow microphone access" />
+                    <StackPanel
+                        x:Name="MicrophoneMeter"
+                        Orientation="Horizontal"
+                        Spacing="5"
+                        Height="40"
                         HorizontalAlignment="Center"
-                        Background="{ThemeResource MuesliSuccessBrush}"
-                        CornerRadius="6"
-                        Padding="24,12"
-                        Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}"
-                        AutomationProperties.Name="Microphone granted">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <FontIcon Glyph="&#xE73E;" FontSize="12" Foreground="#FF000000" />
-                            <TextBlock Text="Granted" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="14" FontWeight="SemiBold" Foreground="#FF000000" />
-                        </StackPanel>
-                    </Border>
+                        Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneAccessGranted), Mode=OneWay}"
+                        AutomationProperties.AutomationId="OnboardingMicrophoneMeter"
+                        AutomationProperties.Name="Microphone level">
+                        <Grid Width="8" Height="10" VerticalAlignment="Bottom">
+                            <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliBorderBrush}" />
+                            <Grid Opacity="0">
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliAccentBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliSuccessBrush}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                            </Grid>
+                        </Grid>
+                        <Grid Width="8" Height="16" VerticalAlignment="Bottom">
+                            <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliBorderBrush}" />
+                            <Grid Opacity="0">
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliAccentBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliSuccessBrush}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                            </Grid>
+                        </Grid>
+                        <Grid Width="8" Height="22" VerticalAlignment="Bottom">
+                            <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliBorderBrush}" />
+                            <Grid Opacity="0">
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliAccentBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliSuccessBrush}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                            </Grid>
+                        </Grid>
+                        <Grid Width="8" Height="28" VerticalAlignment="Bottom">
+                            <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliBorderBrush}" />
+                            <Grid Opacity="0">
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliAccentBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliSuccessBrush}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                            </Grid>
+                        </Grid>
+                        <Grid Width="8" Height="34" VerticalAlignment="Bottom">
+                            <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliBorderBrush}" />
+                            <Grid Opacity="0">
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliAccentBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliSuccessBrush}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                            </Grid>
+                        </Grid>
+                        <Grid Width="8" Height="40" VerticalAlignment="Bottom">
+                            <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliBorderBrush}" />
+                            <Grid Opacity="0">
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliAccentBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                                <Rectangle RadiusX="2" RadiusY="2" Fill="{ThemeResource MuesliSuccessBrush}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                            </Grid>
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneAccessGranted), Mode=OneWay}">
+                        <FontIcon Glyph="&#xEC61;" FontSize="14" Foreground="{ThemeResource MuesliSuccessBrush}" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind ViewModel.MicrophoneMeterHint, Mode=OneWay}" Foreground="{ThemeResource MuesliTextSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
                     <StackPanel Spacing="8" Width="280" HorizontalAlignment="Center">
                         <TextBlock Text="Microphone" Style="{StaticResource MuesliCaptionStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
                         <ComboBox
@@ -309,11 +352,6 @@
                             AutomationProperties.AutomationId="OnboardingMicrophone"
                             AutomationProperties.Name="Microphone" />
                     </StackPanel>
-                    <TextBlock
-                        Text="You can change this later in Settings. Dictation and meetings stay unavailable until Windows lets muesli hear you."
-                        Style="{StaticResource MuesliCaptionStyle}"
-                        TextAlignment="Center"
-                        HorizontalAlignment="Center" />
                     <HyperlinkButton
                         HorizontalAlignment="Center"
                         Padding="0"
@@ -403,17 +441,12 @@
                     recorded key is checked at once.
                 -->
                 <StackPanel Spacing="20" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowHotkey), Mode=OneWay}">
-                    <Border
-                        x:Name="ShortcutKeyCap"
-                        HorizontalAlignment="Center"
-                        Background="{ThemeResource MuesliBackgroundRaisedBrush}"
-                        BorderBrush="{ThemeResource MuesliBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10"
-                        Padding="32,16"
-                        AutomationProperties.Name="Current dictation shortcut">
-                        <TextBlock Text="{x:Bind ViewModel.SelectedHotkey, Mode=OneWay}" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
-                    </Border>
+                    <Grid HorizontalAlignment="Center" AutomationProperties.Name="Current dictation shortcut">
+                        <Border Background="{ThemeResource MuesliBackgroundRaisedBrush}" BorderBrush="{ThemeResource MuesliBorderBrush}" BorderThickness="1" CornerRadius="10" />
+                        <!-- Listening for a key: the macOS .tinted accent wash over the cap. -->
+                        <Border Background="{ThemeResource MuesliAccentMutedBrush}" BorderBrush="{ThemeResource MuesliAccentBrush}" BorderThickness="1" CornerRadius="10" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsRecordingHotkey), Mode=OneWay}" />
+                        <TextBlock Margin="32,16" Text="{x:Bind ViewModel.SelectedHotkey, Mode=OneWay}" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                    </Grid>
                     <Button
                         x:Name="ChangeShortcutButton"
                         HorizontalAlignment="Center"

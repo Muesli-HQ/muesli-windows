@@ -34,7 +34,7 @@ public static class OnboardingStepCatalog
         new(OnboardingSteps.Welcome, "Welcome to muesli", "Local-first dictation and meeting transcription for Windows."),
         new(OnboardingSteps.Model, "Choose your transcription model", "Start with a fast local model. Larger models can download while you continue setup."),
         new(OnboardingSteps.Shortcut, "Dictation Shortcut", "Choose the key you'll hold to dictate. Press and hold the key to record, release to transcribe."),
-        new(OnboardingSteps.Microphone, "Microphone", "muesli listens only while you dictate or take meeting notes. Check that Windows lets it hear you."),
+        new(OnboardingSteps.Microphone, "Microphone", "Allow access, then say something to check muesli can hear you. It listens only while you dictate or take notes."),
         new(OnboardingSteps.Test, "Test Dictation", "Hold your shortcut and say something. Nothing is saved or pasted."),
         new(OnboardingSteps.Summaries, "Meeting Summaries", "Summaries run locally without a key. Remote providers may send transcripts off-device."),
         new(OnboardingSteps.Ready, "You're all set", "Everything below is ready. Finish to open muesli, or set up the rest later.")

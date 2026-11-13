@@ -126,6 +126,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private int _modelRolesRefreshQueued;
     private volatile bool _testArmed;
     private bool _returnToReady;
+    private volatile bool _testModelReady;
 
     public OnboardingViewModel(
         WinUiSettingsContext settings,
@@ -177,9 +178,10 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         _ = RefreshStartupAvailabilityAsync();
         // macOS defers the hotkey monitor until setup ends, except for the dictation test: while
         // this window is open the shortcut never dictates or pastes, and only the test step records.
+        MicrophoneAccessGranted = MicrophoneOk;
         _dictation.RouteHotkeyToTest(new DictationTestRoute(
             ProbeMicrophoneName,
-            () => _testArmed && !IsRecordingHotkey,
+            () => _testArmed && _testModelReady && !IsRecordingHotkey,
             OnTestListening,
             OnTestCaptured,
             OnTestFailed));
@@ -490,29 +492,110 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         Completed?.Invoke(this, true);
     }
 
+    /// <summary>
+    /// Step one of the microphone screen: a short capture, which is what makes Windows ask for
+    /// access the first time. Hearing speech on the meter afterwards is the real test.
+    /// </summary>
     [RelayCommand]
-    private async Task TestMicrophoneAsync()
+    private async Task AllowMicrophoneAsync()
     {
         IsBusy = true;
         try
         {
             var probe = await _microphone.ProbeAsync(ProbeMicrophoneName());
-            // The "Granted" badge says it worked; a failure says what to do, in plain words.
             var failure = probe.IsUsable ? "" : MicrophoneFailureText(probe.Failure);
-            _progress = _progress with
-            {
-                MicrophoneVerified = probe.IsUsable,
-                VerifiedMicrophone = probe.IsUsable ? NormalizeMicrophone(SelectedMicrophone) ?? "" : "",
-                LastStatus = failure
-            };
-            PersistProgress();
-            MicrophonePolicyHint = "";
+            MicrophoneAccessGranted = probe.IsUsable;
             ApplyStatus(failure, isError: !probe.IsUsable);
-            RefreshPermissions(microphoneChecked: true, microphoneGranted: probe.IsUsable, probe.IsUsable ? "Ready" : "Not working", failure);
-            NotifyReadyBindings();
+            if (probe.IsUsable) StartMicrophoneMeter();
         }
         catch (Exception) { ApplyStatus(MicrophoneFailureText(MicrophoneProbeFailure.Unknown), isError: true); }
         finally { IsBusy = false; }
+    }
+
+    /// <summary>Access is granted (or was proven by a passed test): the live meter is showing.</summary>
+    [ObservableProperty] public partial bool MicrophoneAccessGranted { get; private set; }
+
+    /// <summary>The meter's fill, 0..1: the loudest recent buffer, falling back smoothly.</summary>
+    [ObservableProperty] public partial double MicrophoneLevel { get; private set; }
+
+    public string MicrophoneMeterHint => MicrophoneReady
+        ? "Your microphone is working."
+        : "Say something to check muesli can hear you.";
+
+    partial void OnMicrophoneAccessGrantedChanged(bool value) => OnPropertyChanged(nameof(MicrophoneMeterHint));
+
+    private const double SpeechLevel = 0.45;
+    private const int SpeechBuffersToPass = 4;
+    private MicrophoneLevelMonitor? _meter;
+    private double _pendingLevel;
+    private int _levelQueued;
+    private int _speechBuffers;
+
+    private void StartMicrophoneMeter()
+    {
+        StopMicrophoneMeter();
+        var meter = new MicrophoneLevelMonitor();
+        meter.LevelChanged += OnMeterLevel;
+        meter.Failed += _ => App.UiDispatcher.TryEnqueue(() =>
+        {
+            StopMicrophoneMeter();
+            ApplyStatus(MicrophoneFailureText(MicrophoneProbeFailure.Disconnected), isError: true);
+        });
+        try
+        {
+            meter.Start(ProbeMicrophoneName());
+            _meter = meter;
+        }
+        catch (Exception exception)
+        {
+            meter.Dispose();
+            ApplyStatus(MicrophoneFailureText(WindowsMicrophoneAccessService.ClassifyFailure(exception)), isError: true);
+        }
+    }
+
+    private void StopMicrophoneMeter()
+    {
+        _meter?.Dispose();
+        _meter = null;
+        _speechBuffers = 0;
+        MicrophoneLevel = 0;
+    }
+
+    /// <summary>Capture thread: keep the loudest level and post at most one UI update at a time.</summary>
+    private void OnMeterLevel(double level)
+    {
+        lock (_meterGate) _pendingLevel = Math.Max(_pendingLevel, level);
+        if (Interlocked.Exchange(ref _levelQueued, 1) == 0 && !App.UiDispatcher.TryEnqueue(ApplyMeterLevel))
+        {
+            Interlocked.Exchange(ref _levelQueued, 0);
+        }
+    }
+
+    private readonly object _meterGate = new();
+
+    private void ApplyMeterLevel()
+    {
+        Interlocked.Exchange(ref _levelQueued, 0);
+        double level;
+        lock (_meterGate)
+        {
+            level = _pendingLevel;
+            _pendingLevel = 0;
+        }
+        if (_meter is null || _disposed) return;
+        MicrophoneLevel = Math.Max(level, MicrophoneLevel * 0.8);
+        if (level < SpeechLevel || _progress.MicrophoneVerified) return;
+        if (++_speechBuffers < SpeechBuffersToPass) return;
+        _progress = _progress with
+        {
+            MicrophoneVerified = true,
+            VerifiedMicrophone = NormalizeMicrophone(SelectedMicrophone) ?? "",
+            LastStatus = ""
+        };
+        PersistProgress();
+        RefreshPermissionsFromProgress();
+        NotifyReadyBindings();
+        OnPropertyChanged(nameof(MicrophoneMeterHint));
     }
 
     [RelayCommand]
@@ -627,10 +710,23 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         RefreshPipelineHint();
     }
 
+    /// <summary>macOS keeps the dictation test disabled until the model is downloaded and ready.</summary>
+    public bool TestModelReady => _testModelReady;
+
     private void RefreshPipelineHint() =>
-        PipelineHint = IsPipelineRunning
-            ? $"Listening… release {SelectedHotkey} when done"
-            : $"Hold {SelectedHotkey} to start";
+        PipelineHint = !_testModelReady
+            ? $"The test unlocks once {PipelineModelLabel} finishes downloading."
+            : IsPipelineRunning
+                ? $"Listening… release {SelectedHotkey} when done"
+                : $"Hold {SelectedHotkey} to start";
+
+    /// <summary>The meter listens only while the microphone step is showing and access is granted.</summary>
+    private void UpdateMicrophoneMeter()
+    {
+        var show = Step == OnboardingSteps.Microphone && MicrophoneAccessGranted && !_disposed;
+        if (show && _meter is null) StartMicrophoneMeter();
+        else if (!show && _meter is not null) StopMicrophoneMeter();
+    }
 
     /// <summary>
     /// Arms the shortcut for the test while its step is showing. Registering here also covers a
@@ -754,12 +850,14 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         _liveLifecycle.Dispose();
         _testArmed = false;
         _dictation.RouteHotkeyToTest(null);
+        StopMicrophoneMeter();
     }
 
     partial void OnSelectedMicrophoneChanged(string? value)
     {
         if (_isRendering) return;
         ApplySelectionChange(_draft with { MicrophoneName = NormalizeMicrophone(value) });
+        if (_meter is not null) StartMicrophoneMeter();
     }
 
     partial void OnSelectedDictationModelChanged(TranscriptionModelDefinition? value)
@@ -916,6 +1014,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         RefreshModelChoiceSelection();
         OnPropertyChanged(nameof(ProgressValue));
         UpdateTestArming();
+        UpdateMicrophoneMeter();
         OnPropertyChanged(nameof(SummaryDisclosure));
         NotifyReadyBindings();
     }
@@ -923,6 +1022,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private void NotifyReadyBindings()
     {
         OnPropertyChanged(nameof(MicrophoneReady));
+        OnPropertyChanged(nameof(MicrophoneMeterHint));
         OnPropertyChanged(nameof(ModelsReady));
         OnPropertyChanged(nameof(HotkeyReady));
         OnPropertyChanged(nameof(PipelineReady));
@@ -981,6 +1081,11 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         }
 
         RefreshCurrentModelGate(announce: false, offline);
+        var dictationId = SelectedDictationModel?.Id ?? _draft.DictationModelId;
+        _testModelReady = offline.TryGetValue(dictationId, out var dictation) &&
+            dictation.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
+        OnPropertyChanged(nameof(TestModelReady));
+        RefreshPipelineHint();
         OnPropertyChanged(nameof(NextLabel));
     }
 
