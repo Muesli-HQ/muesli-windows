@@ -443,24 +443,21 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         try
         {
             var probe = await _microphone.ProbeAsync(ProbeMicrophoneName());
+            // The "Granted" badge says it worked; a failure says what to do, in plain words.
+            var failure = probe.IsUsable ? "" : MicrophoneFailureText(probe.Failure);
             _progress = _progress with
             {
                 MicrophoneVerified = probe.IsUsable,
                 VerifiedMicrophone = probe.IsUsable ? NormalizeMicrophone(SelectedMicrophone) ?? "" : "",
-                LastStatus = probe.IsUsable
-                    ? "Microphone capture verified. No audio was retained."
-                    : $"Microphone test failed: {probe.Failure}"
+                LastStatus = failure
             };
             PersistProgress();
-            MicrophonePolicyHint = string.Join(" ", new[] { probe.PolicyHint, probe.Message }.Where(text => !string.IsNullOrWhiteSpace(text)));
-            ApplyStatus(probe.IsUsable
-                ? $"{probe.PolicyHint} {probe.Message}".Trim()
-                : MicrophonePolicyHint,
-                isError: !probe.IsUsable);
-            RefreshPermissions(microphoneChecked: true, microphoneGranted: probe.IsUsable, probe.IsUsable ? "Capture verified" : probe.Failure.ToString(), MicrophonePolicyHint);
+            MicrophonePolicyHint = "";
+            ApplyStatus(failure, isError: !probe.IsUsable);
+            RefreshPermissions(microphoneChecked: true, microphoneGranted: probe.IsUsable, probe.IsUsable ? "Ready" : "Not working", failure);
             NotifyReadyBindings();
         }
-        catch (Exception exception) { ApplyStatus($"Microphone test failed: {exception.Message}", isError: true); }
+        catch (Exception) { ApplyStatus(MicrophoneFailureText(MicrophoneProbeFailure.Unknown), isError: true); }
         finally { IsBusy = false; }
     }
 
@@ -470,7 +467,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         try
         {
             Process.Start(new ProcessStartInfo("ms-settings:privacy-microphone") { UseShellExecute = true });
-            ApplyStatus("Windows microphone privacy opened. Re-run the capture test after changing access; the policy hint is not a grant.");
+            ApplyStatus("");
         }
         catch (Exception exception)
         {
@@ -503,14 +500,6 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             }
 
             var previous = _settings.Load();
-            var advisoryAvailable = false;
-            try { advisoryAvailable = HotkeyConflictProbe.IsAdvisoryRegistrationAvailable(parsed.DisplayName); }
-            catch (Exception exception)
-            {
-                advisoryAvailable = false;
-                ApplyStatus($"Advisory shortcut probe failed ({exception.Message}); the live dictation hook remains decisive.");
-            }
-
             _settings.Save(previous with { Hotkey = parsed.DisplayName });
             var usable = false;
             try
@@ -537,7 +526,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
                     ? "Windows reports this shortcut is currently in use. Choose another key."
                     : HotkeyGestureParser.IsRightAlt(parsed)
                         ? ShortcutsPageViewModel.AltGrNote.Trim()
-                        : advisoryAvailable ? "" : "Windows could not confirm this shortcut is free, but muesli's own listener accepted it."
+                        : ""
             };
             ApplyStatus(_progress.LastStatus, isError: !usable);
         }
@@ -639,9 +628,9 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         {
             if (item.IsLive) _liveLifecycle.Cancel(item.Id);
             else _models.Cancel(item.Id);
-            item.StatusText = "Cancelling model operation…";
+            item.StatusText = "Cancelling…";
             item.NotifyProgressBindings();
-            ApplyStatus($"Cancelling {item.Role} model operation…");
+            ApplyStatus("Cancelling…");
         }
     }
 
@@ -652,11 +641,11 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         if (App.Window is MainWindow mainWindow)
         {
             mainWindow.ShowDashboard("settings");
-            ApplyStatus("Settings is open for summary-provider keys. Return here to continue setup. Keys can only be added in Settings.");
+            ApplyStatus("Add your key in Settings, then come back here.");
         }
         else
         {
-            ApplyStatus("Open Settings to configure summary-provider keys. Setup stays on this step.");
+            ApplyStatus("Add summary keys in Settings.");
         }
     }
 
@@ -674,7 +663,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private void PreviewIndicator()
     {
         PersistDraft();
-        ApplyStatus($"Indicator position saved as {SelectedIndicatorPosition}. Turn on “Show floating indicator” above to see the real indicator; it also appears while you dictate.");
+        ApplyStatus("");
     }
 
     [RelayCommand]
@@ -683,16 +672,21 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         SelectedIndicatorPosition = "Middle Right";
         _draft = _draft with { IndicatorAnchor = "Middle Right", IndicatorLeft = null, IndicatorTop = null };
         _settings.Save(_draft);
-        ApplyStatus("Custom indicator position cleared. Anchor is Middle Right.");
+        ApplyStatus("");
     }
 
     public void NotifyActivated()
     {
-        if (Step == OnboardingSteps.Microphone)
-        {
-            ApplyStatus("Microphone permissions may have changed; run the non-retained capture test to refresh this gate.");
-        }
     }
+
+    private static string MicrophoneFailureText(MicrophoneProbeFailure failure) => failure switch
+    {
+        MicrophoneProbeFailure.Denied => "Windows is blocking the microphone. Allow it in Settings, then test again.",
+        MicrophoneProbeFailure.NoEndpoint => "No microphone found. Connect one, then test again.",
+        MicrophoneProbeFailure.Busy => "Another app is using the microphone. Close it, then test again.",
+        MicrophoneProbeFailure.Disconnected => "The microphone was disconnected. Reconnect it, then test again.",
+        _ => "muesli couldn't hear your microphone. Check it's connected, then test again."
+    };
 
     public event EventHandler<bool>? Completed;
 
@@ -990,8 +984,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             VerifiedLiveModelId = ready ? SelectedLiveModel?.Id : null,
             LastStatus = announce
                 ? ready
-                    ? "Selected model roles verified"
-                    : "A selected model role is not ready. Prepare, verify, or retry it."
+                    ? ""
+                    : "The selected model isn't ready yet."
                 : _progress.LastStatus
         };
         PersistProgress();
@@ -1016,7 +1010,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         if (item is null) return;
         if (_activeModelOperation is not null)
         {
-            ApplyStatus("Another model operation is already in progress. Cancel it or wait for it to finish.", isError: true);
+            ApplyStatus("Another download is already running. Wait for it to finish.", isError: true);
             return;
         }
 
@@ -1093,10 +1087,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         RefreshPermissions(
             microphoneChecked: MicrophoneOk,
             microphoneGranted: MicrophoneOk,
-            MicrophoneOk ? "Capture verified" : "Not checked yet",
-            string.IsNullOrWhiteSpace(MicrophonePolicyHint)
-                ? "A short non-retained WASAPI capture is the real microphone check."
-                : MicrophonePolicyHint);
+            MicrophoneOk ? "Ready" : "Not tested",
+            "");
     }
 
     private void RefreshPermissions(bool microphoneChecked, bool microphoneGranted, string microphoneStatus, string microphoneHelp)
@@ -1114,9 +1106,14 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private void RefreshCloudKeyStatus()
     {
         var current = _settings.Load();
-        var openAi = string.IsNullOrWhiteSpace(current.ResolvedOpenAIApiKey) ? "not configured" : "configured securely";
-        var openRouter = string.IsNullOrWhiteSpace(current.ResolvedOpenRouterApiKey) ? "not configured" : "configured securely";
-        CloudKeyStatus = $"OpenAI key: {openAi}. OpenRouter key: {openRouter}. Keys can only be added in Settings.";
+        var keys = new[]
+        {
+            string.IsNullOrWhiteSpace(current.ResolvedOpenAIApiKey) ? null : "OpenAI",
+            string.IsNullOrWhiteSpace(current.ResolvedOpenRouterApiKey) ? null : "OpenRouter"
+        }.OfType<string>().ToList();
+        CloudKeyStatus = keys.Count == 0
+            ? "To use OpenAI or OpenRouter, add a key in Settings."
+            : $"{string.Join(" and ", keys)} key added.";
     }
 
     private async Task RefreshStartupAvailabilityAsync()

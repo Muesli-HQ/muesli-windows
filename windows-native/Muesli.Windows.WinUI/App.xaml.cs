@@ -579,7 +579,7 @@ public partial class App : Application
             store.Save(progress with
             {
                 Deferred = false,
-                LastStatus = "Setup resumed. Continue from the saved step."
+                LastStatus = ""
             });
         }
 

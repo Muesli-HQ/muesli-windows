@@ -24,6 +24,7 @@ public sealed class WinUiDictationContext : IDisposable
     private string? _captureTraceId;
     private volatile bool _auxiliarySession;
     private volatile DictationTestRoute? _testRoute;
+    private volatile bool _testKeyHeld;
     private int _disposed;
 
     // WPF dispatched every shortcut callback with DispatcherPriority.Send, so shortcut down, up,
@@ -77,13 +78,24 @@ public sealed class WinUiDictationContext : IDisposable
                 _settings.Load().Hotkey,
                 () =>
                 {
-                    if (_testRoute is { } route) EnqueueHotkeyWork(() => StartTestAsync(route), "test-down");
+                    // Only the setup test step takes the shortcut; everywhere else it dictates.
+                    // The choice is made here, on press, so the release always goes to the same
+                    // owner even if the step changes while the key is held.
+                    if (_testRoute is { } route && route.CanStart())
+                    {
+                        _testKeyHeld = true;
+                        EnqueueHotkeyWork(() => StartTestAsync(route), "test-down");
+                    }
                     else EnqueueHotkeyWork(() => ExecuteActionAsync(
                         _hotkeyState.KeyDown(_settings.Load().EnableDoubleTapDictation)), "down");
                 },
                 () =>
                 {
-                    if (_testRoute is { } route) EnqueueHotkeyWork(() => StopTestAsync(route), "test-up");
+                    if (_testKeyHeld && _testRoute is { } route)
+                    {
+                        _testKeyHeld = false;
+                        EnqueueHotkeyWork(() => StopTestAsync(route), "test-up");
+                    }
                     else EnqueueHotkeyWork(() => ExecuteActionAsync(
                         _hotkeyState.KeyUp(_settings.Load().EnableDoubleTapDictation)), "up");
                 },
@@ -103,15 +115,18 @@ public sealed class WinUiDictationContext : IDisposable
                     // runs token callbacks inline, so it must not run on the keyboard-hook thread.
                     _ = Task.Run(RequestCancellation);
                     EnqueueHotkeyWork(CancelCoreAsync, "escape");
-                    if (_testRoute is { } route && _auxiliarySession)
+                    if (_testKeyHeld && _testRoute is { } route)
+                    {
+                        _testKeyHeld = false;
                         Post(() => route.Failed("Test cancelled. Hold the shortcut to try again."));
+                    }
                 },
                 () =>
                 {
-                    if (_testRoute is { } route)
+                    if (_testKeyHeld && _testRoute is { } route)
                     {
                         // A combination is typing, not a test: drop it as hold-to-talk would.
-                        if (!_auxiliarySession) return;
+                        _testKeyHeld = false;
                         EnqueueHotkeyWork(CancelCoreAsync, "test-other-key");
                         Post(() => route.Failed("Another key was pressed. Hold only the shortcut to test."));
                     }
