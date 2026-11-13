@@ -34,6 +34,16 @@ public sealed record OnboardingPermissionItem(
 }
 
 /// <summary>One macOS-style model radio card: name, size, description, recommended badge.</summary>
+/// <summary>A macOS use-case card on the Welcome screen.</summary>
+public sealed partial class OnboardingUseCaseCard(string id, string glyph, string title, string subtitle) : ObservableObject
+{
+    public string Id { get; } = id;
+    public string Glyph { get; } = glyph;
+    public string Title { get; } = title;
+    public string Subtitle { get; } = subtitle;
+    [ObservableProperty] public partial bool IsSelected { get; set; }
+}
+
 public sealed partial class OnboardingModelChoice : ObservableObject
 {
     public OnboardingModelChoice(TranscriptionModelDefinition model, bool isRecommended)
@@ -130,6 +140,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         _models = models;
         _progressStore = progressStore;
         _draft = settings.Load();
+        UseCase = OnboardingUseCases.Resolve(_draft.OnboardingUseCase);
         _progress = progressStore.Load();
         _liveLifecycle = new StreamingModelLifecycleService(
             () => SelectedLiveModel?.Id,
@@ -210,7 +221,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string CloudKeyStatus { get; private set; } = "";
 
     public ObservableCollection<OnboardingModelRoleItem> ModelRoles => _modelRoles;
-    public int StepCount => OnboardingProgress.LastStep + 1;
+    public int StepCount => OnboardingUseCases.Steps(UseCase).Count;
     public int ProgressMaximum => OnboardingProgress.LastStep;
     public double ProgressValue => Step;
     public string SummaryDisclosure => SummaryProviderDisclosure.DisclosureFor(SelectedSummaryProvider?.Id, _draft.OllamaEndpoint);
@@ -311,6 +322,45 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     public bool ShowPipeline => Step == OnboardingSteps.Test;
     public bool ShowOptional => Step == OnboardingSteps.Summaries;
     public bool ShowReady => Step == OnboardingSteps.Ready;
+
+    /// <summary>macOS "What will you use muesli for?": the answer decides which steps follow.</summary>
+    public string UseCase { get; private set; } = OnboardingUseCases.Everything;
+    public bool UsesDictation => OnboardingUseCases.IncludesDictation(UseCase);
+    public bool UsesMeetings => OnboardingUseCases.IncludesMeetings(UseCase);
+    public bool UsesEverything => UsesDictation && UsesMeetings;
+
+    public IReadOnlyList<OnboardingUseCaseCard> UseCaseCards { get; } =
+    [
+        new(OnboardingUseCases.Dictation, "", "Dictation", "Paste into apps"),
+        new(OnboardingUseCases.Meetings, "", "Meetings", "Notes and summaries"),
+        new(OnboardingUseCases.Everything, "", "Everything", "All workflows")
+    ];
+
+    private void RefreshUseCaseCards()
+    {
+        foreach (var card in UseCaseCards)
+        {
+            card.IsSelected = card.Id switch
+            {
+                OnboardingUseCases.Dictation => UsesDictation,
+                OnboardingUseCases.Meetings => UsesMeetings,
+                _ => UsesEverything
+            };
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleUseCase(string? workflow)
+    {
+        var next = workflow == OnboardingUseCases.Everything
+            ? OnboardingUseCases.Everything
+            : OnboardingUseCases.Toggle(UseCase, workflow ?? "");
+        if (next == UseCase) return;
+        UseCase = next;
+        _draft = _draft with { OnboardingUseCase = next };
+        _settings.Save(_draft);
+        Render();
+    }
     /// <summary>
     /// A transcript from the test step proves the microphone captures speech, which is stronger
     /// evidence than the capture probe, so either one satisfies the microphone check.
@@ -362,7 +412,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         PersistDraft();
         CancelActiveOperations();
         _returnToReady = false;
-        _progress = _progress with { Step = _progress.Step - 1, LastStatus = "" };
+        var steps = OnboardingUseCases.Steps(UseCase).ToList();
+        _progress = _progress with { Step = steps[Math.Max(steps.IndexOf(_progress.Step) - 1, 0)], LastStatus = "" };
         PersistProgress();
         Render();
     }
@@ -381,7 +432,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         }
         CancelActiveOperations();
         // A step opened from the Ready checklist returns there instead of walking the steps between.
-        var next = _returnToReady ? OnboardingSteps.Ready : _progress.Step + 1;
+        var steps = OnboardingUseCases.Steps(UseCase).ToList();
+        var next = _returnToReady ? OnboardingSteps.Ready : steps[Math.Min(steps.IndexOf(_progress.Step) + 1, steps.Count - 1)];
         _returnToReady = false;
         _progress = _progress with { Step = next, LastStatus = "" };
         PersistProgress();
@@ -402,7 +454,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private async Task FinishAsync()
     {
         PersistDraft();
-        if (!(MicrophoneOk && _progress.ModelsVerified && _progress.HotkeyVerified && _progress.PipelineVerified))
+        var dictation = OnboardingUseCases.IncludesDictation(UseCase);
+        if (!(MicrophoneOk && _progress.ModelsVerified && (!dictation || (_progress.HotkeyVerified && _progress.PipelineVerified))))
         {
             ApplyStatus("Complete each required check before finishing setup.", isError: true);
             return;
@@ -416,6 +469,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             OnboardingCompleted = true,
             LastCompletedFeatureTourVersion = 0,
             UserName = _draft.UserName,
+            OnboardingUseCase = UseCase,
             MicrophoneName = NormalizeMicrophone(_draft.MicrophoneName),
             DictationModelId = _draft.DictationModelId,
             FinalMeetingModelId = _draft.FinalMeetingModelId,
@@ -801,6 +855,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         _draft = _draft with
         {
             UserName = UserName.Trim(),
+            OnboardingUseCase = UseCase,
             MicrophoneName = NormalizeMicrophone(SelectedMicrophone),
             DictationModelId = SelectedDictationModel?.Id ?? _draft.DictationModelId,
             FinalMeetingModelId = SelectedMeetingModel?.Id ?? _draft.FinalMeetingModelId,
@@ -818,24 +873,32 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
 
     private void Render()
     {
+        // Only the steps this use case needs are shown, counted and dotted (macOS orderedSteps).
+        _progress = _progress with { Step = OnboardingUseCases.Normalize(_progress.Step, UseCase) };
         Step = _progress.Step;
+        var steps = OnboardingUseCases.Steps(UseCase).ToList();
+        var position = steps.IndexOf(Step);
         var definition = OnboardingStepCatalog.Get(Step);
-        StepLabel = $"SETUP · {Step + 1} OF {StepCount}";
+        StepLabel = $"SETUP · {position + 1} OF {steps.Count}";
         Title = definition.Title;
         Description = definition.Description;
         Status = _progress.LastStatus;
         StatusIsError = LooksLikeError(Status);
-        CanGoBack = Step > 0;
+        CanGoBack = position > 0;
         CanGoNext = Step < OnboardingProgress.LastStep;
         CanFinish = Step == OnboardingProgress.LastStep;
-        StepNavItems = OnboardingStepCatalog.Steps
-            .Select(step => new OnboardingStepNavItem(
-                step.Step,
-                $"{step.Step + 1}",
-                step.Title,
-                step.Step == Step,
-                step.Step < Step))
+        StepNavItems = steps
+            .Select((step, index) => new OnboardingStepNavItem(
+                step,
+                $"{index + 1}",
+                OnboardingStepCatalog.Get(step).Title,
+                step == Step,
+                index < position))
             .ToList();
+        OnPropertyChanged(nameof(UsesDictation));
+        OnPropertyChanged(nameof(UsesMeetings));
+        OnPropertyChanged(nameof(UsesEverything));
+        RefreshUseCaseCards();
         RefreshPermissionsFromProgress();
         RefreshModelRoles();
         RefreshCloudKeyStatus();

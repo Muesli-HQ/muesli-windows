@@ -137,6 +137,11 @@ public sealed partial class OnboardingWindow : Window
     /// <summary>An unfinished row names its action with a chevron, in the accent, like a link.</summary>
     public static string ActionText(string gateLabel) => gateLabel + "  ›";
 
+    private void UseCase_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string id }) ViewModel.ToggleUseCaseCommand.Execute(id);
+    }
+
     private void ModelChoice_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: OnboardingModelChoice choice })

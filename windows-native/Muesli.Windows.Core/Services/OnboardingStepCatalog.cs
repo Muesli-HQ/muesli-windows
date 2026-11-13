@@ -48,3 +48,58 @@ public static class OnboardingStepCatalog
 }
 
 public sealed record OnboardingStepDefinition(int Step, string Title, string Description);
+
+/// <summary>
+/// macOS OnboardingUseCase, limited to what Windows v1 ships: dictation and meetings. The answer
+/// on the Welcome screen decides which steps follow (macOS OnboardingFlow.orderedSteps).
+/// </summary>
+public static class OnboardingUseCases
+{
+    public const string Dictation = "dictation";
+    public const string Meetings = "meetings";
+    public const string Everything = "dictation_and_meetings";
+
+    public static string Resolve(string? value) => value is Dictation or Meetings ? value : Everything;
+
+    public static bool IncludesDictation(string? useCase) => Resolve(useCase) != Meetings;
+
+    public static bool IncludesMeetings(string? useCase) => Resolve(useCase) != Dictation;
+
+    /// <summary>Turns one workflow on or off; at least one always stays on, as on macOS.</summary>
+    public static string Toggle(string? useCase, string workflow)
+    {
+        var dictation = IncludesDictation(useCase);
+        var meetings = IncludesMeetings(useCase);
+        if (workflow == Dictation) dictation = !dictation;
+        else if (workflow == Meetings) meetings = !meetings;
+        return (dictation, meetings) switch
+        {
+            (true, false) => Dictation,
+            (false, true) => Meetings,
+            (false, false) => Resolve(useCase),
+            _ => Everything
+        };
+    }
+
+    /// <summary>
+    /// Dictation needs the shortcut and the dictation test; meetings need the summary choice.
+    /// Every path keeps the model, the microphone and the closing checklist.
+    /// </summary>
+    public static IReadOnlyList<int> Steps(string? useCase)
+    {
+        var steps = new List<int> { OnboardingSteps.Welcome, OnboardingSteps.Model };
+        if (IncludesDictation(useCase)) steps.Add(OnboardingSteps.Shortcut);
+        steps.Add(OnboardingSteps.Microphone);
+        if (IncludesDictation(useCase)) steps.Add(OnboardingSteps.Test);
+        if (IncludesMeetings(useCase)) steps.Add(OnboardingSteps.Summaries);
+        steps.Add(OnboardingSteps.Ready);
+        return steps;
+    }
+
+    /// <summary>A step the use case skips resolves to the next one it keeps.</summary>
+    public static int Normalize(int step, string? useCase)
+    {
+        var steps = Steps(useCase);
+        return steps.Contains(step) ? step : steps.FirstOrDefault(candidate => candidate > step, OnboardingSteps.Ready);
+    }
+}

@@ -29,6 +29,26 @@ public sealed class WinUiShellParityTests
         Assert.All(OnboardingStepCatalog.Steps, step => Assert.Equal(step, OnboardingStepCatalog.Steps[step.Step]));
     }
 
+    [Theory]
+    [InlineData(OnboardingUseCases.Dictation, new[] { 0, 1, 2, 3, 4, 6 })]
+    [InlineData(OnboardingUseCases.Meetings, new[] { 0, 1, 3, 5, 6 })]
+    [InlineData(OnboardingUseCases.Everything, new[] { 0, 1, 2, 3, 4, 5, 6 })]
+    [InlineData("voice_notes", new[] { 0, 1, 2, 3, 4, 5, 6 })]
+    public void The_use_case_decides_which_setup_steps_follow(string useCase, int[] expected)
+    {
+        Assert.Equal(expected, OnboardingUseCases.Steps(useCase));
+    }
+
+    [Fact]
+    public void Use_case_toggles_keep_one_workflow_and_skip_to_the_next_kept_step()
+    {
+        Assert.Equal(OnboardingUseCases.Meetings, OnboardingUseCases.Toggle(OnboardingUseCases.Everything, OnboardingUseCases.Dictation));
+        Assert.Equal(OnboardingUseCases.Everything, OnboardingUseCases.Toggle(OnboardingUseCases.Meetings, OnboardingUseCases.Dictation));
+        Assert.Equal(OnboardingUseCases.Dictation, OnboardingUseCases.Toggle(OnboardingUseCases.Dictation, OnboardingUseCases.Dictation));
+        Assert.Equal(OnboardingSteps.Summaries, OnboardingUseCases.Normalize(OnboardingSteps.Test, OnboardingUseCases.Meetings));
+        Assert.Equal(OnboardingSteps.Ready, OnboardingUseCases.Normalize(OnboardingSteps.Summaries, OnboardingUseCases.Dictation));
+    }
+
     [Fact]
     public void ConfirmationPreviewIsLocalAndNeverLooksLikePersistence()
     {
