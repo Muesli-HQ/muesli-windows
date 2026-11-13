@@ -118,5 +118,6 @@ public static class OnboardingProgressReconciler
                      (selection.LiveModelId is null || liveReady(selection.LiveModelId));
         return progress with { MicrophoneVerified = progress.MicrophoneVerified && microphone, HotkeyVerified = progress.HotkeyVerified && hotkey, ModelsVerified = progress.ModelsVerified && models, PipelineVerified = progress.PipelineVerified && microphone && models };
     }
-    private static bool Same(string? left, string? right) => string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    // The system default microphone is saved as null and verified as "": both mean "no explicit device".
+    private static bool Same(string? left, string? right) => string.Equals(left?.Trim() ?? "", right?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
 }

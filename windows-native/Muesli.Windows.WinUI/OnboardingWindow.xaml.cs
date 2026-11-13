@@ -134,7 +134,8 @@ public sealed partial class OnboardingWindow : Window
     public static Microsoft.UI.Xaml.Media.Brush CheckBrush(bool done) =>
         (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[done ? "MuesliSuccessBrush" : "MuesliTextTertiaryBrush"];
 
-    public static string GateText(bool done, string gateLabel) => done ? "Ready" : gateLabel;
+    /// <summary>An unfinished row names its action with a chevron, in the accent, like a link.</summary>
+    public static string ActionText(string gateLabel) => gateLabel + "  ›";
 
     private void ModelChoice_Click(object sender, RoutedEventArgs e)
     {

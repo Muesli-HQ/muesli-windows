@@ -63,6 +63,24 @@ public sealed class Phase12ProductExperienceTests
     }
 
     [Fact]
+    public void A_test_passed_on_the_system_default_microphone_survives_a_restart()
+    {
+        // The default microphone is saved as null in settings and verified as "".
+        var progress = new OnboardingProgress
+        {
+            MicrophoneVerified = true, PipelineVerified = true, VerifiedMicrophone = "",
+            ModelsVerified = true, VerifiedDictationModelId = "d", VerifiedFinalModelId = "f"
+        };
+        var result = OnboardingProgressReconciler.Reconcile(progress, new(null, "d", "f", null, "F8"), _ => true, _ => true);
+        Assert.True(result.MicrophoneVerified);
+        Assert.True(result.PipelineVerified);
+
+        var changed = OnboardingProgressReconciler.Reconcile(progress, new("USB mic", "d", "f", null, "F8"), _ => true, _ => true);
+        Assert.False(changed.MicrophoneVerified);
+        Assert.False(changed.PipelineVerified);
+    }
+
+    [Fact]
     public void Reconciliation_requires_current_model_lifecycle_readiness()
     {
         var progress = new OnboardingProgress { ModelsVerified = true, PipelineVerified = true, VerifiedMicrophone = "mic", MicrophoneVerified = true, VerifiedDictationModelId = "d", VerifiedFinalModelId = "f" };

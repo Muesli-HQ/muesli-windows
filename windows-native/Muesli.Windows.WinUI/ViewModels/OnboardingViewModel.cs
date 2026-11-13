@@ -115,6 +115,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private (string Id, bool Live)? _activeModelOperation;
     private int _modelRolesRefreshQueued;
     private volatile bool _testArmed;
+    private bool _returnToReady;
 
     public OnboardingViewModel(
         WinUiSettingsContext settings,
@@ -310,14 +311,34 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     public bool ShowPipeline => Step == OnboardingSteps.Test;
     public bool ShowOptional => Step == OnboardingSteps.Summaries;
     public bool ShowReady => Step == OnboardingSteps.Ready;
-    public bool MicrophoneReady => _progress.MicrophoneVerified;
+    /// <summary>
+    /// A transcript from the test step proves the microphone captures speech, which is stronger
+    /// evidence than the capture probe, so either one satisfies the microphone check.
+    /// </summary>
+    private bool MicrophoneOk => _progress.MicrophoneVerified || _progress.PipelineVerified;
+    public bool MicrophoneReady => MicrophoneOk;
     public bool ModelsReady => _progress.ModelsVerified;
     public bool HotkeyReady => _progress.HotkeyVerified;
     public bool PipelineReady => _progress.PipelineVerified;
-    public string MicrophoneGateLabel => _progress.MicrophoneVerified ? "ready" : "needs test";
-    public string ModelsGateLabel => _progress.ModelsVerified ? "ready" : "needs preparation";
-    public string HotkeyGateLabel => _progress.HotkeyVerified ? "ready" : "needs check";
-    public string PipelineGateLabel => _progress.PipelineVerified ? "passed" : "needs successful transcript";
+
+    // The Ready checklist names what to do next; the row takes you to that step.
+    public string MicrophoneGateLabel => MicrophoneOk ? "ready" : "Test microphone";
+    public string ModelsGateLabel => _progress.ModelsVerified ? "ready" : "Prepare model";
+    public string HotkeyGateLabel => _progress.HotkeyVerified ? "ready" : "Set shortcut";
+    public string PipelineGateLabel => _progress.PipelineVerified ? "passed" : "Run test";
+
+    /// <summary>Jumps straight to a step from the Ready checklist instead of paging back.</summary>
+    [RelayCommand]
+    private void GoToStep(string? step)
+    {
+        if (!int.TryParse(step, out var target) || target < 0 || target > OnboardingProgress.LastStep) return;
+        PersistDraft();
+        CancelActiveOperations();
+        _returnToReady = _progress.Step == OnboardingSteps.Ready && target != OnboardingSteps.Ready;
+        _progress = _progress with { Step = target, LastStatus = "" };
+        PersistProgress();
+        Render();
+    }
 
     /// <summary>
     /// P8-05: the live-dictation card used to open by repeating the step subtitle verbatim. These
@@ -340,6 +361,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         if (_progress.Step <= 0) return;
         PersistDraft();
         CancelActiveOperations();
+        _returnToReady = false;
         _progress = _progress with { Step = _progress.Step - 1, LastStatus = "" };
         PersistProgress();
         Render();
@@ -358,7 +380,10 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             _ = PrepareModelCommand.ExecuteAsync(pending);
         }
         CancelActiveOperations();
-        _progress = _progress with { Step = _progress.Step + 1, LastStatus = "" };
+        // A step opened from the Ready checklist returns there instead of walking the steps between.
+        var next = _returnToReady ? OnboardingSteps.Ready : _progress.Step + 1;
+        _returnToReady = false;
+        _progress = _progress with { Step = next, LastStatus = "" };
         PersistProgress();
         Render();
     }
@@ -377,7 +402,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private async Task FinishAsync()
     {
         PersistDraft();
-        if (!(_progress.MicrophoneVerified && _progress.ModelsVerified && _progress.HotkeyVerified && _progress.PipelineVerified))
+        if (!(MicrophoneOk && _progress.ModelsVerified && _progress.HotkeyVerified && _progress.PipelineVerified))
         {
             ApplyStatus("Complete each required check before finishing setup.", isError: true);
             return;
@@ -421,7 +446,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             _progress = _progress with
             {
                 MicrophoneVerified = probe.IsUsable,
-                VerifiedMicrophone = probe.IsUsable ? SelectedMicrophone ?? "" : "",
+                VerifiedMicrophone = probe.IsUsable ? NormalizeMicrophone(SelectedMicrophone) ?? "" : "",
                 LastStatus = probe.IsUsable
                     ? "Microphone capture verified. No audio was retained."
                     : $"Microphone test failed: {probe.Failure}"
@@ -541,6 +566,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         _progress = _progress with
         {
             PipelineVerified = passed || _progress.PipelineVerified,
+            MicrophoneVerified = passed || _progress.MicrophoneVerified,
+            VerifiedMicrophone = passed ? NormalizeMicrophone(SelectedMicrophone) ?? "" : _progress.VerifiedMicrophone,
             LastStatus = passed ? "" : "No speech detected. Hold the shortcut and try again."
         };
         PersistProgress();
@@ -1064,9 +1091,9 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private void RefreshPermissionsFromProgress()
     {
         RefreshPermissions(
-            microphoneChecked: _progress.MicrophoneVerified,
-            microphoneGranted: _progress.MicrophoneVerified,
-            _progress.MicrophoneVerified ? "Capture verified" : "Not checked yet",
+            microphoneChecked: MicrophoneOk,
+            microphoneGranted: MicrophoneOk,
+            MicrophoneOk ? "Capture verified" : "Not checked yet",
             string.IsNullOrWhiteSpace(MicrophonePolicyHint)
                 ? "A short non-retained WASAPI capture is the real microphone check."
                 : MicrophonePolicyHint);

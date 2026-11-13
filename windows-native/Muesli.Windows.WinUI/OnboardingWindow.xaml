@@ -20,6 +20,14 @@
                 <Setter Property="Padding" Value="24,12" />
                 <Setter Property="MinHeight" Value="0" />
             </Style>
+            <!-- A Ready checklist row: the whole row opens its step. -->
+            <Style x:Key="OnboardingChecklistRowStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+                <Setter Property="Padding" Value="8,0" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Foreground" Value="{ThemeResource MuesliTextPrimaryBrush}" />
+            </Style>
             <!-- A model radio card's chrome: the card is the whole button. -->
             <Style x:Key="OnboardingModelCardButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
                 <Setter Property="Padding" Value="0" />
@@ -483,31 +491,43 @@
                 </StackPanel>
 
                 <!-- Ready: what is set up, as a centred checklist. -->
-                <Border Style="{StaticResource MuesliCardStyle}" Width="400" HorizontalAlignment="Center" Padding="16,4" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowReady), Mode=OneWay}">
+                <Border Style="{StaticResource MuesliCardStyle}" Width="400" HorizontalAlignment="Center" Padding="8,4" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowReady), Mode=OneWay}">
                     <StackPanel>
-                        <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
-                            <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.MicrophoneReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.MicrophoneReady), Mode=OneWay}" HorizontalAlignment="Left" />
-                            <TextBlock Grid.Column="1" Text="Microphone" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.GateText(ViewModel.MicrophoneReady, ViewModel.MicrophoneGateLabel), Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" />
-                        </Grid>
-                        <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" />
-                        <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
-                            <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.ModelsReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.ModelsReady), Mode=OneWay}" HorizontalAlignment="Left" />
-                            <TextBlock Grid.Column="1" Text="Transcription model" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.GateText(ViewModel.ModelsReady, ViewModel.ModelsGateLabel), Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" />
-                        </Grid>
-                        <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" />
-                        <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
-                            <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.HotkeyReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.HotkeyReady), Mode=OneWay}" HorizontalAlignment="Left" />
-                            <TextBlock Grid.Column="1" Text="Dictation shortcut" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.GateText(ViewModel.HotkeyReady, ViewModel.HotkeyGateLabel), Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" />
-                        </Grid>
-                        <Border Height="1" Background="{ThemeResource MuesliBorderSoftBrush}" />
-                        <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
-                            <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.PipelineReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.PipelineReady), Mode=OneWay}" HorizontalAlignment="Left" />
-                            <TextBlock Grid.Column="1" Text="Dictation test" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.GateText(ViewModel.PipelineReady, ViewModel.PipelineGateLabel), Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" />
-                        </Grid>
+                        <Button Style="{StaticResource OnboardingChecklistRowStyle}" Command="{x:Bind ViewModel.GoToStepCommand}" CommandParameter="3" AutomationProperties.AutomationId="OnboardingReadyMicrophone" AutomationProperties.Name="Microphone, go to step">
+                            <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
+                                <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.MicrophoneReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.MicrophoneReady), Mode=OneWay}" HorizontalAlignment="Left" />
+                                <TextBlock Grid.Column="1" Text="Microphone" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="Ready" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                                <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.ActionText(ViewModel.MicrophoneGateLabel), Mode=OneWay}" Foreground="{ThemeResource MuesliAccentTextBrush}" Style="{StaticResource MuesliCaptionMediumStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneReady), Mode=OneWay}" />
+                            </Grid>
+                        </Button>
+                        <Border Height="1" Margin="8,0" Background="{ThemeResource MuesliBorderSoftBrush}" />
+                        <Button Style="{StaticResource OnboardingChecklistRowStyle}" Command="{x:Bind ViewModel.GoToStepCommand}" CommandParameter="1" AutomationProperties.AutomationId="OnboardingReadyModel" AutomationProperties.Name="Transcription model, go to step">
+                            <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
+                                <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.ModelsReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.ModelsReady), Mode=OneWay}" HorizontalAlignment="Left" />
+                                <TextBlock Grid.Column="1" Text="Transcription model" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="Ready" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ModelsReady), Mode=OneWay}" />
+                                <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.ActionText(ViewModel.ModelsGateLabel), Mode=OneWay}" Foreground="{ThemeResource MuesliAccentTextBrush}" Style="{StaticResource MuesliCaptionMediumStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.ModelsReady), Mode=OneWay}" />
+                            </Grid>
+                        </Button>
+                        <Border Height="1" Margin="8,0" Background="{ThemeResource MuesliBorderSoftBrush}" />
+                        <Button Style="{StaticResource OnboardingChecklistRowStyle}" Command="{x:Bind ViewModel.GoToStepCommand}" CommandParameter="2" AutomationProperties.AutomationId="OnboardingReadyShortcut" AutomationProperties.Name="Dictation shortcut, go to step">
+                            <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
+                                <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.HotkeyReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.HotkeyReady), Mode=OneWay}" HorizontalAlignment="Left" />
+                                <TextBlock Grid.Column="1" Text="Dictation shortcut" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="Ready" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.HotkeyReady), Mode=OneWay}" />
+                                <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.ActionText(ViewModel.HotkeyGateLabel), Mode=OneWay}" Foreground="{ThemeResource MuesliAccentTextBrush}" Style="{StaticResource MuesliCaptionMediumStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.HotkeyReady), Mode=OneWay}" />
+                            </Grid>
+                        </Button>
+                        <Border Height="1" Margin="8,0" Background="{ThemeResource MuesliBorderSoftBrush}" />
+                        <Button Style="{StaticResource OnboardingChecklistRowStyle}" Command="{x:Bind ViewModel.GoToStepCommand}" CommandParameter="4" AutomationProperties.AutomationId="OnboardingReadyTest" AutomationProperties.Name="Dictation test, go to step">
+                            <Grid ColumnDefinitions="24,*,Auto" MinHeight="44">
+                                <FontIcon Glyph="{x:Bind local:OnboardingWindow.CheckGlyph(ViewModel.PipelineReady), Mode=OneWay}" FontSize="14" Foreground="{x:Bind local:OnboardingWindow.CheckBrush(ViewModel.PipelineReady), Mode=OneWay}" HorizontalAlignment="Left" />
+                                <TextBlock Grid.Column="1" Text="Dictation test" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="Ready" Style="{StaticResource MuesliCaptionStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.PipelineReady), Mode=OneWay}" />
+                                <TextBlock Grid.Column="2" Text="{x:Bind local:OnboardingWindow.ActionText(ViewModel.PipelineGateLabel), Mode=OneWay}" Foreground="{ThemeResource MuesliAccentTextBrush}" Style="{StaticResource MuesliCaptionMediumStyle}" VerticalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.PipelineReady), Mode=OneWay}" />
+                            </Grid>
+                        </Button>
                     </StackPanel>
                 </Border>
 
