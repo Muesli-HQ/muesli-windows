@@ -658,7 +658,9 @@ public sealed class AudioCaptureService : IDisposable
 
     private static string DefaultCaptureDirectory()
     {
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "muesli", "captures");
+        // The profile's own folder: start-up cleanup deletes interrupted captures here, which must
+        // never reach the files of another build recording from a different profile.
+        var directory = Muesli.Windows.Core.Profiles.MuesliProfilePaths.Current().CaptureDirectory;
         Directory.CreateDirectory(directory);
         return directory;
     }
