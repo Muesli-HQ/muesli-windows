@@ -48,4 +48,41 @@ public sealed class NeutralHotkeyContractTests
     {
         Assert.Throws<InvalidOperationException>(() => HotkeyGestureParser.Parse(value));
     }
+
+    [Theory]
+    [InlineData("Right Ctrl", 0xA3, "Right Ctrl")]
+    [InlineData("RightCtrl", 0xA3, "Right Ctrl")]
+    [InlineData("rctrl", 0xA3, "Right Ctrl")]
+    [InlineData("Right Alt", 0xA5, "Right Alt")]
+    [InlineData("Right Shift", 0xA1, "Right Shift")]
+    [InlineData("Right Win", 0x5C, "Right Win")]
+    public void A_right_side_modifier_is_a_hold_key_on_its_own(string value, int expectedVirtualKey, string expectedDisplayName)
+    {
+        var gesture = HotkeyGestureParser.Parse(value);
+
+        Assert.Equal(expectedVirtualKey, gesture.VirtualKey);
+        Assert.Equal(HotkeyModifiers.None, gesture.Modifiers);
+        Assert.Equal(expectedDisplayName, gesture.DisplayName);
+        Assert.True(HotkeyGestureParser.IsModifierOnly(gesture));
+        // The saved display name parses back to the same gesture.
+        Assert.Equal(gesture, HotkeyGestureParser.Parse(gesture.DisplayName));
+    }
+
+    [Theory]
+    [InlineData("Ctrl+Right Alt")]
+    [InlineData("Right Ctrl+C")]
+    [InlineData("Right Ctrl+Right Shift")]
+    public void A_right_side_modifier_is_refused_in_a_combination(string value)
+    {
+        Assert.Throws<InvalidOperationException>(() => HotkeyGestureParser.Parse(value));
+    }
+
+    [Fact]
+    public void Ordinary_shortcuts_are_not_modifier_only()
+    {
+        Assert.False(HotkeyGestureParser.IsModifierOnly(HotkeyGestureParser.Parse("F8")));
+        Assert.False(HotkeyGestureParser.IsModifierOnly(HotkeyGestureParser.Parse("Ctrl+Shift+Space")));
+        Assert.True(HotkeyGestureParser.IsRightAlt(HotkeyGestureParser.Parse("Right Alt")));
+        Assert.False(HotkeyGestureParser.IsRightAlt(HotkeyGestureParser.Parse("Right Ctrl")));
+    }
 }

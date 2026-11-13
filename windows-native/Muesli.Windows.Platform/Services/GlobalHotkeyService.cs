@@ -23,6 +23,10 @@ public sealed class GlobalHotkeyService : IDisposable
     private HotkeyGesture _gesture = HotkeyGestureParser.Parse("F8");
     private bool _isDown;
     private bool _escapeDown;
+    // Lone right-side modifier mode: whether the key is physically held, and whether another key
+    // was pressed during this hold (a combination such as Right Ctrl+C, not dictation).
+    private bool _modifierHeld;
+    private bool _modifierCombined;
     private Action? _onDown;
     private Action? _onUp;
     private Func<bool>? _canCancel;
@@ -78,6 +82,8 @@ public sealed class GlobalHotkeyService : IDisposable
 
         _isDown = false;
         _escapeDown = false;
+        _modifierHeld = false;
+        _modifierCombined = false;
         _hookProc = null;
     }
 
@@ -137,6 +143,14 @@ public sealed class GlobalHotkeyService : IDisposable
                 return (IntPtr)1;
             }
 
+            if (HotkeyGestureParser.IsModifierOnly(_gesture))
+            {
+                var flags = Marshal.ReadInt32(lParam, 8);
+                HandleModifierOnly(virtualKey, isKeyDownMessage, isKeyUpMessage, injected: (flags & LlkhfInjected) != 0);
+                // Never swallowed: Right Ctrl must still work as Ctrl for every other shortcut.
+                return CallNextHookEx(_hookId, nCode, wParam, lParam);
+            }
+
             if (isKeyDownMessage && HotkeyGestureParser.Matches(_gesture, virtualKey, ModifierKeysFromState()))
             {
                 if (!_isDown)
@@ -168,6 +182,126 @@ public sealed class GlobalHotkeyService : IDisposable
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
     }
+
+    private const int LlkhfInjected = 0x10;
+    private const ushort MenuMaskKey = 0xE8; // unassigned virtual key, as AutoHotkey's #MenuMaskKey
+
+    /// <summary>
+    /// A lone right-side modifier as hold-to-talk. The key starts the hold only when no other
+    /// modifier is down; any other key during the hold makes it a combination, which ends the hold
+    /// through the same path as a normal shortcut. Events pass through untouched, so the modifier
+    /// keeps working as a modifier. Injected events (including our own mask key) are ignored.
+    /// </summary>
+    private void HandleModifierOnly(int virtualKey, bool isKeyDown, bool isKeyUp, bool injected)
+    {
+        if (injected) return;
+        var gestureKey = _gesture.VirtualKey;
+        if (isKeyDown)
+        {
+            if (virtualKey == gestureKey)
+            {
+                // Key repeat arrives as more key-downs while held; only the first one starts the hold.
+                if (!_modifierHeld)
+                {
+                    _modifierHeld = true;
+                    _modifierCombined = !NoOtherModifiersHeld(gestureKey);
+                    if (!_modifierCombined && !_isDown)
+                    {
+                        _isDown = true;
+                        _onDown?.Invoke();
+                    }
+                }
+
+                return;
+            }
+
+            if (_modifierHeld && !_modifierCombined)
+            {
+                _modifierCombined = true;
+                if (_isDown)
+                {
+                    _isDown = false;
+                    _onOtherKey?.Invoke();
+                }
+            }
+
+            return;
+        }
+
+        if (isKeyUp && virtualKey == gestureKey)
+        {
+            _modifierHeld = false;
+            _modifierCombined = false;
+            if (!_isDown) return;
+            _isDown = false;
+            // Releasing Alt or Win on its own focuses the menu bar or opens Start. A masking key
+            // between press and release tells Windows the key was used, so neither happens.
+            if (gestureKey is 0xA5 or 0x5C) SendMaskKey();
+            _onUp?.Invoke();
+        }
+    }
+
+    private static bool NoOtherModifiersHeld(int gestureKey)
+    {
+        foreach (var key in new[] { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C })
+        {
+            if (key == gestureKey) continue;
+            // AltGr layouts report Right Alt as Left Ctrl + Right Alt; that Ctrl belongs to the key.
+            if (gestureKey == 0xA5 && key == 0xA2) continue;
+            if (IsKeyDown(key)) return false;
+        }
+
+        return true;
+    }
+
+    private static void SendMaskKey()
+    {
+        var inputs = new[]
+        {
+            new Input { Type = 1, Union = new InputUnion { Keyboard = new KeyboardInput { VirtualKey = MenuMaskKey } } },
+            new Input { Type = 1, Union = new InputUnion { Keyboard = new KeyboardInput { VirtualKey = MenuMaskKey, Flags = 0x0002 } } }
+        };
+        _ = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Input
+    {
+        public uint Type;
+        public InputUnion Union;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputUnion
+    {
+        [FieldOffset(0)] public KeyboardInput Keyboard;
+        [FieldOffset(0)] public MouseInput Mouse;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardInput
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    // Present only so the union has the size Windows expects for INPUT.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int X;
+        public int Y;
+        public uint Data;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint count, Input[] inputs, int size);
 
     private static HotkeyModifiers ModifierKeysFromState()
     {
