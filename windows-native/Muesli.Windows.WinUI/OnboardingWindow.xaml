@@ -347,10 +347,12 @@
 
                 <!--
                     Shortcut: the macOS key cap (24 semibold in a raised 10-radius frame), a "Change
-                    Shortcut" control, and the supported keys. Choosing a key checks it at once.
+                    Shortcut" control that listens for the next key, and the supported keys. The
+                    recorded key is checked at once.
                 -->
                 <StackPanel Spacing="20" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowHotkey), Mode=OneWay}">
                     <Border
+                        x:Name="ShortcutKeyCap"
                         HorizontalAlignment="Center"
                         Background="{ThemeResource MuesliBackgroundRaisedBrush}"
                         BorderBrush="{ThemeResource MuesliBorderBrush}"
@@ -365,13 +367,10 @@
                         HorizontalAlignment="Center"
                         Style="{StaticResource MuesliSecondaryButtonStyle}"
                         Padding="16,8"
-                        Content="Change Shortcut"
+                        Command="{x:Bind ViewModel.ToggleHotkeyRecordingCommand}"
+                        Content="{x:Bind ViewModel.ChangeShortcutLabel, Mode=OneWay}"
                         AutomationProperties.AutomationId="OnboardingHotkey"
-                        AutomationProperties.Name="Change dictation shortcut">
-                        <Button.Flyout>
-                            <MenuFlyout x:Name="ShortcutFlyout" Placement="Bottom" Opening="ShortcutFlyout_Opening" />
-                        </Button.Flyout>
-                    </Button>
+                        AutomationProperties.Name="{x:Bind ViewModel.ChangeShortcutLabel, Mode=OneWay}" />
                     <TextBlock Text="{x:Bind ViewModel.SupportedHotkeysLabel}" Style="{StaticResource MuesliCaptionStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextAlignment="Center" HorizontalAlignment="Center" MaxWidth="420" />
                     <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.HotkeyReady), Mode=OneWay}">
                         <FontIcon Glyph="&#xEC61;" FontSize="14" Foreground="{ThemeResource MuesliSuccessBrush}" />
@@ -390,25 +389,12 @@
                 </StackPanel>
 
                 <!--
-                    Test: the macOS dictation test. A hint, the record action, a result box (max 400,
-                    raised, radius 10; green border once a result arrives), and the success line.
+                    Test: the macOS dictation test, run with the real shortcut. A hint, a result box
+                    (max 400, raised, radius 10; green border once a result arrives), the
+                    hold/listening prompt, and the success line.
                 -->
                 <StackPanel Spacing="16" HorizontalAlignment="Center" Width="400" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowPipeline), Mode=OneWay}">
                     <TextBlock Text="Try saying: “testing this one out”" FontFamily="{StaticResource MuesliFontFamilyMedium}" FontSize="13" FontWeight="Medium" Foreground="{ThemeResource MuesliAccentTextBrush}" HorizontalAlignment="Center" />
-                    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
-                        <Button
-                            Style="{StaticResource OnboardingHeroButtonStyle}"
-                            Command="{x:Bind ViewModel.RunPipelineTestCommand}"
-                            Content="{x:Bind ViewModel.PipelineActionLabel, Mode=OneWay}"
-                            AutomationProperties.AutomationId="OnboardingPipelineTest"
-                            AutomationProperties.Name="{x:Bind ViewModel.PipelineActionLabel, Mode=OneWay}" />
-                        <ProgressRing
-                            Width="20"
-                            Height="20"
-                            IsActive="{x:Bind ViewModel.IsPipelineRunning, Mode=OneWay}"
-                            Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsPipelineRunning), Mode=OneWay}"
-                            AutomationProperties.Name="Recording dictation test" />
-                    </StackPanel>
                     <Grid MinHeight="60" AutomationProperties.AutomationId="OnboardingTestResult" AutomationProperties.Name="Dictation test result">
                         <Border Background="{ThemeResource MuesliBackgroundRaisedBrush}" BorderBrush="{ThemeResource MuesliBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
                             <Grid>
@@ -418,6 +404,15 @@
                         </Border>
                         <Border BorderBrush="{ThemeResource MuesliSuccessBrush}" BorderThickness="1" CornerRadius="10" Opacity="0.5" IsHitTestVisible="False" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.HasPipelineTranscript), Mode=OneWay}" />
                     </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" AutomationProperties.AutomationId="OnboardingPipelineTest">
+                        <ProgressRing
+                            Width="16"
+                            Height="16"
+                            IsActive="{x:Bind ViewModel.IsPipelineRunning, Mode=OneWay}"
+                            Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsPipelineRunning), Mode=OneWay}" />
+                        <FontIcon Glyph="&#xE765;" FontSize="14" Foreground="{ThemeResource MuesliTextTertiaryBrush}" Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.IsPipelineRunning), Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind ViewModel.PipelineHint, Mode=OneWay}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.PipelineReady), Mode=OneWay}">
                         <FontIcon Glyph="&#xEC61;" FontSize="14" Foreground="{ThemeResource MuesliSuccessBrush}" />
                         <TextBlock Text="Dictation is working!" Foreground="{ThemeResource MuesliSuccessTextBrush}" />

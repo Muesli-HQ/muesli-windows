@@ -93,12 +93,6 @@ public sealed partial class OnboardingModelRoleItem : ObservableObject
 
 public partial class OnboardingViewModel : ObservableObject, IDisposable
 {
-    private static readonly string[] HotkeyPresets =
-    [
-        "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-        "Ctrl+Shift+Space", "Ctrl+Alt+Space", "Ctrl+Shift+D", "Ctrl+Alt+D"
-    ];
-
     private static readonly string[] IndicatorPositions =
     [
         "Top Left", "Top Center", "Top Right",
@@ -120,7 +114,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private bool _disposed;
     private (string Id, bool Live)? _activeModelOperation;
     private int _modelRolesRefreshQueued;
-    private CancellationTokenSource? _pipelineCancellation;
+    private volatile bool _testArmed;
 
     public OnboardingViewModel(
         WinUiSettingsContext settings,
@@ -158,7 +152,6 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             .Select(model => new OnboardingModelChoice(model, isRecommended: false))
             .ToList();
         LiveModels = [OnboardingLiveChoice.Off, .. StreamingModelCatalog.Models.Select(model => new OnboardingLiveChoice(model.Id, model.PickerLabel))];
-        Hotkeys = EnsureHotkeyPreset(_draft.Hotkey);
         SummaryProviders = SummaryProviderDisclosure.Available;
         IndicatorPositionChoices = IndicatorPositions;
 
@@ -170,6 +163,14 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             id => OfflineReady(id, startupSnapshots),
             id => LiveReady(id));
         _ = RefreshStartupAvailabilityAsync();
+        // macOS defers the hotkey monitor until setup ends, except for the dictation test: while
+        // this window is open the shortcut never dictates or pastes, and only the test step records.
+        _dictation.RouteHotkeyToTest(new DictationTestRoute(
+            ProbeMicrophoneName,
+            () => _testArmed && !IsRecordingHotkey,
+            OnTestListening,
+            OnTestCaptured,
+            OnTestFailed));
         Render();
     }
 
@@ -188,7 +189,6 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial TranscriptionModelDefinition? SelectedMeetingModel { get; set; }
     [ObservableProperty] public partial IReadOnlyList<OnboardingLiveChoice> LiveModels { get; private set; } = [];
     [ObservableProperty] public partial OnboardingLiveChoice SelectedLiveModel { get; set; } = OnboardingLiveChoice.Off;
-    [ObservableProperty] public partial IReadOnlyList<string> Hotkeys { get; private set; } = [];
     [ObservableProperty] public partial string SelectedHotkey { get; set; } = "F8";
     [ObservableProperty] public partial IReadOnlyList<SummaryProviderInfo> SummaryProviders { get; private set; } = [];
     [ObservableProperty] public partial SummaryProviderInfo? SelectedSummaryProvider { get; set; }
@@ -223,7 +223,42 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     public IReadOnlyList<OnboardingModelChoice> RecommendedModelChoices => [RecommendedModelChoice];
 
     /// <summary>macOS lists the supported keys under the key cap.</summary>
-    public string SupportedHotkeysLabel => "Supported: " + string.Join(", ", Hotkeys);
+    public string SupportedHotkeysLabel =>
+        "Supported: Right Ctrl, Right Alt, Right Shift, Right Win, F1–F24, or Ctrl, Alt, Shift or Win + a key";
+
+    /// <summary>macOS "Change Shortcut" turns into a listening control until a key is pressed.</summary>
+    [ObservableProperty] public partial bool IsRecordingHotkey { get; private set; }
+    public string ChangeShortcutLabel => IsRecordingHotkey ? "Press a key…" : "Change Shortcut";
+
+    partial void OnIsRecordingHotkeyChanged(bool value) => OnPropertyChanged(nameof(ChangeShortcutLabel));
+
+    [RelayCommand]
+    private void ToggleHotkeyRecording()
+    {
+        IsRecordingHotkey = !IsRecordingHotkey;
+        if (IsRecordingHotkey) ApplyStatus("");
+    }
+
+    public void CancelHotkeyRecording() => IsRecordingHotkey = false;
+
+    /// <summary>A key the recorder captured becomes the shortcut and is checked straight away.</summary>
+    public void ApplyRecordedHotkey(string gesture)
+    {
+        IsRecordingHotkey = false;
+        try
+        {
+            SelectedHotkey = HotkeyGestureParser.Parse(gesture).DisplayName;
+        }
+        catch (Exception exception)
+        {
+            ApplyStatus(exception.Message, isError: true);
+            return;
+        }
+        CheckHotkey();
+    }
+
+    /// <summary>The dictation test's prompt under the result box, as macOS words it.</summary>
+    [ObservableProperty] public partial string PipelineHint { get; private set; } = "";
     public IReadOnlyList<OnboardingModelChoice> OtherModelChoices { get; }
     [ObservableProperty] public partial bool ShowOtherModels { get; set; }
     public string OtherModelsGlyph => ShowOtherModels ? "\uE70E" : "\uE70D";
@@ -236,7 +271,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     /// macOS primary button wording: "Download &amp; Continue" on the model step while the chosen model
     /// still needs downloading (the download keeps going on later steps), otherwise "Continue".
     /// </summary>
-    public string NextLabel => Step == 2 && !SelectedModelReady ? "Download & Continue" : "Continue";
+    public string NextLabel => Step == OnboardingSteps.Model && !SelectedModelReady ? "Download & Continue" : "Continue";
 
     private bool SelectedModelReady =>
         _modelRoles.Where(role => !role.IsLive).All(role => role.IsReady || role.IsBusy);
@@ -268,13 +303,13 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(NextLabel));
     }
-    public bool ShowName => Step == 0;
-    public bool ShowMicrophone => Step == 1;
-    public bool ShowModels => Step == 2;
-    public bool ShowHotkey => Step == 3;
-    public bool ShowPipeline => Step == 4;
-    public bool ShowOptional => Step == 5;
-    public bool ShowReady => Step == 6;
+    public bool ShowName => Step == OnboardingSteps.Welcome;
+    public bool ShowModels => Step == OnboardingSteps.Model;
+    public bool ShowHotkey => Step == OnboardingSteps.Shortcut;
+    public bool ShowMicrophone => Step == OnboardingSteps.Microphone;
+    public bool ShowPipeline => Step == OnboardingSteps.Test;
+    public bool ShowOptional => Step == OnboardingSteps.Summaries;
+    public bool ShowReady => Step == OnboardingSteps.Ready;
     public bool MicrophoneReady => _progress.MicrophoneVerified;
     public bool ModelsReady => _progress.ModelsVerified;
     public bool HotkeyReady => _progress.HotkeyVerified;
@@ -283,7 +318,6 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     public string ModelsGateLabel => _progress.ModelsVerified ? "ready" : "needs preparation";
     public string HotkeyGateLabel => _progress.HotkeyVerified ? "ready" : "needs check";
     public string PipelineGateLabel => _progress.PipelineVerified ? "passed" : "needs successful transcript";
-    public string PipelineActionLabel => IsPipelineRunning ? "Cancel dictation test" : "Record 3-second dictation test";
 
     /// <summary>
     /// P8-05: the live-dictation card used to open by repeating the step subtitle verbatim. These
@@ -316,7 +350,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     {
         if (_progress.Step >= OnboardingProgress.LastStep) return;
         PersistDraft();
-        if (_progress.Step == 2 && _activeModelOperation is null &&
+        if (_progress.Step == OnboardingSteps.Model && _activeModelOperation is null &&
             _modelRoles.FirstOrDefault(role => !role.IsLive && role.CanPrepare && !role.IsReady) is { } pending)
         {
             // Download & Continue: the app-scoped download keeps going on the next steps; the
@@ -473,11 +507,12 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             {
                 HotkeyVerified = usable,
                 VerifiedHotkey = usable ? parsed.DisplayName : "",
-                LastStatus = usable
-                    ? advisoryAvailable
-                        ? $"Shortcut {parsed.DisplayName} passed the dictation-hook test; the advisory probe also found no common conflict."
-                        : $"Shortcut {parsed.DisplayName} passed the dictation-hook test. Windows advisory registration was unavailable, but did not veto the real hook."
-                    : "Windows reports this shortcut is currently in use. Choose another preset and retry."
+                // "Shortcut ready" under the key cap says it worked; only Right Alt needs a word.
+                LastStatus = !usable
+                    ? "Windows reports this shortcut is currently in use. Choose another key."
+                    : HotkeyGestureParser.IsRightAlt(parsed)
+                        ? ShortcutsPageViewModel.AltGrNote.Trim()
+                        : advisoryAvailable ? "" : "Windows could not confirm this shortcut is free, but muesli's own listener accepted it."
             };
             ApplyStatus(_progress.LastStatus, isError: !usable);
         }
@@ -490,73 +525,60 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         NotifyReadyBindings();
     }
 
-    [RelayCommand]
-    private async Task RunPipelineTestAsync()
+    /// <summary>The shortcut went down on the test step: the microphone is open.</summary>
+    private void OnTestListening()
     {
-        if (IsPipelineRunning)
-        {
-            _pipelineCancellation?.Cancel();
-            ApplyStatus("Cancelling the local setup test…");
-            return;
-        }
-
-        if (_dictation.IsRecording || _dictation.IsBusy)
-        {
-            ApplyStatus("Dictation is already active. Finish or cancel it before running the setup test.", isError: true);
-            return;
-        }
-
-        var dictationId = SelectedDictationModel?.Id ?? _draft.DictationModelId;
-        var snapshot = _models.Snapshots().FirstOrDefault(item => item.Model.Id.Equals(dictationId, StringComparison.OrdinalIgnoreCase));
-        if (snapshot is null || snapshot.Status is not (TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected))
-        {
-            ApplyStatus($"{SelectedDictationModel?.DisplayName ?? dictationId} must be prepared before this test.", isError: true);
-            return;
-        }
-
-        PersistDraft();
-        _pipelineCancellation = new CancellationTokenSource();
-        var token = _pipelineCancellation.Token;
         IsPipelineRunning = true;
-        IsBusy = true;
-        OnPropertyChanged(nameof(PipelineActionLabel));
-        ApplyStatus("Recording a local setup test…");
-        try
+        ApplyStatus("");
+        RefreshPipelineHint();
+    }
+
+    /// <summary>The shortcut came up and the test was transcribed; nothing was saved or pasted.</summary>
+    private void OnTestCaptured(string text)
+    {
+        var passed = !string.IsNullOrWhiteSpace(text);
+        IsPipelineRunning = false;
+        _progress = _progress with
         {
-            await _dictation.StartAuxiliaryAsync(ProbeMicrophoneName());
-            await Task.Delay(TimeSpan.FromSeconds(3), token);
-            var text = await _dictation.StopWithoutPersistingAsync(token);
-            var passed = !string.IsNullOrWhiteSpace(text);
-            _progress = _progress with
+            PipelineVerified = passed || _progress.PipelineVerified,
+            LastStatus = passed ? "" : "No speech detected. Hold the shortcut and try again."
+        };
+        PersistProgress();
+        if (passed) PipelineTranscript = text.Trim();
+        ApplyStatus(_progress.LastStatus, isError: !passed);
+        RefreshPipelineHint();
+        NotifyReadyBindings();
+    }
+
+    private void OnTestFailed(string message)
+    {
+        IsPipelineRunning = false;
+        ApplyStatus(message, isError: true);
+        RefreshPipelineHint();
+    }
+
+    private void RefreshPipelineHint() =>
+        PipelineHint = IsPipelineRunning
+            ? $"Listening… release {SelectedHotkey} when done"
+            : $"Hold {SelectedHotkey} to start";
+
+    /// <summary>
+    /// Arms the shortcut for the test while its step is showing. Registering here also covers a
+    /// shortcut chosen before the hook was installed, and one changed on a Back trip.
+    /// </summary>
+    private void UpdateTestArming()
+    {
+        var armed = Step == OnboardingSteps.Test && !_disposed;
+        if (armed && !_testArmed)
+        {
+            _dictation.RegisterHotkey();
+            if (!_dictation.IsHotkeyRegistered)
             {
-                PipelineVerified = passed,
-                LastStatus = passed ? "Pipeline test passed" : "Pipeline test needs another attempt"
-            };
-            PersistProgress();
-            PipelineTranscript = passed ? text!.Trim() : "";
-            ApplyStatus(passed ? "" : "No speech detected. Try again.", isError: !passed);
+                ApplyStatus($"{SelectedHotkey} is not listening: {_dictation.Status}. Go back and choose another key.", isError: true);
+            }
         }
-        catch (OperationCanceledException)
-        {
-            if (_dictation.IsRecording) await _dictation.CancelAsync();
-            _progress = _progress with { PipelineVerified = false, LastStatus = "Pipeline test cancelled. Record another non-retained test when ready." };
-            PersistProgress();
-            ApplyStatus(_progress.LastStatus);
-        }
-        catch (Exception exception)
-        {
-            if (_dictation.IsRecording) await _dictation.CancelAsync();
-            ApplyStatus(exception.Message, isError: true);
-        }
-        finally
-        {
-            _pipelineCancellation?.Dispose();
-            _pipelineCancellation = null;
-            IsPipelineRunning = false;
-            IsBusy = false;
-            OnPropertyChanged(nameof(PipelineActionLabel));
-            NotifyReadyBindings();
-        }
+        _testArmed = armed;
+        RefreshPipelineHint();
     }
 
     [RelayCommand]
@@ -639,7 +661,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
 
     public void NotifyActivated()
     {
-        if (Step == 1)
+        if (Step == OnboardingSteps.Microphone)
         {
             ApplyStatus("Microphone permissions may have changed; run the non-retained capture test to refresh this gate.");
         }
@@ -655,7 +677,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         _models.ModelChanged -= OnOfflineModelChanged;
         _liveLifecycle.ModelChanged -= OnLiveModelChanged;
         _liveLifecycle.Dispose();
-        _pipelineCancellation?.Dispose();
+        _testArmed = false;
+        _dictation.RouteHotkeyToTest(null);
     }
 
     partial void OnSelectedMicrophoneChanged(string? value)
@@ -808,7 +831,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowStartupNotice));
         RefreshModelChoiceSelection();
         OnPropertyChanged(nameof(ProgressValue));
-        OnPropertyChanged(nameof(PipelineActionLabel));
+        UpdateTestArming();
         OnPropertyChanged(nameof(SummaryDisclosure));
         NotifyReadyBindings();
     }
@@ -1134,18 +1157,6 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         return name;
     }
 
-    private IReadOnlyList<string> EnsureHotkeyPreset(string hotkey)
-    {
-        var list = HotkeyPresets.ToList();
-        if (!string.IsNullOrWhiteSpace(hotkey) &&
-            !list.Any(option => option.Equals(hotkey, StringComparison.OrdinalIgnoreCase)))
-        {
-            list.Add(hotkey);
-        }
-
-        return list;
-    }
-
     /// <summary>
     /// Stops work owned by setup when the user moves on. Dictation and meeting model downloads run in
     /// the app-scoped lifecycle and keep going (macOS "Download &amp; Continue"): the sidebar shows
@@ -1162,7 +1173,8 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
 
         if (IsPipelineRunning)
         {
-            _pipelineCancellation?.Cancel();
+            _ = _dictation.CancelAsync();
+            IsPipelineRunning = false;
         }
     }
 

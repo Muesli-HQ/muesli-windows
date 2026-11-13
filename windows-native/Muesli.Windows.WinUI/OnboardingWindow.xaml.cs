@@ -3,7 +3,9 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Input;
 using Muesli.Windows.Services;
+using Muesli.Windows.WinUI.Services;
 using Muesli.Windows.WinUI.ViewModels;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
@@ -45,6 +47,7 @@ public sealed partial class OnboardingWindow : Window
     private double _effectiveHeightDip = DefaultHeightDip;
     private uint _lastDpi;
     private bool _resizingForDpi;
+    private readonly HotkeyRecorder _hotkeyRecorder = new();
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hWnd);
@@ -68,15 +71,21 @@ public sealed partial class OnboardingWindow : Window
         };
         ViewModel.PropertyChanged += (_, args) =>
         {
-
             if (args.PropertyName == nameof(ViewModel.Step))
             {
                 // A retained offset would open the next step mid-card with no cue that anything sits
                 // above, the same reason Prompt 5 reset the Settings scroller on tab change.
                 ContentScroller.ChangeView(null, 0, null, true);
                 UpdateScrollAffordance();
+                ViewModel.CancelHotkeyRecording();
+            }
+            else if (args.PropertyName == nameof(ViewModel.IsRecordingHotkey))
+            {
+                ApplyRecordingChrome();
             }
         };
+        RootGrid.PreviewKeyDown += RootGrid_PreviewKeyDown;
+        RootGrid.PreviewKeyUp += RootGrid_PreviewKeyUp;
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _lastDpi = GetDpiForWindow(_hwnd);
@@ -135,25 +144,36 @@ public sealed partial class OnboardingWindow : Window
         }
     }
 
-    /// <summary>"Change Shortcut": pick a supported key; it is checked straight away, as macOS records it.</summary>
-    private void ShortcutFlyout_Opening(object? sender, object e)
+    /// <summary>
+    /// "Change Shortcut" listens for the next key, as the macOS recorder does. Preview events run
+    /// before the focused button sees the key, so Space and Enter record instead of clicking it.
+    /// </summary>
+    private void RootGrid_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        ShortcutFlyout.Items.Clear();
-        foreach (var hotkey in ViewModel.Hotkeys)
+        if (!ViewModel.IsRecordingHotkey) return;
+        e.Handled = true;
+        if (e.Key == VirtualKey.Escape)
         {
-            var item = new RadioMenuFlyoutItem
-            {
-                Text = hotkey,
-                GroupName = "OnboardingShortcut",
-                IsChecked = string.Equals(hotkey, ViewModel.SelectedHotkey, StringComparison.OrdinalIgnoreCase)
-            };
-            item.Click += (_, _) =>
-            {
-                ViewModel.SelectedHotkey = hotkey;
-                if (ViewModel.CheckHotkeyCommand.CanExecute(null)) ViewModel.CheckHotkeyCommand.Execute(null);
-            };
-            ShortcutFlyout.Items.Add(item);
+            ViewModel.CancelHotkeyRecording();
+            return;
         }
+        if (_hotkeyRecorder.KeyDown(e) is { } gesture) ViewModel.ApplyRecordedHotkey(gesture);
+    }
+
+    private void RootGrid_PreviewKeyUp(object sender, KeyRoutedEventArgs e)
+    {
+        if (!ViewModel.IsRecordingHotkey) return;
+        e.Handled = true;
+        if (_hotkeyRecorder.KeyUp(e) is { } gesture) ViewModel.ApplyRecordedHotkey(gesture);
+    }
+
+    /// <summary>While listening, the key cap takes the accent tint (macOS .tinted).</summary>
+    private void ApplyRecordingChrome()
+    {
+        var recording = ViewModel.IsRecordingHotkey;
+        if (recording) _hotkeyRecorder.Reset();
+        ShortcutKeyCap.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[recording ? "MuesliAccentBrush" : "MuesliBorderBrush"];
+        ShortcutKeyCap.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[recording ? "MuesliAccentMutedBrush" : "MuesliBackgroundRaisedBrush"];
     }
 
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e) =>

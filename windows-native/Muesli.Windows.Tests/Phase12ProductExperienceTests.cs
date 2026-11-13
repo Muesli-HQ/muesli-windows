@@ -88,6 +88,37 @@ public sealed class Phase12ProductExperienceTests
         Assert.DoesNotContain("apiKey", json, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(0, OnboardingSteps.Welcome)]
+    [InlineData(1, OnboardingSteps.Microphone)]
+    [InlineData(2, OnboardingSteps.Model)]
+    [InlineData(3, OnboardingSteps.Shortcut)]
+    [InlineData(4, OnboardingSteps.Test)]
+    [InlineData(6, OnboardingSteps.Ready)]
+    public void Schema_1_progress_resumes_on_the_same_step_in_the_macOS_order(int savedStep, int expectedStep)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"muesli-phase12-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, "onboarding-progress.json");
+            File.WriteAllText(path, $$$"""{"schemaVersion":1,"data":{"schemaVersion":1,"step":{{{savedStep}}},"deferred":true}}""");
+            var store = new OnboardingProgressStore(path);
+
+            var loaded = store.Load();
+            Assert.Equal(expectedStep, loaded.Step);
+            Assert.Equal(OnboardingProgressStore.CurrentSchemaVersion, loaded.SchemaVersion);
+
+            // Saved again it is schema 2 and loads unchanged.
+            store.Save(loaded);
+            Assert.Equal(expectedStep, store.Load().Step);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public void Resume_progress_clamps_steps_and_never_carries_secret_fields()
     {

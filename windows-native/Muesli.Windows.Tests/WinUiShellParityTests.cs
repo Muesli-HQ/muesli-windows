@@ -22,6 +22,11 @@ public sealed class WinUiShellParityTests
         Assert.Equal(OnboardingProgress.LastStep, OnboardingStepCatalog.Steps[^1].Step);
         Assert.Equal("Welcome to muesli", OnboardingStepCatalog.Get(0).Title);
         Assert.Equal("You're all set", OnboardingStepCatalog.Get(99).Title);
+        // macOS OnboardingFlow.Step order: welcome, model, hotkey, permissions, test, summaries.
+        Assert.Equal(
+            ["Welcome to muesli", "Choose your transcription model", "Dictation Shortcut", "Microphone", "Test Dictation", "Meeting Summaries"],
+            OnboardingStepCatalog.Steps.Take(6).Select(step => step.Title));
+        Assert.All(OnboardingStepCatalog.Steps, step => Assert.Equal(step, OnboardingStepCatalog.Steps[step.Step]));
     }
 
     [Fact]
