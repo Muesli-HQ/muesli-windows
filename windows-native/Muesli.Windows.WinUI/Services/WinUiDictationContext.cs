@@ -322,7 +322,7 @@ public sealed class WinUiDictationContext : IDisposable
                 StopTimers();
                 Status = "Hands-free dictation active";
                 RaiseChanged();
-                await StartAsync(shouldPasteToActiveApp: true);
+                await StartAsync(shouldPasteToActiveApp: true, decodeDuringCapture: true);
                 if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
                 break;
 
@@ -357,7 +357,9 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
     }
 
-    private async Task StartAsync(bool shouldPasteToActiveApp)
+    // Push-to-talk is transcribed in one pass after release. Only hands-free, which has no bound
+    // on its length, decodes while capture is still running.
+    private async Task StartAsync(bool shouldPasteToActiveApp, bool decodeDuringCapture = false)
     {
         if (IsRecording || IsBusy)
         {
@@ -392,7 +394,10 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
         try
         {
-            await _coordinator.StartAsync(current.MicrophoneName ?? _coordinator.PickPreferredMicrophone());
+            await _coordinator.StartAsync(
+                current.MicrophoneName ?? _coordinator.PickPreferredMicrophone(),
+                DictationSessionKind.Interactive,
+                decodeDuringCapture);
         }
         catch (Exception exception)
         {

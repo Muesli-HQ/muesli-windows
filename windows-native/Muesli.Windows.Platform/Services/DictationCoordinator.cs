@@ -122,7 +122,15 @@ public sealed class DictationCoordinator : IDisposable
     public Task StartAsync(string? microphoneName) =>
         StartAsync(microphoneName, DictationSessionKind.Interactive);
 
-    public async Task StartAsync(string? microphoneName, DictationSessionKind sessionKind)
+    /// <param name="decodeDuringCapture">
+    /// Decode chunks while the microphone is still open. Off by default: a held dictation is
+    /// transcribed once, from the finished recording, as on macOS. Hands-free sessions opt in
+    /// because they can run for minutes and would otherwise decode it all after the stop.
+    /// </param>
+    public async Task StartAsync(
+        string? microphoneName,
+        DictationSessionKind sessionKind,
+        bool decodeDuringCapture = false)
     {
         _microphoneName = microphoneName;
         // The global hotkey outlives this coordinator during shutdown. Without this guard every
@@ -161,10 +169,13 @@ public sealed class DictationCoordinator : IDisposable
                     $"Dictation used Parakeet fallback for low memory. availableMiB={freeMemory / 1048576}; requested=cohere-transcribe-int8-en");
             }
 
-            // Chunks decode while the user speaks, so the boost covers capture as well as the tail.
+            // Held from capture start so the warm-up and any chunk decodes are boosted too.
             _performanceBoost ??= TranscriptionPerformance.Boost();
-            _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient);
-            _audioCaptureService.PcmSamplesAvailable += _rollingTranscriber.Feed;
+            if (decodeDuringCapture)
+            {
+                _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient);
+                _audioCaptureService.PcmSamplesAvailable += _rollingTranscriber.Feed;
+            }
             var preCaptureMs = startTimer.ElapsedMilliseconds;
             try
             {
