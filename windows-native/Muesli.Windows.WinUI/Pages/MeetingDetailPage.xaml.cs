@@ -22,6 +22,7 @@ public sealed partial class MeetingDetailPage : Page
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName is nameof(ViewModel.IsStatusError)
+                or nameof(ViewModel.IsStatusWarning)
                 or nameof(ViewModel.IsWorking)
                 or nameof(ViewModel.IsStatusOpen)
                 or null
@@ -134,7 +135,9 @@ public sealed partial class MeetingDetailPage : Page
             ? InfoBarSeverity.Informational
             : ViewModel.IsStatusError
                 ? InfoBarSeverity.Error
-                : InfoBarSeverity.Success;
+                : ViewModel.IsStatusWarning
+                    ? InfoBarSeverity.Warning
+                    : InfoBarSeverity.Success;
     }
 
     /// <summary>

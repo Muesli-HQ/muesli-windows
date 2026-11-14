@@ -61,6 +61,7 @@ public sealed class MeetingAutoStopTracker
 {
     private readonly MeetingRecordingStartOrigin _origin;
     private readonly string? _sourceKey;
+    private readonly string? _sourcePlatform;
     private readonly TimeSpan _gracePeriod;
     private readonly int _minimumMissingObservations;
     private bool _observedDuringRecording;
@@ -74,11 +75,13 @@ public sealed class MeetingAutoStopTracker
         MeetingRecordingStartOrigin origin,
         string? sourceKey,
         TimeSpan? gracePeriod = null,
-        int minimumMissingObservations = 3)
+        int minimumMissingObservations = 3,
+        string? sourcePlatform = null)
     {
         _origin = origin;
         _sourceKey = string.IsNullOrWhiteSpace(sourceKey) ? null : sourceKey;
-        _gracePeriod = gracePeriod ?? TimeSpan.FromSeconds(20);
+        _sourcePlatform = string.IsNullOrWhiteSpace(sourcePlatform) ? null : sourcePlatform;
+        _gracePeriod = gracePeriod ?? TimeSpan.FromSeconds(60);
         _minimumMissingObservations = Math.Max(1, minimumMissingObservations);
     }
 
@@ -88,14 +91,19 @@ public sealed class MeetingAutoStopTracker
     public void SuppressWarning() => _warningSuppressed = true;
     public void DismissWarning() => _dismissed = true;
 
-    public bool Observe(string? visibleSourceKey, DateTimeOffset now)
+    public bool Observe(string? visibleSourceKey, DateTimeOffset now, string? visiblePlatform = null)
     {
         if (!IsArmed)
         {
             return false;
         }
 
-        if (string.Equals(visibleSourceKey, _sourceKey, StringComparison.OrdinalIgnoreCase))
+        // A join link in a browser and the native meeting window have different keys even
+        // though they belong to the same live meeting. Detection only supplies a platform
+        // after it has independently confirmed meeting evidence for the current window.
+        if (string.Equals(visibleSourceKey, _sourceKey, StringComparison.OrdinalIgnoreCase) ||
+            (_sourcePlatform is not null && visiblePlatform is not null &&
+             string.Equals(visiblePlatform, _sourcePlatform, StringComparison.OrdinalIgnoreCase)))
         {
             _observedDuringRecording = true;
             _missingSince = null;

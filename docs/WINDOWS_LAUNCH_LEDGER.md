@@ -2,6 +2,18 @@
 
 Inventory date: 2026-09-23.
 
+## Current release-channel update (2026-10-14)
+
+Microsoft Store is now the selected release channel. [PR #43](https://github.com/Muesli-HQ/muesli-windows/pull/43)
+merged the reserved-identity WinUI MSIX build and Store CI; the submission package is
+unsigned because Microsoft signs it after certification. The build does not establish
+interactive Windows qualification, Windows App Certification Kit results, Store listing
+completion, or Store install/upgrade/uninstall evidence. See
+[`WINDOWS_STORE_RELEASE.md`](WINDOWS_STORE_RELEASE.md) for the current release path.
+The September merge notes and October 10 signed-sideload blocker review below are
+historical; their Store exclusion and purchased-certificate assumptions no longer
+govern the selected release channel.
+
 This is the **authoritative product-status source** for Windows Muesli. It replaces status claims in older phase plans, the 2026-08-01 parity matrix, and `ROADMAP.md`. The shipping shell is under `windows-native/Muesli.Windows.WinUI`; the retired WPF product shell was removed. Tests live under `windows-native/Muesli.Windows.Tests`. The macOS tree at `C:\Users\madha\Downloads\muesli-main\muesli-main` is the behavioral reference, not a library to port.
 
 ## Merge readiness update (2026-09-26)
@@ -10,7 +22,7 @@ The tracked Windows work is split into draft PRs [#23](https://github.com/Muesli
 
 If this ledger disagrees with any other document, this ledger wins.
 
-**Current blocker list (2026-10-10):** `LAUNCH_BLOCKERS_2026-10-10.md`. #38 and #39 are merged and the draft stack above is closed. That review fixed three product P0s (global Escape swallowed after the first dictation, meeting pill discarding without confirmation, microphone pre-warm before onboarding) and records the signed-installer blockers (S1–S13) and open product P1s.
+**Historical blocker review (2026-10-10):** `LAUNCH_BLOCKERS_2026-10-10.md`. #38 and #39 are merged and the draft stack above is closed. That review fixed three product P0s (global Escape swallowed after the first dictation, meeting pill discarding without confirmation, microphone pre-warm before onboarding). Several product findings were fixed in later commits, and its signed-sideload blockers predate the Store decision; recheck current code and [`WINDOWS_STORE_RELEASE.md`](WINDOWS_STORE_RELEASE.md) before treating an item as open.
 
 Operational model catalog (engines, hashes, roles): `WINDOWS_TRANSCRIPTION_MODELS.md`.
 Capability IDs and macOS file mapping: `WINDOWS_MACOS_PARITY_MATRIX.md` (statuses copied from here).
@@ -114,7 +126,6 @@ Do not implement these on the Windows launch path:
 | ID | Item | Reason |
 |---|---|---|
 | CAL-01 / API-02 | Google Calendar OAuth, EventKit, Outlook/MAPI | Excluded. Tray already states there is no calendar source. |
-| STORE-01 | Microsoft Store packaging | Excluded. |
 | SUM-03 | ChatGPT subscription OAuth | Excluded until a supported contract exists; UI must not fake it. Currently blocked in `SummaryProviderDisclosure`. |
 | SYNC-01 | CloudKit / iPhone / iCloud sync | CloudKit cannot be the Windows answer. Any other backend stays on Phase 11 + decision D3. |
 | SYNC-02 | Audio recording sync | Product never syncs audio. |
@@ -159,7 +170,7 @@ Remaining class: **None** (done at the stated status), **Implementation**, **Qua
 
 | ID | Capability | Status | Owner | Remaining |
 |---|---|---|---|---|
-| MTG-01 | Simultaneous You/Others capture, retained local audio | Implemented with verification debt | Phase 3 | Qualification: Zoom/Teams/Meet process-target vs endpoint-loopback |
+| MTG-01 | Simultaneous You/Others capture, retained local audio | Implemented with verification debt | Phase 3 | Qualification: Zoom/Teams/Meet process-target vs endpoint-loopback. Extended recordings that exceed the 32-bit RIFF size limit still need end-to-end chunked capture and final output; the older WPF branch segmented capture only. |
 | MTG-02 | Suspend/resume, cancel, shutdown, crash recovery | Implemented with verification debt | Phase 3 | Qualification: physical suspend, forced kill, disk-full |
 | MTG-03 | Edit title/transcript/notes; retranscribe or re-summarize | Implemented with verification debt | Phase 7 / 5 | L23 now wires transcript edit/cancel/save and candidate retranscription through meeting detail; L42 adds per-meeting retained-audio admission and deterministic concurrent candidate handling, and L46 prevents a recovered stale flight from restoring an older transcript over a newer accepted transcript. Focused L23/L27 flow is 1/1, L46 is 27/27 in Debug and Release, and the elevated UI suite is 6/6. Physical retained-audio quality and broader meeting qualification remain evidence debt |
 | LIVE-01 | Live meeting transcription and floating window | Implemented with verification debt | Phase 4 | Qualification: simultaneous meeting + UI soak |
@@ -186,7 +197,7 @@ Remaining class: **None** (done at the stated status), **Implementation**, **Qua
 | ID | Capability | Status | Owner | Remaining |
 |---|---|---|---|---|
 | SUM-01 | Local deterministic summary plus explicit OpenAI/OpenRouter | Implemented with verification debt | Phase 7 | Qualification: live keys, timeout, log redaction |
-| SUM-02 | Ollama and LM Studio/custom HTTP | Implemented with verification debt | Phase 7 | Ollama, LM Studio, and a documented custom OpenAI-compatible HTTP endpoint all run through one chat-completions contract with the same timeout, cancellation, invalid-response, disclosure, and redaction behavior. LM Studio needs no credential; the custom endpoint reads an optional bearer token from `MUESLI_CUSTOM_LLM_API_KEY` or Windows Credential Manager (`custom-llm-api-key`), never from `windows-settings.json`. `Phase7NotesTests` cover endpoint/path construction, keyless and bearer requests, missing-model/invalid-endpoint, HTTP/malformed/empty failures, and loopback-vs-remote disclosure. Opt-in live-provider runs and log-redaction review remain debt |
+| SUM-02 | Ollama and LM Studio/custom HTTP | Implemented with verification debt | Phase 7 | Ollama uses its local `/api/chat` contract; LM Studio and the custom endpoint use compatible chat completions. Local Ollama/LM Studio requests allow up to 20 minutes for model loading and long transcripts, while hosted and custom HTTP requests retain the 90-second limit. Caller cancellation, invalid-response fallback, disclosure, and redaction still apply. LM Studio needs no credential; the custom endpoint reads an optional bearer token from `MUESLI_CUSTOM_LLM_API_KEY` or Windows Credential Manager (`custom-llm-api-key`), never from `windows-settings.json`. `Phase7NotesTests` cover endpoint/path construction, keyless and bearer requests, missing-model/invalid-endpoint, HTTP/malformed/empty failures, and loopback-vs-remote disclosure. Opt-in live-provider runs and log-redaction review remain debt |
 | SUM-03 | ChatGPT subscription OAuth | Excluded | — | Excluded / remains D1 if product later reverses |
 | SUM-04 | Provider-based automatic titles with manual ownership | Implemented with verification debt | Phase 7 | Qualification: UI title ownership |
 | SEC-01 | Credential Manager keys; plaintext migration | Complete and verified | Phase 7 | None |
@@ -229,14 +240,14 @@ Remaining class: **None** (done at the stated status), **Implementation**, **Qua
 | SOUND-01 | Configurable feedback sounds | Implemented with verification debt | Phase 12 | Qualification: hear start/insert/model-ready cues on speaker, headphone, setup-test, and disabled-setting routes |
 | DIAG-01 | Redacted logs, runtime status, support bundle | Implemented with verification debt | Phase 13 | The WinUI About page now previews and exports a bounded, redacted support bundle through `SupportBundleService` (app/runtime versions, package identity, model roles, provider configuration without keys or endpoints, audio-device categories, runtime diagnostics, aggregated incident categories, and a byte-bounded log slice) with an explicit preview, save picker, and cancel. `SupportBundleTests` cover redaction, large-log bounding, locked-log tolerance, incident aggregation, and the no-network source contract. Human inspection of a real exported bundle and current UI automation remain evidence debt |
 | PRIV-01 | Local-first audio, explicit network, deletion/retention | Implemented with verification debt | Every module / 13 | Qualification: destructive deletion against prepared caches; privacy copy vs live Settings |
-| UPD-01 | Signed automatic updates | Implemented with verification debt | Phase 13 | App-side workflow exists: `SignedUpdateVerifier` fails closed unless a manifest verifies as RSA-SHA256-signed by the pinned publisher key, `SignedUpdateService` checks (downgrade and minimum-supported rejection, offline/cancel states) and downloads to a controlled staging directory with hash/size verification, and `UpdateRollbackJournal` recovers an interrupted install. `WindowsProductionUpdateInstaller` fails closed with `production-signing-not-configured` until the Authenticode certificate and signing environment exist (L05/D5), and About exposes honest check/status states. `UpdateWorkflowTests` cover fixture-crypto verification, tamper, downgrade, minimum-supported, offline, cancellation, tamper-download, rollback, and fail-closed install. Remaining: production signing and signed install/upgrade evidence |
-| SIGN-01 | Authenticode signed app and installer | Externally blocked | Phase 13 / D5 | Decision: production certificate |
-| PKG-01 | Self-contained x64 zip and Inno installer | Partial | Phase 13 | `a5414b3` exact-SDK rehearsal and package smoke pass; the recorded digest `ee86084002e96b9698f089994b9053232cd58a573fddb5eeb0e1f64600339edf` did not reproduce on the 2026-08-22 isolated re-run (`637a3433…`; see the baseline table), so cross-run digest stability is open as L48. Artifacts remain unsigned and upgrade/clean-VM gates remain open. Public package inventory and notices now record CPU-only; CUDA packaging is L11 |
-| TEST-01 | Automated success/failure/cancel/recovery coverage | Partial | Continuous | The active WinUI assembly now discovers **1080** tests and completes **1075 passed / 0 failed / 5 explicitly skipped** with each skip naming its real prerequisite (`MUESLI_MEDIA_FIXTURE_DIR` two, `MUESLI_MULTISPEAKER_FIXTURE_SOURCE`, `MUESLI_CLONED_PROFILE_DIR`, `MUESLI_STREAMING_QUALIFICATION_MODEL`). The streaming prerequisite test is restored via `Phase4LiveTranscriptionTests`, and the Phase 4/10/12 anchors plus the L41/L43/AUTO-01/EXP-01/HOOK-01 safety nets are re-ported to the active tree. L52 owns the remainder; the 2026-09-26 UI rerun is current (shell 13/14, full UI 17/24) but live OS detection, four-app paste, mic routes, Narrator/High Contrast/non-125%-DPI/multi-monitor, and other physical coverage remain incomplete |
+| UPD-01 | Updates | Implemented with verification debt | Phase 13 | The app-side signed-manifest check/download workflow exists, while automatic direct-download installation fails closed without an Authenticode signing identity. The selected Store channel uses Store-delivered updates; Store upgrade behavior still needs clean-machine qualification. |
+| SIGN-01 | Direct-download Authenticode signing | Excluded | Phase 13 | The selected Store channel uses Microsoft signing after certification; direct-download signing requires a separate release decision. |
+| PKG-01 | Self-contained x64 Store MSIX | Implemented with verification debt | Phase 13 | PR #43 added an unsigned, reserved-identity Store submission build with passing package CI. Interactive package behavior, Windows App Certification Kit, and Store install/upgrade/uninstall remain unverified. |
+| TEST-01 | Automated success/failure/cancel/recovery coverage | Partial | Continuous | The local .NET 10 x64 run on 2026-10-25 completed **1159 tests: 1128 passed / 0 failed / 31 skipped** with `MuesliRequireSwiftBridge=false`; the skipped cases have explicit prerequisites. The last cited physical UI rerun is from 2026-09-26 (shell 13/14, full UI 17/24). Live OS detection, four-app paste, mic routes, Narrator/High Contrast/non-125%-DPI/multi-monitor, and other physical coverage remain incomplete. |
 | QUAL-01 | Repeatable CPU/CUDA/hardware/package gates | Partial | Phase 13 | Current 5.56 s CPU Parakeet dictation and mic-only meeting pass at RTF 0.055 and 0.063. The optional CUDA pack is version/provenance verified and has real per-model evidence, but WER/CER, system-audio/diarization, broader hardware, current signed/installable package, clean two-checkout, and clean-VM gates remain open. The only retained active-app delivery trace is one 7,897 ms ChatGPT sample from 2026-09-09 |
-| STORE-01 | Microsoft Store | Excluded | — | Excluded |
+| STORE-01 | Microsoft Store submission | Implemented with verification debt | Phase 13 | Reserved identity and verified uploadable MSIX build merged in PR #43. Store listing, certification, and Store-delivered install/upgrade/uninstall remain open. |
 | ARM-01 | ARM64 | Excluded | — | Excluded |
-| API-04 | Sparkle/AppKit/codesign equivalents | Partial | Phase 13 | Windows tray, release-side signed-manifest verification, and an app-side check/verify/download/rollback workflow exist; automatic installation is fail-closed until the production Authenticode signing environment exists, and signing itself is externally blocked under L05/SIGN-01. |
+| API-04 | Sparkle/AppKit/codesign equivalents | Partial | Phase 13 | Windows tray and a signed-manifest check/verify/download workflow exist. Automatic direct-download installation remains disabled; Store update qualification is part of the selected release channel. |
 | OOS-01 | Python/Electron/web | Excluded | — | Excluded |
 | OOS-02 | Silent fallback / fake data | Excluded | — | Excluded |
 | OOS-03 | Literal macOS ports | Excluded | — | Excluded |
@@ -278,18 +289,18 @@ One WPF UI automation case, `MeetingDetailProductionTests.Sqlite_meeting_detail_
 
 ## Remaining implementation work
 
-Ordered by launch module. Calendar/OAuth, Store, ChatGPT OAuth, CloudKit, audio sync, ARM64, and macOS framework ports are omitted because they are excluded.
+Ordered by launch module. Calendar/OAuth, ChatGPT OAuth, CloudKit, audio sync, ARM64, and macOS framework ports are omitted because they are excluded.
 
 | Module | Work |
 |---|---|
 | Phase 1 | Guided Qwen cleanup catalog/download only after an approved GGUF (MOD-05). |
 | Phase 2 | AUD-03 stays decision-gated. |
 | Phase 8 | L29's 10k-history search paths are back within the <=300 ms automated budget; retain GUI/large-real-profile evidence. Nested folders and playback waveform are implemented and retain only named GUI/device/cloned-profile qualification debt (ORG-01, PLAY-01). |
-| Phase 9 | FOLLOW-01 only after a destination contract. AUTO-01 PDF stays release-gated on the QuestPDF eligibility decision (EXP-01). |
+| Phase 9 | FOLLOW-01 only after a destination contract. PDF export is approved and enabled unless `MUESLI_PDF_EXPORT_APPROVED=0`. |
 | Phase 10 | Observation masking if text/screenshots are ever enabled (CU-01 residual). |
 | Phase 11 | Nothing until D3. |
 | Phase 12 | Local analyzer exists and WinUI has local image sharing. Contribution stays D4-gated. L49 owns reliable activation and shipping-shell qualification. L50 null-bearing settings normalization and L51 targeted WinUI unhandled-exception containment are implemented; retain live fault/navigation verification debt. |
-| Phase 13 | Production certificate and signed install/upgrade evidence after D5 (SIGN-01/UPD-01/L06). Clean-VM upgrade/uninstall (PKG-01). |
+| Phase 13 | Store listing, Windows App Certification Kit, certification, and clean-VM Store install/upgrade/uninstall (STORE-01/PKG-01). Direct-download signing is outside the selected v1 channel. |
 
 ## Remaining qualification debt
 
@@ -318,7 +329,7 @@ This is not missing code. Do not treat it as implementation backlog.
 | D2 | CU-01 text/screenshots | Masking qualification. Planner contract is already in `COMPUTER_USE.md` |
 | D3 | SYNC-01 / Phase 11 | Approved non-CloudKit backend |
 | D4 | INSIGHT-01 contribution | Written privacy decision. Local-only insights can proceed without it |
-| D5 | SIGN-01, UPD-01, PKG-01 release | Production Authenticode certificate and signing environment |
+| D5 | UPD-01, PKG-01 release | Store certification and Microsoft-signed distribution; a production Authenticode certificate is needed only if direct download becomes a separate channel. |
 | D6 | Catalog changes | Already resolved for the seven offline + Nemotron live set. Re-open only to add/remove models |
 | AUD-03 | Media ducking | Pause vs duck vs none |
 

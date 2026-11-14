@@ -14,6 +14,11 @@ Status: offline roles implemented in Phase 1 and live role implemented in Phase 
 
 Selecting a role changes only the setting. It never downloads, verifies, initializes, or silently substitutes a model. Live downloads likewise never select or enable the model. An active meeting keeps its immutable model/ownership snapshot until it stops; native streams and VAD are then disposed.
 
+Starting a new meeting checks the selected final model before opening capture.
+If it is missing or unverified, detected-meeting Start opens Models with a
+warning; no recording is started under the promise of transcription. Preparing
+the model remains an explicit Models action.
+
 ## Supported offline catalog
 
 The runnable Windows catalog contains twelve sherpa-onnx offline choices aligned with the Windows-compatible portion of the current macOS catalog:
@@ -59,7 +64,16 @@ Provider and syntax details for diagnostics live in
 
 Each catalog row has independent Prepare, Cancel, Retry, Verify, Delete, installed disk size, status, and diagnostics actions. Status distinguishes Missing, Downloading, Verifying, Ready, Selected, Failed, Runtime unavailable, and Deletion failed.
 
-Preparation is explicit and network-backed. It runs outside the WPF dispatcher, uses a per-model in-process operation guard plus a cross-process file lock, removes abandoned download/staging artifacts, extracts into a unique staging directory, and moves the complete verified directory into place. Prepare all runs sequentially and never initializes a recognizer.
+Preparation is explicit and network-backed. It runs off the UI dispatcher, uses a per-model in-process operation guard plus a cross-process file lock, removes abandoned download/staging artifacts, extracts into a unique staging directory, and moves the complete verified directory into place. Prepare all runs sequentially and never initializes a recognizer.
+
+Parakeet v3 closes the archive's verification stream before moving the verified
+download into place; Windows otherwise rejects that move as a file-sharing
+violation. Its final transcription path sends recordings longer than 30 seconds
+to native inference in bounded chunks. It prefers a quiet boundary within the
+last four seconds of each chunk, then restores meeting-relative timestamps and
+unique segment IDs when merging results. Short dictations keep the single-call
+path. Native inference within one chunk remains uninterruptible; cancellation
+is checked between chunks.
 
 Every archive URL and archive SHA-256 is pinned in `TranscriptionModelCatalog`. Every ONNX/token/tokenizer file consumed by a recognizer also has a pinned SHA-256. A verification stamp may avoid re-hashing only while the pinned hash, file size, and last-write timestamp all still match. An interrupted or invalid cache is reverified or replaced; it is never treated as ready from filenames alone.
 

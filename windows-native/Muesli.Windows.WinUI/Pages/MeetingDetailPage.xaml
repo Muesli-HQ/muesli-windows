@@ -169,9 +169,21 @@
                             </Button>
                             <Button x:Name="ExportButton"
                                     Style="{StaticResource MeetingToolbarButtonStyle}"
-                                    Command="{x:Bind ViewModel.ExportMarkdownCommand}"
                                     AutomationProperties.Name="Export"
                                     AutomationProperties.AutomationId="MeetingExportButton">
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuFlyoutItem Text="Notes" Command="{x:Bind ViewModel.ExportNotesCommand}"
+                                                        AutomationProperties.Name="Export notes"
+                                                        AutomationProperties.AutomationId="MeetingExportNotesButton" />
+                                        <MenuFlyoutItem Text="Transcript" Command="{x:Bind ViewModel.ExportTranscriptCommand}"
+                                                        AutomationProperties.Name="Export transcript"
+                                                        AutomationProperties.AutomationId="MeetingExportTranscriptButton" />
+                                        <MenuFlyoutItem Text="Full meeting" Command="{x:Bind ViewModel.ExportFullMeetingCommand}"
+                                                        AutomationProperties.Name="Export full meeting"
+                                                        AutomationProperties.AutomationId="MeetingExportFullButton" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
                                 <StackPanel Orientation="Horizontal" Spacing="7">
                                     <FontIcon Glyph="&#xE74E;" FontSize="14" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
                                     <TextBlock Text="Export" />

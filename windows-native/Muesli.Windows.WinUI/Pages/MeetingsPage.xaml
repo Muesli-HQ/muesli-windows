@@ -252,8 +252,8 @@
                         </StackPanel>
                         <StackPanel x:Name="RecordingWorkspace" Grid.Row="2" Grid.ColumnSpan="2" Spacing="12"
                                     Visibility="{x:Bind local:MeetingsPage.NotToVisibility(ViewModel.IsImporting), Mode=OneWay}">
-                            <InfoBar IsOpen="{x:Bind ViewModel.IsSourceMissing, Mode=OneWay}" IsClosable="False" Severity="Warning"
-                                     Title="Meeting signal lost" Message="Recording continues. Stop if the meeting ended."
+                            <InfoBar IsOpen="{x:Bind ViewModel.IsSourceMissing, Mode=OneWay}" IsClosable="False" Severity="Informational"
+                                     Title="Still recording" Message="Stop and save when you're done."
                                      AutomationProperties.AutomationId="MeetingSignalLostNotice">
                                 <InfoBar.ActionButton>
                                     <Button Content="Keep recording" Command="{x:Bind ViewModel.KeepRecordingCommand}"

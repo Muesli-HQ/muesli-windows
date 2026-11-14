@@ -13,6 +13,13 @@ public static class MeetingSummaryService
         Timeout = TimeSpan.FromSeconds(90)
     };
 
+    // A local model may need to load several GB into GPU memory before it can process
+    // a long transcript. Keep a finite limit, but do not apply the cloud request limit.
+    private static readonly HttpClient LocalModelHttp = new()
+    {
+        Timeout = TimeSpan.FromMinutes(20)
+    };
+
     private static readonly string[] BuiltIns =
     [
         "Auto",
@@ -220,8 +227,8 @@ public static class MeetingSummaryService
             {
                 "openai" => await SummarizeWithOpenAIAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
                 "openrouter" => await SummarizeWithOpenRouterAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
-                "ollama" => await SummarizeWithOllamaAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
-                "lmstudio" => await SummarizeWithLmStudioAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
+                "ollama" => await SummarizeWithOllamaAsync(transcript, meetingTitle, settings, httpClient ?? LocalModelHttp, cancellationToken, manualNotes),
+                "lmstudio" => await SummarizeWithLmStudioAsync(transcript, meetingTitle, settings, httpClient ?? LocalModelHttp, cancellationToken, manualNotes),
                 "custom" => await SummarizeWithCustomLlmAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
                 _ => CreateLocalSummary(localInput, meetingTitle, settings)
             };

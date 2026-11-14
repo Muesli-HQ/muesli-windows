@@ -146,7 +146,8 @@ public sealed class MeetingBehaviorParityTests
     public void SignalLossWaitsForSpeechToQuietAndRespectsDismissal()
     {
         var now = DateTimeOffset.UnixEpoch;
-        var tracker = new MeetingAutoStopTracker(MeetingRecordingStartOrigin.DetectedMeeting, "room");
+        var tracker = new MeetingAutoStopTracker(MeetingRecordingStartOrigin.DetectedMeeting, "room",
+            gracePeriod: TimeSpan.FromSeconds(20));
         tracker.Observe("room", now);
         tracker.NoteTranscriptActivity(now);
         Assert.False(tracker.Observe(null, now.AddSeconds(1)));

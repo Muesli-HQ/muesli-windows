@@ -65,6 +65,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     public bool IsRecording => State is MeetingSessionState.Recording or MeetingSessionState.DegradedRecording;
     public bool IsBusy => State is MeetingSessionState.Preparing or MeetingSessionState.Stopping or MeetingSessionState.Finalizing;
     public PersistedMeeting? ResumedMeeting => _journal?.ResumedMeeting;
+    public MeetingEndSuggestionTracker EndSuggestions => _capture.EndSuggestions;
 
     public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverableSessions() =>
         _recovery.Discover(_journal?.SessionId);

@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Muesli.Windows.Services;
 
 public sealed record DictionaryExchangeDocument(
@@ -24,6 +26,10 @@ public sealed record DictionaryImportPreview(
 /// <summary>Versioned, lossless dictionary JSON exchange with validation before mutation.</summary>
 public sealed class DictionaryExchangeService
 {
+    private static readonly JsonSerializerOptions ImportJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
     private readonly AtomicJsonFile _json;
 
     public DictionaryExchangeService(Action<string>? report = null) => _json = new AtomicJsonFile(report);
@@ -45,20 +51,53 @@ public sealed class DictionaryExchangeService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(existing);
-        var loaded = _json.Load<DictionaryExchangeDocument?>(Path.GetFullPath(path), null);
-        if (loaded.Value is null)
+        DictionaryExchangeDocument? document = null;
+        IReadOnlyList<DictionaryEntryRecord>? legacyEntries = null;
+        try
         {
-            return new([], [], [], [loaded.Warning ?? "The dictionary file is empty or invalid JSON."]);
+            using var stream = File.OpenRead(Path.GetFullPath(path));
+            using var json = JsonDocument.Parse(stream);
+            var root = json.RootElement;
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                legacyEntries = ParseLegacyEntries(root);
+            }
+            else if (root.ValueKind == JsonValueKind.Object && TryGetProperty(root, "custom_words", out var words))
+            {
+                legacyEntries = ParseLegacyEntries(words);
+            }
+            else if (root.ValueKind == JsonValueKind.Object)
+            {
+                var payload = root;
+                if (TryGetProperty(root, "data", out var data))
+                {
+                    if (!TryGetProperty(root, "schemaVersion", out var schema) ||
+                        !schema.TryGetInt32(out var version) ||
+                        version != AtomicJsonFile.CurrentSchemaVersion)
+                    {
+                        return new([], [], [], ["The dictionary file has an unsupported envelope version."]);
+                    }
+                    payload = data;
+                }
+                document = payload.Deserialize<DictionaryExchangeDocument>(ImportJsonOptions);
+            }
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+        {
+            return new([], [], [], [$"The dictionary file has invalid content: {exception.Message}"]);
+        }
+        if (document is null && legacyEntries is null)
+        {
+            return new([], [], [], ["The dictionary file has an unsupported format."]);
         }
 
-        var document = loaded.Value;
         var errors = new List<string>();
-        if (document.Version != DictionaryExchangeDocument.CurrentVersion)
+        if (document is not null && document.Version != DictionaryExchangeDocument.CurrentVersion)
         {
             errors.Add($"Dictionary format version {document.Version} is not supported.");
         }
 
-        var incoming = document.Entries?.Select(Clone).ToList() ?? [];
+        var incoming = (document?.Entries ?? legacyEntries ?? []).Select(Clone).ToList();
         var duplicatePhrases = incoming
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Phrase))
             .GroupBy(entry => entry.Phrase.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -102,6 +141,48 @@ public sealed class DictionaryExchangeService
         }
 
         return new(incoming, additions, conflicts, errors);
+    }
+
+    private static IReadOnlyList<DictionaryEntryRecord> ParseLegacyEntries(JsonElement array)
+    {
+        if (array.ValueKind != JsonValueKind.Array)
+            throw new JsonException("custom_words must be an array.");
+        var entries = new List<DictionaryEntryRecord>();
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                throw new JsonException("Dictionary entries must be objects.");
+            var phrase = TryGetProperty(item, "word", out var word) ? word.GetString()?.Trim() ?? "" : "";
+            if (phrase.Length == 0) continue;
+            var replacement = TryGetProperty(item, "replacement", out var value)
+                ? value.GetString()?.Trim() ?? phrase : phrase;
+            var id = TryGetProperty(item, "id", out var key) ? key.GetString() : null;
+            var threshold = TryGetProperty(item, "matching_threshold", out var setting) ||
+                            TryGetProperty(item, "matchingThreshold", out setting)
+                ? setting.GetDouble() : .85;
+            entries.Add(new DictionaryEntryRecord
+            {
+                Id = string.IsNullOrWhiteSpace(id) ? $"dictentry_{Guid.NewGuid():N}" : id,
+                Phrase = phrase,
+                Replacement = replacement,
+                MatchingThreshold = Math.Clamp(threshold, .70, .95)
+            });
+        }
+        return entries;
+    }
+
+    private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+        value = default;
+        return false;
     }
 
     public static IReadOnlyList<DictionaryEntryRecord> Merge(

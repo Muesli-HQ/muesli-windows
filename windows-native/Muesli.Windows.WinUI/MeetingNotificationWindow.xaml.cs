@@ -338,13 +338,14 @@ public sealed partial class MeetingNotificationWindow : Window
     private void ApplyAccessibility()
     {
         AutomationProperties.SetAutomationId(Root, "MeetingNotificationWindow");
-        AutomationProperties.SetName(Root, $"Meeting detected. {_request.Title}. {_request.Subtitle}");
+        AutomationProperties.SetName(Root, $"{_request.Title}. {_request.Subtitle}");
         AutomationProperties.SetAutomationId(TitleText, "MeetingNotificationTitle");
         AutomationProperties.SetName(TitleText, _request.Title);
         AutomationProperties.SetAutomationId(SubtitleText, "MeetingNotificationSubtitle");
         AutomationProperties.SetName(SubtitleText, _request.Subtitle);
         AutomationProperties.SetAutomationId(CountdownBar, "MeetingNotificationCountdown");
         AutomationProperties.SetName(CountdownBar, "Time before this notification closes");
+        if (_request.IsEndSuggestion) CountdownBar.Visibility = Visibility.Collapsed;
         AutomationProperties.SetAutomationId(PlatformBadge, "MeetingNotificationPlatformBadge");
         AutomationProperties.SetName(PlatformBadge, $"Meeting platform: {_request.Platform}");
         AutomationProperties.SetAutomationId(SingleActionButton, "MeetingNotificationPrimaryAction");
@@ -353,8 +354,9 @@ public sealed partial class MeetingNotificationWindow : Window
         AutomationProperties.SetName(PrimaryJoinButton, _request.DefaultAction.Label());
         AutomationProperties.SetAutomationId(ChevronButton, "MeetingNotificationChevron");
         AutomationProperties.SetAutomationId(DismissButton, "MeetingNotificationDismiss");
-        AutomationProperties.SetName(DismissButton, "Dismiss");
-        ToolTipService.SetToolTip(DismissButton, "Dismiss");
+        var dismissLabel = _request.IsEndSuggestion ? "Keep recording" : "Dismiss";
+        AutomationProperties.SetName(DismissButton, dismissLabel);
+        ToolTipService.SetToolTip(DismissButton, dismissLabel);
     }
 
     private void ApplyHighContrastIfNeeded()

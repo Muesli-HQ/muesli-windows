@@ -3,6 +3,13 @@ namespace Muesli.Windows.Services;
 /// <summary>Builds notification requests from detection results and deterministic preview states.</summary>
 public static class MeetingNotificationRequestFactory
 {
+    public static MeetingNotificationRequest EndSuggestion(string meetingId, bool sourceMissing = false) => new(
+        $"meeting-end:{meetingId}",
+        sourceMissing ? MeetingNotificationKind.SignalLost : MeetingNotificationKind.EndingSuggested,
+        sourceMissing ? "Still recording" : "All done?",
+        sourceMissing ? "Meeting no longer detected." : "Recording is still on.",
+        "Meeting", "\uE7BA", "#3380FF", "M", "Stop & save", null, DismissAfterSeconds: 15);
+
     /// <summary>
     /// An already-joined, detected meeting is transcribe-only: it never opens the meeting URL.
     /// </summary>
@@ -73,6 +80,8 @@ public static class MeetingNotificationRequestFactory
 
         return normalized switch
         {
+            "ending" => new[] { EndSuggestion("preview") },
+            "signal-lost" => new[] { EndSuggestion("preview", sourceMissing: true) },
             "zoom" => new[] { zoom },
             "long-title" => new[] { longTitle },
             "no-platform" or "fallback" => new[] { fallback },

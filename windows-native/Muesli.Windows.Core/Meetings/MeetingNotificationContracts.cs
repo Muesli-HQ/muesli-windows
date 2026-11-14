@@ -10,7 +10,8 @@ public enum MeetingNotificationKind
 {
     ActiveDetected,
     ScheduledUpcoming,
-    SignalLost
+    SignalLost,
+    EndingSuggested
 }
 
 /// <summary>The three configurable scheduled-meeting actions, mirroring the macOS default action.</summary>
@@ -95,7 +96,8 @@ public enum MeetingNotificationOutcome
     SuppressedDuplicate,
     SuppressedBusy,
     SuppressedDisabled,
-    MeetingSignalLost
+    MeetingSignalLost,
+    MeetingEndingSuggested
 }
 
 /// <summary>Everything the notification window needs to render one prompt.</summary>
@@ -115,7 +117,8 @@ public sealed record MeetingNotificationRequest(
     nint WindowHandle = 0)
 {
     public bool IsScheduled => Kind == MeetingNotificationKind.ScheduledUpcoming;
-    public MeetingNotificationAction SingleAction => Kind == MeetingNotificationKind.SignalLost
+    public bool IsEndSuggestion => Kind is MeetingNotificationKind.SignalLost or MeetingNotificationKind.EndingSuggested;
+    public MeetingNotificationAction SingleAction => IsEndSuggestion
         ? MeetingNotificationAction.StopTranscribing : MeetingNotificationAction.StartTranscribing;
 
     public bool HasJoinActions =>

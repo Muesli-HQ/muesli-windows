@@ -105,13 +105,13 @@ public sealed class MeetingNotificationSuppressionState
         bool isRecording,
         bool isBusy)
     {
-        if (!detectionEnabled && request.Kind != MeetingNotificationKind.SignalLost)
+        if (!detectionEnabled && !request.IsEndSuggestion)
         {
             return MeetingNotificationDecision.Suppress(
                 MeetingNotificationOutcome.SuppressedDisabled, "meeting detection is disabled", request.PromptId);
         }
 
-        if (isRecording && request.Kind != MeetingNotificationKind.SignalLost)
+        if (isRecording && !request.IsEndSuggestion)
         {
             return MeetingNotificationDecision.Suppress(
                 MeetingNotificationOutcome.RecordingAlreadyActive, "a meeting is already recording", request.PromptId);
@@ -123,7 +123,7 @@ public sealed class MeetingNotificationSuppressionState
                 MeetingNotificationOutcome.SuppressedBusy, "another meeting operation is busy", request.PromptId);
         }
 
-        if (request.Kind == MeetingNotificationKind.SignalLost && !isRecording)
+        if (request.IsEndSuggestion && !isRecording)
             return MeetingNotificationDecision.Suppress(
                 MeetingNotificationOutcome.SuppressedBusy, "no active recording", request.PromptId);
 
@@ -145,7 +145,8 @@ public sealed class MeetingNotificationSuppressionState
                 MeetingNotificationOutcome.SuppressedDuplicate, "this meeting episode was already dismissed", request.PromptId);
         }
 
-        return new MeetingNotificationDecision(true, request.Kind == MeetingNotificationKind.SignalLost
+        return new MeetingNotificationDecision(true, request.Kind == MeetingNotificationKind.EndingSuggested
+            ? MeetingNotificationOutcome.MeetingEndingSuggested : request.Kind == MeetingNotificationKind.SignalLost
             ? MeetingNotificationOutcome.MeetingSignalLost : request.IsScheduled
             ? MeetingNotificationOutcome.UpcomingScheduledMeeting
             : MeetingNotificationOutcome.ActiveMeetingDetected,

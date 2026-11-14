@@ -26,6 +26,7 @@ public sealed class WinUiMeetingDetectionService : IDisposable
     public void Start() => _detector.Start();
     public void Stop() { _detector.Stop(); Status = "Meeting detection is off."; }
     public void Dismiss(string? key) => _detector.DismissCandidate(key);
+    public void TrackRecording(DetectedMeeting? meeting) => _detector.TrackRecording(meeting);
     public void Dispose() => _detector.Dispose();
 }
 
