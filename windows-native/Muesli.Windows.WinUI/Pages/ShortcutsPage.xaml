@@ -81,11 +81,15 @@
                         </StackPanel>
                         <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
                         <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12" RowDefinitions="Auto,Auto" RowSpacing="8">
-                            <Border x:Name="PushKeycapWell" Style="{StaticResource ShortcutBadgeStyle}"
-                                    AutomationProperties.Name="Current push-to-talk shortcut"
-                                    AutomationProperties.LiveSetting="Polite">
-                                <TextBlock Text="{x:Bind local:ShortcutsPage.Keys(ViewModel.HotkeyParts), Mode=OneWay}" Style="{StaticResource ShortcutBadgeTextStyle}" />
-                            </Border>
+                            <!-- Theme brushes in markup; the accent wash shows while listening for a key. -->
+                            <Grid x:Name="PushKeycapWell" VerticalAlignment="Center"
+                                  AutomationProperties.Name="Current push-to-talk shortcut"
+                                  AutomationProperties.LiveSetting="Polite">
+                                <Border Style="{StaticResource ShortcutBadgeStyle}" Padding="0" VerticalAlignment="Stretch" />
+                                <Border Background="{ThemeResource MuesliAccentMutedBrush}" BorderBrush="{ThemeResource MuesliAccentBrush}" BorderThickness="1" CornerRadius="6"
+                                        Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.IsCapturing), Mode=OneWay}" />
+                                <TextBlock Margin="12,4" Text="{x:Bind local:ShortcutsPage.Keys(ViewModel.HotkeyParts), Mode=OneWay}" Style="{StaticResource ShortcutBadgeTextStyle}" />
+                            </Grid>
                             <Button x:Name="ChangePushToTalkButton" Grid.Column="1"
                                     Click="ChangeShortcut_Click"
                                     Content="{x:Bind ViewModel.CapturePrompt, Mode=OneWay}"
@@ -107,7 +111,7 @@
                                 <TextBlock Text="ms" Style="{StaticResource ShortcutCaptionStyle}" />
                             </StackPanel>
                             <TextBlock Grid.Row="1" Grid.ColumnSpan="4"
-                                       Text="Press a key or a modifier + key. Escape cancels; your current shortcut stays unchanged."
+                                       Text="Press a key, a modifier + key, or tap Right Ctrl, Alt, Shift or Win on its own. Escape cancels."
                                        Style="{StaticResource ShortcutCaptionStyle}"
                                        Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.IsCapturing), Mode=OneWay}"
                                        AutomationProperties.LiveSetting="Assertive" />

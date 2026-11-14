@@ -11,20 +11,31 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
     <Page.Resources>
+        <ResourceDictionary>
         <!--
             Page-local compact pill menus for the meetings browser. Mirrors MeetingsView.swift's
             borderless Menu pills; kept local so the global Muesli button styles are untouched.
         -->
-        <Style x:Key="MuesliPillMenuButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="{ThemeResource MuesliSurfaceBrush}" />
+        <!-- macOS sort/filter pills: borderless capsules, padding 8×3, a quiet surface at rest. -->
+        <Style x:Key="MuesliPillMenuButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Background" Value="{ThemeResource MuesliStateHoverOverlayBrush}" />
             <Setter Property="Foreground" Value="{ThemeResource MuesliTextSecondaryBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource MuesliBorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="14" />
-            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="8,3" />
             <Setter Property="MinHeight" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <!-- macOS header actions (Import, Templates): 12 semibold, padding 12×8. -->
+        <Style x:Key="MeetingsHeaderButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliSecondaryButtonStyle}">
+            <Setter Property="FontFamily" Value="{StaticResource MuesliFontFamilySemiBold}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
         <!-- MeetingDetailView.swift recording controls: 12pt semibold, 12x7 padding, small corner. -->
         <Style x:Key="MuesliRecordingPillButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
             <Setter Property="FontSize" Value="12" />
@@ -50,10 +61,22 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <ResourceDictionary.ThemeDictionaries>
+            <ResourceDictionary x:Key="Default">
+                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#232528" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#232528" />
+            </ResourceDictionary>
+            <ResourceDictionary x:Key="Light">
+                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#E8E8EC" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#E8E8EC" />
+            </ResourceDictionary>
+            <ResourceDictionary x:Key="HighContrast" />
+        </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
     </Page.Resources>
     <Grid x:Name="RootGrid" Background="{ThemeResource MuesliBackgroundBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="16">
+            <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="24">
                 <!--
                     Hierarchy matches the macOS meetings browser (03-meetings.png), which stacks
                     exactly four blocks: page title, then the current folder name sharing one row
@@ -99,7 +122,7 @@
                                 <TextBlock Text="Quick Note" />
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource MuesliSecondaryButtonStyle}"
+                        <Button Style="{StaticResource MeetingsHeaderButtonStyle}"
                                 Command="{x:Bind ViewModel.ImportAudioCommand}"
                                 AutomationProperties.Name="Import meeting audio or video"
                                 AutomationProperties.AutomationId="ImportAudioButton">
@@ -138,7 +161,7 @@
                                 <MenuFlyout x:Name="MeetingsTimeRangeFlyout" Placement="Bottom" />
                             </Button.Flyout>
                         </Button>
-                        <Button Style="{StaticResource MuesliSecondaryButtonStyle}"
+                        <Button Style="{StaticResource MeetingsHeaderButtonStyle}"
                                 Click="ManageTemplates_Click"
                                 AutomationProperties.Name="Manage meeting templates"
                                 AutomationProperties.AutomationId="ManageMeetingTemplatesButton">
@@ -488,29 +511,29 @@
                                         <StackPanel Spacing="8" MinWidth="0">
                                             <TextBlock Text="{x:Bind Title}" FontSize="15" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextPrimaryBrush}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
                                             <StackPanel Orientation="Horizontal" Spacing="4">
-                                                <Border Background="{ThemeResource MuesliSuccessMutedBrush}" CornerRadius="8" Padding="6,2" VerticalAlignment="Center" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowStatusBadge)}">
-                                                    <TextBlock Text="{x:Bind StatusLabel}" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource MuesliSuccessBrush}" />
+                                                <Border Background="{x:Bind local:TimelinePage.StatusTint(StatusLabel)}" CornerRadius="9" Padding="6,2" VerticalAlignment="Center" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowStatusBadge)}">
+                                                    <TextBlock Text="{x:Bind StatusLabel}" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="10" FontWeight="SemiBold" Foreground="{x:Bind local:TimelinePage.StatusBrush(StatusLabel)}" />
                                                 </Border>
                                                 <TextBlock Text="•" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowStatusBadge)}" />
                                                 <TextBlock Text="{x:Bind MetaLabel}" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
-                                                <Border Background="{ThemeResource MuesliHoverBrush}" CornerRadius="8" Padding="6,2" VerticalAlignment="Center" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowSourceBadge)}">
+                                                <Border Background="{x:Bind local:MeetingsPage.SourceTint(SourceBadgeLabel)}" CornerRadius="9" Padding="6,2" VerticalAlignment="Center" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowSourceBadge)}">
                                                     <StackPanel Orientation="Horizontal" Spacing="4">
-                                                        <FontIcon Glyph="{x:Bind SourceBadgeGlyph}" FontSize="10" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
-                                                        <TextBlock Text="{x:Bind SourceBadgeLabel}" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                                                        <FontIcon Glyph="{x:Bind SourceBadgeGlyph}" FontSize="10" Foreground="{x:Bind local:MeetingsPage.SourceForeground(SourceBadgeLabel)}" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{x:Bind SourceBadgeLabel}" FontFamily="{StaticResource MuesliFontFamilySemiBold}" FontSize="10" FontWeight="SemiBold" Foreground="{x:Bind local:MeetingsPage.SourceForeground(SourceBadgeLabel)}" />
                                                     </StackPanel>
                                                 </Border>
                                                 <TextBlock Text="•" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowFolderBadge)}" />
-                                                <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Opacity="0.8" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowFolderBadge)}">
-                                                    <FontIcon Glyph="&#xE8B7;" FontSize="9" Foreground="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Center" />
-                                                    <TextBlock Text="{x:Bind FolderName}" FontSize="12" Foreground="{ThemeResource MuesliAccentBrush}" />
+                                                <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowFolderBadge)}">
+                                                    <FontIcon Glyph="&#xE8B7;" FontSize="9" Foreground="{ThemeResource MuesliAccentTextBrush}" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{x:Bind FolderName}" FontSize="12" Foreground="{ThemeResource MuesliAccentTextBrush}" />
                                                 </StackPanel>
                                             </StackPanel>
-                                            <TextBlock Text="{x:Bind Summary}" FontSize="14" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{x:Bind Summary}" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                         <!-- macOS folder.fill in accent when the meeting is filed. -->
                                         <FontIcon Grid.Column="1" Width="24" Height="24"
                                                   Glyph="&#xE8D5;"
-                                                  Foreground="{ThemeResource MuesliAccentBrush}"
+                                                  Foreground="{ThemeResource MuesliAccentTextBrush}"
                                                   VerticalAlignment="Top"
                                                   FontSize="11"
                                                   Visibility="{x:Bind local:MeetingsPage.BoolToVisibility(ShowFolderBadge)}"
@@ -521,20 +544,15 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-                    <Border x:Name="EmptyState" Style="{StaticResource MuesliCardStyle}" MinHeight="190">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" MaxWidth="380">
-                            <FontIcon Glyph="&#xE716;" FontSize="28" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
-                            <TextBlock Text="{x:Bind ViewModel.EmptyStateTitle, Mode=OneWay}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-                            <TextBlock Text="{x:Bind ViewModel.EmptyStateInstruction, Mode=OneWay}" Style="{StaticResource MuesliBodyStyle}" TextAlignment="Center" />
-                            <Button Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                    HorizontalAlignment="Center"
-                                    Command="{x:Bind ViewModel.StartQuickNoteCommand}"
-                                    AutomationProperties.Name="Start Quick Note recording from empty state">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE710;" FontSize="14" />
-                                    <TextBlock Text="Quick Note" />
-                                </StackPanel>
-                            </Button>
+                    <!-- macOS empty state: a leading-aligned raised card, radius 20, padding 24. -->
+                    <Border x:Name="EmptyState"
+                            Background="{ThemeResource MuesliBackgroundRaisedBrush}"
+                            CornerRadius="20"
+                            Padding="24">
+                        <StackPanel HorizontalAlignment="Left" Spacing="12">
+                            <FontIcon Glyph="&#xE716;" FontSize="30" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Left" />
+                            <TextBlock Text="{x:Bind ViewModel.EmptyStateTitle, Mode=OneWay}" Style="{StaticResource MuesliTitle3Style}" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind ViewModel.EmptyStateInstruction, Mode=OneWay}" Style="{StaticResource MuesliCalloutStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextWrapping="Wrap" MaxWidth="320" HorizontalAlignment="Left" />
                         </StackPanel>
                     </Border>
                 </Grid>

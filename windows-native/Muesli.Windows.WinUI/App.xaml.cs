@@ -579,12 +579,13 @@ public partial class App : Application
             store.Save(progress with
             {
                 Deferred = false,
-                LastStatus = "Setup resumed. Continue from the saved step."
+                LastStatus = ""
             });
         }
 
+        // Setup is always dark, as on macOS (OnboardingWindow sets RequestedTheme on its root), so it
+        // does not follow the app theme.
         _onboarding = new OnboardingWindow();
-        TrackTheme(_onboarding);
         _onboarding.Closed += (_, _) =>
         {
             var finished = _onboarding?.Completed == true;

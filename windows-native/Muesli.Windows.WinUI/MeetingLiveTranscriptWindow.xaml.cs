@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
@@ -91,7 +92,7 @@ public sealed partial class MeetingLiveTranscriptWindow : Window, IDisposable
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PauseButton, pauseLabel);
         var capture = _meetings.CaptureSnapshot;
         StateLabel.Text = _meetings.IsPaused ? "Paused" : _meetings.IsRecording ? "Live" : "Saving";
-        StateDot.Fill = (Brush)Application.Current.Resources[_meetings.IsPaused ? "MuesliTextTertiaryBrush" : "MuesliSuccessBrush"];
+        StateDot.Fill = ThemeBrushes.Get(_meetings.IsPaused ? "MuesliTextTertiaryBrush" : "MuesliSuccessBrush");
         WarningIcon.Visibility = capture.HealthWarnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(WarningIcon, string.Join(" ", capture.HealthWarnings));
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(WarningIcon, string.Join(" ", capture.HealthWarnings));

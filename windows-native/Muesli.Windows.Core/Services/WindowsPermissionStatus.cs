@@ -34,11 +34,6 @@ public static class WindowsPermissionStatus
                 true,
                 "Meetings use process-tree loopback when Windows allows it, otherwise a disclosed render-endpoint fallback, or they record microphone only."),
             new(
-                "Computer Use screenshots",
-                "Unavailable",
-                false,
-                "Window text, page text, and screenshots stay off until scoped masking is qualified."),
-            new(
                 "Calendar / iPhone sync",
                 "Not available",
                 false,
