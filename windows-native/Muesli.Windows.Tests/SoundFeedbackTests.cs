@@ -13,8 +13,11 @@ public sealed class SoundFeedbackTests
     }
 
     [Fact]
-    public void LifecycleCuesPlayOnlyOnConfirmedSpeakers()
+    public void LifecycleCuesAreMutedOnlyOnHeadphoneLikeOutput()
     {
+        // Endpoints that report no form factor are ordinary speakers far more often than not.
+        Assert.True(SoundFeedbackPolicy.ShouldPlay(
+            SoundCue.DictationStart, true, AudioOutputRouteKind.Unknown, DictationSessionKind.Interactive));
         Assert.True(SoundFeedbackPolicy.ShouldPlay(
             SoundCue.DictationStart, true, AudioOutputRouteKind.SpeakerLike, DictationSessionKind.Interactive));
         Assert.True(SoundFeedbackPolicy.ShouldPlay(
@@ -23,7 +26,7 @@ public sealed class SoundFeedbackTests
         Assert.False(SoundFeedbackPolicy.ShouldPlay(
             SoundCue.DictationStart, true, AudioOutputRouteKind.HeadphoneLike, DictationSessionKind.Interactive));
         Assert.False(SoundFeedbackPolicy.ShouldPlay(
-            SoundCue.DictationInsert, true, AudioOutputRouteKind.Unknown, DictationSessionKind.Interactive));
+            SoundCue.DictationInsert, true, AudioOutputRouteKind.HeadphoneLike, DictationSessionKind.Interactive));
     }
 
     [Fact]

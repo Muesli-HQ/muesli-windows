@@ -23,6 +23,7 @@ public sealed class WinUiDictationContext : IDisposable
     private IntPtr _pasteTarget;
     private string? _captureTraceId;
     private volatile bool _auxiliarySession;
+    private volatile bool _delivering;
     private int _disposed;
 
     // WPF dispatched every shortcut callback with DispatcherPriority.Send, so shortcut down, up,
@@ -61,9 +62,11 @@ public sealed class WinUiDictationContext : IDisposable
     /// </summary>
     public event EventHandler<float>? RecordingLevelChanged;
 
-    public bool IsRecording => _coordinator.IsRecording;
+    public bool IsRecording => _coordinator.IsRecording && !_delivering;
     public bool IsBusy => _coordinator.IsBusy || _coordinator.IsTranscribing;
-    public bool IsTranscribing => _coordinator.IsTranscribing;
+    // From key release until the text is delivered. The coordinator only reports recognition
+    // itself and raises no event when it starts, which left the pill idle while the user waited.
+    public bool IsTranscribing => _delivering || _coordinator.IsTranscribing;
     public bool IsHotkeyRegistered { get; private set; }
     public string Status { get; private set; }
 
@@ -452,6 +455,7 @@ public sealed class WinUiDictationContext : IDisposable
         _hotkeyState.Reset();
         _operationCancellation?.Dispose();
         _operationCancellation = new CancellationTokenSource();
+        _delivering = true;
         Status = "Transcribing locally…";
         RaiseChanged();
         try
@@ -549,6 +553,7 @@ public sealed class WinUiDictationContext : IDisposable
                 $"totalMs={totalStarted.ElapsedMilliseconds}; " +
                 $"outcome={Status}");
             _pasteTarget = IntPtr.Zero;
+            _delivering = false;
             // A live token makes the Escape hook swallow the key in every app, so it must not
             // outlive the dictation it belongs to.
             var finished = _operationCancellation;

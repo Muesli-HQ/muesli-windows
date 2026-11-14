@@ -29,19 +29,23 @@ public readonly record struct OutputDeviceDescription(int FormFactor, bool HasRe
 
 /// <summary>
 /// Windows equivalent of macOS SoundController: Tink on dictation start, Purr on release,
-/// Glass when a model is ready. Lifecycle cues play only on confirmed speaker-like output.
+/// Glass when a model is ready. As on macOS, lifecycle cues are muted only on headphone-like
+/// output, where they would play straight into the ear.
 /// </summary>
 public sealed class SoundFeedbackService
 {
     private readonly ISystemSoundPlayer _player;
     private readonly Func<AudioOutputRouteKind> _routeKind;
+    private readonly Action<string>? _report;
 
     public SoundFeedbackService(
         ISystemSoundPlayer? player = null,
-        Func<AudioOutputRouteKind>? routeKind = null)
+        Func<AudioOutputRouteKind>? routeKind = null,
+        Action<string>? report = null)
     {
         _player = player ?? new WindowsSystemSoundPlayer();
         _routeKind = routeKind ?? DefaultRenderRouteInspector.Inspect;
+        _report = report;
     }
 
     public bool Enabled { get; set; } = true;
@@ -58,8 +62,15 @@ public sealed class SoundFeedbackService
 
     private void Play(SoundCue cue, DictationSessionKind sessionKind)
     {
-        if (!SoundFeedbackPolicy.ShouldPlay(cue, Enabled, _routeKind(), sessionKind))
+        var route = _routeKind();
+        if (!SoundFeedbackPolicy.ShouldPlay(cue, Enabled, route, sessionKind))
         {
+            // Setup and auxiliary sessions are silent by design; only a muted real dictation is
+            // worth a line, because "no cue" is otherwise indistinguishable from a broken one.
+            if (sessionKind == DictationSessionKind.Interactive)
+            {
+                _report?.Invoke($"Lifecycle sound {cue} muted. enabled={Enabled}; route={route}");
+            }
             return;
         }
 
@@ -125,8 +136,10 @@ public static class AudioOutputRouteClassifier
         };
     }
 
+    // Many Windows endpoints report no form factor at all; treating those as headphones
+    // silenced the cues on ordinary speakers.
     public static bool SuppressesLifecycleSounds(AudioOutputRouteKind kind) =>
-        kind != AudioOutputRouteKind.SpeakerLike;
+        kind == AudioOutputRouteKind.HeadphoneLike;
 }
 
 public static class WindowsSystemSoundLocator
