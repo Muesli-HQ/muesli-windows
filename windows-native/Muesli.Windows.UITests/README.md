@@ -35,8 +35,5 @@ meeting-detail surfaces with stable `winui-populated-*`/`winui-secondary-*`
 slugs. Requested viewport sizes are effective DIPs (1280×820, 1440×900, and
 1600×900); the session converts them to physical pixels using
 `GetDpiForWindow`. The capability manifest records the observed scale and
-explicitly reports High Contrast as unexercised. Generate a combined reference
-contact sheet with
-`scripts/qualify-winui-visual-contact-sheet.ps1`; output is written to
-`artifacts/ui-parity-final/` while captures remain under the existing
-`artifacts/ui-automation/` policy.
+explicitly reports High Contrast as unexercised. Captures are written under
+`artifacts/ui-automation/`.

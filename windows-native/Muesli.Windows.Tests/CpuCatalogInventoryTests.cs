@@ -113,26 +113,6 @@ public sealed class CpuCatalogInventoryTests
         Assert.Contains("All $($modelIds.Count) supported offline models completed real-audio inference.", script, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void InventoryDocListsEveryAdvertisedModelAndDoesNotClaimL10Complete()
-    {
-        var inventory = File.ReadAllText(Path.Combine(RepositoryRoot, "docs", "L10_CPU_CATALOG_INVENTORY.md"));
-        Assert.Contains("inventory-not-qualified", inventory, StringComparison.Ordinal);
-        Assert.DoesNotContain("MOD-02 Complete", inventory, StringComparison.Ordinal);
-        Assert.DoesNotContain("Complete and verified", inventory, StringComparison.Ordinal);
-        foreach (var model in TranscriptionModelCatalog.Models)
-        {
-            Assert.Contains(model.Id, inventory, StringComparison.Ordinal);
-            Assert.Contains(model.ArchiveSha256, inventory, StringComparison.OrdinalIgnoreCase);
-        }
-
-        var ledger = File.ReadAllText(Path.Combine(RepositoryRoot, "docs", "WINDOWS_LAUNCH_LEDGER.md"));
-        var mod02 = ledger.Split('\n').First(line => line.Contains("| MOD-02 |", StringComparison.Ordinal));
-        Assert.Contains("Implemented with verification debt", mod02, StringComparison.Ordinal);
-        Assert.DoesNotContain("Complete and verified", mod02, StringComparison.Ordinal);
-        var qual01 = ledger.Split('\n').First(line => line.Contains("| QUAL-01 |", StringComparison.Ordinal));
-        Assert.Contains("Partial", qual01, StringComparison.Ordinal);
-    }
 
     [Fact]
     public void QualificationTemplateIsPlaceholderAndHasNoCheckedInAudio()
@@ -200,32 +180,5 @@ public sealed class CpuCatalogInventoryTests
         Assert.Contains("NOT part of the public Wave 0 package", installScript, StringComparison.Ordinal);
         Assert.DoesNotContain("org.k2fsa.sherpa.onnx.runtime.win-x64-cuda", installScript, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("sherpa-onnx-c-api.dll", installScript, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void CudaProvenanceDocDoesNotClaimAPackagedProvider()
-    {
-        var gap = File.ReadAllText(Path.Combine(RepositoryRoot, "docs", "L11_CUDA_PROVENANCE_GAP.md"));
-        Assert.Contains("not shipped in the public package", gap, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(PublicNativePackageContract.ExpectedSherpaRuntimeVersion, gap, StringComparison.Ordinal);
-        Assert.Contains("org.k2fsa.sherpa.onnx", gap, StringComparison.Ordinal);
-        Assert.Contains(CudaAccelerationPack.ArchiveUrl, gap, StringComparison.Ordinal);
-        Assert.Contains(CudaAccelerationPack.ArchiveSha256, gap, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(CudaAccelerationPack.OnnxRuntimeFileVersion, gap, StringComparison.Ordinal);
-        Assert.Contains("SHERPA_ONNX_ENABLE_DIRECTML", gap, StringComparison.Ordinal);
-        foreach (var file in CudaAccelerationPack.RequiredFiles)
-        {
-            Assert.Contains(file.Sha256, gap, StringComparison.OrdinalIgnoreCase);
-        }
-
-        Assert.DoesNotContain(PublicNativePackageContract.FalseCudaIncludedClaim, gap, StringComparison.Ordinal);
-        Assert.DoesNotContain("CUDA is included in the public package", gap, StringComparison.OrdinalIgnoreCase);
-
-        var ledger = File.ReadAllText(Path.Combine(RepositoryRoot, "docs", "WINDOWS_LAUNCH_LEDGER.md"));
-        var mod01 = ledger.Split('\n').First(line => line.Contains("| MOD-01 |", StringComparison.Ordinal));
-        // MOD-01 may advance past "Partial" as measured evidence lands, but it must never claim the
-        // CUDA provider is part of the public package while the public notices/inventory stay CPU-only.
-        Assert.DoesNotContain("Complete and verified", mod01, StringComparison.Ordinal);
-        Assert.Contains("public notices/inventory stay CPU-only", mod01, StringComparison.Ordinal);
     }
 }

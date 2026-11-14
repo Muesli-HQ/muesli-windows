@@ -5,8 +5,7 @@ namespace Muesli.Windows.Services;
 /// where the shipping benchmark actually showed a meaningful warm-inference win; architectures that
 /// merely tie (or regress) stay on CPU unless the user explicitly asks for NVIDIA CUDA.
 ///
-/// Evidence: <c>qualification/gpu-qualification/BENCHMARK-SUMMARY.md</c> and
-/// <c>docs/WINDOWS_GPU_QUALIFICATION.md</c>. Re-measure with
+/// Evidence: <c>qualification/gpu-qualification/BENCHMARK-SUMMARY.md</c>. Re-measure with
 /// <c>scripts/benchmark-gpu-transcription.ps1</c> before changing these answers.
 /// </summary>
 public static class TranscriptionProviderPolicy

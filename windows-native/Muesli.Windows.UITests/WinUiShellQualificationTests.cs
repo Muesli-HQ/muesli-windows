@@ -95,7 +95,6 @@ public sealed class WinUiShellQualificationTests
                     observedDpiScale = session.CurrentDpiScale,
                     highContrast = session.HighContrastAutomationAvailable,
                     highContrastNote = "Not exercised: this harness does not change the interactive desktop contrast theme.",
-                    referenceDirectory = "docs/ui-reference/macos-current-2026-08-27",
                     artifactPolicy = "artifacts/ui-automation"
                 }, new JsonSerializerOptions { WriteIndented = true }));
 

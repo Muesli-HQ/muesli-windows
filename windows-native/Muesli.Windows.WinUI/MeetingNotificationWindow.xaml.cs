@@ -23,7 +23,7 @@ namespace Muesli.Windows.WinUI;
 /// <remarks>
 /// Geometry and behaviour mirror the shipping macOS <c>MeetingNotificationController</c>. The HTML
 /// design system disagrees on fade-in, corner radius, and several colours; this window follows the
-/// Swift controller and records the discrepancies in docs/WINDOWS_UI_QUALIFICATION.md.
+/// Swift controller.
 /// </remarks>
 public sealed partial class MeetingNotificationWindow : Window
 {

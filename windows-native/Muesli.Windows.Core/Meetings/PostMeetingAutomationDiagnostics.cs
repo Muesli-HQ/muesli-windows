@@ -3,8 +3,8 @@ using System.Text;
 namespace Muesli.Windows.Services;
 
 /// <summary>
-/// Renders the per-meeting post-meeting automation diagnostics promised by
-/// <c>docs/POST_MEETING_AUTOMATION.md</c>. The output is human-readable, redacted content already
+/// Renders the per-meeting post-meeting automation diagnostics produced by
+/// the hook runner. The output is human-readable, redacted content already
 /// bounded by the runner, and shared by the WinUI meeting detail so the shell and the contract
 /// cannot drift.
 /// </summary>
