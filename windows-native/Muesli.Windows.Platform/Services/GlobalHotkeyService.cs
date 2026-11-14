@@ -23,10 +23,9 @@ public sealed class GlobalHotkeyService : IDisposable
     private HotkeyGesture _gesture = HotkeyGestureParser.Parse("F8");
     private bool _isDown;
     private bool _escapeDown;
-    // Lone right-side modifier mode: whether the key is physically held, and whether another key
-    // was pressed during this hold (a combination such as Right Ctrl+C, not dictation).
-    private bool _modifierHeld;
-    private bool _modifierCombined;
+    // Set for a lone right-side modifier gesture (Right Ctrl/Alt/Shift/Win); null otherwise.
+    private ModifierHoldTracker? _modifierHold;
+    private volatile bool _paused;
     private Action? _onDown;
     private Action? _onUp;
     private Func<bool>? _canCancel;
@@ -53,6 +52,7 @@ public sealed class GlobalHotkeyService : IDisposable
         _canCancel = canCancel;
         _onCancel = onCancel;
         _onOtherKey = onOtherKey;
+        _modifierHold = HotkeyGestureParser.IsModifierOnly(_gesture) ? new ModifierHoldTracker(_gesture.VirtualKey) : null;
         _hookProc = HookCallback;
         // Windows silently removes a low-level hook when its installing thread cannot pump
         // messages within one second. Keep it independent of UI, capture and inference stalls.
@@ -82,9 +82,23 @@ public sealed class GlobalHotkeyService : IDisposable
 
         _isDown = false;
         _escapeDown = false;
-        _modifierHeld = false;
-        _modifierCombined = false;
+        _modifierHold = null;
         _hookProc = null;
+    }
+
+    /// <summary>
+    /// While true the hook lets every key through untouched, so a window can record a new shortcut
+    /// (including the current one) without starting a dictation. Survives re-registration.
+    /// </summary>
+    public bool Paused
+    {
+        get => _paused;
+        set
+        {
+            _paused = value;
+            _isDown = false;
+            _modifierHold?.Reset();
+        }
     }
 
     private void RunHook(TaskCompletionSource ready)
@@ -120,7 +134,7 @@ public sealed class GlobalHotkeyService : IDisposable
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0)
+        if (nCode >= 0 && !_paused)
         {
             var message = wParam.ToInt32();
             var virtualKey = Marshal.ReadInt32(lParam);
@@ -143,10 +157,22 @@ public sealed class GlobalHotkeyService : IDisposable
                 return (IntPtr)1;
             }
 
-            if (HotkeyGestureParser.IsModifierOnly(_gesture))
+            if (_modifierHold is { } hold)
             {
+                var scanCode = unchecked((uint)Marshal.ReadInt32(lParam, 4));
                 var flags = Marshal.ReadInt32(lParam, 8);
-                HandleModifierOnly(virtualKey, isKeyDownMessage, isKeyUpMessage, injected: (flags & LlkhfInjected) != 0);
+                var action = hold.Process(
+                    virtualKey,
+                    scanCode,
+                    isKeyDownMessage,
+                    isKeyUpMessage,
+                    injected: (flags & LlkhfInjected) != 0,
+                    otherModifiersHeld: () => !NoOtherModifiersHeld(_gesture.VirtualKey));
+                // The mask goes in while the key is still held, so it lands between press and release.
+                if (action.HasFlag(ModifierHoldAction.SendMenuMask)) SendMaskKey();
+                if (action.HasFlag(ModifierHoldAction.Start)) _onDown?.Invoke();
+                else if (action.HasFlag(ModifierHoldAction.Stop)) _onUp?.Invoke();
+                else if (action.HasFlag(ModifierHoldAction.Cancel)) _onOtherKey?.Invoke();
                 // Never swallowed: Right Ctrl must still work as Ctrl for every other shortcut.
                 return CallNextHookEx(_hookId, nCode, wParam, lParam);
             }
@@ -185,61 +211,6 @@ public sealed class GlobalHotkeyService : IDisposable
 
     private const int LlkhfInjected = 0x10;
     private const ushort MenuMaskKey = 0xE8; // unassigned virtual key, as AutoHotkey's #MenuMaskKey
-
-    /// <summary>
-    /// A lone right-side modifier as hold-to-talk. The key starts the hold only when no other
-    /// modifier is down; any other key during the hold makes it a combination, which ends the hold
-    /// through the same path as a normal shortcut. Events pass through untouched, so the modifier
-    /// keeps working as a modifier. Injected events (including our own mask key) are ignored.
-    /// </summary>
-    private void HandleModifierOnly(int virtualKey, bool isKeyDown, bool isKeyUp, bool injected)
-    {
-        if (injected) return;
-        var gestureKey = _gesture.VirtualKey;
-        if (isKeyDown)
-        {
-            if (virtualKey == gestureKey)
-            {
-                // Key repeat arrives as more key-downs while held; only the first one starts the hold.
-                if (!_modifierHeld)
-                {
-                    _modifierHeld = true;
-                    _modifierCombined = !NoOtherModifiersHeld(gestureKey);
-                    if (!_modifierCombined && !_isDown)
-                    {
-                        _isDown = true;
-                        _onDown?.Invoke();
-                    }
-                }
-
-                return;
-            }
-
-            if (_modifierHeld && !_modifierCombined)
-            {
-                _modifierCombined = true;
-                if (_isDown)
-                {
-                    _isDown = false;
-                    _onOtherKey?.Invoke();
-                }
-            }
-
-            return;
-        }
-
-        if (isKeyUp && virtualKey == gestureKey)
-        {
-            _modifierHeld = false;
-            _modifierCombined = false;
-            if (!_isDown) return;
-            _isDown = false;
-            // Releasing Alt or Win on its own focuses the menu bar or opens Start. A masking key
-            // between press and release tells Windows the key was used, so neither happens.
-            if (gestureKey is 0xA5 or 0x5C) SendMaskKey();
-            _onUp?.Invoke();
-        }
-    }
 
     private static bool NoOtherModifiersHeld(int gestureKey)
     {

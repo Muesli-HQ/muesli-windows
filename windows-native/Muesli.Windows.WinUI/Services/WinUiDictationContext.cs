@@ -213,6 +213,16 @@ public sealed class WinUiDictationContext : IDisposable
     /// </summary>
     public void RouteHotkeyToTest(DictationTestRoute? route) => _testRoute = route;
 
+    /// <summary>
+    /// Lets every key reach the app while a window records a new shortcut, so pressing the current
+    /// one records it instead of starting a dictation (Handy suspends its shortcuts the same way).
+    /// </summary>
+    public void PauseHotkey(bool paused)
+    {
+        _hotkey.Paused = paused;
+        if (!paused) _testKeyHeld = false;
+    }
+
     private async Task StartTestAsync(DictationTestRoute route)
     {
         if (!route.CanStart() || IsRecording || IsBusy) return;

@@ -39,7 +39,14 @@ public sealed partial class ShortcutsPage : Page
             if (args.PropertyName is nameof(ViewModel.IsCapturing) or null)
             {
                 ApplyCaptureChrome();
+                // Pressing the current shortcut must record it, not start a dictation.
+                App.Dictation.PauseHotkey(ViewModel.IsCapturing);
             }
+        };
+        // Leaving the page mid-capture must give the shortcut back.
+        Unloaded += (_, _) =>
+        {
+            if (ViewModel.IsCapturing) ViewModel.CancelCapture();
         };
         Loaded += (_, _) =>
         {

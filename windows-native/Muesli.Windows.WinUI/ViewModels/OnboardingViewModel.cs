@@ -244,7 +244,12 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool IsRecordingHotkey { get; private set; }
     public string ChangeShortcutLabel => IsRecordingHotkey ? "Press a key…" : "Change Shortcut";
 
-    partial void OnIsRecordingHotkeyChanged(bool value) => OnPropertyChanged(nameof(ChangeShortcutLabel));
+    partial void OnIsRecordingHotkeyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ChangeShortcutLabel));
+        // Pressing the current shortcut must record it, not start a dictation.
+        _dictation.PauseHotkey(value);
+    }
 
     [RelayCommand]
     private void ToggleHotkeyRecording()
@@ -850,6 +855,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         _liveLifecycle.Dispose();
         _testArmed = false;
         _dictation.RouteHotkeyToTest(null);
+        if (IsRecordingHotkey) _dictation.PauseHotkey(false);
         StopMicrophoneMeter();
     }
 
