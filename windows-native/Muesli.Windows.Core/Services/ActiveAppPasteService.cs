@@ -78,6 +78,26 @@ public sealed class ActiveAppPasteService
                 "Windows could not restore focus to the original app. The transcript was saved in Muesli history and the clipboard was left unchanged.");
         }
 
+        // One Ctrl+V lands the whole transcript at once, as on macOS. Typed Unicode input reaches
+        // the target one character at a time, which long dictations showed as visible bursts.
+        try
+        {
+            return await PasteThroughClipboardAsync(
+                text,
+                totalStarted,
+                focusStarted.ElapsedMilliseconds,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // The paste shortcut was never accepted, so nothing was inserted and the clipboard
+            // has been restored. Typing the text is the remaining way to deliver it.
+        }
+
         var inputStarted = Stopwatch.StartNew();
         var directInput = _keyboard.SendText(text);
         inputStarted.Stop();
@@ -92,19 +112,9 @@ public sealed class ActiveAppPasteService
                 targetWasForeground);
         }
 
-        if (directInput.MayHaveInsertedText)
-        {
-            throw new InvalidOperationException(
-                "Windows only accepted part of the transcript input. The transcript was saved in Muesli history and the clipboard was left unchanged.");
-        }
-
-        // Unicode input is the normal path because it never touches the user's clipboard. If
-        // Windows rejects it before inserting anything, use Ctrl+V and restore safely.
-        return await PasteThroughClipboardAsync(
-            text,
-            totalStarted,
-            focusStarted.ElapsedMilliseconds,
-            cancellationToken);
+        throw new InvalidOperationException(directInput.MayHaveInsertedText
+            ? "Windows only accepted part of the transcript input. The transcript was saved in Muesli history and the clipboard was left unchanged."
+            : "Windows did not accept the transcript input. The transcript was saved in Muesli history and the clipboard was left unchanged.");
     }
 
     public static bool ShouldRestoreClipboard(string expectedMuesliText, string? currentText) =>

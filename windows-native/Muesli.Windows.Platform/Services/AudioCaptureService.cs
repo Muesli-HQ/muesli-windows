@@ -117,7 +117,8 @@ public sealed class AudioCaptureService : IDisposable
                 capture.Dispose();
                 throw;
             }
-            Volatile.Write(ref _prepared, new PreparedCapture(key, device, capture));
+            // Endpoint properties cost about 80 ms per read; pay for them here, not at key-down.
+            Volatile.Write(ref _prepared, new PreparedCapture(key, device, capture, device.ID, device.FriendlyName));
         }
         finally
         {
@@ -138,7 +139,7 @@ public sealed class AudioCaptureService : IDisposable
             {
                 try
                 {
-                    StartSegment(prepared.Device, prepared.Capture);
+                    StartSegment(prepared.Device, prepared.Capture, prepared.DeviceId, prepared.DeviceName);
                     LastStartTiming = $"prepared=True; {LastStartTiming}";
                     return;
                 }
@@ -376,7 +377,11 @@ public sealed class AudioCaptureService : IDisposable
 
     private MMDevice PickDefaultCaptureDevice() => DefaultCaptureEndpointPolicy.Resolve(_deviceEnumerator);
 
-    private void StartSegment(MMDevice device, WasapiCapture? prepared = null)
+    private void StartSegment(
+        MMDevice device,
+        WasapiCapture? prepared = null,
+        string? knownDeviceId = null,
+        string? knownDeviceName = null)
     {
         var path = Path.Combine(_captureDirectory, $"{_segmentPrefix}{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Guid.NewGuid():N}.wav");
         var stepTimer = Stopwatch.StartNew();
@@ -387,22 +392,26 @@ public sealed class AudioCaptureService : IDisposable
         {
             var writer = new WaveFileWriter(path, capture.WaveFormat);
             var writerMs = stepTimer.ElapsedMilliseconds - clientMs;
+            // Each endpoint property read is a property-store round trip; read them once.
+            var deviceId = knownDeviceId ?? device.ID;
+            var deviceName = knownDeviceName ?? device.FriendlyName;
             createdSession = new CaptureSession(
                 capture,
                 writer,
                 path,
-                device.ID,
-                device.FriendlyName,
+                deviceId,
+                deviceName,
                 AccumulateLevels,
                 exception => CaptureFaulted?.Invoke(
                     this,
                     new CaptureFaultedEventArgs(MeetingAudioChannel.Microphone, exception)));
-            _segments.Add(new CaptureSegment(path, device.ID, device.FriendlyName));
+            _segments.Add(new CaptureSegment(path, deviceId, deviceName));
             _session = createdSession;
             var beforeStartMs = stepTimer.ElapsedMilliseconds;
             capture.StartRecording();
             LastStartTiming = $"wasapiClientMs={clientMs}; writerMs={writerMs}; " +
-                $"startRecordingMs={stepTimer.ElapsedMilliseconds - beforeStartMs}; device={device.FriendlyName}";
+                $"sessionMs={beforeStartMs - clientMs - writerMs}; " +
+                $"startRecordingMs={stepTimer.ElapsedMilliseconds - beforeStartMs}; device={deviceName}";
         }
         catch
         {
@@ -981,4 +990,9 @@ internal sealed class CaptureFinalizationCleanup : IDisposable
     }
 }
 
-internal sealed record PreparedCapture(string Key, MMDevice Device, WasapiCapture Capture);
+internal sealed record PreparedCapture(
+    string Key,
+    MMDevice Device,
+    WasapiCapture Capture,
+    string DeviceId,
+    string DeviceName);

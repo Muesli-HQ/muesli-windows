@@ -95,6 +95,16 @@ public sealed class DictationCoordinator : IDisposable
         });
     }
 
+    /// <summary>
+    /// Readies the microphone client when the dictation key goes down, so the hold threshold is
+    /// spent initializing the device instead of waiting. Nothing is captured until
+    /// <see cref="StartAsync(string?)"/>, and an already prepared client makes this a no-op.
+    /// </summary>
+    public void PrimeMicrophone(string? microphoneName)
+    {
+        if (!IsRecording && !IsBusy) PrepareInBackground(microphoneName);
+    }
+
     private void RePrepareMicrophone()
     {
         if (_prepareEnabled) PrepareInBackground(_microphoneName);

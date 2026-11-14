@@ -130,6 +130,12 @@ public sealed class WinUiSettingsContext
         {
             if (Volatile.Read(ref _snapshot) is { } loaded) return loaded;
             var settings = _store.Load();
+            // A load that falls back to defaults is otherwise invisible: the app just behaves
+            // as if it had never been set up.
+            new AppLogService().Info(
+                $"Settings loaded. onboardingCompleted={settings.OnboardingCompleted}; " +
+                $"hotkey={settings.Hotkey}; dictationModel={settings.DictationModelId}; " +
+                $"warning={_store.LastWarning ?? "none"}");
             Publish(settings);
             return settings;
         }

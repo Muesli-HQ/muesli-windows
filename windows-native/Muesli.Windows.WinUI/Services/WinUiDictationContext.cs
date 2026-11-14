@@ -47,7 +47,7 @@ public sealed class WinUiDictationContext : IDisposable
         _cleanup = new NativeTextCleanupService(_log);
         _pipeline = new TranscriptionPipelineService(_cleanup, _log);
         _paste = new ActiveAppPasteService(
-            new WinRtClipboardAdapter(),
+            new Win32ClipboardAdapter(),
             new NativeWindowActivationAdapter(),
             new NativeKeyboardInputAdapter());
         Status = "Ready";
@@ -303,6 +303,9 @@ public sealed class WinUiDictationContext : IDisposable
                 Status = "Ready";
                 RaiseChanged();
                 StartTimers();
+                // The key is down: initialize the device now, in parallel with the hold threshold.
+                _coordinator.PrimeMicrophone(
+                    _settings.Load().MicrophoneName ?? _coordinator.PickPreferredMicrophone());
                 break;
 
             case DictationHotkeyAction.ShowPreparing:
