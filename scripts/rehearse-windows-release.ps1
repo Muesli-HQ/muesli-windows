@@ -70,21 +70,7 @@ foreach ($script in $scripts) {
 
 $trxPath = Join-Path $testResultsDir "windows-tests.trx"
 if (-not $SkipTests) {
-    Write-Host "Restoring and running Release tests..."
-    dotnet restore (Join-Path $root "windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj") --force-evaluate
-    if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed with exit code $LASTEXITCODE." }
-    $testArguments = @(
-        "test", (Join-Path $root "windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj"),
-        "-c", $Configuration,
-        "--no-restore",
-        "--logger", "trx;LogFileName=windows-tests.trx",
-        "--results-directory", $testResultsDir
-    )
-    if ($env:MUESLI_SHARED_CORE_MODE -eq 'managed-fallback') {
-        $testArguments += "-p:MuesliRequireSwiftBridge=false"
-    }
-    dotnet @testArguments
-    if ($LASTEXITCODE -ne 0) { throw "dotnet test failed with exit code $LASTEXITCODE." }
+    & (Join-Path $PSScriptRoot "run-windows-tests.ps1") -Configuration $Configuration -ResultsDirectory $testResultsDir
 }
 
 $packageScript = Join-Path $root "scripts\package-winui-msix.ps1"
