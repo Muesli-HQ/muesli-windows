@@ -580,7 +580,7 @@ internal sealed class FloatingIndicatorWindow : Window
     {
         FloatingIndicatorState.Idle => hovered ? new Thickness(12, 0, 12, 0) : new Thickness(0),
         FloatingIndicatorState.Preparing or FloatingIndicatorState.Recording => new Thickness(0),
-        FloatingIndicatorState.Transcribing => new Thickness(14, 0, 14, 0),
+        FloatingIndicatorState.Transcribing => new Thickness(12, 0, 12, 0),
         _ => new Thickness(18, 0, 18, 0)
     };
 

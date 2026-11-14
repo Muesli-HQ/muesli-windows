@@ -96,8 +96,11 @@ public static class FloatingIndicatorLayout
     public static readonly (double Seconds, double Degrees)[] TranscribingWiggleKeys =
         [(0, 0), (0.12, -12), (0.26, 10), (0.4, -6), (0.52, 0), (1.6, 0)];
 
-    /// <summary>Transcribing: macOS <c>transcribingPillSize</c>'s 190-point minimum at 32 tall.</summary>
-    public const double TranscribingWidth = 190;
+    /// <summary>
+    /// Transcribing: 32 tall and just wide enough for the icon and label. macOS uses a 190-point
+    /// minimum; on Windows that read as oversized next to the 76-wide recording pill.
+    /// </summary>
+    public const double TranscribingWidth = 124;
     public const double TranscribingHeight = 32;
     public const double TranscribingRadius = 16;
 

@@ -46,9 +46,15 @@ public sealed class MuesliProfilePaths : IMuesliProfilePaths
         var overrideRoot = Environment.GetEnvironmentVariable("MUESLI_PROFILE_ROOT");
         if (string.IsNullOrWhiteSpace(overrideRoot))
             overrideRoot = ResolveCommandLineProfileRoot();
-        return string.IsNullOrWhiteSpace(overrideRoot)
-            ? Production()
-            : Isolated(overrideRoot);
+        if (!string.IsNullOrWhiteSpace(overrideRoot)) return Isolated(overrideRoot);
+
+        // A development slot never opens the production library: it would contend for the
+        // profile lease and the history database with the build it runs beside.
+        return MuesliDevSlot.Current is { } slot
+            ? Isolated(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                slot))
+            : Production();
     }
 
     private static string? ResolveCommandLineProfileRoot()

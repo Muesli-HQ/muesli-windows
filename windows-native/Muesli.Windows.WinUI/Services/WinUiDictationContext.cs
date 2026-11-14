@@ -23,6 +23,7 @@ public sealed class WinUiDictationContext : IDisposable
     private IntPtr _pasteTarget;
     private string? _captureTraceId;
     private volatile bool _auxiliarySession;
+    private volatile bool _delivering;
     private volatile DictationTestRoute? _testRoute;
     private volatile bool _testKeyHeld;
     private int _disposed;
@@ -49,7 +50,7 @@ public sealed class WinUiDictationContext : IDisposable
         _cleanup = new NativeTextCleanupService(_log);
         _pipeline = new TranscriptionPipelineService(_cleanup, _log);
         _paste = new ActiveAppPasteService(
-            new WinRtClipboardAdapter(),
+            new Win32ClipboardAdapter(),
             new NativeWindowActivationAdapter(),
             new NativeKeyboardInputAdapter());
         Status = "Ready";
@@ -63,9 +64,11 @@ public sealed class WinUiDictationContext : IDisposable
     /// </summary>
     public event EventHandler<float>? RecordingLevelChanged;
 
-    public bool IsRecording => _coordinator.IsRecording;
+    public bool IsRecording => _coordinator.IsRecording && !_delivering;
     public bool IsBusy => _coordinator.IsBusy || _coordinator.IsTranscribing;
-    public bool IsTranscribing => _coordinator.IsTranscribing;
+    // From key release until the text is delivered. The coordinator only reports recognition
+    // itself and raises no event when it starts, which left the pill idle while the user waited.
+    public bool IsTranscribing => _delivering || _coordinator.IsTranscribing;
     public bool IsHotkeyRegistered { get; private set; }
     public string Status { get; private set; }
 
@@ -416,6 +419,9 @@ public sealed class WinUiDictationContext : IDisposable
                 Status = "Ready";
                 RaiseChanged();
                 StartTimers();
+                // The key is down: initialize the device now, in parallel with the hold threshold.
+                _coordinator.PrimeMicrophone(
+                    _settings.Load().MicrophoneName ?? _coordinator.PickPreferredMicrophone());
                 break;
 
             case DictationHotkeyAction.ShowPreparing:
@@ -435,7 +441,7 @@ public sealed class WinUiDictationContext : IDisposable
                 StopTimers();
                 Status = "Hands-free dictation active";
                 RaiseChanged();
-                await StartAsync(shouldPasteToActiveApp: true);
+                await StartAsync(shouldPasteToActiveApp: true, decodeDuringCapture: true);
                 if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
                 break;
 
@@ -470,7 +476,9 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
     }
 
-    private async Task StartAsync(bool shouldPasteToActiveApp)
+    // Push-to-talk is transcribed in one pass after release. Only hands-free, which has no bound
+    // on its length, decodes while capture is still running.
+    private async Task StartAsync(bool shouldPasteToActiveApp, bool decodeDuringCapture = false)
     {
         if (IsRecording || IsBusy)
         {
@@ -505,7 +513,10 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
         try
         {
-            await _coordinator.StartAsync(current.MicrophoneName ?? _coordinator.PickPreferredMicrophone());
+            await _coordinator.StartAsync(
+                current.MicrophoneName ?? _coordinator.PickPreferredMicrophone(),
+                DictationSessionKind.Interactive,
+                decodeDuringCapture);
         }
         catch (Exception exception)
         {
@@ -557,6 +568,7 @@ public sealed class WinUiDictationContext : IDisposable
         _hotkeyState.Reset();
         _operationCancellation?.Dispose();
         _operationCancellation = new CancellationTokenSource();
+        _delivering = true;
         Status = "Transcribing locally…";
         RaiseChanged();
         try
@@ -654,6 +666,7 @@ public sealed class WinUiDictationContext : IDisposable
                 $"totalMs={totalStarted.ElapsedMilliseconds}; " +
                 $"outcome={Status}");
             _pasteTarget = IntPtr.Zero;
+            _delivering = false;
             // A live token makes the Escape hook swallow the key in every app, so it must not
             // outlive the dictation it belongs to.
             var finished = _operationCancellation;

@@ -19,6 +19,16 @@ WinUI must be launched through `winapp run` (the script above), not by executing
 `.exe` directly. A normal launch reads the production library at `%APPDATA%\muesli`; use
 `scripts/run-winui-preview.ps1` only for an isolated profile.
 
+To test a branch while another Muesli build keeps running, launch it as a development slot:
+
+```powershell
+.\scripts\run-windows-dev.ps1 -Slot A
+```
+
+That registers the build as its own package (`MuesliDevA`) with its own profile at
+`%APPDATA%\MuesliDevA` and its own single-instance scope. Model downloads are shared with every
+other build through `%USERPROFILE%\.cache\muesli`.
+
 ## Package
 
 ```powershell

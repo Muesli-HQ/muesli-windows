@@ -134,7 +134,8 @@ public partial class App : Application
     protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         var currentInstance = AppInstance.GetCurrent();
-        _mainInstance = AppInstance.FindOrRegisterForKey("Muesli.WinUI.Primary");
+        _mainInstance = AppInstance.FindOrRegisterForKey(
+            MuesliDevSlot.Current is { } slot ? $"Muesli.WinUI.Primary.{slot}" : "Muesli.WinUI.Primary");
         if (!_mainInstance.IsCurrent)
         {
             // Unpackaged hosts do not raise AppInstance.Activated reliably, so the primary shell
