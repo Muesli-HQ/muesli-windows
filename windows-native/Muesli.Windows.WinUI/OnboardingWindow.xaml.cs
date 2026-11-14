@@ -108,7 +108,6 @@ public sealed partial class OnboardingWindow : Window
         }
 
         AppWindow.Changed += AppWindow_Changed;
-        Activated += (_, _) => ViewModel.NotifyActivated();
         Closed += (_, _) => ViewModel.Dispose();
         RootGrid.ActualThemeChanged += (_, _) => App.ApplyCaptionButtonColors(AppWindow, RootGrid.ActualTheme);
         RootGrid.Loaded += (_, _) =>

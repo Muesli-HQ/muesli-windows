@@ -58,23 +58,49 @@ public sealed class MicrophoneLevelMonitor : IDisposable
         _capture = null;
     }
 
-    /// <summary>Peak absolute sample in the buffer, 0..1, for 32-bit float or 16-bit PCM.</summary>
+    /// <summary>
+    /// Peak absolute sample in the buffer, 0..1. Handles IEEE float and 16/24/32-bit integer PCM;
+    /// an extensible format is decided by its sub-format, since 32 bits can be either float or int.
+    /// </summary>
     public static double Peak(byte[] buffer, int count, WaveFormat format)
     {
         var peak = 0.0;
-        if (format.Encoding == WaveFormatEncoding.IeeeFloat ||
-            (format.Encoding == WaveFormatEncoding.Extensible && format.BitsPerSample == 32))
+        var bits = format.BitsPerSample;
+        if (IsFloat(format) && bits == 32)
         {
             for (var offset = 0; offset + 4 <= count; offset += 4)
-                peak = Math.Max(peak, Math.Abs(BitConverter.ToSingle(buffer, offset)));
+            {
+                var sample = Math.Abs(BitConverter.ToSingle(buffer, offset));
+                if (float.IsFinite(sample)) peak = Math.Max(peak, sample);
+            }
         }
-        else if (format.BitsPerSample == 16)
+        else if (bits == 16)
         {
             for (var offset = 0; offset + 2 <= count; offset += 2)
                 peak = Math.Max(peak, Math.Abs(BitConverter.ToInt16(buffer, offset) / 32768.0));
         }
+        else if (bits == 24)
+        {
+            for (var offset = 0; offset + 3 <= count; offset += 3)
+            {
+                var sample = (buffer[offset] | buffer[offset + 1] << 8 | buffer[offset + 2] << 16) << 8 >> 8;
+                peak = Math.Max(peak, Math.Abs(sample / 8388608.0));
+            }
+        }
+        else if (bits == 32)
+        {
+            for (var offset = 0; offset + 4 <= count; offset += 4)
+                peak = Math.Max(peak, Math.Abs(BitConverter.ToInt32(buffer, offset) / 2147483648.0));
+        }
         return Math.Min(peak, 1.0);
     }
+
+    private static bool IsFloat(WaveFormat format) =>
+        format.Encoding == WaveFormatEncoding.IeeeFloat ||
+        (format is WaveFormatExtensible extensible && extensible.SubFormat == IeeeFloatSubFormat);
+
+    /// <summary>KSDATAFORMAT_SUBTYPE_IEEE_FLOAT.</summary>
+    private static readonly Guid IeeeFloatSubFormat = new("00000003-0000-0010-8000-00aa00389b71");
 
     /// <summary>
     /// Maps a peak to the meter on a decibel scale: -50 dBFS and below is empty, -5 dBFS is full,

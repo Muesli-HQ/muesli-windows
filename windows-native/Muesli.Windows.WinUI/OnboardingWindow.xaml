@@ -287,13 +287,22 @@
                         Visibility="{x:Bind local:OnboardingWindow.ToInvertedVisibility(ViewModel.MicrophoneAccessGranted), Mode=OneWay}"
                         AutomationProperties.AutomationId="OnboardingTestMicrophone"
                         AutomationProperties.Name="Allow microphone access" />
+                    <!-- Access granted earlier: the meter waits for this press before opening the mic. -->
+                    <Button
+                        Style="{StaticResource OnboardingHeroButtonStyle}"
+                        HorizontalAlignment="Center"
+                        Command="{x:Bind ViewModel.CheckMicrophoneCommand}"
+                        Content="Check Microphone"
+                        Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowCheckMicrophone), Mode=OneWay}"
+                        AutomationProperties.AutomationId="OnboardingCheckMicrophone"
+                        AutomationProperties.Name="Check microphone" />
                     <StackPanel
                         x:Name="MicrophoneMeter"
                         Orientation="Horizontal"
                         Spacing="5"
                         Height="40"
                         HorizontalAlignment="Center"
-                        Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.MicrophoneAccessGranted), Mode=OneWay}"
+                        Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsMeterRunning), Mode=OneWay}"
                         AutomationProperties.AutomationId="OnboardingMicrophoneMeter"
                         AutomationProperties.Name="Microphone level">
                         <Grid Width="8" Height="10" VerticalAlignment="Bottom">

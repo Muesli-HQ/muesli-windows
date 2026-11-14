@@ -219,7 +219,6 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool IsPipelineRunning { get; private set; }
     [ObservableProperty] public partial IReadOnlyList<OnboardingStepNavItem> StepNavItems { get; private set; } = [];
     [ObservableProperty] public partial IReadOnlyList<OnboardingPermissionItem> Permissions { get; private set; } = [];
-    [ObservableProperty] public partial string MicrophonePolicyHint { get; private set; } = "";
     [ObservableProperty] public partial string CloudKeyStatus { get; private set; } = "";
 
     public ObservableCollection<OnboardingModelRoleItem> ModelRoles => _modelRoles;
@@ -525,9 +524,15 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
 
     public string MicrophoneMeterHint => MicrophoneReady
         ? "Your microphone is working."
-        : "Say something to check muesli can hear you.";
+        : IsMeterRunning
+            ? "Say something to check muesli can hear you."
+            : "Check your microphone, then say something.";
 
-    partial void OnMicrophoneAccessGrantedChanged(bool value) => OnPropertyChanged(nameof(MicrophoneMeterHint));
+    partial void OnMicrophoneAccessGrantedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(MicrophoneMeterHint));
+        OnPropertyChanged(nameof(ShowCheckMicrophone));
+    }
 
     private const double SpeechLevel = 0.45;
     private const int SpeechBuffersToPass = 4;
@@ -535,6 +540,20 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     private double _pendingLevel;
     private int _levelQueued;
     private int _speechBuffers;
+
+    /// <summary>The live meter is listening; otherwise a granted microphone shows Check Microphone.</summary>
+    [ObservableProperty] public partial bool IsMeterRunning { get; private set; }
+
+    public bool ShowCheckMicrophone => MicrophoneAccessGranted && !IsMeterRunning;
+
+    partial void OnIsMeterRunningChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowCheckMicrophone));
+        OnPropertyChanged(nameof(MicrophoneMeterHint));
+    }
+
+    [RelayCommand]
+    private void CheckMicrophone() => StartMicrophoneMeter();
 
     private void StartMicrophoneMeter()
     {
@@ -549,6 +568,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         try
         {
             meter.Start(ProbeMicrophoneName());
+            IsMeterRunning = true;
             _meter = meter;
         }
         catch (Exception exception)
@@ -564,6 +584,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         _meter = null;
         _speechBuffers = 0;
         MicrophoneLevel = 0;
+        IsMeterRunning = false;
     }
 
     /// <summary>Capture thread: keep the loudest level and post at most one UI update at a time.</summary>
@@ -725,12 +746,13 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
                 ? $"Listening… release {SelectedHotkey} when done"
                 : $"Hold {SelectedHotkey} to start";
 
-    /// <summary>The meter listens only while the microphone step is showing and access is granted.</summary>
+    /// <summary>
+    /// The meter opens the microphone only from a press (Allow or Check Microphone), never by
+    /// arriving on the step, and stops as soon as the step is left.
+    /// </summary>
     private void UpdateMicrophoneMeter()
     {
-        var show = Step == OnboardingSteps.Microphone && MicrophoneAccessGranted && !_disposed;
-        if (show && _meter is null) StartMicrophoneMeter();
-        else if (!show && _meter is not null) StopMicrophoneMeter();
+        if (_meter is not null && (Step != OnboardingSteps.Microphone || _disposed)) StopMicrophoneMeter();
     }
 
     /// <summary>
@@ -828,10 +850,6 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         _draft = _draft with { IndicatorAnchor = "Middle Right", IndicatorLeft = null, IndicatorTop = null };
         _settings.Save(_draft);
         ApplyStatus("");
-    }
-
-    public void NotifyActivated()
-    {
     }
 
     private static string MicrophoneFailureText(MicrophoneProbeFailure failure) => failure switch

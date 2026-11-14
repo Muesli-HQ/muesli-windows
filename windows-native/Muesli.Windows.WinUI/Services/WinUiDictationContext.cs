@@ -254,15 +254,30 @@ public sealed class WinUiDictationContext : IDisposable
     private async Task StopTestAsync(DictationTestRoute route)
     {
         if (!_auxiliarySession || !IsRecording) return;
+        // Owning the operation token is what lets Escape reach a test that is still transcribing:
+        // the hook's cancel predicate sees a live operation, and RequestCancellation cancels it
+        // straight away instead of waiting behind this work on the serialized chain.
+        var cancellation = new CancellationTokenSource();
+        _operationCancellation = cancellation;
         try
         {
-            var text = await StopWithoutPersistingAsync();
+            var text = await StopWithoutPersistingAsync(cancellation.Token);
             Post(() => route.Captured(text));
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            Post(() => route.Failed("Test cancelled. Hold the shortcut to try again."));
         }
         catch (Exception exception)
         {
             _log.Error("Setup dictation test could not transcribe.", exception);
             Post(() => route.Failed(exception.Message));
+        }
+        finally
+        {
+            // A token left behind would keep the cancel predicate true and swallow every Escape.
+            if (ReferenceEquals(_operationCancellation, cancellation)) _operationCancellation = null;
+            cancellation.Dispose();
         }
     }
 
