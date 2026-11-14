@@ -45,7 +45,6 @@ jobs:
           additional_permissions: |
             pull_requests: write
             issues: write
-            checks: write
             actions: read
           use_sticky_comment: true
           track_progress: true
