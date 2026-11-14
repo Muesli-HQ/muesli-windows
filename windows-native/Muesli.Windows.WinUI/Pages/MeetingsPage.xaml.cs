@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -26,6 +27,13 @@ public sealed partial class MeetingsPage : Page
     public MeetingsPage()
     {
         InitializeComponent();
+        // Code-set colours and item templates resolve brushes once; redo them on a theme switch.
+        ActualThemeChanged += (_, _) =>
+        {
+            UpdateSortPill();
+            UpdateTimeRangePill();
+            ThemeBrushes.Rerealize(MeetingList);
+        };
         Unloaded += (_, _) => ViewModel.Dispose();
         ViewModel.PropertyChanged += (_, args) =>
         {
@@ -342,8 +350,8 @@ public sealed partial class MeetingsPage : Page
         if (active)
         {
             // macOS: accent at 12% with accent text, no border.
-            var accentText = (Brush)Application.Current.Resources["MuesliAccentTextBrush"];
-            button.Background = (Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
+            var accentText = ThemeBrushes.Get("MuesliAccentTextBrush");
+            button.Background = ThemeBrushes.Get("MuesliAccentMutedBrush");
             button.Foreground = accentText;
             icon.Foreground = accentText;
             label.Foreground = accentText;
@@ -363,12 +371,12 @@ public sealed partial class MeetingsPage : Page
     {
         var imported = label.Contains("import", StringComparison.OrdinalIgnoreCase);
         var key = imported ? "MuesliAccentBrush" : "MuesliTextSecondaryBrush";
-        var color = Application.Current.Resources[key] is SolidColorBrush solid ? solid.Color : Microsoft.UI.Colors.Gray;
+        var color = ThemeBrushes.Get(key) is SolidColorBrush solid ? solid.Color : Microsoft.UI.Colors.Gray;
         return new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x1F, color.R, color.G, color.B));
     }
 
-    public static Brush SourceForeground(string label) => (Brush)Application.Current.Resources[
-        label.Contains("import", StringComparison.OrdinalIgnoreCase) ? "MuesliAccentTextBrush" : "MuesliTextSecondaryBrush"];
+    public static Brush SourceForeground(string label) => ThemeBrushes.Get(
+        label.Contains("import", StringComparison.OrdinalIgnoreCase) ? "MuesliAccentTextBrush" : "MuesliTextSecondaryBrush");
 
     private void MeetingList_ItemClick(object sender, ItemClickEventArgs e)
     {

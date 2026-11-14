@@ -838,30 +838,8 @@ public sealed partial class MainPage : Page
         RefreshAppearanceToggle();
     }
 
-    private SolidColorBrush Brush(string key)
-    {
-        var themeKey = new AccessibilitySettings().HighContrast
-            ? "HighContrast"
-            : ActualTheme == ElementTheme.Light ? "Light" : "Dark";
-
-        foreach (var dictionary in Application.Current.Resources.MergedDictionaries.Reverse())
-        {
-            if (dictionary.ThemeDictionaries.TryGetValue(themeKey, out var themedResources) &&
-                themedResources is ResourceDictionary themeDictionary &&
-                themeDictionary.TryGetValue(key, out var themedValue) &&
-                themedValue is SolidColorBrush themedBrush)
-            {
-                return themedBrush;
-            }
-        }
-
-        if (Application.Current.Resources.TryGetValue(key, out var value) && value is SolidColorBrush brush)
-        {
-            return brush;
-        }
-
-        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-    }
+    private SolidColorBrush Brush(string key) =>
+        Themes.ThemeBrushes.Get(key, ActualTheme) as SolidColorBrush ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
     private IEnumerable<Button> VisibleNavItems()
     {

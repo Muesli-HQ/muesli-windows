@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -26,6 +27,12 @@ public sealed partial class DictationsPage : Page
     public DictationsPage()
     {
         InitializeComponent();
+        // Code-set colours resolve brushes once; redo them on a theme switch.
+        ActualThemeChanged += (_, _) =>
+        {
+            UpdateSortPill();
+            Bindings.Update();
+        };
         Unloaded += (_, _) => ViewModel.Dispose();
         ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
         Loaded += (_, _) =>
@@ -51,11 +58,11 @@ public sealed partial class DictationsPage : Page
     /// (recordingFill #DC2626 with white) while capturing.
     /// </summary>
     public static Microsoft.UI.Xaml.Media.Brush RecordBackground(bool isRecording) =>
-        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[isRecording ? "MuesliRecordingFillBrush" : "MuesliAccentBrush"];
+        ThemeBrushes.Get(isRecording ? "MuesliRecordingFillBrush" : "MuesliAccentBrush");
 
     public static Microsoft.UI.Xaml.Media.Brush RecordForeground(bool isRecording) => isRecording
         ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White)
-        : (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MuesliOnAccentBrush"];
+        : ThemeBrushes.Get("MuesliOnAccentBrush");
 
     public static string RecordGlyph(bool isRecording) => isRecording ? "" : "";
 
@@ -78,10 +85,10 @@ public sealed partial class DictationsPage : Page
         NewestFirstItem.IsChecked = !oldest;
         OldestFirstItem.IsChecked = oldest;
         SortLabel.Visibility = oldest ? Visibility.Visible : Visibility.Collapsed;
-        var tone = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[oldest ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush"];
+        var tone = ThemeBrushes.Get(oldest ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush");
         SortIcon.Foreground = tone;
         SortLabel.Foreground = tone;
-        if (oldest) SortButton.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
+        if (oldest) SortButton.Background = ThemeBrushes.Get("MuesliAccentMutedBrush");
         else SortButton.ClearValue(Control.BackgroundProperty);
     }
 

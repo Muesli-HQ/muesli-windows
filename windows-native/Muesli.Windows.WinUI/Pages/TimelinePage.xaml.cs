@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -22,6 +23,12 @@ public sealed partial class TimelinePage : Page
     public TimelinePage()
     {
         InitializeComponent();
+        // Code-set colours and item templates resolve brushes once; redo them on a theme switch.
+        ActualThemeChanged += (_, _) =>
+        {
+            UpdateSortPill();
+            ThemeBrushes.Rerealize(TimelineList);
+        };
         ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
         Loaded += (_, _) =>
         {
@@ -60,14 +67,14 @@ public sealed partial class TimelinePage : Page
     /// macOS MeetingStatusDisplay: the label reads in the status text colour (destructiveText,
     /// accentText, successText, warningText) on a 12% tint of the status fill colour.
     /// </summary>
-    public static Brush StatusBrush(string status) => (Brush)Application.Current.Resources[StatusKind(status) switch
+    public static Brush StatusBrush(string status) => ThemeBrushes.Get(StatusKind(status) switch
     {
         "recording" => "MuesliDestructiveTextBrush",
         "processing" => "MuesliAccentTextBrush",
         "attention" => "MuesliWarningTextBrush",
         "completed" => "MuesliSuccessTextBrush",
         _ => "MuesliTextTertiaryBrush"
-    }];
+    });
 
     /// <summary>The status fill colour at 12%, the capsule's background.</summary>
     public static Brush StatusTint(string status)
@@ -80,7 +87,7 @@ public sealed partial class TimelinePage : Page
             "completed" => "MuesliSuccessBrush",
             _ => "MuesliTextTertiaryBrush"
         };
-        var color = Application.Current.Resources[key] is SolidColorBrush solid ? solid.Color : Microsoft.UI.Colors.Gray;
+        var color = ThemeBrushes.Get(key) is SolidColorBrush solid ? solid.Color : Microsoft.UI.Colors.Gray;
         return new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x1F, color.R, color.G, color.B));
     }
 
@@ -116,10 +123,10 @@ public sealed partial class TimelinePage : Page
         OldestFirstItem.IsChecked = oldest;
         SortLabel.Text = "Oldest first";
         SortLabel.Visibility = oldest ? Visibility.Visible : Visibility.Collapsed;
-        var tone = (Brush)Application.Current.Resources[oldest ? "MuesliAccentTextBrush" : "MuesliTextTertiaryBrush"];
+        var tone = ThemeBrushes.Get(oldest ? "MuesliAccentTextBrush" : "MuesliTextTertiaryBrush");
         SortIcon.Foreground = tone;
         SortLabel.Foreground = tone;
-        if (oldest) SortButton.Background = (Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
+        if (oldest) SortButton.Background = ThemeBrushes.Get("MuesliAccentMutedBrush");
         else SortButton.ClearValue(Control.BackgroundProperty);
     }
 

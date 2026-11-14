@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -136,7 +137,7 @@ public sealed partial class OnboardingWindow : Window
     public static string CheckGlyph(bool done) => done ? "\uEC61" : "\uEA3A";
 
     public static Microsoft.UI.Xaml.Media.Brush CheckBrush(bool done) =>
-        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[done ? "MuesliSuccessBrush" : "MuesliTextTertiaryBrush"];
+        ThemeBrushes.Get(done ? "MuesliSuccessBrush" : "MuesliTextTertiaryBrush", ElementTheme.Dark);
 
     /// <summary>An unfinished row names its action with a chevron, in the accent, like a link.</summary>
     public static string ActionText(string gateLabel) => gateLabel + "  ›";
