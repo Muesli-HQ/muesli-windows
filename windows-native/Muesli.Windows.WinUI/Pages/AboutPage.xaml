@@ -150,6 +150,36 @@
                     </StackPanel>
                 </Border>
 
+                <!--
+                    macOS AboutView "Spread the Word": the share links live on About rather than in
+                    the sidebar. Plain callout buttons in accent text.
+                -->
+                <TextBlock Text="SPREAD THE WORD" Style="{StaticResource AboutSectionLabelStyle}" />
+                <Border Style="{StaticResource AboutCardStyle}"
+                        AutomationProperties.Name="Spread the word">
+                    <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Share muesli" Style="{StaticResource AboutRowTitleStyle}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                            <HyperlinkButton Content="Post on X"
+                                             Tag="tweet"
+                                             Click="Share_Click"
+                                             FontSize="13"
+                                             Padding="0"
+                                             Foreground="{ThemeResource MuesliAccentTextBrush}"
+                                             AutomationProperties.Name="Post about muesli on X"
+                                             AutomationProperties.AutomationId="AboutShareX" />
+                            <HyperlinkButton Content="LinkedIn"
+                                             Tag="linkedin"
+                                             Click="Share_Click"
+                                             FontSize="13"
+                                             Padding="0"
+                                             Foreground="{ThemeResource MuesliAccentTextBrush}"
+                                             AutomationProperties.Name="Post about muesli on LinkedIn"
+                                             AutomationProperties.AutomationId="AboutShareLinkedIn" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <!-- Setup and tour (Windows only; macOS keeps these in the menu bar) -->
                 <TextBlock Text="SETUP" Style="{StaticResource AboutSectionLabelStyle}" />
                 <Border Style="{StaticResource AboutCardStyle}"

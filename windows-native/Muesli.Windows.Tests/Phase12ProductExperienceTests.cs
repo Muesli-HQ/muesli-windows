@@ -63,6 +63,24 @@ public sealed class Phase12ProductExperienceTests
     }
 
     [Fact]
+    public void A_test_passed_on_the_system_default_microphone_survives_a_restart()
+    {
+        // The default microphone is saved as null in settings and verified as "".
+        var progress = new OnboardingProgress
+        {
+            MicrophoneVerified = true, PipelineVerified = true, VerifiedMicrophone = "",
+            ModelsVerified = true, VerifiedDictationModelId = "d", VerifiedFinalModelId = "f"
+        };
+        var result = OnboardingProgressReconciler.Reconcile(progress, new(null, "d", "f", null, "F8"), _ => true, _ => true);
+        Assert.True(result.MicrophoneVerified);
+        Assert.True(result.PipelineVerified);
+
+        var changed = OnboardingProgressReconciler.Reconcile(progress, new("USB mic", "d", "f", null, "F8"), _ => true, _ => true);
+        Assert.False(changed.MicrophoneVerified);
+        Assert.False(changed.PipelineVerified);
+    }
+
+    [Fact]
     public void Reconciliation_requires_current_model_lifecycle_readiness()
     {
         var progress = new OnboardingProgress { ModelsVerified = true, PipelineVerified = true, VerifiedMicrophone = "mic", MicrophoneVerified = true, VerifiedDictationModelId = "d", VerifiedFinalModelId = "f" };
@@ -86,6 +104,37 @@ public sealed class Phase12ProductExperienceTests
         var json = System.Text.Json.JsonSerializer.Serialize(progress);
         Assert.DoesNotContain("transcript", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("apiKey", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(0, OnboardingSteps.Welcome)]
+    [InlineData(1, OnboardingSteps.Microphone)]
+    [InlineData(2, OnboardingSteps.Model)]
+    [InlineData(3, OnboardingSteps.Shortcut)]
+    [InlineData(4, OnboardingSteps.Test)]
+    [InlineData(6, OnboardingSteps.Ready)]
+    public void Schema_1_progress_resumes_on_the_same_step_in_the_macOS_order(int savedStep, int expectedStep)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"muesli-phase12-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, "onboarding-progress.json");
+            File.WriteAllText(path, $$$"""{"schemaVersion":1,"data":{"schemaVersion":1,"step":{{{savedStep}}},"deferred":true}}""");
+            var store = new OnboardingProgressStore(path);
+
+            var loaded = store.Load();
+            Assert.Equal(expectedStep, loaded.Step);
+            Assert.Equal(OnboardingProgressStore.CurrentSchemaVersion, loaded.SchemaVersion);
+
+            // Saved again it is schema 2 and loads unchanged.
+            store.Save(loaded);
+            Assert.Equal(expectedStep, store.Load().Step);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Fact]

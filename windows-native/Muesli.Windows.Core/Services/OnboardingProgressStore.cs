@@ -5,7 +5,8 @@ namespace Muesli.Windows.Services;
 /// <summary>Durable, non-secret resume metadata for the setup window.</summary>
 public sealed class OnboardingProgressStore
 {
-    public const int CurrentSchemaVersion = 1;
+    // 2: steps follow the macOS order; see OnboardingSteps.FromSchema1.
+    public const int CurrentSchemaVersion = 2;
     private readonly AtomicJsonFile _json;
     private readonly string _path;
     private bool _writeSuppressed;
@@ -29,7 +30,10 @@ public sealed class OnboardingProgressStore
         return loaded.Value with
         {
             SchemaVersion = CurrentSchemaVersion,
-            Step = Math.Clamp(loaded.Value.Step, 0, OnboardingProgress.LastStep),
+            Step = Math.Clamp(
+                loaded.Value.SchemaVersion < 2 ? OnboardingSteps.FromSchema1(loaded.Value.Step) : loaded.Value.Step,
+                0,
+                OnboardingProgress.LastStep),
             LastStatus = (loaded.Value.LastStatus ?? "").Trim()[..Math.Min((loaded.Value.LastStatus ?? "").Trim().Length, 300)]
         };
     }
@@ -49,7 +53,7 @@ public sealed class OnboardingProgressStore
 
 public sealed record OnboardingProgress
 {
-    public const int LastStep = 6;
+    public const int LastStep = OnboardingSteps.Ready;
     public int SchemaVersion { get; init; } = OnboardingProgressStore.CurrentSchemaVersion;
     public int Step { get; init; }
     public bool Deferred { get; init; }
@@ -114,5 +118,6 @@ public static class OnboardingProgressReconciler
                      (selection.LiveModelId is null || liveReady(selection.LiveModelId));
         return progress with { MicrophoneVerified = progress.MicrophoneVerified && microphone, HotkeyVerified = progress.HotkeyVerified && hotkey, ModelsVerified = progress.ModelsVerified && models, PipelineVerified = progress.PipelineVerified && microphone && models };
     }
-    private static bool Same(string? left, string? right) => string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
+    // The system default microphone is saved as null and verified as "": both mean "no explicit device".
+    private static bool Same(string? left, string? right) => string.Equals(left?.Trim() ?? "", right?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
 }

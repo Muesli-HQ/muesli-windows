@@ -90,7 +90,7 @@ public partial class TimelinePageViewModel : ObservableObject
             ? "TODAY"
             : localDate == today.AddDays(-1)
                 ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
+                : LibraryDayHeading.Format(localDate);
     }
 
     private void NotifyDerived()
@@ -245,9 +245,10 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         // about to go: the dialog is the last point at which the user can tell that the pointer
         // was over the row they meant.
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete this dictation permanently?\n\n{item.TimeLabel} · “{Snippet(item.Text)}”\n\n" +
-            "This removes its saved transcript from this profile.",
-            "Delete dictation",
+            // macOS wording, plus the record itself: actions appear on hover, so the dialog is
+            // the last point at which the user can tell which row the pointer was over.
+            $"Are you sure you want to delete this dictation? This cannot be undone.\n\n{item.TimeLabel} · “{Snippet(item.Text)}”",
+            "Delete Dictation",
             cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
 
@@ -328,7 +329,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
             ? "TODAY"
             : localDate == today.AddDays(-1)
                 ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
+                : LibraryDayHeading.Format(localDate);
     }
 
     private void ShowStatus(string message, bool isError = false)
@@ -615,7 +616,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         !string.Equals(MeetingStatus, "Ready", StringComparison.Ordinal);
 
     public string ResultCountHint =>
-        $"{(Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings")}  •  Open a meeting to review notes, transcript, and template-driven summaries";
+        (Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings");
 
     /// <summary>Current sort, shown on the compact sort pill (MeetingsView.swift parity).</summary>
     public string SortLabel => SortIndex == 1 ? "Oldest first" : "Newest first";
@@ -1236,7 +1237,7 @@ public sealed record MeetingListItem(
             MeetingPreviewText.Snippet(
                 !string.IsNullOrWhiteSpace(item.ManualNotes) && item.SessionState != MeetingSessionState.Completed ? item.ManualNotes
                 : string.IsNullOrWhiteSpace(item.Summary) ? item.Transcript : item.Summary),
-            item.CreatedAt.ToLocalTime().ToString("d MMM yyyy 'at' h:mm:ss tt"),
+            item.CreatedAt.ToLocalTime().ToString("MMM d, yyyy 'at' h:mm:ss tt", System.Globalization.CultureInfo.CurrentCulture),
             FormatDuration(item.DurationMs),
             SessionStateLabel(item.SessionState, item.RecoveredFromInterruption),
             string.IsNullOrWhiteSpace(item.ModelProfile) ? "Local model" : item.ModelProfile,
@@ -1414,5 +1415,19 @@ public sealed record MeetingFolderListItem(string Id, string Name, int Count)
         }
 
         return result;
+    }
+}
+
+/// <summary>
+/// macOS day headings (TimelineView.swift): "TODAY", "YESTERDAY", otherwise the abbreviated
+/// weekday, day and month in the locale's order, uppercased, with no year ("WED, NOV 12").
+/// </summary>
+internal static class LibraryDayHeading
+{
+    public static string Format(DateTime date)
+    {
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        var monthDay = culture.DateTimeFormat.MonthDayPattern.Replace("MMMM", "MMM", StringComparison.Ordinal);
+        return $"{date.ToString("ddd", culture)}, {date.ToString(monthDay, culture)}".ToUpper(culture);
     }
 }

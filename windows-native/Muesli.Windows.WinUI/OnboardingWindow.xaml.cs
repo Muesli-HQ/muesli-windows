@@ -1,9 +1,12 @@
+using Muesli.Windows.WinUI.Themes;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Input;
 using Muesli.Windows.Services;
+using Muesli.Windows.WinUI.Services;
 using Muesli.Windows.WinUI.ViewModels;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
@@ -28,14 +31,16 @@ public sealed class OnboardingBoolVisConverter : IValueConverter
 
 public sealed partial class OnboardingWindow : Window
 {
-    private const double DefaultWidthDip = 820;
+    // macOS OnboardingWindowController: a 640 x 520 window. Windows steps carry more controls, so
+    // the default is a little taller; ResizeForDpi clamps to the work area and the content scrolls.
+    private const double DefaultWidthDip = 640;
     // P8-02: the permissions step is the tallest, and at 700 DIP its last row was cut in half by the
     // fixed footer. 780 DIP clears it on a 1080p/125 % display; ResizeForDpi clamps to the work area
     // so a shorter display still gets a window that fits and the ScrollViewer keeps the overflow
     // reachable.
-    private const double DefaultHeightDip = 780;
+    private const double DefaultHeightDip = 600;
     private const double MinimumWidthDip = 560;
-    private const double MinimumHeightDip = 560;
+    private const double MinimumHeightDip = 520;
     private const double RailWidthDip = 236;
 
     private readonly IntPtr _hwnd;
@@ -43,6 +48,7 @@ public sealed partial class OnboardingWindow : Window
     private double _effectiveHeightDip = DefaultHeightDip;
     private uint _lastDpi;
     private bool _resizingForDpi;
+    private readonly HotkeyRecorder _hotkeyRecorder = new();
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hWnd);
@@ -66,19 +72,25 @@ public sealed partial class OnboardingWindow : Window
         };
         ViewModel.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName is nameof(ViewModel.StatusIsError) or nameof(ViewModel.Status) or nameof(ViewModel.ShowStatus))
-            {
-                StatusBar.Severity = ViewModel.StatusIsError ? InfoBarSeverity.Error : InfoBarSeverity.Informational;
-            }
-
             if (args.PropertyName == nameof(ViewModel.Step))
             {
                 // A retained offset would open the next step mid-card with no cue that anything sits
                 // above, the same reason Prompt 5 reset the Settings scroller on tab change.
                 ContentScroller.ChangeView(null, 0, null, true);
                 UpdateScrollAffordance();
+                ViewModel.CancelHotkeyRecording();
+            }
+            else if (args.PropertyName == nameof(ViewModel.IsRecordingHotkey))
+            {
+                ApplyRecordingChrome();
+            }
+            else if (args.PropertyName == nameof(ViewModel.MicrophoneLevel))
+            {
+                ApplyMicrophoneLevel(ViewModel.MicrophoneLevel);
             }
         };
+        RootGrid.PreviewKeyDown += RootGrid_PreviewKeyDown;
+        RootGrid.PreviewKeyUp += RootGrid_PreviewKeyUp;
 
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _lastDpi = GetDpiForWindow(_hwnd);
@@ -96,7 +108,6 @@ public sealed partial class OnboardingWindow : Window
         }
 
         AppWindow.Changed += AppWindow_Changed;
-        Activated += (_, _) => ViewModel.NotifyActivated();
         Closed += (_, _) => ViewModel.Dispose();
         RootGrid.ActualThemeChanged += (_, _) => App.ApplyCaptionButtonColors(AppWindow, RootGrid.ActualTheme);
         RootGrid.Loaded += (_, _) =>
@@ -121,13 +132,82 @@ public sealed partial class OnboardingWindow : Window
 
     public Visibility BoolToVisibility(bool value) => ToVisibility(value);
 
+    /// <summary>Ready checklist: a filled check when done, an empty circle otherwise.</summary>
+    public static string CheckGlyph(bool done) => done ? "\uEC61" : "\uEA3A";
+
+    public static Microsoft.UI.Xaml.Media.Brush CheckBrush(bool done) =>
+        ThemeBrushes.Get(done ? "MuesliSuccessBrush" : "MuesliTextTertiaryBrush", ElementTheme.Dark);
+
+    /// <summary>An unfinished row names its action with a chevron, in the accent, like a link.</summary>
+    public static string ActionText(string gateLabel) => gateLabel + "  ›";
+
+    private void UseCase_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string id }) ViewModel.ToggleUseCaseCommand.Execute(id);
+    }
+
+    private void ModelChoice_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: OnboardingModelChoice choice })
+        {
+            ViewModel.SelectModelChoiceCommand.Execute(choice);
+        }
+    }
+
+    /// <summary>
+    /// "Change Shortcut" listens for the next key, as the macOS recorder does. Preview events run
+    /// before the focused button sees the key, so Space and Enter record instead of clicking it.
+    /// </summary>
+    private void RootGrid_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (!ViewModel.IsRecordingHotkey) return;
+        e.Handled = true;
+        if (e.Key == VirtualKey.Escape)
+        {
+            ViewModel.CancelHotkeyRecording();
+            return;
+        }
+        if (_hotkeyRecorder.KeyDown(e) is { } gesture) ViewModel.ApplyRecordedHotkey(gesture);
+    }
+
+    private void RootGrid_PreviewKeyUp(object sender, KeyRoutedEventArgs e)
+    {
+        if (!ViewModel.IsRecordingHotkey) return;
+        e.Handled = true;
+        if (_hotkeyRecorder.KeyUp(e) is { } gesture) ViewModel.ApplyRecordedHotkey(gesture);
+    }
+
+    /// <summary>While listening, the key cap takes the accent tint (macOS .tinted).</summary>
+    /// <summary>
+    /// Lights the signal bars up to the current level, like a phone's signal indicator: the first
+    /// bar for any sound, all six for loud speech. Only opacity changes, so colours stay themed.
+    /// </summary>
+    private void ApplyMicrophoneLevel(double level)
+    {
+        var bars = MicrophoneMeter.Children;
+        for (var index = 0; index < bars.Count; index++)
+        {
+            if (bars[index] is Grid { Children.Count: > 1 } bar)
+            {
+                bar.Children[1].Opacity = level >= (index + 1) / (bars.Count + 1.0) ? 1 : 0;
+            }
+        }
+    }
+
+    /// <summary>The tint itself is markup (theme brushes follow this dark window); start a fresh capture.</summary>
+    private void ApplyRecordingChrome()
+    {
+        if (ViewModel.IsRecordingHotkey) _hotkeyRecorder.Reset();
+    }
+
     private void RootGrid_SizeChanged(object sender, SizeChangedEventArgs e) =>
         ApplyCompactLayout(e.NewSize.Width);
 
     private void ApplyCompactLayout(double width)
     {
-        var compact = width > 0 && width < 760;
-        var stackedFooter = width > 0 && width < 640;
+        // macOS onboarding has no step rail: the bottom-bar dots carry progress.
+        var compact = true;
+        var stackedFooter = width > 0 && width < 520;
         StepRail.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         RailSplitter.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         RailColumn.Width = compact ? new GridLength(0) : new GridLength(RailWidthDip);
@@ -138,12 +218,9 @@ public sealed partial class OnboardingWindow : Window
         var contentWidth = Math.Max(0, width - (compact ? 0 : RailWidthDip + 1));
         var padding = MuesliPageMetrics.ContentPadding(contentWidth);
         ContentColumn.Padding = padding;
-        FooterBar.Padding = new Thickness(padding.Left, compact ? 12 : 14, padding.Right, compact ? 16 : 18);
-        TitleText.FontSize = compact ? 26 : 32;
-        IndicatorPreviewActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
-        Grid.SetColumn(PermissionsToolbar, compact ? 0 : 1);
-        Grid.SetRow(PermissionsToolbar, compact ? 1 : 0);
-        PermissionsToolbar.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        FooterBar.Padding = new Thickness(32, 16, 32, 16);
+        TitleText.FontSize = 26;
+
         FooterActions.Orientation = stackedFooter ? Orientation.Vertical : Orientation.Horizontal;
         SkipButton.HorizontalAlignment = stackedFooter ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         NextButton.HorizontalAlignment = stackedFooter ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;

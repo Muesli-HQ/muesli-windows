@@ -20,11 +20,11 @@
             <ResourceDictionary x:Key="Default">
                 <!-- product palette -->
                 <SolidColorBrush x:Key="MuesliBackgroundBrush" Color="#161719" />
-                <SolidColorBrush x:Key="MuesliBackgroundDeepBrush" Color="#111214" />
-                <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#111214" />
-                <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="MuesliBackgroundDeepBrush" Color="#0B0C0E" />
+                <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#0B0C0E" />
+                <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#202226" />
                 <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#262830" />
-                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0202226" />
+                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#202226" />
                 <SolidColorBrush x:Key="MuesliSurfacePrimaryBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#262830" />
@@ -36,13 +36,13 @@
                 <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#BDFFFFFF" />
                 <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
-                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
-                <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#266BA3F7" />
+                <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#34D399" />
                 <SolidColorBrush x:Key="MuesliSuccessMutedBrush" Color="#2234D399" />
-                <SolidColorBrush x:Key="MuesliWarningBrush" Color="#FF9F43" />
-                <SolidColorBrush x:Key="MuesliErrorBrush" Color="#EF4444" />
-                <SolidColorBrush x:Key="MuesliErrorMutedBrush" Color="#33EF4444" />
+                <SolidColorBrush x:Key="MuesliWarningBrush" Color="#F59E0B" />
+                <SolidColorBrush x:Key="MuesliErrorBrush" Color="#F87171" />
+                <SolidColorBrush x:Key="MuesliErrorMutedBrush" Color="#1AEF4444" />
                 <SolidColorBrush x:Key="MuesliTextDisabledBrush" Color="#40FFFFFF" />
                 <SolidColorBrush x:Key="MuesliControlFillBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliControlHoverBrush" Color="#2E3340" />
@@ -50,21 +50,21 @@
                 <SolidColorBrush x:Key="MuesliControlDisabledBrush" Color="#1C1D20" />
                 <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliFocusOuterBrush" Color="#FFFFFFFF" />
-                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#B2CFFB" />
                 <SolidColorBrush x:Key="MuesliOverlayBrush" Color="#99000000" />
 
                 <!-- platform text -->
                 <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#9EFFFFFF" />
-                <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#BDFFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#40FFFFFF" />
                 <SolidColorBrush x:Key="TextControlForeground" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#66FFFFFF" />
-                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#66FFFFFF" />
-                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#6BA3F7" />
-                <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#8FBAFA" />
-                <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#B4D0FC" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#8FFFFFFF" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#8FFFFFFF" />
+                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#B2CFFB" />
+                <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#B2CFFB" />
+                <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#B2CFFB" />
 
                 <!-- platform control fills -->
                 <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#262830" />
@@ -72,7 +72,7 @@
                 <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#232528" />
                 <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#1C1D20" />
                 <SolidColorBrush x:Key="ControlFillColorTransparentBrush" Color="Transparent" />
-                <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#202226" />
                 <SolidColorBrush x:Key="ControlSolidFillColorDefaultBrush" Color="#262830" />
                 <SolidColorBrush x:Key="ControlStrongFillColorDefaultBrush" Color="#9EFFFFFF" />
                 <SolidColorBrush x:Key="ControlAltFillColorSecondaryBrush" Color="#232528" />
@@ -84,7 +84,7 @@
                 <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#26FFFFFF" />
                 <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="#FFFFFFFF" />
-                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#B2CFFB" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#1CFFFFFF" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#2B2D33" />
                 <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#12FFFFFF" />
@@ -92,12 +92,12 @@
 
                 <!-- platform surfaces -->
                 <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#161719" />
-                <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#111214" />
-                <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#0B0C0E" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#202226" />
                 <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#262830" />
-                <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#202226" />
                 <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#262830" />
-                <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#202226" />
                 <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#161719" />
                 <SolidColorBrush x:Key="SubtleFillColorTransparentBrush" Color="Transparent" />
                 <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#232528" />
@@ -124,13 +124,13 @@
                     SystemColor* brushes there and Windows owns that pairing.
                 -->
                 <Color x:Key="SystemAccentColor">#6BA3F7</Color>
-                <Color x:Key="SystemAccentColorLight1">#4A85EC</Color>
-                <Color x:Key="SystemAccentColorLight2">#2F6FE0</Color>
-                <Color x:Key="SystemAccentColorLight3">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorLight1">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorLight2">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorLight3">#B2CFFB</Color>
                 <Color x:Key="SystemAccentColorDark1">#2A63C8</Color>
                 <Color x:Key="SystemAccentColorDark2">#24559F</Color>
                 <Color x:Key="SystemAccentColorDark3">#1D4680</Color>
-                <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#6BA3F7" />
                 <!--
                     TextBox focus underline and text selection. generic.xaml builds these from the
                     accent Color ramp and aliases them with StaticResource, so they are redeclared
@@ -148,11 +148,11 @@
                 <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#6BA3F7" />
                 <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
-                <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3F7BE6" />
-                <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#2A63C8" />
+                <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#76AAF8" />
+                <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#81B1F8" />
                 <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#262830" />
-                <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
-                <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#C8FFFFFF" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FF000000" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#C8000000" />
 
                 <!-- navigation: macOS-style filled pill, no left indicator bar -->
                 <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#2E3340" />
@@ -161,7 +161,7 @@
                 <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#BDFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#232528" />
@@ -169,25 +169,71 @@
                 <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="Transparent" />
 
                 <!-- segmented control: filled selected segment, no underline pill -->
-                <SolidColorBrush x:Key="SelectorBarItemBackgroundSelected" Color="#2F6FE0" />
-                <SolidColorBrush x:Key="SelectorBarItemForegroundSelected" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundSelected" Color="#3A3D45" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundSelected" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="SelectorBarItemBackground" Color="Transparent" />
-                <SolidColorBrush x:Key="SelectorBarItemForeground" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemForeground" Color="#BDFFFFFF" />
                 <SolidColorBrush x:Key="SelectorBarItemBackgroundPointerOver" Color="#232528" />
                 <SolidColorBrush x:Key="SelectorBarItemForegroundPointerOver" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="SelectorBarItemBackgroundPressed" Color="#2E3340" />
                 <SolidColorBrush x:Key="SelectorBarItemForegroundPressed" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="SelectorBarItemPillFill" Color="Transparent" />
                 <SolidColorBrush x:Key="SelectorBarItemDisabledPillFill" Color="Transparent" />
+                <!-- macOS roles (MuesliTheme.swift): accent text and ink, tints, semantic text and fills. -->
+                <SolidColorBrush x:Key="MuesliAccentTextBrush" Color="#B2CFFB" />
+                <SolidColorBrush x:Key="MuesliOnAccentBrush" Color="#000000" />
+                <SolidColorBrush x:Key="MuesliAccentTintHoverBrush" Color="#366BA3F7" />
+                <SolidColorBrush x:Key="MuesliAccentTintPressedBrush" Color="#456BA3F7" />
+                <SolidColorBrush x:Key="MuesliBadgeFillBrush" Color="#4D75B2" />
+                <SolidColorBrush x:Key="MuesliRecordingBrush" Color="#EF4444" />
+                <SolidColorBrush x:Key="MuesliRecordingFillBrush" Color="#DC2626" />
+                <SolidColorBrush x:Key="MuesliTranscribingBrush" Color="#F59E0B" />
+                <SolidColorBrush x:Key="MuesliJoinActionBrush" Color="#33B887" />
+                <SolidColorBrush x:Key="MuesliJoinActionSecondaryBrush" Color="#26946B" />
+                <SolidColorBrush x:Key="MuesliOnJoinActionBrush" Color="#000000" />
+                <SolidColorBrush x:Key="MuesliSuccessTextBrush" Color="#34D399" />
+                <SolidColorBrush x:Key="MuesliWarningTextBrush" Color="#F59E0B" />
+                <SolidColorBrush x:Key="MuesliDestructiveTextBrush" Color="#F87171" />
+                <SolidColorBrush x:Key="MuesliDestructiveTintHoverBrush" Color="#21EF4444" />
+                <SolidColorBrush x:Key="MuesliDestructiveTintPressedBrush" Color="#29EF4444" />
+                <SolidColorBrush x:Key="MuesliStateHoverOverlayBrush" Color="#0FFFFFFF" />
+                <SolidColorBrush x:Key="MuesliStatePressedOverlayBrush" Color="#1CFFFFFF" />
+                <!-- Control leaves for accent buttons, toggles and progress, retinted by AccentPalette.
+                     Leaf keys resolve through app resources first, unlike generic.xaml's StaticResource aliases. -->
+                <SolidColorBrush x:Key="AccentButtonBackground" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#77ABF8" />
+                <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#83B3F8" />
+                <SolidColorBrush x:Key="AccentButtonForeground" Color="#000000" />
+                <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#000000" />
+                <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#000000" />
+                <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#77ABF8" />
+                <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#83B3F8" />
+                <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ProgressBarForeground" Color="#6BA3F7" />
+                <!-- macOS secondary button: surfacePrimary, textPrimary 6% hover / 11% pressed overlay, 1pt surfaceBorder. -->
+                <SolidColorBrush x:Key="ButtonBackground" Color="#262830" />
+                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#33353C" />
+                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#3E4047" />
+                <SolidColorBrush x:Key="ButtonBorderBrush" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="ButtonForeground" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#EBFFFFFF" />
+                <!-- macOS stat-card hover border: accent at 38%. -->
+                <SolidColorBrush x:Key="MuesliAccentBorderHoverBrush" Color="#616BA3F7" />
             </ResourceDictionary>
 
             <ResourceDictionary x:Key="Dark">
                 <SolidColorBrush x:Key="MuesliBackgroundBrush" Color="#161719" />
-                <SolidColorBrush x:Key="MuesliBackgroundDeepBrush" Color="#111214" />
-                <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#111214" />
-                <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="MuesliBackgroundDeepBrush" Color="#0B0C0E" />
+                <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#0B0C0E" />
+                <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#202226" />
                 <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#262830" />
-                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0202226" />
+                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#202226" />
                 <SolidColorBrush x:Key="MuesliSurfacePrimaryBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#262830" />
@@ -199,13 +245,13 @@
                 <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#BDFFFFFF" />
                 <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#6BA3F7" />
-                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#226BA3F7" />
-                <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#266BA3F7" />
+                <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#34D399" />
                 <SolidColorBrush x:Key="MuesliSuccessMutedBrush" Color="#2234D399" />
-                <SolidColorBrush x:Key="MuesliWarningBrush" Color="#FF9F43" />
-                <SolidColorBrush x:Key="MuesliErrorBrush" Color="#EF4444" />
-                <SolidColorBrush x:Key="MuesliErrorMutedBrush" Color="#33EF4444" />
+                <SolidColorBrush x:Key="MuesliWarningBrush" Color="#F59E0B" />
+                <SolidColorBrush x:Key="MuesliErrorBrush" Color="#F87171" />
+                <SolidColorBrush x:Key="MuesliErrorMutedBrush" Color="#1AEF4444" />
                 <SolidColorBrush x:Key="MuesliTextDisabledBrush" Color="#40FFFFFF" />
                 <SolidColorBrush x:Key="MuesliControlFillBrush" Color="#262830" />
                 <SolidColorBrush x:Key="MuesliControlHoverBrush" Color="#2E3340" />
@@ -213,27 +259,27 @@
                 <SolidColorBrush x:Key="MuesliControlDisabledBrush" Color="#1C1D20" />
                 <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="MuesliFocusOuterBrush" Color="#FFFFFFFF" />
-                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#B2CFFB" />
                 <SolidColorBrush x:Key="MuesliOverlayBrush" Color="#99000000" />
 
                 <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#9EFFFFFF" />
-                <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#66FFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#BDFFFFFF" />
+                <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#8FFFFFFF" />
                 <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#40FFFFFF" />
                 <SolidColorBrush x:Key="TextControlForeground" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#66FFFFFF" />
-                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#66FFFFFF" />
-                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#6BA3F7" />
-                <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#8FBAFA" />
-                <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#B4D0FC" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#8FFFFFFF" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#8FFFFFFF" />
+                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#B2CFFB" />
+                <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#B2CFFB" />
+                <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#B2CFFB" />
 
                 <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#262830" />
                 <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#2E3340" />
                 <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#232528" />
                 <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#1C1D20" />
                 <SolidColorBrush x:Key="ControlFillColorTransparentBrush" Color="Transparent" />
-                <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#202226" />
                 <SolidColorBrush x:Key="ControlSolidFillColorDefaultBrush" Color="#262830" />
                 <SolidColorBrush x:Key="ControlStrongFillColorDefaultBrush" Color="#9EFFFFFF" />
                 <SolidColorBrush x:Key="ControlAltFillColorSecondaryBrush" Color="#232528" />
@@ -244,19 +290,19 @@
                 <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#26FFFFFF" />
                 <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#6BA3F7" />
                 <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="#FFFFFFFF" />
-                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#B2CFFB" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#1CFFFFFF" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#2B2D33" />
                 <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#12FFFFFF" />
                 <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="#1CFFFFFF" />
 
                 <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#161719" />
-                <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#111214" />
-                <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#0B0C0E" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#202226" />
                 <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#262830" />
-                <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#202226" />
                 <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#262830" />
-                <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#1C1D20" />
+                <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#202226" />
                 <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#161719" />
                 <SolidColorBrush x:Key="SubtleFillColorTransparentBrush" Color="Transparent" />
                 <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#232528" />
@@ -264,13 +310,13 @@
 
                 <!-- Accent ramp: see the note in the Default dictionary above. -->
                 <Color x:Key="SystemAccentColor">#6BA3F7</Color>
-                <Color x:Key="SystemAccentColorLight1">#4A85EC</Color>
-                <Color x:Key="SystemAccentColorLight2">#2F6FE0</Color>
-                <Color x:Key="SystemAccentColorLight3">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorLight1">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorLight2">#6BA3F7</Color>
+                <Color x:Key="SystemAccentColorLight3">#B2CFFB</Color>
                 <Color x:Key="SystemAccentColorDark1">#2A63C8</Color>
                 <Color x:Key="SystemAccentColorDark2">#24559F</Color>
                 <Color x:Key="SystemAccentColorDark3">#1D4680</Color>
-                <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#2F6FE0" />
+                <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#6BA3F7" />
                 <!--
                     TextBox focus underline and text selection. generic.xaml builds these from the
                     accent Color ramp and aliases them with StaticResource, so they are redeclared
@@ -288,11 +334,11 @@
                 <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#6BA3F7" />
                 <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
-                <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#3F7BE6" />
-                <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#2A63C8" />
+                <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#76AAF8" />
+                <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#81B1F8" />
                 <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#262830" />
-                <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
-                <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#C8FFFFFF" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FF000000" />
+                <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#C8000000" />
 
                 <!-- navigation: macOS-style filled pill, no left indicator bar -->
                 <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#2E3340" />
@@ -301,7 +347,7 @@
                 <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#EBFFFFFF" />
-                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#BDFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#232528" />
@@ -309,43 +355,89 @@
                 <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="Transparent" />
 
                 <!-- segmented control: filled selected segment, no underline pill -->
-                <SolidColorBrush x:Key="SelectorBarItemBackgroundSelected" Color="#2F6FE0" />
-                <SolidColorBrush x:Key="SelectorBarItemForegroundSelected" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundSelected" Color="#3A3D45" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundSelected" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="SelectorBarItemBackground" Color="Transparent" />
-                <SolidColorBrush x:Key="SelectorBarItemForeground" Color="#9EFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemForeground" Color="#BDFFFFFF" />
                 <SolidColorBrush x:Key="SelectorBarItemBackgroundPointerOver" Color="#232528" />
                 <SolidColorBrush x:Key="SelectorBarItemForegroundPointerOver" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="SelectorBarItemBackgroundPressed" Color="#2E3340" />
                 <SolidColorBrush x:Key="SelectorBarItemForegroundPressed" Color="#EBFFFFFF" />
                 <SolidColorBrush x:Key="SelectorBarItemPillFill" Color="Transparent" />
                 <SolidColorBrush x:Key="SelectorBarItemDisabledPillFill" Color="Transparent" />
+                <!-- macOS roles (MuesliTheme.swift): accent text and ink, tints, semantic text and fills. -->
+                <SolidColorBrush x:Key="MuesliAccentTextBrush" Color="#B2CFFB" />
+                <SolidColorBrush x:Key="MuesliOnAccentBrush" Color="#000000" />
+                <SolidColorBrush x:Key="MuesliAccentTintHoverBrush" Color="#366BA3F7" />
+                <SolidColorBrush x:Key="MuesliAccentTintPressedBrush" Color="#456BA3F7" />
+                <SolidColorBrush x:Key="MuesliBadgeFillBrush" Color="#4D75B2" />
+                <SolidColorBrush x:Key="MuesliRecordingBrush" Color="#EF4444" />
+                <SolidColorBrush x:Key="MuesliRecordingFillBrush" Color="#DC2626" />
+                <SolidColorBrush x:Key="MuesliTranscribingBrush" Color="#F59E0B" />
+                <SolidColorBrush x:Key="MuesliJoinActionBrush" Color="#33B887" />
+                <SolidColorBrush x:Key="MuesliJoinActionSecondaryBrush" Color="#26946B" />
+                <SolidColorBrush x:Key="MuesliOnJoinActionBrush" Color="#000000" />
+                <SolidColorBrush x:Key="MuesliSuccessTextBrush" Color="#34D399" />
+                <SolidColorBrush x:Key="MuesliWarningTextBrush" Color="#F59E0B" />
+                <SolidColorBrush x:Key="MuesliDestructiveTextBrush" Color="#F87171" />
+                <SolidColorBrush x:Key="MuesliDestructiveTintHoverBrush" Color="#21EF4444" />
+                <SolidColorBrush x:Key="MuesliDestructiveTintPressedBrush" Color="#29EF4444" />
+                <SolidColorBrush x:Key="MuesliStateHoverOverlayBrush" Color="#0FFFFFFF" />
+                <SolidColorBrush x:Key="MuesliStatePressedOverlayBrush" Color="#1CFFFFFF" />
+                <!-- Control leaves for accent buttons, toggles and progress, retinted by AccentPalette.
+                     Leaf keys resolve through app resources first, unlike generic.xaml's StaticResource aliases. -->
+                <SolidColorBrush x:Key="AccentButtonBackground" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#77ABF8" />
+                <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#83B3F8" />
+                <SolidColorBrush x:Key="AccentButtonForeground" Color="#000000" />
+                <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#000000" />
+                <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#000000" />
+                <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#6BA3F7" />
+                <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#77ABF8" />
+                <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#83B3F8" />
+                <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ProgressBarForeground" Color="#6BA3F7" />
+                <!-- macOS secondary button: surfacePrimary, textPrimary 6% hover / 11% pressed overlay, 1pt surfaceBorder. -->
+                <SolidColorBrush x:Key="ButtonBackground" Color="#262830" />
+                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#33353C" />
+                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#3E4047" />
+                <SolidColorBrush x:Key="ButtonBorderBrush" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#12FFFFFF" />
+                <SolidColorBrush x:Key="ButtonForeground" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#EBFFFFFF" />
+                <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#EBFFFFFF" />
+                <!-- macOS stat-card hover border: accent at 38%. -->
+                <SolidColorBrush x:Key="MuesliAccentBorderHoverBrush" Color="#616BA3F7" />
             </ResourceDictionary>
 
             <ResourceDictionary x:Key="Light">
-                <SolidColorBrush x:Key="MuesliBackgroundBrush" Color="#F6F7F9" />
-                <SolidColorBrush x:Key="MuesliBackgroundDeepBrush" Color="#EEF0F4" />
-                <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#FFFFFF" />
-                <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#FFFFFF" />
-                <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#F0F2F5" />
-                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0F0F0F2" />
+                <SolidColorBrush x:Key="MuesliBackgroundBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="MuesliBackgroundDeepBrush" Color="#F5F5F7" />
+                <SolidColorBrush x:Key="MuesliSidebarBrush" Color="#F5F5F7" />
+                <SolidColorBrush x:Key="MuesliSurfaceBrush" Color="#F0F0F2" />
+                <SolidColorBrush x:Key="MuesliSurfaceRaisedBrush" Color="#E5E5EA" />
+                <SolidColorBrush x:Key="MuesliBackgroundRaisedBrush" Color="#F0F0F2" />
                 <SolidColorBrush x:Key="MuesliSurfacePrimaryBrush" Color="#E5E5EA" />
-                <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#F0F2F5" />
-                <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#F0F2F5" />
-                <SolidColorBrush x:Key="MuesliHoverBrush" Color="#E8EBF0" />
-                <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="MuesliRaisedBrush" Color="#E5E5EA" />
+                <SolidColorBrush x:Key="MuesliRaisedSurfaceBrush" Color="#E5E5EA" />
+                <SolidColorBrush x:Key="MuesliHoverBrush" Color="#E8E8EC" />
+                <SolidColorBrush x:Key="MuesliSelectedBrush" Color="#D6DFFE" />
                 <SolidColorBrush x:Key="MuesliBorderBrush" Color="#14000000" />
-                <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#0F000000" />
+                <SolidColorBrush x:Key="MuesliBorderSoftBrush" Color="#14000000" />
                 <SolidColorBrush x:Key="MuesliTextPrimaryBrush" Color="#E0000000" />
                 <SolidColorBrush x:Key="MuesliTextSecondaryBrush" Color="#A8000000" />
                 <SolidColorBrush x:Key="MuesliTextTertiaryBrush" Color="#8C000000" />
                 <SolidColorBrush x:Key="MuesliAccentBrush" Color="#2563EB" />
-                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#1F2563EB" />
-                <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#1F62D6" />
-                <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#0F9F6E" />
-                <SolidColorBrush x:Key="MuesliSuccessMutedBrush" Color="#1F0F9F6E" />
-                <SolidColorBrush x:Key="MuesliWarningBrush" Color="#B4620A" />
-                <SolidColorBrush x:Key="MuesliErrorBrush" Color="#C2352F" />
-                <SolidColorBrush x:Key="MuesliErrorMutedBrush" Color="#22C2352F" />
+                <SolidColorBrush x:Key="MuesliAccentMutedBrush" Color="#262563EB" />
+                <SolidColorBrush x:Key="MuesliAccentStrongBrush" Color="#2563EB" />
+                <SolidColorBrush x:Key="MuesliSuccessBrush" Color="#34D399" />
+                <SolidColorBrush x:Key="MuesliSuccessMutedBrush" Color="#2634D399" />
+                <SolidColorBrush x:Key="MuesliWarningBrush" Color="#F59E0B" />
+                <SolidColorBrush x:Key="MuesliErrorBrush" Color="#B91C1C" />
+                <SolidColorBrush x:Key="MuesliErrorMutedBrush" Color="#1AEF4444" />
                 <SolidColorBrush x:Key="MuesliTextDisabledBrush" Color="#3B000000" />
                 <SolidColorBrush x:Key="MuesliControlFillBrush" Color="#FFFFFF" />
                 <SolidColorBrush x:Key="MuesliControlHoverBrush" Color="#F3F5F8" />
@@ -353,54 +445,54 @@
                 <SolidColorBrush x:Key="MuesliControlDisabledBrush" Color="#F6F7F9" />
                 <SolidColorBrush x:Key="MuesliBorderStrongBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="MuesliFocusOuterBrush" Color="#000000" />
-                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#2563EB" />
+                <SolidColorBrush x:Key="MuesliFocusInnerBrush" Color="#163B8D" />
                 <SolidColorBrush x:Key="MuesliOverlayBrush" Color="#66000000" />
 
-                <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E6000000" />
-                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#99000000" />
-                <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#61000000" />
+                <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#E0000000" />
+                <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#A8000000" />
+                <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#8C000000" />
                 <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#3B000000" />
-                <SolidColorBrush x:Key="TextControlForeground" Color="#E6000000" />
-                <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#E6000000" />
-                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#61000000" />
-                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#61000000" />
-                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#2563EB" />
-                <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#1D55AD" />
-                <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#174892" />
+                <SolidColorBrush x:Key="TextControlForeground" Color="#E0000000" />
+                <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#E0000000" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#8C000000" />
+                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#8C000000" />
+                <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#163B8D" />
+                <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#163B8D" />
+                <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#163B8D" />
 
                 <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#FFFFFF" />
-                <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#F3F5F8" />
-                <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#F5F5F7" />
+                <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#E8E8EC" />
                 <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#F6F7F9" />
                 <SolidColorBrush x:Key="ControlFillColorTransparentBrush" Color="Transparent" />
                 <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#FFFFFF" />
                 <SolidColorBrush x:Key="ControlSolidFillColorDefaultBrush" Color="#FFFFFF" />
                 <SolidColorBrush x:Key="ControlStrongFillColorDefaultBrush" Color="#99000000" />
-                <SolidColorBrush x:Key="ControlAltFillColorSecondaryBrush" Color="#F3F5F8" />
-                <SolidColorBrush x:Key="ControlAltFillColorTertiaryBrush" Color="#E8EBF0" />
-                <SolidColorBrush x:Key="ControlAltFillColorQuarternaryBrush" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="ControlAltFillColorSecondaryBrush" Color="#F0F0F2" />
+                <SolidColorBrush x:Key="ControlAltFillColorTertiaryBrush" Color="#E8E8EC" />
+                <SolidColorBrush x:Key="ControlAltFillColorQuarternaryBrush" Color="#D6DFFE" />
 
                 <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#1A000000" />
                 <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#24000000" />
                 <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#2563EB" />
                 <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="#000000" />
-                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#2563EB" />
+                <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#163B8D" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#14000000" />
                 <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#DDE1E8" />
                 <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#0F000000" />
                 <SolidColorBrush x:Key="SurfaceStrokeColorDefaultBrush" Color="#1A000000" />
 
-                <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#F6F7F9" />
-                <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#EEF0F4" />
-                <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#FFFFFF" />
-                <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#F0F2F5" />
-                <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FFFFFF" />
-                <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#F0F2F5" />
-                <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#FFFFFF" />
-                <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#F6F7F9" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#F5F5F7" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#F0F0F2" />
+                <SolidColorBrush x:Key="SolidBackgroundFillColorQuarternaryBrush" Color="#E5E5EA" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#F0F0F2" />
+                <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#E5E5EA" />
+                <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#F0F0F2" />
+                <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#FFFFFF" />
                 <SolidColorBrush x:Key="SubtleFillColorTransparentBrush" Color="Transparent" />
-                <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#E8EBF0" />
-                <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#E8E8EC" />
+                <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#D6DFFE" />
 
                 <!--
                     Accent ramp — Light. A light dictionary derives from the Dark* ramp:
@@ -413,10 +505,10 @@
                 <Color x:Key="SystemAccentColorLight1">#4C86DE</Color>
                 <Color x:Key="SystemAccentColorLight2">#7BA9EC</Color>
                 <Color x:Key="SystemAccentColorLight3">#A9C8F4</Color>
-                <Color x:Key="SystemAccentColorDark1">#1F62D6</Color>
-                <Color x:Key="SystemAccentColorDark2">#2563EB</Color>
-                <Color x:Key="SystemAccentColorDark3">#1D55AD</Color>
-                <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#1F62D6" />
+                <Color x:Key="SystemAccentColorDark1">#2563EB</Color>
+                <Color x:Key="SystemAccentColorDark2">#163B8D</Color>
+                <Color x:Key="SystemAccentColorDark3">#163B8D</Color>
+                <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#2563EB" />
                 <!--
                     TextBox focus underline and text selection. generic.xaml builds these from the
                     accent Color ramp and aliases them with StaticResource, so they are redeclared
@@ -434,37 +526,83 @@
                 <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="TextControlElevationBorderFocusedBrush" />
                 <SolidColorBrush x:Key="AccentFillColorSelectedTextBackgroundBrush" Color="#2563EB" />
                 <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="AccentFillColorSelectedTextBackgroundBrush" />
-                <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#1B58C0" />
-                <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#174CA6" />
+                <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#225BD8" />
+                <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#1F53C5" />
                 <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#E8EBF0" />
                 <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
                 <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#C8FFFFFF" />
 
                 <!-- navigation: macOS-style filled pill, no left indicator bar -->
-                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#DEE8F8" />
-                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#DEE8F8" />
-                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#D6DFFE" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#D6DFFE" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#D6DFFE" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#E6000000" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#E6000000" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#E6000000" />
-                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#99000000" />
+                <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#A8000000" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#E6000000" />
                 <SolidColorBrush x:Key="NavigationViewItemForegroundPressed" Color="#E6000000" />
-                <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#E8EBF0" />
-                <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#E8E8EC" />
+                <SolidColorBrush x:Key="NavigationViewItemBackgroundPressed" Color="#D6DFFE" />
                 <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="Transparent" />
 
                 <!-- segmented control: filled selected segment, no underline pill -->
-                <SolidColorBrush x:Key="SelectorBarItemBackgroundSelected" Color="#1F62D6" />
-                <SolidColorBrush x:Key="SelectorBarItemForegroundSelected" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundSelected" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="SelectorBarItemForegroundSelected" Color="#E0000000" />
                 <SolidColorBrush x:Key="SelectorBarItemBackground" Color="Transparent" />
-                <SolidColorBrush x:Key="SelectorBarItemForeground" Color="#99000000" />
-                <SolidColorBrush x:Key="SelectorBarItemBackgroundPointerOver" Color="#E8EBF0" />
+                <SolidColorBrush x:Key="SelectorBarItemForeground" Color="#A8000000" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundPointerOver" Color="#E8E8EC" />
                 <SolidColorBrush x:Key="SelectorBarItemForegroundPointerOver" Color="#E6000000" />
-                <SolidColorBrush x:Key="SelectorBarItemBackgroundPressed" Color="#DEE8F8" />
+                <SolidColorBrush x:Key="SelectorBarItemBackgroundPressed" Color="#D6DFFE" />
                 <SolidColorBrush x:Key="SelectorBarItemForegroundPressed" Color="#E6000000" />
                 <SolidColorBrush x:Key="SelectorBarItemPillFill" Color="Transparent" />
                 <SolidColorBrush x:Key="SelectorBarItemDisabledPillFill" Color="Transparent" />
+                <!-- macOS roles (MuesliTheme.swift): accent text and ink, tints, semantic text and fills. -->
+                <SolidColorBrush x:Key="MuesliAccentTextBrush" Color="#163B8D" />
+                <SolidColorBrush x:Key="MuesliOnAccentBrush" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="MuesliAccentTintHoverBrush" Color="#362563EB" />
+                <SolidColorBrush x:Key="MuesliAccentTintPressedBrush" Color="#452563EB" />
+                <SolidColorBrush x:Key="MuesliBadgeFillBrush" Color="#2563EB" />
+                <SolidColorBrush x:Key="MuesliRecordingBrush" Color="#EF4444" />
+                <SolidColorBrush x:Key="MuesliRecordingFillBrush" Color="#DC2626" />
+                <SolidColorBrush x:Key="MuesliTranscribingBrush" Color="#F59E0B" />
+                <SolidColorBrush x:Key="MuesliJoinActionBrush" Color="#33B887" />
+                <SolidColorBrush x:Key="MuesliJoinActionSecondaryBrush" Color="#26946B" />
+                <SolidColorBrush x:Key="MuesliOnJoinActionBrush" Color="#000000" />
+                <SolidColorBrush x:Key="MuesliSuccessTextBrush" Color="#065F46" />
+                <SolidColorBrush x:Key="MuesliWarningTextBrush" Color="#92400E" />
+                <SolidColorBrush x:Key="MuesliDestructiveTextBrush" Color="#B91C1C" />
+                <SolidColorBrush x:Key="MuesliDestructiveTintHoverBrush" Color="#21EF4444" />
+                <SolidColorBrush x:Key="MuesliDestructiveTintPressedBrush" Color="#29EF4444" />
+                <SolidColorBrush x:Key="MuesliStateHoverOverlayBrush" Color="#0F000000" />
+                <SolidColorBrush x:Key="MuesliStatePressedOverlayBrush" Color="#1C000000" />
+                <!-- Control leaves for accent buttons, toggles and progress, retinted by AccentPalette.
+                     Leaf keys resolve through app resources first, unlike generic.xaml's StaticResource aliases. -->
+                <SolidColorBrush x:Key="AccentButtonBackground" Color="#2563EB" />
+                <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#225BD8" />
+                <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#1F53C5" />
+                <SolidColorBrush x:Key="AccentButtonForeground" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#2563EB" />
+                <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#225BD8" />
+                <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#1F53C5" />
+                <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FFFFFF" />
+                <SolidColorBrush x:Key="ProgressBarForeground" Color="#2563EB" />
+                <!-- macOS secondary button: surfacePrimary, textPrimary 6% hover / 11% pressed overlay, 1pt surfaceBorder. -->
+                <SolidColorBrush x:Key="ButtonBackground" Color="#E5E5EA" />
+                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#D9D9DE" />
+                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CFCFD3" />
+                <SolidColorBrush x:Key="ButtonBorderBrush" Color="#14000000" />
+                <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#14000000" />
+                <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#14000000" />
+                <SolidColorBrush x:Key="ButtonForeground" Color="#E0000000" />
+                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#E0000000" />
+                <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#E0000000" />
+                <!-- macOS stat-card hover border: accent at 38%. -->
+                <SolidColorBrush x:Key="MuesliAccentBorderHoverBrush" Color="#612563EB" />
             </ResourceDictionary>
 
             <!--
@@ -515,6 +653,27 @@
                 <StaticResource x:Key="MuesliOverlayBrush" ResourceKey="SystemColorWindowTextColorBrush" />
                 <StaticResource x:Key="FocusStrokeColorOuterBrush" ResourceKey="SystemColorHighlightColorBrush" />
                 <StaticResource x:Key="FocusStrokeColorInnerBrush" ResourceKey="SystemColorHighlightTextColorBrush" />
+                <!-- macOS roles added for visual parity, mapped onto system colours. -->
+                <StaticResource x:Key="MuesliAccentTextBrush" ResourceKey="SystemColorHotlightColorBrush" />
+                <StaticResource x:Key="MuesliOnAccentBrush" ResourceKey="SystemColorHighlightTextColorBrush" />
+                <StaticResource x:Key="MuesliAccentTintHoverBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliAccentTintPressedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliBadgeFillBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliRecordingBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliRecordingFillBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliTranscribingBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliJoinActionBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliJoinActionSecondaryBrush" ResourceKey="SystemColorHighlightColorBrush" />
+                <StaticResource x:Key="MuesliOnJoinActionBrush" ResourceKey="SystemColorHighlightTextColorBrush" />
+                <StaticResource x:Key="MuesliSuccessTextBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliWarningTextBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliDestructiveTextBrush" ResourceKey="SystemColorWindowTextColorBrush" />
+                <StaticResource x:Key="MuesliDestructiveTintHoverBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliDestructiveTintPressedBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliStateHoverOverlayBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <StaticResource x:Key="MuesliStatePressedOverlayBrush" ResourceKey="SystemColorWindowColorBrush" />
+                <!-- macOS stat-card hover border: accent at 38%. -->
+                <StaticResource x:Key="MuesliAccentBorderHoverBrush" ResourceKey="SystemColorHighlightColorBrush" />
             </ResourceDictionary>
         </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

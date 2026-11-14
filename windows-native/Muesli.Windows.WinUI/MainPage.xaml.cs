@@ -64,6 +64,7 @@ public sealed partial class MainPage : Page
         {
             ApplyTourOverlayChrome();
             RefreshNavigationVisuals();
+            DrawBrandMark();
         };
     }
 
@@ -89,23 +90,41 @@ public sealed partial class MainPage : Page
     /// The app icon's mark as tall as the "muesli" title beside it, as on the macOS sidebar,
     /// with each bar and gap a whole number of physical pixels.
     /// </summary>
+    /// <summary>
+    /// Draws the brand mark as 13 rounded bars on whole pixels. The previous version drew it 22 tall
+    /// (wider than its 22-pt column, so it crowded the wordmark), rounded bar and gap separately (so
+    /// the mark lost the icon's proportions), and used stroke caps that render as flat half-tone tips.
+    /// </summary>
     private void DrawBrandMark()
     {
-        var (bar, gap, heights) = FloatingIndicatorLayout.BrandMarkGeometry(22, XamlRoot?.RasterizationScale ?? 1);
-        var tallest = heights.Max();
-        var figures = new PathFigureCollection();
-        for (var index = 0; index < heights.Length; index++)
+        var scale = XamlRoot?.RasterizationScale is > 0 and var s ? s : 1;
+        var mark = FloatingIndicatorLayout.ProportionalBrandMark(FloatingIndicatorLayout.SidebarBrandMarkHeight, scale);
+        var fill = Brush("MuesliAccentBrush");
+        BrandMark.Children.Clear();
+        BrandMark.Width = mark.Width;
+        BrandMark.Height = mark.Height;
+        for (var index = 0; index < mark.Heights.Length; index++)
         {
-            // A round-capped stroke as wide as the bar: the caps make the bar's rounded ends.
-            var x = index * (bar + gap) + bar / 2;
-            var figure = new PathFigure { StartPoint = new(x, (tallest - heights[index] + bar) / 2) };
-            figure.Segments.Add(new LineSegment { Point = new(x, (tallest + heights[index] - bar) / 2) });
-            figures.Add(figure);
+            var bar = new Microsoft.UI.Xaml.Shapes.Rectangle
+            {
+                Width = mark.BarWidth,
+                Height = mark.Heights[index],
+                RadiusX = mark.BarWidth / 2,
+                RadiusY = mark.BarWidth / 2,
+                Fill = fill
+            };
+            Canvas.SetLeft(bar, index * (mark.BarWidth + mark.Gap));
+            Canvas.SetTop(bar, (mark.Height - mark.Heights[index]) / 2);
+            BrandMark.Children.Add(bar);
         }
-        BrandMark.StrokeThickness = bar;
-        BrandMark.Width = heights.Length * bar + (heights.Length - 1) * gap;
-        BrandMark.Height = tallest;
-        BrandMark.Data = new PathGeometry { Figures = figures };
+
+        // The greeting starts under the wordmark: mark width plus the 12-pt gap, as on macOS.
+        if (!_compactRail && BrandRow.ColumnDefinitions.Count > 0)
+        {
+            BrandRow.ColumnDefinitions[0].Width = new GridLength(mark.Width);
+        }
+
+        GreetingText.Margin = new Thickness(mark.Width + 12, 2, 0, 0);
     }
 
     private void ShellRoot_SizeChanged(object sender, SizeChangedEventArgs e) =>
@@ -131,27 +150,31 @@ public sealed partial class MainPage : Page
         var compact = narrow || _railCollapsed;
         var medium = !compact && width < 1280;
         var sidebarWidth = compact
-            ? Token("MuesliSidebarWidthCompact", 72)
+            ? Token("MuesliSidebarWidthCompact", 68)
             : medium
-                ? Token("MuesliSidebarWidthMedium", 236)
-                : Token("MuesliSidebarWidthExpanded", 268);
+                ? Token("MuesliSidebarWidthMedium", 240)
+                : Token("MuesliSidebarWidthExpanded", 240);
         var caption = Token("MuesliTitleBarHeight", 32);
 
         _compactRail = compact;
         NavigationColumn.Width = new GridLength(sidebarWidth);
         ContentHost.Padding = new Thickness(0, caption, 0, 0);
         ContentFrame.Margin = new Thickness(0, 0, 0, 0);
-        hostWindow?.SetTitleBarInset(sidebarWidth);
+        // The rail's header starts below the caption strip, so the strip drags across the whole
+        // window, as the macOS titlebar spans sidebar and content.
+        hostWindow?.SetTitleBarInset(0);
 
         BrandNameText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        GreetingText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        SpreadTheWordLabel.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        RefreshGreeting();
         // The narrow rail keeps the download ring (its tooltip carries the title) and drops the text.
         DownloadStatusText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        ApplyNavButtonCompact(DownloadStatusRow, compact);
+        DownloadStatusRow.HorizontalContentAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
         DownloadStatusIcon.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
-        NavigationHeader.Margin = compact ? new Thickness(8, 18, 8, 12) : new Thickness(16, 18, 16, 16);
-        SearchBox.PlaceholderText = compact ? string.Empty : "Search...";
+        AppearanceToggle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        NavigationHeader.Margin = compact ? new Thickness(8, 40, 8, 8) : new Thickness(16, 40, 16, 8);
+        SearchBox.PlaceholderText = compact ? string.Empty : "Search…";
+        SearchShortcutHint.Visibility = compact || SearchBox.Text.Length > 0 ? Visibility.Collapsed : Visibility.Visible;
+        SearchGlyph.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         if (compact)
         {
             ToolTipService.SetToolTip(SearchWell, "Search dictations and meetings");
@@ -165,7 +188,8 @@ public sealed partial class MainPage : Page
         {
             BrandRow.ColumnDefinitions[0].Width = compact
                 ? new GridLength(1, GridUnitType.Star)
-                : new GridLength(30);
+                : new GridLength(BrandMark.Width > 0 ? BrandMark.Width : 22);
+            BrandRow.ColumnSpacing = compact ? 0 : 12;
             BrandMark.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
         }
 
@@ -188,14 +212,15 @@ public sealed partial class MainPage : Page
         CreateMeetingFolderButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         if (MeetingsRow.ColumnDefinitions.Count >= 3)
         {
-            MeetingsRow.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(28);
-            MeetingsRow.ColumnDefinitions[2].Width = compact ? new GridLength(0) : new GridLength(28);
+            MeetingsRow.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(36);
+            MeetingsRow.ColumnDefinitions[2].Width = compact ? new GridLength(0) : new GridLength(36);
         }
 
+        MeetingsRow.Margin = compact ? new Thickness(4, 2, 4, 2) : new Thickness(8, 2, 8, 2);
         MeetingChildrenHost.Visibility = compact
             ? Visibility.Collapsed
             : _meetingFoldersExpanded ? Visibility.Visible : Visibility.Collapsed;
-        MeetingChildrenHost.Margin = compact ? new Thickness(0, 0, 0, 0) : new Thickness(16, 0, 0, 0);
+        MeetingChildrenHost.Margin = compact ? new Thickness(0, 0, 0, 0) : new Thickness(24, 0, 0, 0);
 
         foreach (var button in AllNavItems())
         {
@@ -228,10 +253,11 @@ public sealed partial class MainPage : Page
 
         if (button.Content is Grid grid && grid.ColumnDefinitions.Count > 0)
         {
+            // 20-pt icon column plus the 12-pt gap to the label (macOS HStack spacing 12).
             grid.ColumnDefinitions[0].Width = compact
                 ? new GridLength(1, GridUnitType.Star)
-                : new GridLength(22);
-            foreach (var icon in grid.Children.OfType<FontIcon>())
+                : new GridLength(32);
+            foreach (var icon in grid.Children.OfType<IconElement>())
             {
                 icon.HorizontalAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
             }
@@ -295,6 +321,7 @@ public sealed partial class MainPage : Page
                 RebuildMeetingFolders();
                 ApplyResponsiveLayout(ShellRoot.ActualWidth);
                 RefreshNavigationVisuals();
+                DrawBrandMark();
             });
         });
     }
@@ -377,6 +404,7 @@ public sealed partial class MainPage : Page
     {
         var query = SearchBox.Text?.Trim() ?? string.Empty;
         SearchClearButton.Visibility = query.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        SearchShortcutHint.Visibility = query.Length == 0 && !_compactRail && SearchBox.FocusState == FocusState.Unfocused ? Visibility.Visible : Visibility.Collapsed;
 
         if (_suppressSearchRouting)
         {
@@ -462,14 +490,65 @@ public sealed partial class MainPage : Page
     /// </summary>
     private void SearchBox_GotFocus(object sender, RoutedEventArgs e)
     {
-        SearchWell.BorderBrush = Brush("MuesliBorderStrongBrush");
-        SearchWell.BorderThickness = new Thickness(1);
+        // macOS keyboard focus: a 2-pt accentText ring on the control's own shape.
+        SearchWell.Background = Brush("MuesliHoverBrush");
+        SearchWell.BorderBrush = Brush("MuesliAccentTextBrush");
+        SearchWell.BorderThickness = new Thickness(2);
+        SearchShortcutHint.Visibility = Visibility.Collapsed;
     }
 
     private void SearchBox_LostFocus(object sender, RoutedEventArgs e)
     {
+        SearchWell.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         SearchWell.ClearValue(Border.BorderBrushProperty);
         SearchWell.ClearValue(Border.BorderThicknessProperty);
+        SearchShortcutHint.Visibility = _compactRail || SearchBox.Text.Length > 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    // The quiet launcher's hover: textPrimary at 6% over the rail, as macOS .quiet buttons.
+    private void SearchWell_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (SearchBox.FocusState == FocusState.Unfocused) SearchWell.Background = Brush("MuesliStateHoverOverlayBrush");
+    }
+
+    private void SearchWell_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (SearchBox.FocusState == FocusState.Unfocused) SearchWell.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
+
+    private void FocusSearch_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (_railCollapsed)
+        {
+            _railCollapsed = false;
+            ApplyResponsiveLayout(ShellRoot.ActualWidth);
+        }
+
+        SearchBox.Focus(FocusState.Keyboard);
+        SearchBox.SelectAll();
+        args.Handled = true;
+    }
+
+    private void AppearanceSegment_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string theme }) return;
+        var current = App.Settings.Load();
+        if (string.Equals(current.Theme, theme, StringComparison.OrdinalIgnoreCase)) return;
+        App.Settings.Save(current with { Theme = theme });
+    }
+
+    /// <summary>The selected appearance segment is tinted (accent 15%, accentText, outline).</summary>
+    private void RefreshAppearanceToggle()
+    {
+        var theme = (App.Settings.Load().Theme ?? "system").Trim().ToLowerInvariant();
+        if (theme is not ("light" or "dark")) theme = "system";
+        foreach (var segment in new[] { AppearanceLight, AppearanceSystem, AppearanceDark })
+        {
+            var selected = string.Equals(segment.Tag as string, theme, StringComparison.Ordinal);
+            segment.Background = selected ? Brush("MuesliAccentMutedBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            segment.Foreground = selected ? Brush("MuesliAccentTextBrush") : Brush("MuesliTextSecondaryBrush");
+            segment.BorderBrush = selected ? Brush("MuesliTextSecondaryBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        }
     }
 
     private void ToggleSidebarCollapse_Click(object sender, RoutedEventArgs e)
@@ -487,7 +566,8 @@ public sealed partial class MainPage : Page
             MeetingChildrenHost.Visibility = _meetingFoldersExpanded ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        MeetingChevronIcon.Glyph = _meetingFoldersExpanded ? "\uE70D" : "\uE76C";
+        // Segoe Fluent ChevronDownSmall / ChevronRightSmall (macOS chevron.down / chevron.right 11).
+        MeetingChevronIcon.Glyph = _meetingFoldersExpanded ? "\uE96E" : "\uE970";
     }
 
     private void CreateMeetingFolder_Click(object sender, RoutedEventArgs e)
@@ -501,19 +581,6 @@ public sealed partial class MainPage : Page
         {
             page.RevealFolderEditor();
         }
-    }
-
-    private void Share_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button button || button.Tag is not string tag)
-        {
-            return;
-        }
-
-        var target = string.Equals(tag, "linkedin", StringComparison.OrdinalIgnoreCase)
-            ? "https://www.linkedin.com/sharing/share-offsite/?url=https://muesli.app"
-            : "https://twitter.com/intent/tweet?text=Meet%20Muesli%20%E2%80%94%20private%20on-device%20dictation&url=https://muesli.app";
-        _ = Launcher.LaunchUriAsync(new Uri(target));
     }
 
     private void TourNext_Click(object sender, RoutedEventArgs e)
@@ -601,8 +668,10 @@ public sealed partial class MainPage : Page
 
     private void RefreshGreeting()
     {
+        // macOS shows "Hi, name" only when there is a name.
         var name = App.Settings.Load().UserName?.Trim() ?? string.Empty;
-        GreetingText.Text = string.IsNullOrWhiteSpace(name) ? "Hi there" : $"Hi, {name}";
+        GreetingText.Text = string.IsNullOrWhiteSpace(name) ? string.Empty : $"Hi, {name}";
+        GreetingText.Visibility = _compactRail || string.IsNullOrWhiteSpace(name) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     /// <summary>
@@ -667,17 +736,19 @@ public sealed partial class MainPage : Page
         // Nesting depth is applied to the button's CONTENT, not to the button. ApplyNavButtonCompact
         // calls ClearValue(MarginProperty) on every rail button on each layout pass, which silently
         // flattened the whole folder tree to one indent level while the in-page list stayed nested.
+        // macOS: 16 per nesting level, icon column 20 + 12, count centred in a 24-min column.
         var content = new Grid
         {
-            Margin = new Thickness(Math.Min(folder.Depth, 8) * 12, 0, 0, 0)
+            Margin = new Thickness(Math.Min(folder.Depth, 8) * 16, 0, 0, 0)
         };
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 24 });
 
+        // All Meetings is macOS tray.2 (Segoe MapLayers, stacked trays); folders are folder.
         var icon = new FontIcon
         {
-            Glyph = "\uE8B7",
+            Glyph = folder.IsAllMeetings ? "\uE81E" : "\uE8B7",
             Style = (Style)Application.Current.Resources["MuesliSidebarIconStyle"]
         };
         Grid.SetColumn(icon, 0);
@@ -704,8 +775,9 @@ public sealed partial class MainPage : Page
         // (App.xaml:291-297), which re-resolves on every theme change on its own.
         var countLabel = new TextBlock
         {
-            Text = count.ToString("N0"),
-            Style = (Style)Application.Current.Resources["MuesliSidebarCountStyle"]
+            Text = CompactFolderCount(count),
+            Style = (Style)Application.Current.Resources["MuesliSidebarCountStyle"],
+            HorizontalAlignment = HorizontalAlignment.Center
         };
         AutomationProperties.SetAccessibilityView(countLabel, AccessibilityView.Raw);
         Grid.SetColumn(countLabel, 2);
@@ -715,54 +787,59 @@ public sealed partial class MainPage : Page
         return button;
     }
 
+    /// <summary>macOS sidebar folder counts: as-is under 1000, "1.2k" under 10000, then "12k".</summary>
+    internal static string CompactFolderCount(int count) => count switch
+    {
+        < 1000 => count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        < 10000 => (Math.Floor(count / 100d) / 10).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "k",
+        _ => (count / 1000).ToString(System.Globalization.CultureInfo.InvariantCulture) + "k"
+    };
+
+    /// <summary>
+    /// macOS row states: selected rows get surfaceSelected, a semibold primary label and an
+    /// accentText icon; others are medium, textSecondary, with folder icons in textTertiary.
+    /// </summary>
     private void RefreshNavigationVisuals()
     {
         var selectedBackground = Brush("MuesliSelectedBrush");
         var primary = Brush("MuesliTextPrimaryBrush");
         var secondary = Brush("MuesliTextSecondaryBrush");
-        var accent = Brush("MuesliAccentBrush");
+        var tertiary = Brush("MuesliTextTertiaryBrush");
+        var accentText = Brush("MuesliAccentTextBrush");
+        var medium = (FontFamily)Application.Current.Resources["MuesliFontFamilyMedium"];
+        var semiBold = (FontFamily)Application.Current.Resources["MuesliFontFamilySemiBold"];
 
         foreach (var button in AllNavItems())
         {
             var tag = button.Tag?.ToString() ?? string.Empty;
             var selected = string.Equals(tag, _selectedTag, StringComparison.OrdinalIgnoreCase);
+            var folderRow = MeetingChildrenHost.Children.Contains(button);
             button.Background = selected ? selectedBackground : null;
             button.Foreground = selected ? primary : secondary;
+            if (!folderRow)
+            {
+                button.FontFamily = selected ? semiBold : medium;
+                button.FontWeight = selected ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Medium;
+            }
 
             if (button.Content is Grid grid)
             {
-                foreach (var icon in grid.Children.OfType<FontIcon>())
+                foreach (var icon in grid.Children.OfType<IconElement>())
                 {
-                    icon.Foreground = selected ? accent : secondary;
+                    icon.Foreground = selected ? accentText : folderRow ? tertiary : secondary;
                 }
             }
         }
+
+        // The Meetings row's action glyphs read secondary while Meetings is selected.
+        var meetingsSelected = _selectedTag.StartsWith("meetings", StringComparison.OrdinalIgnoreCase);
+        MeetingChevronButton.Foreground = meetingsSelected ? secondary : tertiary;
+        CreateMeetingFolderButton.Foreground = meetingsSelected ? secondary : tertiary;
+        RefreshAppearanceToggle();
     }
 
-    private SolidColorBrush Brush(string key)
-    {
-        var themeKey = new AccessibilitySettings().HighContrast
-            ? "HighContrast"
-            : ActualTheme == ElementTheme.Light ? "Light" : "Dark";
-
-        foreach (var dictionary in Application.Current.Resources.MergedDictionaries.Reverse())
-        {
-            if (dictionary.ThemeDictionaries.TryGetValue(themeKey, out var themedResources) &&
-                themedResources is ResourceDictionary themeDictionary &&
-                themeDictionary.TryGetValue(key, out var themedValue) &&
-                themedValue is SolidColorBrush themedBrush)
-            {
-                return themedBrush;
-            }
-        }
-
-        if (Application.Current.Resources.TryGetValue(key, out var value) && value is SolidColorBrush brush)
-        {
-            return brush;
-        }
-
-        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-    }
+    private SolidColorBrush Brush(string key) =>
+        Themes.ThemeBrushes.Get(key, ActualTheme) as SolidColorBrush ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
     private IEnumerable<Button> VisibleNavItems()
     {
@@ -793,10 +870,8 @@ public sealed partial class MainPage : Page
             yield return child;
         }
 
-        yield return InsightsNav;
+        // Insights is not a sidebar destination on macOS; the Timeline stat cards open it.
         yield return DictionaryNav;
-        yield return TweetNav;
-        yield return LinkedInNav;
         yield return ModelsNav;
         yield return ShortcutsNav;
         yield return SettingsNav;

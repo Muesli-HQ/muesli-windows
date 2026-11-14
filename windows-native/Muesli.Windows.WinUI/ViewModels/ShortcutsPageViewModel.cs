@@ -153,6 +153,10 @@ public partial class ShortcutsPageViewModel(
         CapturePrompt = "Change…";
     }
 
+    /// <summary>On layouts with AltGr, Right Alt types characters, so holding it to dictate takes that away.</summary>
+    public const string AltGrNote =
+        " On keyboard layouts with AltGr, Right Alt also types special characters; pick another key if you use them.";
+
     public void ApplyCapturedGesture(string gesture)
     {
         try
@@ -178,7 +182,7 @@ public partial class ShortcutsPageViewModel(
             var failure = reapplyHotkey?.Invoke();
             ShowStatus(
                 failure is null
-                    ? $"Push-to-talk shortcut changed to {Hotkey}."
+                    ? $"Push-to-talk shortcut changed to {Hotkey}.{(HotkeyGestureParser.IsRightAlt(parsed) ? AltGrNote : string.Empty)}"
                     : $"{Hotkey} was saved, but it is not listening yet: {failure}",
                 isError: failure is not null);
         }

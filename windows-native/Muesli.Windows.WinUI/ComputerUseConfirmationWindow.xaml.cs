@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -197,7 +198,7 @@ public sealed partial class ComputerUseConfirmationWindow : Window
     }
 
     private static Brush Brush(string key) =>
-        (Brush)Application.Current.Resources[key];
+        ThemeBrushes.Get(key);
 
     /// <summary>
     /// Centres this confirmation on the work area of the display it opens on, never letting it

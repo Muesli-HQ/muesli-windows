@@ -203,6 +203,7 @@ public sealed class SettingsStore
         return settings with
         {
             UserName = settings.UserName ?? "",
+            OnboardingUseCase = OnboardingUseCases.Resolve(settings.OnboardingUseCase),
             Hotkey = DefaultIfBlank(settings.Hotkey, "F8").Trim(),
             PasteBehavior = DefaultIfBlank(settings.PasteBehavior, "active-app").Trim(),
             DictationModelId = NormalizePersistedModelId(settings.DictationModelId),
@@ -428,6 +429,9 @@ public sealed record MuesliSettings
     public const int CurrentSchemaVersion = 11;
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string UserName { get; init; } = "";
+
+    /// <summary>What setup was told muesli is for (macOS onboarding_use_case values).</summary>
+    public string OnboardingUseCase { get; init; } = OnboardingUseCases.Everything;
     public string Hotkey { get; init; } = "F8";
     public string PasteBehavior { get; init; } = "active-app";
     public string DictationModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
