@@ -333,15 +333,6 @@
                                           AutomationProperties.AutomationId="DictationMicrophonePicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <!--
-                                P5-01. This row used to be a title and a help paragraph with no control
-                                at all, which reads as a broken toggle. macOS 10-settings-dictation.png
-                                puts a toggle here, but that toggle is backed by a macOS-only capability
-                                and there is no persisted Windows setting behind it: the only live
-                                control is DictionaryPage's session toggle (DictionaryPage.xaml:64-71).
-                                The row therefore routes to the surface that really owns the feature
-                                instead of showing a switch that would not persist anything.
-                            -->
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Dictionary suggestions" Style="{StaticResource RowTitleStyle}" />
@@ -354,36 +345,6 @@
                                         Click="OpenDictionaryPage_Click"
                                         AutomationProperties.Name="Open the Dictionary page"
                                         AutomationProperties.AutomationId="OpenDictionaryPageButton" />
-                            </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Push-to-talk shortcut" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Hold to record, release to transcribe. Change it on the Shortcuts page." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <StackPanel x:Name="PushToTalkHost" Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                    <Border Background="{ThemeResource MuesliSurfaceRaisedBrush}"
-                                            BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="6"
-                                            Padding="12,4"
-                                            VerticalAlignment="Center">
-                                        <TextBlock Text="{x:Bind ViewModel.Hotkey, Mode=OneWay}"
-                                                   FontFamily="{StaticResource MuesliFontFamilyMedium}"
-                                                   FontSize="12"
-                                                   AutomationProperties.Name="Current push-to-talk shortcut" />
-                                    </Border>
-                                    <NumberBox Value="{x:Bind ViewModel.HotkeyTriggerThresholdMs, Mode=TwoWay}"
-                                               Minimum="0"
-                                               Maximum="1000"
-                                               SpinButtonPlacementMode="Hidden"
-                                               FontFamily="Consolas"
-                                               FontSize="13"
-                                               Width="76"
-                                               ToolTipService.ToolTip="Activation delay in milliseconds"
-                                               AutomationProperties.Name="Hold threshold in milliseconds"
-                                               AutomationProperties.AutomationId="HotkeyThresholdBox" />
-                                </StackPanel>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -413,6 +374,41 @@
                                               IsOn="{x:Bind ViewModel.EnableLocalCleanup, Mode=TwoWay}"
                                               AutomationProperties.Name="Local transcript cleanup"
                                               AutomationProperties.AutomationId="LocalCleanupToggle" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="ADVANCED" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Push-to-talk shortcut" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Hold to record, release to transcribe. Change it on the Shortcuts page." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <StackPanel x:Name="PushToTalkHost" Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                    <Border Background="{ThemeResource MuesliSurfaceRaisedBrush}"
+                                            BorderBrush="{ThemeResource MuesliBorderSoftBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="12,4"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind ViewModel.Hotkey, Mode=OneWay}"
+                                                   FontFamily="{StaticResource MuesliFontFamilyMedium}"
+                                                   FontSize="12"
+                                                   AutomationProperties.Name="Current push-to-talk shortcut" />
+                                    </Border>
+                                    <NumberBox Value="{x:Bind ViewModel.HotkeyTriggerThresholdMs, Mode=TwoWay}"
+                                               Minimum="0"
+                                               Maximum="1000"
+                                               SpinButtonPlacementMode="Hidden"
+                                               FontFamily="Consolas"
+                                               FontSize="13"
+                                               Width="76"
+                                               ToolTipService.ToolTip="Activation delay in milliseconds"
+                                               AutomationProperties.Name="Hold threshold in milliseconds"
+                                               AutomationProperties.AutomationId="HotkeyThresholdBox" />
+                                </StackPanel>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -700,30 +696,6 @@
                                     <ComboBoxItem Content="Unified live + final" />
                                 </ComboBox>
                             </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Detect supported meetings" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Offer to record when a supported meeting app becomes active." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ToggleSwitch Grid.Column="1"
-                                              Style="{StaticResource SettingsToggleStyle}"
-                                              IsOn="{x:Bind ViewModel.AutoMeetingDetectionEnabled, Mode=TwoWay}"
-                                              AutomationProperties.Name="Detect supported meetings"
-                                              AutomationProperties.AutomationId="MeetingDetectionToggle" />
-                            </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Save meeting recordings" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Keep source audio for playback and retranscription." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ToggleSwitch Grid.Column="1"
-                                              Style="{StaticResource SettingsToggleStyle}"
-                                              IsOn="{x:Bind ViewModel.SaveMeetingRecordings, Mode=TwoWay}"
-                                              AutomationProperties.Name="Save meeting recordings"
-                                              AutomationProperties.AutomationId="SaveMeetingRecordingsToggle" />
-                            </Grid>
                         </StackPanel>
                     </Border>
 
@@ -742,20 +714,6 @@
                                           DisplayMemberPath="DisplayName"
                                           AutomationProperties.Name="Summary backend"
                                           AutomationProperties.AutomationId="SummaryProviderBox" />
-                            </Grid>
-                            <!-- P5-11: the default template lives with the other summary settings
-                                 instead of in a card of its own. -->
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Default notes template" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Applied to new meeting notes. A meeting can still use a different template." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ComboBox Grid.Column="1" Style="{StaticResource PickerStyle}"
-                                          ItemsSource="{x:Bind ViewModel.MeetingTemplates, Mode=OneWay}"
-                                          SelectedItem="{x:Bind ViewModel.MeetingSummaryTemplate, Mode=TwoWay}"
-                                          AutomationProperties.Name="Default notes template"
-                                          AutomationProperties.AutomationId="DefaultMeetingTemplatePicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}">
@@ -885,7 +843,41 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="AFTER A MEETING" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <TextBlock Text="MEETING NOTES" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Default notes template" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Applied to new meeting notes. A meeting can still use a different template." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.MeetingTemplates, Mode=OneWay}"
+                                          SelectedItem="{x:Bind ViewModel.MeetingSummaryTemplate, Mode=TwoWay}"
+                                          AutomationProperties.Name="Default notes template"
+                                          AutomationProperties.AutomationId="DefaultMeetingTemplatePicker" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="RECORDING" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Save meeting recordings" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Keep source audio for playback and retranscription." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.SaveMeetingRecordings, Mode=TwoWay}"
+                                              AutomationProperties.Name="Save meeting recordings"
+                                              AutomationProperties.AutomationId="SaveMeetingRecordingsToggle" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="AUTO EXPORT" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
@@ -899,8 +891,6 @@
                                               AutomationProperties.AutomationId="AutoExportMarkdownToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <!-- P5-11: the export folder was an unexplained empty field with no way to
-                                 choose one. It now states where the copy goes and offers Browse. -->
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Export folder" Style="{StaticResource RowTitleStyle}" />
@@ -936,7 +926,29 @@
                                               AutomationProperties.Name="Also export PDF"
                                               AutomationProperties.AutomationId="AutoExportPdfToggle" />
                             </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="MEETING NOTIFICATIONS" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Detect supported meetings" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Offer to record when a supported meeting app becomes active." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.AutoMeetingDetectionEnabled, Mode=TwoWay}"
+                                              AutomationProperties.Name="Detect supported meetings"
+                                              AutomationProperties.AutomationId="MeetingDetectionToggle" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="ADVANCED" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel>
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Run a post-meeting program" Style="{StaticResource RowTitleStyle}" />
@@ -984,25 +996,9 @@
 
                 <!-- APPEARANCE -->
                 <StackPanel x:Name="AppearancePanel" Spacing="14" Visibility="Collapsed">
-                    <TextBlock Text="APPEARANCE" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <TextBlock Text="RECORDING INDICATOR" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="App theme" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Follow Windows or choose a theme for Muesli." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ComboBox Grid.Column="1"
-                                          Style="{StaticResource PickerStyle}"
-                                          SelectedIndex="{x:Bind ViewModel.ThemeIndex, Mode=TwoWay}"
-                                          AutomationProperties.Name="App theme"
-                                          AutomationProperties.AutomationId="ThemePicker">
-                                    <ComboBoxItem Content="Use Windows setting" />
-                                    <ComboBoxItem Content="Light" />
-                                    <ComboBoxItem Content="Dark" />
-                                </ComboBox>
-                            </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Floating dictation indicator" Style="{StaticResource RowTitleStyle}" />
@@ -1027,6 +1023,27 @@
                                           AutomationProperties.AutomationId="IndicatorStylePicker">
                                     <ComboBoxItem Content="Classic" />
                                     <ComboBoxItem Content="Minimal" />
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="APPEARANCE" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="App theme" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Follow Windows or choose a theme for Muesli." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.ThemeIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="App theme"
+                                          AutomationProperties.AutomationId="ThemePicker">
+                                    <ComboBoxItem Content="Use Windows setting" />
+                                    <ComboBoxItem Content="Light" />
+                                    <ComboBoxItem Content="Dark" />
                                 </ComboBox>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
