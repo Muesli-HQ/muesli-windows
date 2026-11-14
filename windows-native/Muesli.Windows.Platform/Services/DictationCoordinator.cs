@@ -45,7 +45,9 @@ public sealed class DictationCoordinator : IDisposable
     {
         _transcriptionClient = transcriptionClient ?? new NativeTranscriptionClient();
         SoundFeedback = soundFeedback ?? new SoundFeedbackService(
-            new WindowsSystemSoundPlayer(report: (message, exception) => _log.Error(message, exception)),
+            new DictationCuePlayer(
+                new WindowsSystemSoundPlayer(report: (message, exception) => _log.Error(message, exception)),
+                (message, exception) => _log.Error(message, exception)),
             report: _log.Info);
         // Load the cue files now; the first cue otherwise reads its file on the key-down path.
         _ = Task.Run(SoundFeedback.Prewarm);

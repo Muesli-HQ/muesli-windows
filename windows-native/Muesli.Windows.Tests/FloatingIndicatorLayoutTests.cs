@@ -12,7 +12,7 @@ public sealed class FloatingIndicatorLayoutTests
     // Preparing shares the live 76x22 pill, per the current macOS frameForState.
     [InlineData(FloatingIndicatorState.Preparing, false, 76, 22, 11)]
     [InlineData(FloatingIndicatorState.Recording, false, 76, 22, 11)]
-    [InlineData(FloatingIndicatorState.Transcribing, false, 190, 32, 16)]
+    [InlineData(FloatingIndicatorState.Transcribing, false, 124, 32, 16)]
     [InlineData(FloatingIndicatorState.Success, false, 180, 36, 18)]
     [InlineData(FloatingIndicatorState.Error, false, 180, 36, 18)]
     public void SizeFor_maps_every_state(FloatingIndicatorState state, bool hovered, double width, double height, double radius)

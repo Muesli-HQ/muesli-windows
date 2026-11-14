@@ -146,3 +146,28 @@ public sealed class SoundFeedbackTests
         public void Play(SoundCue cue) => played.Add(cue);
     }
 }
+
+public sealed class DictationCueSynthesizerTests
+{
+    [Fact]
+    public void StartCueIsAShortQuietWav()
+    {
+        var wav = DictationCueSynthesizer.Wav(SoundCue.DictationStart)!;
+
+        Assert.Equal("RIFF", System.Text.Encoding.ASCII.GetString(wav, 0, 4));
+        Assert.Equal(wav.Length - 8, BitConverter.ToInt32(wav, 4));
+        var samples = (wav.Length - 44) / 2;
+        // A tap, not an alert: well under a fifth of a second and nowhere near full scale.
+        Assert.InRange(samples, 1, DictationCueSynthesizer.SampleRate / 5);
+        var peak = Enumerable.Range(0, samples).Max(index => Math.Abs((int)BitConverter.ToInt16(wav, 44 + index * 2)));
+        Assert.InRange(peak, short.MaxValue / 10, short.MaxValue / 2);
+        // The cue ends in silence, so playback never stops on a step.
+        Assert.Equal(0, BitConverter.ToInt16(wav, wav.Length - 2));
+    }
+
+    [Theory]
+    [InlineData(SoundCue.DictationInsert)]
+    [InlineData(SoundCue.ModelReady)]
+    public void OtherCuesStayOnWindowsMediaFiles(SoundCue cue) =>
+        Assert.Null(DictationCueSynthesizer.Wav(cue));
+}

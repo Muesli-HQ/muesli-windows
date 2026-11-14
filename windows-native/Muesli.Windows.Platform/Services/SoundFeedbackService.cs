@@ -28,8 +28,10 @@ public enum AudioOutputRouteKind
 public readonly record struct OutputDeviceDescription(int FormFactor, bool HasRender);
 
 /// <summary>
-/// Windows equivalent of macOS SoundController: Tink on dictation start, Purr on release,
-/// Glass when a model is ready. As on macOS, lifecycle cues are muted only on headphone-like
+/// Windows equivalent of macOS SoundController: a generated wooden knock on dictation start
+/// (see DictationCueSynthesizer; the Windows file is only its fallback), Windows' Navigation
+/// Start click on release, and
+/// a chime when a model is ready. As on macOS, lifecycle cues are muted only on headphone-like
 /// output, where they would play straight into the ear.
 /// </summary>
 public sealed class SoundFeedbackService
@@ -145,10 +147,10 @@ public static class AudioOutputRouteClassifier
 public static class WindowsSystemSoundLocator
 {
     public static readonly IReadOnlyList<string> DictationStartCandidates =
-        ["Windows Ding.wav", "ding.wav", "Windows Navigation Start.wav"];
+        ["Windows Ding.wav", "ding.wav"];
 
     public static readonly IReadOnlyList<string> DictationInsertCandidates =
-        ["Windows Notify.wav", "notify.wav", "Windows Balloon.wav"];
+        ["Windows Navigation Start.wav", "Windows Notify.wav", "notify.wav", "Windows Balloon.wav"];
 
     public static readonly IReadOnlyList<string> ModelReadyCandidates =
         ["chimes.wav", "Windows Notify Calendar.wav", "Windows Notify Email.wav"];
