@@ -6,8 +6,6 @@ hex `trace=` id is copied from `%APPDATA%\muesli\logs\muesli-*.log`. Do not
 fabricate TraceIds. Do not put expected or observed transcript text, or window
 titles, in logs or report arguments.
 
-Authoritative protocol: `docs/PHASE2_DICTATION_QUALIFICATION.md`.
-Current status: `docs/L14_L15_EVIDENCE_STATUS.md`.
 
 ## Before any live paste run
 

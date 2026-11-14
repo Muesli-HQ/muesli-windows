@@ -5,8 +5,6 @@ qualification corpus. Audio and references must be recorded, listened to, and
 written by a human. Automation must not fabricate WAVs or copy model output
 into a reference and label it reviewed.
 
-Authoritative protocol: `docs/PHASE2_DICTATION_QUALIFICATION.md`.
-Current status: `docs/L14_L15_EVIDENCE_STATUS.md`.
 
 ## Layout
 

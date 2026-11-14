@@ -17,8 +17,8 @@ public enum ModelStatusTone
 /// <summary>
 /// P6-01. The page used to emit one card per catalog entry, so the six Whisper entries produced
 /// six sibling cards all titled "Whisper" and the three Parakeet entries three titled
-/// "Parakeet Family". macOS (<c>docs/ui-reference/macos-current-2026-08-27/04-models.png</c>,
-/// source <c>ModelsView.swift:143-161, 654-742</c>) renders one card per family with a variant
+/// "Parakeet Family". macOS
+/// (<c>ModelsView.swift:143-161, 654-742</c>) renders one card per family with a variant
 /// popup. Families here are derived from the real catalog's
 /// <see cref="NativeAsrModelKind"/> — no family, provider, or variant is invented.
 /// </summary>

@@ -178,7 +178,6 @@ Muesli for Windows is **0.3.0 beta**. Local development and unsigned packaging a
 - Live meeting transcription is off by default. The explicit Nemotron 3.5 option has passed packaged Windows real-inference and Silero-boundary qualification; preparing it is network-backed and never enables it automatically. Long physical-meeting, Bluetooth, route-change, CUDA-live, and human multilingual qualification remain open.
 - Store submission packages are unsigned; Microsoft signs them after certification. A paid signing certificate is not required for this channel.
 
-See the [launch ledger](docs/WINDOWS_LAUNCH_LEDGER.md), [release qualification](docs/PHASE5_RELEASE_QUALIFICATION.md), and [roadmap](docs/ROADMAP.md) for detailed status.
 
 ---
 
@@ -203,7 +202,7 @@ dotnet test .\windows-native\Muesli.Windows.Tests\Muesli.Windows.Tests.csproj
 |---|---|
 | Recorded meeting regressions | [benchmark-native-meeting.ps1](scripts/benchmark-native-meeting.ps1) |
 | Media import regressions | [test-media-imports.ps1](scripts/test-media-imports.ps1) |
-| Physical meeting-session lifecycle | [qualify-meeting-session-lifecycle.ps1](scripts/qualify-meeting-session-lifecycle.ps1), [qualification matrix](docs/PHASE3_QUALIFICATION.md) |
+| Physical meeting-session lifecycle | [qualify-meeting-session-lifecycle.ps1](scripts/qualify-meeting-session-lifecycle.ps1) |
 | Interactive UI automation | [UI test guide](windows-native/Muesli.Windows.UITests/README.md) |
 | Packaged release gate | [qualify-windows-release.ps1](scripts/qualify-windows-release.ps1) |
 
@@ -238,7 +237,6 @@ Muesli is built around local-only processing. Concretely:
 - [Muesli for macOS](https://github.com/Muesli-HQ/muesli) — the original native desktop app and shared Swift core.
 - [Muesli for iOS](https://github.com/Muesli-HQ/muesli-ios) — the iPhone companion and keyboard workflows.
 - [Windows native development notes](windows-native/README.md).
-- [Windows/macOS parity matrix](docs/WINDOWS_MACOS_PARITY_MATRIX.md).
 
 ---
 

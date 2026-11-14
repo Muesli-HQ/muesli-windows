@@ -421,7 +421,7 @@
                 </Border>
 
                 <!-- Post-meeting automation diagnostics (HOOK-01/AUTO-01). Renders the persisted
-                     automation result exactly as POST_MEETING_AUTOMATION.md promises; hidden until a
+                     automation result from the hook runner; hidden until a
                      run exists so an untouched meeting does not show an empty card. -->
                 <Border Style="{StaticResource MeetingSectionCardStyle}"
                         Padding="12,10"
