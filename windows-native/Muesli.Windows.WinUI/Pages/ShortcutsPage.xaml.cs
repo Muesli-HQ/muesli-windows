@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
 using Muesli.Windows.WinUI.Services;
 using Muesli.Windows.WinUI.ViewModels;
 using Windows.System;
@@ -38,7 +37,6 @@ public sealed partial class ShortcutsPage : Page
 
             if (args.PropertyName is nameof(ViewModel.IsCapturing) or null)
             {
-                ApplyCaptureChrome();
                 // Pressing the current shortcut must record it, not start a dictation.
                 App.Dictation.PauseHotkey(ViewModel.IsCapturing);
             }
@@ -52,11 +50,9 @@ public sealed partial class ShortcutsPage : Page
         {
             ViewModel.Load();
             ApplyResponsiveLayout(ActualWidth);
-            ApplyCaptureChrome();
             _ready = true;
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
-        ActualThemeChanged += (_, _) => ApplyCaptureChrome();
     }
 
     public static Visibility BoolToVisibility(bool value) =>
@@ -74,7 +70,6 @@ public sealed partial class ShortcutsPage : Page
     {
         _recorder.Reset();
         ViewModel.BeginCapture();
-        ApplyCaptureChrome();
         Focus(FocusState.Programmatic);
     }
 
@@ -118,7 +113,6 @@ public sealed partial class ShortcutsPage : Page
         if (e.Key == VirtualKey.Escape)
         {
             ViewModel.CancelCapture();
-            ApplyCaptureChrome();
             ChangePushToTalkButton.Focus(FocusState.Programmatic);
             return;
         }
@@ -141,7 +135,6 @@ public sealed partial class ShortcutsPage : Page
     {
         if (gesture is null) return;
         ViewModel.ApplyCapturedGesture(gesture);
-        ApplyCaptureChrome();
         ChangePushToTalkButton.Focus(FocusState.Programmatic);
     }
 
@@ -152,17 +145,4 @@ public sealed partial class ShortcutsPage : Page
 
     private void ApplyResponsiveLayout(double width) =>
         ContentRoot.Padding = MuesliPageMetrics.ContentPadding(width);
-
-    /// <summary>While capturing, the badge takes the accent tint so it reads as listening.</summary>
-    private void ApplyCaptureChrome()
-    {
-        var capturing = ViewModel.IsCapturing;
-        PushKeycapWell.BorderBrush = ThemeBrush(capturing ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
-        PushKeycapWell.Background = ThemeBrush(capturing ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
-    }
-
-    private static Brush ThemeBrush(string key) =>
-        Application.Current.Resources[key] is Brush brush
-            ? brush
-            : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 }
