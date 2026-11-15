@@ -343,8 +343,20 @@ public sealed partial class MainPage : Page
         }
     }
 
+    /// <summary>Route for the meeting in progress; it lives under Meetings in the rail.</summary>
+    public const string RecordingRoute = "recording";
+
     private void Navigate(string tag)
     {
+        if (string.Equals(tag, RecordingRoute, StringComparison.OrdinalIgnoreCase))
+        {
+            // The meeting in progress has its own page; with nothing recording it is the list.
+            var active = App.Meetings.IsRecording || App.Meetings.IsPaused || App.Meetings.IsBusy;
+            if (!active) ContentFrame.Navigate(typeof(Pages.MeetingsPage), "meetings");
+            else if (ContentFrame.Content is not Pages.MeetingRecordingPage) ContentFrame.Navigate(typeof(Pages.MeetingRecordingPage));
+            return;
+        }
+
         if (tag.StartsWith("meetings", StringComparison.OrdinalIgnoreCase))
         {
             ContentFrame.Navigate(typeof(Pages.MeetingsPage), tag);
@@ -389,7 +401,7 @@ public sealed partial class MainPage : Page
             }
         }
 
-        _selectedTag = tag;
+        _selectedTag = string.Equals(tag, RecordingRoute, StringComparison.OrdinalIgnoreCase) ? "meetings" : tag;
         RefreshNavigationVisuals();
         Navigate(tag);
     }

@@ -25,6 +25,7 @@ public sealed class MeetingDetectionService : IDisposable
     private readonly MeetingPresenceSignals _signals = new();
     private readonly MeetingCandidateResolver _resolver = new();
     private readonly MeetingScanGate _scanGate = new();
+    private readonly MeetingDetectionSuppression _suppression = new();
     private readonly Dictionary<string, (string Url, DateTime At)> _browserUrlCache = new();
     private CancellationTokenSource? _loop;
     private Task? _loopTask;
@@ -92,6 +93,17 @@ public sealed class MeetingDetectionService : IDisposable
 
     /// <summary>Suppresses further prompts for this meeting until it ends and starts again.</summary>
     public void DismissCandidate(string? key) => _resolver.Dismiss(key);
+
+    /// <summary>Offers a still-running meeting once more after its prompt timed out unanswered.</summary>
+    public void RepromptCandidate(string? key) => _resolver.Reprompt(key);
+
+    /// <summary>
+    /// Muesli's own dictation or voice command is using the microphone: no meeting is confirmed
+    /// or prompted until <see cref="ResumeAfterOwnAudio"/> and its cooldown.
+    /// </summary>
+    public void SuppressForOwnAudio() => _suppression.SuppressWhileActive();
+
+    public void ResumeAfterOwnAudio() => _suppression.ResumeAfterCooldown(DateTimeOffset.UtcNow);
 
     public MeetingDetectionScan CheckNow(bool publish = true) =>
         ScanAsync(publish, CancellationToken.None).GetAwaiter().GetResult();
@@ -347,6 +359,14 @@ public sealed class MeetingDetectionService : IDisposable
         // Sensor state corroborates the window evidence; the resolver owns the decision so the
         // conservative policy and its hysteresis live in one tested place.
         var snapshot = meeting.Presence ?? _signals.Capture(meeting.Evidence, meeting.Key);
+        // While Muesli is dictating (and for the cooldown after) a new meeting is neither confirmed
+        // nor prompted. A meeting that was already confirmed keeps being observed, so it cannot
+        // look like it ended and started again.
+        if (_suppression.IsSuppressed(DateTimeOffset.UtcNow) &&
+            !string.Equals(_resolver.ConfirmedKey, snapshot.CandidateKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
         var decision = _resolver.Observe(snapshot);
         if (decision.Action == MeetingCandidateAction.Ended)
         {

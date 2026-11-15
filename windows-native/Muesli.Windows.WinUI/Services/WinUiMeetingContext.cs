@@ -22,6 +22,7 @@ public sealed class WinUiMeetingContext : IDisposable
     private string _title = "";
     private DateTime _startedAt;
     private int _operationBusy;
+    private int _startingOperation;
     private int _disposed;
 
     public WinUiMeetingContext(WinUiLibraryContext library, WinUiSettingsContext? settings = null, IUiDispatcher? dispatcher = null)
@@ -44,10 +45,9 @@ public sealed class WinUiMeetingContext : IDisposable
         {
             LatestLiveSnapshot = snapshot;
             LiveTranscript = BuildLiveText(snapshot);
-            MicrophoneLevel = snapshot.MicrophoneLevel;
-            SystemLevel = snapshot.SystemLevel;
             RaiseChanged();
         };
+        _coordinator.ProcessingStageChanged += (_, stage) => SetStage(stage);
         _coordinator.LiveTranscriptionFailed += (_, exception) =>
         {
             _log.Error("WinUI live meeting transcription failed.", exception);
@@ -56,6 +56,21 @@ public sealed class WinUiMeetingContext : IDisposable
     }
 
     public event EventHandler? Changed;
+
+    /// <summary>
+    /// What is happening to a stopped meeting right now ("Transcribing", "Summarizing", …), or
+    /// empty when nothing is being processed. The floating pill and the pages show it.
+    /// </summary>
+    public string ProcessingStage { get; private set; } = "";
+
+    private void SetStage(MeetingProcessingStage? stage)
+    {
+        var label = stage is { } value ? MeetingProcessingStages.Label(value) : "";
+        if (label == ProcessingStage) return;
+        ProcessingStage = label;
+        if (label.Length > 0) _log.Info($"Meeting processing stage. stage={stage}");
+        RaiseChanged();
+    }
     public event EventHandler? SourceWarningDismissed;
 
     public MeetingSessionState State => _coordinator.State;
@@ -65,6 +80,19 @@ public sealed class WinUiMeetingContext : IDisposable
     public bool IsBusy => _coordinator.IsBusy || Volatile.Read(ref _operationBusy) != 0;
 
     public bool IsPaused => _coordinator.State == MeetingSessionState.RecoverableInterruption;
+
+    /// <summary>
+    /// A recording is being started or resumed and capture is not live yet. Busy for command
+    /// gating, but not transcription: the pill shows Preparing, not Transcribing.
+    /// </summary>
+    public bool IsStarting =>
+        Volatile.Read(ref _startingOperation) != 0 || _coordinator.State == MeetingSessionState.Preparing;
+
+    /// <summary>
+    /// Linear RMS (0–1) of what is being captured right now, the louder of microphone and system
+    /// audio. Read directly by the waveform animations; it does not depend on live transcription.
+    /// </summary>
+    public float CurrentLevel => _coordinator.Levels.Current;
 
     public string? ActiveMeetingId { get; private set; }
     public string ActiveTitle => _title;
@@ -130,11 +158,10 @@ public sealed class WinUiMeetingContext : IDisposable
 
     public string LiveTranscript { get; private set; } = "";
 
-    public string CaptureStatus { get; private set; } = "Idle";
+    public string CaptureStatus { get; private set; } = "Not recording";
 
-    public double MicrophoneLevel { get; private set; }
-
-    public double SystemLevel { get; private set; }
+    /// <summary>When the active recording started; the recording page's elapsed timer counts from here.</summary>
+    public DateTime StartedAt => _startedAt;
 
     // Discovery reads (and repairs) journals on disk. Cache it so live snapshots, which raise
     // Changed several times a second, never rescan; lifecycle transitions invalidate it.
@@ -153,8 +180,11 @@ public sealed class WinUiMeetingContext : IDisposable
 
     public MeetingCaptureSnapshot CaptureSnapshot => _coordinator.CaptureSnapshot;
 
+    /// <summary>macOS starts a Quick Note as "Meeting"; the real title is generated when it is saved.</summary>
+    public const string QuickNoteTitle = "Meeting";
+
     public Task StartQuickNoteAsync(CancellationToken cancellationToken = default) =>
-        StartMeetingAsync($"Quick Note {DateTime.Now:g}", null, cancellationToken);
+        StartMeetingAsync(QuickNoteTitle, null, cancellationToken);
 
     public Task StartMeetingAsync(string title, int? processId, CancellationToken cancellationToken = default) =>
         RunOperationAsync(async () =>
@@ -164,7 +194,7 @@ public sealed class WinUiMeetingContext : IDisposable
             _title = title;
             await StartCoreAsync(processId, cancellationToken);
             return true;
-        });
+        }, starting: true);
 
     public Task ResumeFinishedAsync(string meetingId, CancellationToken cancellationToken = default) => RunOperationAsync(async () =>
     {
@@ -175,7 +205,7 @@ public sealed class WinUiMeetingContext : IDisposable
         _title = meeting.Title;
         await StartCoreAsync(null, cancellationToken, meeting);
         return true;
-    });
+    }, starting: true);
 
     public Task StartFollowUpAsync(string meetingId, CancellationToken cancellationToken = default) => RunOperationAsync(async () =>
     {
@@ -201,7 +231,7 @@ public sealed class WinUiMeetingContext : IDisposable
             throw;
         }
         return true;
-    });
+    }, starting: true);
 
     private async Task StartCoreAsync(int? processId, CancellationToken cancellationToken, PersistedMeeting? resumedMeeting = null)
     {
@@ -213,7 +243,6 @@ public sealed class WinUiMeetingContext : IDisposable
         AreNotesSaved = true;
         ActiveMeetingId = null;
         IsSourceMissing = false;
-        MicrophoneLevel = SystemLevel = 0;
         _startedAt = DateTime.Now;
         LiveTranscriptionConfiguration? liveConfiguration = null;
         if (!string.IsNullOrWhiteSpace(_settings.LiveMeetingModelId))
@@ -520,6 +549,7 @@ public sealed class WinUiMeetingContext : IDisposable
         // Persist the raw recognition result before optional cleanup or network-backed notes.
         // Cancellation/failure of either must never discard a completed transcription.
         SaveMeeting(meeting);
+        if (_settings.EnableLocalCleanup) SetStage(MeetingProcessingStage.Cleaning);
         var transcript = await _pipeline.PrepareImportedTranscriptAsync(
             meeting.Transcript,
             _settings.EnableLocalCleanup,
@@ -533,7 +563,9 @@ public sealed class WinUiMeetingContext : IDisposable
             string.Equals(item.Name, summarySettings.MeetingSummaryTemplate, StringComparison.OrdinalIgnoreCase));
         if (template is not null) summarySettings = summarySettings with { MeetingSummaryPromptOverride = template.Prompt };
 
+        SetStage(MeetingProcessingStage.Titling);
         var generatedTitle = await MeetingSummaryService.CreateTitleAsync(meeting, summarySettings, cancellationToken);
+        SetStage(MeetingProcessingStage.Summarizing);
         var result = await MeetingSummaryService.CreateSummaryResultAsync(
             meeting.Transcript,
             generatedTitle,
@@ -591,15 +623,18 @@ public sealed class WinUiMeetingContext : IDisposable
         await _transcription.SwitchModelAsync(_settings.FinalMeetingModelId, cancellationToken);
     }
 
-    private async Task<T> RunOperationAsync<T>(Func<Task<T>> operation)
+    private async Task<T> RunOperationAsync<T>(Func<Task<T>> operation, bool starting = false)
     {
         ThrowIfDisposed();
         if (Interlocked.CompareExchange(ref _operationBusy, 1, 0) != 0)
             throw new InvalidOperationException("A meeting operation is already in progress.");
+        if (starting) Interlocked.Exchange(ref _startingOperation, 1);
         RaiseChanged();
         try { return await operation(); }
         finally
         {
+            SetStage(null);
+            Interlocked.Exchange(ref _startingOperation, 0);
             Interlocked.Exchange(ref _operationBusy, 0);
             RaiseChanged();
         }

@@ -388,37 +388,9 @@
                                AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
 
-                <Border Style="{StaticResource MeetingSectionCardStyle}"
-                        Padding="12,10"
-                        Background="{ThemeResource MuesliAccentMutedBrush}"
-                        BorderBrush="{ThemeResource MuesliWarningBrush}"
-                        Visibility="{x:Bind BoolToVisibility(ViewModel.HasHealthWarnings), Mode=OneWay}"
-                        AutomationProperties.Name="Recording warnings">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Recording warnings"
-                                   Style="{StaticResource MuesliRowTitleStyle}"
-                                   FontSize="12"
-                                   Foreground="{ThemeResource MuesliWarningBrush}" />
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.HealthWarnings, Mode=OneWay}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,4">
-                                        <FontIcon Glyph="&#xE7BA;"
-                                                  FontSize="12"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  Foreground="{ThemeResource MuesliWarningBrush}"
-                                                  VerticalAlignment="Top"
-                                                  Margin="0,2,0,0" />
-                                        <TextBlock Text="{Binding}"
-                                                   Style="{StaticResource MuesliBodyStyle}"
-                                                   Foreground="{ThemeResource MuesliWarningBrush}"
-                                                   TextWrapping="Wrap" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
+                <!-- Capture health notes (a silent channel, a missing track) stay with the saved
+                     meeting for diagnostics; macOS does not show them on the meeting, so neither
+                     does this page. -->
 
                 <!-- Post-meeting automation diagnostics (HOOK-01/AUTO-01). Renders the persisted
                      automation result exactly as POST_MEETING_AUTOMATION.md promises; hidden until a

@@ -30,6 +30,7 @@ internal sealed class MeetingCaptureSession : IDisposable
     private readonly NativeTranscriptionClient _transcription;
     private MeetingRollingTranscriber? _rollingPreview;
     private IReadOnlyList<LiveTranscriptSegment> _rollingCommitted = [];
+    private IReadOnlyList<LiveTranscriptGap> _rollingGaps = [];
     private readonly object _liveCheckpointGate = new();
     private readonly SemaphoreSlim _repairGate = new(1, 1);
     private IReadOnlyList<LiveTranscriptSegment>? _pendingLiveCheckpoint;
@@ -63,9 +64,15 @@ internal sealed class MeetingCaptureSession : IDisposable
     public event EventHandler<LiveTranscriptSnapshot>? LiveTranscriptChanged;
     public event EventHandler<Exception>? LiveTranscriptionFailed;
 
+    /// <summary>Capture has stopped and the last pieces of the recording are being transcribed.</summary>
+    public event Action? FinishingTranscript;
+
     public bool MicrophoneAvailable => _micAvailable;
     public bool SystemAvailable => _systemAvailable;
     public MeetingLiveTranscriptionResult? LiveResult => _liveResult;
+
+    /// <summary>Live microphone and system-audio levels for the waveform, fed from every captured buffer.</summary>
+    public MeetingLevelMeter Levels { get; } = new();
 
     public void BindRepairHost(MeetingCaptureRepairHost host) => _repairHost = host;
 
@@ -87,6 +94,7 @@ internal sealed class MeetingCaptureSession : IDisposable
         {
             _liveResult = null;
             _rollingCommitted = [];
+            _rollingGaps = [];
         }
         _healthMonitor = new MeetingAudioHealthMonitor(healthAnchor ?? new DateTimeOffset(startedAt));
         _micAvailable = false;
@@ -154,7 +162,7 @@ internal sealed class MeetingCaptureSession : IDisposable
             _repairHost?.AddWarning("Speech detection is unavailable. Live captions will use timed audio chunks.");
             _logService?.Info($"Meeting speech detection unavailable. category={exception.GetType().Name}");
         }
-        _rollingPreview = new MeetingRollingTranscriber(_transcription.TranscribeAsync, _rollingCommitted, vad);
+        _rollingPreview = new MeetingRollingTranscriber(_transcription.TranscribeAsync, _rollingCommitted, vad, _rollingGaps);
         _rollingPreview.SnapshotChanged += OnRollingSnapshot;
         _rollingPreview.Failed += OnLiveTranscriptionFailed;
     }
@@ -553,11 +561,20 @@ internal sealed class MeetingCaptureSession : IDisposable
         var rolling = Interlocked.Exchange(ref _rollingPreview, null);
         if (rolling is not null)
         {
+            FinishingTranscript?.Invoke();
             try { await rolling.FinishAsync().ConfigureAwait(false); }
             finally
             {
                 rolling.SnapshotChanged -= OnRollingSnapshot;
                 rolling.Failed -= OnLiveTranscriptionFailed;
+            }
+            _rollingGaps = rolling.Gaps;
+            if (_liveSession is null)
+            {
+                // The meeting model transcribed the recording as it went, so that is the final
+                // transcript (macOS does the same). Stop only repairs what it could not keep up with.
+                _liveResult = RollingTranscriptOwnership.Build(_rollingCommitted, _rollingGaps, rolling.DroppedChunks, _transcription.ModelId);
+                _logService?.Info($"Meeting transcript built during recording. segments={_liveResult.Committed.Count}; gaps={_liveResult.Gaps.Count}; skippedPieces={rolling.DroppedChunks}; transcriptLogged=false");
             }
             var rollingJournal = _repairHost?.Journal();
             if (rollingJournal is not null && _liveConfiguration?.OwnershipMode != LiveTranscriptOwnershipMode.UnifiedLiveAndFinal)
@@ -716,8 +733,11 @@ internal sealed class MeetingCaptureSession : IDisposable
         LiveTranscriptionFailed?.Invoke(this, exception);
     }
 
-    private void OnAudioMetrics(object? sender, MeetingAudioMetrics metrics) =>
+    private void OnAudioMetrics(object? sender, MeetingAudioMetrics metrics)
+    {
+        Levels.Note(metrics.Channel, metrics.Rms);
         _healthMonitor?.Note(metrics);
+    }
 
     private void OnMicrophoneRouteChanged(object? sender, AudioRouteChangedEventArgs args)
     {

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using NAudio.Wave;
 using SharpCompress.Archives;
@@ -459,6 +460,11 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         EnsureRecognizer();
         modelLoadStarted.Stop();
         var startedAt = Stopwatch.StartNew();
+        var chunks = LongAudioChunker.Split(samples, sampleRate);
+        if (chunks.Count > 1)
+        {
+            return TranscribeChunked(title, samples, sampleRate, audioDurationMs, chunks, startedAt, preprocessingMs + modelLoadStarted.ElapsedMilliseconds);
+        }
         var result = Decode(samples, sampleRate);
         startedAt.Stop();
 
@@ -501,6 +507,62 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
             $"Provider selection: {_providerSelectionDiagnostic}");
 
         return new TranscriptionResult(text, diagnostic, audioDurationMs, segments);
+    }
+
+    /// <summary>
+    /// Decodes a long recording piece by piece and stitches the results back onto one timeline.
+    /// Memory stays at what a 30-second decode needs, however long the meeting was.
+    /// </summary>
+    private TranscriptionResult TranscribeChunked(
+        string title,
+        float[] samples,
+        int sampleRate,
+        int audioDurationMs,
+        IReadOnlyList<LongAudioChunker.Chunk> chunks,
+        Stopwatch startedAt,
+        long priorMs)
+    {
+        var text = new StringBuilder();
+        var segments = new List<TranscriptSegment>();
+        foreach (var chunk in chunks)
+        {
+            var piece = new float[chunk.Length];
+            Array.Copy(samples, chunk.Start, piece, 0, chunk.Length);
+            var result = Decode(piece, sampleRate);
+            var pieceText = result.Text?.Trim() ?? "";
+            if (pieceText.Length == 0) continue;
+            if (text.Length > 0) text.Append(' ');
+            text.Append(pieceText);
+
+            var offsetMs = (int)(chunk.Start * 1000L / sampleRate);
+            var pieceMs = (int)(chunk.Length * 1000L / sampleRate);
+            foreach (var segment in ParakeetTimestampSegmenter.Build(
+                         title, pieceText, result.Tokens, result.Timestamps, result.Durations, pieceMs).Segments)
+            {
+                segments.Add(segment with
+                {
+                    Id = $"parakeet_seg_{segments.Count}",
+                    StartMs = segment.StartMs + offsetMs,
+                    EndMs = segment.EndMs + offsetMs
+                });
+            }
+        }
+        startedAt.Stop();
+
+        var inferenceMs = Math.Max(1, (int)startedAt.ElapsedMilliseconds);
+        var wallMs = priorMs + inferenceMs;
+        var diagnostic = string.Join(
+            Environment.NewLine,
+            "ASR engine: native-parakeet-sherpa-onnx",
+            $"Model: {ModelDisplayName}",
+            $"Backend: {_recognizerProvider}",
+            $"Audio duration ms: {audioDurationMs}",
+            $"Decoded in pieces: {chunks.Count} (up to {LongAudioChunker.MaxChunkSeconds:0} s each, cut at quiet points)",
+            $"Inference duration ms: {inferenceMs}",
+            $"Transcription wall duration ms: {wallMs}",
+            $"Realtime factor: {(audioDurationMs > 0 ? wallMs / (audioDurationMs * 1.0) : 0):0.000}",
+            $"Segments: {segments.Count}");
+        return new TranscriptionResult(text.ToString(), diagnostic, audioDurationMs, segments);
     }
 
     private OfflineRecognizerResult Decode(float[] samples, int sampleRate)

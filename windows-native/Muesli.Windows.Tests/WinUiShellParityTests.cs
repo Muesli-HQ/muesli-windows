@@ -75,8 +75,22 @@ public sealed class WinUiShellParityTests
             [],
             false,
             false));
-        Assert.Contains("Microphone capturing", recording);
-        Assert.Contains("System audio not captured", recording);
+        Assert.Contains("your microphone only", recording);
+        Assert.Contains("isn't being recorded", recording);
+
+        // The disclosure names both sources in plain words and keeps capture mechanics out of it.
+        var both = MeetingCaptureStatusFormatter.Describe(new MeetingCaptureSnapshot(
+            MeetingSessionState.Recording, "EndpointLoopback", true, true, ["loopback dropped"], false, false));
+        Assert.Equal("Recording your microphone and all sound playing on this computer.", both);
+        var targeted = MeetingCaptureStatusFormatter.Describe(new MeetingCaptureSnapshot(
+            MeetingSessionState.Recording, "ProcessTreeLoopback", true, true, [], false, false));
+        Assert.Equal("Recording your microphone and sound from the meeting app.", targeted);
+        foreach (var text in new[] { recording, both, targeted })
+        {
+            Assert.DoesNotContain("loopback", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("endpoint", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("process", text, StringComparison.OrdinalIgnoreCase);
+        }
 
         var paused = MeetingCaptureStatusFormatter.Describe(new MeetingCaptureSnapshot(
             MeetingSessionState.RecoverableInterruption,
@@ -86,9 +100,7 @@ public sealed class WinUiShellParityTests
             ["loopback dropped"],
             true,
             true));
-        Assert.Contains("Paused", paused);
-        Assert.Contains("process-tree loopback", paused);
-        Assert.Contains("Recovered from an interruption", paused);
+        Assert.Equal("Paused. Nothing is being recorded.", paused);
 
         Assert.Contains(
             "Calendar join is unavailable",
@@ -137,8 +149,9 @@ public sealed class WinUiShellParityTests
         Assert.DoesNotContain("This Mac", timeline);
 
         var meetings = File.ReadAllText(Path.Combine(winUi, "Pages", "MeetingsPage.xaml"));
-        Assert.Contains("PauseMeetingButton", meetings);
-        Assert.Contains("ShowLiveTranscriptButton", meetings);
+        var recordingPage = File.ReadAllText(Path.Combine(winUi, "Pages", "MeetingRecordingPage.xaml"));
+        Assert.Contains("PauseMeetingButton", recordingPage);
+        Assert.Contains("ShowLiveTranscriptButton", recordingPage);
         Assert.Contains("MeetingRecoveryPanel", meetings);
 
         var main = File.ReadAllText(Path.Combine(winUi, "MainPage.xaml"));

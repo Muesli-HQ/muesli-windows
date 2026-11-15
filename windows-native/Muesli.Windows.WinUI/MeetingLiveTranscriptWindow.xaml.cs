@@ -129,7 +129,7 @@ public sealed partial class MeetingLiveTranscriptWindow : Window, IDisposable
     private void TogglePause_Click(object sender, RoutedEventArgs e) =>
         _ = _meetings.IsPaused ? _meetings.ResumeAsync() : _meetings.PauseAsync();
     private void OpenNotes_Click(object sender, RoutedEventArgs e) => OpenNotes();
-    private void OpenNotes() { Hide(); if (App.Window is MainWindow main) main.ShowDashboard("meetings"); }
+    private void OpenNotes() { Hide(); if (App.Window is MainWindow main) main.ShowDashboard("recording"); }
     private async void Copy_Click(object sender, RoutedEventArgs e) => await LiveTranscriptFeed.CopyAsync(CopyButton, TranscriptFeed.CopyText);
     public void Dispose()
     {
