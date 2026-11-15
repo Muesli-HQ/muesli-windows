@@ -11,8 +11,8 @@
             <!--
               Narrowly scoped notification tokens. These mirror the shipping macOS
               MeetingNotificationController and deliberately do NOT retune the global Muesli* brushes.
-              The HTML design system disagrees on several of these values; see
-              docs/WINDOWS_UI_QUALIFICATION.md for the recorded discrepancies.
+              The HTML design system disagrees on several of these values; the Swift
+              controller wins.
             -->
             <SolidColorBrush x:Key="MeetingNotificationCardBrush" Color="#F71A1A1F" />
             <SolidColorBrush x:Key="MeetingNotificationBorderBrush" Color="#1AFFFFFF" />

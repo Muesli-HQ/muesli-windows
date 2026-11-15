@@ -29,7 +29,7 @@ public sealed class WinUiShellQualificationTests
         ("dictionary", "NavDictionary", "DictionaryAddButton"),
         ("models", "NavModels", "ModelsRefreshButton"),
         ("shortcuts", "NavShortcuts", "ChangePushToTalkButton"),
-        ("settings", "NavSettings", "SettingsSaveButton"),
+        ("settings", "NavSettings", "SettingsSectionPicker"),
         // Prompt 7 moved the raw diagnostics dump into a collapsed Expander ("keep technical
         // diagnostics accessible but secondary"), and a collapsed Expander keeps its content out
         // of the UIA tree, so RuntimeDiagnosticsText is not realized on arrival. The diagnostics
@@ -95,7 +95,6 @@ public sealed class WinUiShellQualificationTests
                     observedDpiScale = session.CurrentDpiScale,
                     highContrast = session.HighContrastAutomationAvailable,
                     highContrastNote = "Not exercised: this harness does not change the interactive desktop contrast theme.",
-                    referenceDirectory = "docs/ui-reference/macos-current-2026-08-27",
                     artifactPolicy = "artifacts/ui-automation"
                 }, new JsonSerializerOptions { WriteIndented = true }));
 
@@ -172,7 +171,6 @@ public sealed class WinUiShellQualificationTests
         session.NavigateTo("settings", "NavSettings", "SettingsUserName");
         session.SelectAutomationId("SettingsAppearanceTab");
         session.SelectComboBoxItem("ThemePicker", theme);
-        session.SelectAutomationId("SettingsSaveButton");
 
         session.NavigateTo("timeline", "NavTimeline", "TimelineList");
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-timeline", "timeline", "TimelineList");
@@ -355,7 +353,7 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.LaunchUnpackaged();
         session.Run(() =>
         {
-            session.NavigateTo("settings", "NavSettings", "SettingsSaveButton");
+            session.NavigateTo("settings", "NavSettings", "SettingsSectionPicker");
 
             // The MSIX startup task needs package identity, which the unpackaged shell does not
             // have. The toggle must go disabled and say why instead of silently doing nothing.
@@ -392,10 +390,9 @@ public sealed class WinUiShellQualificationTests
 
     private static double ApplyThemeAndMeasure(MuesliWinUiSession session, string theme, string slug)
     {
-        session.NavigateTo("settings", "NavSettings", "SettingsSaveButton");
+        session.NavigateTo("settings", "NavSettings", "SettingsSectionPicker");
         session.SelectAutomationId("SettingsAppearanceTab");
         session.SelectComboBoxItem("ThemePicker", theme);
-        session.SelectAutomationId("SettingsSaveButton");
 
         session.NavigateTo("timeline", "NavTimeline", "TimelineRefreshButton");
         return MeanLuminance(session.CaptureReference(slug, "timeline", "TimelineRefreshButton"));
@@ -433,7 +430,7 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.Launch();
         session.Run(() =>
         {
-            session.NavigateTo("settings", "NavSettings", "SettingsSaveButton");
+            session.NavigateTo("settings", "NavSettings", "SettingsSectionPicker");
 
             var toggle = session.RequireAutomationId("StartAtLoginToggle", mustBeOnscreen: true);
             Assert.True(
@@ -498,7 +495,7 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.LaunchUnpackaged();
         session.Run(() =>
         {
-            session.NavigateTo("settings", "NavSettings", "SettingsSaveButton");
+            session.NavigateTo("settings", "NavSettings", "SettingsSectionPicker");
 
             var start = new ProcessStartInfo
             {

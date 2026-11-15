@@ -17,9 +17,7 @@ public sealed partial class SettingsPage : Page
         App.Startup,
         App.Dialogs,
         App.ComputerUse,
-        App.Meetings,
         App.Dictation,
-        App.MeetingDetection,
         App.ApplyMeetingDetection);
 
     public SettingsPage()
@@ -42,7 +40,7 @@ public sealed partial class SettingsPage : Page
         {
             await ViewModel.LoadAsync();
             ViewModel.ReapplyPickerSelections();
-            ViewModel.MarkSaved();
+            ViewModel.BeginTracking();
             // Rebuild once the whole template is up, in case a SizeChanged fired against a
             // partially realised tree before Loaded and cached an incomplete list.
             _valueControls = null;
@@ -50,6 +48,15 @@ public sealed partial class SettingsPage : Page
             UpdateSections();
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
+        // LostFocus bubbles, so one handler covers every text and key field: leaving a field saves
+        // it at once instead of waiting out the typing pause.
+        SettingsContent.LostFocus += (_, args) =>
+        {
+            if (args.OriginalSource is TextBox or PasswordBox)
+            {
+                ViewModel.FlushPendingEdits(syncText: true);
+            }
+        };
         ActualThemeChanged += (_, _) => ViewModel.RefreshPermissionPresentation();
     }
 
@@ -77,13 +84,12 @@ public sealed partial class SettingsPage : Page
     }
 
     /// <summary>
-    /// macOS saves each control as it changes. Leaving the page builds a fresh one, so pending
-    /// edits are saved here instead of being dropped silently.
+    /// Text that is still waiting out its typing pause is saved before the page goes away.
     /// </summary>
     protected override void OnNavigatingFrom(NavigatingCancelEventArgs e)
     {
         base.OnNavigatingFrom(e);
-        if (ViewModel.HasUnsavedChanges) _ = ViewModel.SaveCommand.ExecuteAsync(null);
+        ViewModel.FlushPendingEdits();
     }
 
     public static Visibility BoolToVisibility(bool value) =>
@@ -143,6 +149,7 @@ public sealed partial class SettingsPage : Page
             if (!string.IsNullOrWhiteSpace(folder))
             {
                 ViewModel.AutoExportMarkdownDirectory = folder;
+                ViewModel.FlushPendingEdits();
             }
         }
         catch (Exception exception)
@@ -165,7 +172,7 @@ public sealed partial class SettingsPage : Page
     /// </para>
     /// <para>
     /// P5-03: the header and the scroll column are pinned to one computed width, so the tab strip
-    /// and Save no longer track the widest card of whichever tab happens to be visible.
+    /// no longer tracks the widest card of whichever tab happens to be visible.
     /// </para>
     /// </remarks>
     private void ApplyResponsiveLayout(double contentWidth)

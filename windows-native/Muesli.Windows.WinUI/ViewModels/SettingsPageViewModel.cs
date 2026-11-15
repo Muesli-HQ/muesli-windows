@@ -28,12 +28,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly IStartupRegistrationService _startup;
     private readonly IAppDialogService _dialogs;
     private readonly WinUiComputerUseContext _computerUse;
-    private readonly WinUiMeetingContext _meetings;
     private readonly WinUiDictationContext _dictation;
-    private readonly WinUiMeetingDetectionService _detection;
     private readonly Action<bool> _applyDetection;
     private readonly WindowsMicrophoneAccessService _microphone = new();
-    private MuesliSettings _source = new();
 
     public SettingsPageViewModel(
         WinUiSettingsContext settingsContext,
@@ -41,9 +38,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         IStartupRegistrationService startup,
         IAppDialogService dialogs,
         WinUiComputerUseContext computerUse,
-        WinUiMeetingContext meetings,
         WinUiDictationContext dictation,
-        WinUiMeetingDetectionService detection,
         Action<bool> applyDetection)
     {
         _settingsContext = settingsContext;
@@ -51,12 +46,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         _startup = startup;
         _dialogs = dialogs;
         _computerUse = computerUse;
-        _meetings = meetings;
         _dictation = dictation;
-        _detection = detection;
         _applyDetection = applyDetection;
         _computerUse.Changed += OnComputerUseChanged;
-        _meetings.Changed += OnMeetingsChanged;
     }
 
     private void OnComputerUseChanged(object? sender, EventArgs args)
@@ -67,16 +59,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         ComputerUseDiagnostics = _computerUse.Diagnostics;
     }
 
-    private void OnMeetingsChanged(object? sender, EventArgs args)
-    {
-        CaptureStatus = _meetings.CaptureStatus;
-        DetectionStatus = _detection.Status;
-    }
-
     public void Dispose()
     {
         _computerUse.Changed -= OnComputerUseChanged;
-        _meetings.Changed -= OnMeetingsChanged;
+        _debounce?.Cancel();
+        FlushPendingEdits();
     }
 
     [ObservableProperty] public partial int SectionIndex { get; set; }
@@ -142,8 +129,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string ComputerUseVoiceLabel { get; private set; } = "Speak planner command";
     [ObservableProperty] public partial bool ComputerUseStopEnabled { get; private set; }
     [ObservableProperty] public partial string ComputerUseDiagnostics { get; private set; } = "";
-    [ObservableProperty] public partial string CaptureStatus { get; private set; } = "Idle";
-    [ObservableProperty] public partial string DetectionStatus { get; private set; } = "";
     [NotifyPropertyChangedFor(nameof(ShowOllamaSettings))]
     [NotifyPropertyChangedFor(nameof(ShowOpenAISettings))]
     [NotifyPropertyChangedFor(nameof(ShowOpenRouterSettings))]
@@ -182,7 +167,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             OllamaEndpoint,
             LmStudioEndpoint,
             CustomLlmEndpoint);
-
     // P5-04: the "Sync" tab held nothing but an unavailable-on-Windows notice. Its single honest
     // statement now sits in the General tab's DATA section, next to the permission row that already
     // reports "Calendar / iPhone sync - Not available"
@@ -206,7 +190,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public bool PdfAutoExportAvailable => MeetingDocumentWriter.PdfExportApproved;
     public string PdfAutoExportHelp => PdfAutoExportAvailable
         ? "Save a PDF copy beside the Markdown file. Existing edited files are kept."
-        : "Unavailable until QuestPDF Community-license eligibility is approved (EXP-01).";
+        : "Not available yet.";
 
     public string AutoExportFolderHelp =>
         !AutoExportMarkdownEnabled
@@ -215,259 +199,497 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
                 ? "Nothing is exported until you choose a folder on this PC."
                 : "A Markdown copy of each completed meeting is written here.";
 
-    /// <summary>
-    /// P5-09. Settings commit only on Save, so an uncommitted edit has to be visible from every tab
-    /// rather than being dropped silently when the section changes.
-    /// </summary>
-    [ObservableProperty] public partial bool HasUnsavedChanges { get; private set; }
-
-    /// <summary>Clears the dirty flag and starts tracking edits. Called after the initial load.</summary>
-    public void MarkSaved()
-    {
-        HasUnsavedChanges = false;
-        _trackEdits = true;
-    }
-
     public void ReportFolderPickerFailure(string message) =>
         ShowStatus($"The folder could not be chosen: {message}", isError: true);
+
+    // ---- Saving -----------------------------------------------------------------------------
+    // As on macOS, there is no Save button: each control writes its own setting when it changes.
+    // Toggles, pickers and number boxes save at once. Text saves after a short pause in typing and
+    // when the field loses focus, so a half-typed value is not written on every keystroke. Every
+    // write starts from the settings context's current snapshot and changes one field, so a
+    // setting saved elsewhere (the Shortcuts or Models page) is never overwritten from here.
+
+    /// <summary>How long a text field waits after the last keystroke before it is saved.</summary>
+    private static readonly TimeSpan TextSaveDelay = TimeSpan.FromMilliseconds(600);
+
+    private readonly HashSet<string> _pendingText = [];
+    private CancellationTokenSource? _debounce;
+    private bool _tracking;
+    private string? _errorField;
+
+    /// <summary>Starts saving edits. Called once the initial load has filled every field.</summary>
+    public void BeginTracking() => _tracking = true;
 
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
-        if (_trackEdits && e.PropertyName is { } name && !NonEditableProperties.Contains(name))
+        if (!_tracking || e.PropertyName is not { } name) return;
+        if (TextFields.ContainsKey(name))
         {
-            HasUnsavedChanges = true;
+            _pendingText.Add(name);
+            ScheduleFlush();
+        }
+        else if (name == nameof(StartAtLogin))
+        {
+            _ = ApplyStartAtLoginAsync(StartAtLogin);
+        }
+        else
+        {
+            CommitChoice(name);
         }
     }
 
     /// <summary>
-    /// Status, catalogue and derived properties: changing one of these is not a user edit.
-    /// Everything else on this view model is a settings field that Save writes.
+    /// Saves text that is still waiting out its typing pause. Called when a field loses focus
+    /// (<paramref name="syncText"/> then shows the value as it was stored, e.g. trimmed) and when
+    /// the page is left.
     /// </summary>
-    private static readonly HashSet<string> NonEditableProperties =
-    [
-        nameof(SectionIndex), nameof(HasUnsavedChanges), nameof(StatusMessage), nameof(IsStatusOpen),
-        nameof(IsStatusError), nameof(Permissions), nameof(Microphones), nameof(DictationModels),
-        nameof(MeetingModels), nameof(LiveModels), nameof(MeetingTemplates), nameof(ComputerUseStatus),
-        nameof(ComputerUseVoiceLabel), nameof(ComputerUseStopEnabled), nameof(ComputerUseDiagnostics),
-        nameof(CaptureStatus), nameof(DetectionStatus), nameof(IsStartupAvailable),
-        nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp),
-        nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings),
-        nameof(ShowChatGptSettings), nameof(ShowClaudeCodeSettings), nameof(IsChatGptSignedIn), nameof(IsChatGptSignedOut),
-        nameof(IsChatGptSigningIn), nameof(ChatGptAccountStatus), nameof(ClaudeCodeAccountStatus),
-        nameof(ShowOpenRouterSettings), nameof(ShowGeneral), nameof(ShowDictation),
-        nameof(ShowComputerUse), nameof(ShowMeetings), nameof(ShowAppearance)
-    ];
+    public void FlushPendingEdits(bool syncText = false)
+    {
+        _debounce?.Cancel();
+        if (_pendingText.Count == 0) return;
+        var names = _pendingText.ToArray();
+        _pendingText.Clear();
+        foreach (var name in names)
+        {
+            CommitText(name, syncText);
+        }
+    }
 
-    private bool _trackEdits;
+    private async void ScheduleFlush()
+    {
+        _debounce?.Cancel();
+        var debounce = _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(TextSaveDelay, debounce.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        FlushPendingEdits();
+    }
+
+    private sealed record TextField(
+        string Label,
+        Func<SettingsPageViewModel, string> Get,
+        Action<SettingsPageViewModel, string> Set,
+        Func<MuesliSettings, string> Read,
+        Func<MuesliSettings, string, MuesliSettings> Write,
+        Func<string, string?>? Validate = null,
+        string? SecretKey = null);
+
+    /// <summary>
+    /// Every free-text setting. Provider keys carry a <c>SecretKey</c>: they go to Windows
+    /// Credential Manager one at a time and never into the settings file.
+    /// </summary>
+    private static readonly Dictionary<string, TextField> TextFields = new()
+    {
+        [nameof(UserName)] = new("Your name",
+            vm => vm.UserName, (vm, value) => vm.UserName = value,
+            settings => settings.UserName, (settings, value) => settings with { UserName = value }),
+        [nameof(AutoExportMarkdownDirectory)] = new("Export folder",
+            vm => vm.AutoExportMarkdownDirectory, (vm, value) => vm.AutoExportMarkdownDirectory = value,
+            settings => settings.AutoExportMarkdownDirectory,
+            (settings, value) => settings with { AutoExportMarkdownDirectory = value },
+            SettingsFieldValidation.ExportDirectory),
+        [nameof(PostMeetingHookExecutablePath)] = new("Program path",
+            vm => vm.PostMeetingHookExecutablePath, (vm, value) => vm.PostMeetingHookExecutablePath = value,
+            settings => settings.PostMeetingHookExecutablePath,
+            (settings, value) => settings with { PostMeetingHookExecutablePath = value },
+            SettingsFieldValidation.HookExecutable),
+        [nameof(OllamaEndpoint)] = new("Ollama server",
+            vm => vm.OllamaEndpoint, (vm, value) => vm.OllamaEndpoint = value,
+            settings => settings.OllamaEndpoint, (settings, value) => settings with { OllamaEndpoint = value },
+            SettingsFieldValidation.HttpEndpoint),
+        [nameof(OllamaModel)] = new("Ollama model",
+            vm => vm.OllamaModel, (vm, value) => vm.OllamaModel = value,
+            settings => settings.OllamaModel, (settings, value) => settings with { OllamaModel = value }),
+        [nameof(LmStudioEndpoint)] = new("LM Studio server",
+            vm => vm.LmStudioEndpoint, (vm, value) => vm.LmStudioEndpoint = value,
+            settings => settings.LmStudioEndpoint, (settings, value) => settings with { LmStudioEndpoint = value },
+            SettingsFieldValidation.HttpEndpoint),
+        [nameof(LmStudioModel)] = new("LM Studio model",
+            vm => vm.LmStudioModel, (vm, value) => vm.LmStudioModel = value,
+            settings => settings.LmStudioModel, (settings, value) => settings with { LmStudioModel = value }),
+        [nameof(CustomLlmEndpoint)] = new("Custom endpoint",
+            vm => vm.CustomLlmEndpoint, (vm, value) => vm.CustomLlmEndpoint = value,
+            settings => settings.CustomLlmEndpoint, (settings, value) => settings with { CustomLlmEndpoint = value },
+            SettingsFieldValidation.HttpEndpoint),
+        [nameof(CustomLlmModel)] = new("Custom model",
+            vm => vm.CustomLlmModel, (vm, value) => vm.CustomLlmModel = value,
+            settings => settings.CustomLlmModel, (settings, value) => settings with { CustomLlmModel = value }),
+        [nameof(ClaudeCodeExecutablePath)] = new("Claude Code path",
+            vm => vm.ClaudeCodeExecutablePath, (vm, value) => vm.ClaudeCodeExecutablePath = value,
+            settings => settings.ClaudeCodeExecutablePath, (settings, value) => settings with { ClaudeCodeExecutablePath = value }),
+        [nameof(OpenAIModel)] = new("OpenAI model",
+            vm => vm.OpenAIModel, (vm, value) => vm.OpenAIModel = value,
+            settings => settings.OpenAIModel, (settings, value) => settings with { OpenAIModel = value }),
+        [nameof(OpenRouterModel)] = new("OpenRouter model",
+            vm => vm.OpenRouterModel, (vm, value) => vm.OpenRouterModel = value,
+            settings => settings.OpenRouterModel, (settings, value) => settings with { OpenRouterModel = value }),
+        [nameof(OpenAIApiKey)] = new("OpenAI API key",
+            vm => vm.OpenAIApiKey, (vm, value) => vm.OpenAIApiKey = value,
+            settings => settings.ResolvedOpenAIApiKey, (settings, _) => settings,
+            SecretKey: SettingsStore.OpenAISecretKey),
+        [nameof(OpenRouterApiKey)] = new("OpenRouter API key",
+            vm => vm.OpenRouterApiKey, (vm, value) => vm.OpenRouterApiKey = value,
+            settings => settings.ResolvedOpenRouterApiKey, (settings, _) => settings,
+            SecretKey: SettingsStore.OpenRouterSecretKey),
+        [nameof(CustomLlmApiKey)] = new("Custom API key",
+            vm => vm.CustomLlmApiKey, (vm, value) => vm.CustomLlmApiKey = value,
+            settings => settings.ResolvedCustomLlmApiKey, (settings, _) => settings,
+            SecretKey: SettingsStore.CustomLlmSecretKey),
+        [nameof(ComputerUsePlannerModel)] = new("Planner model ID",
+            vm => vm.ComputerUsePlannerModel, (vm, value) => vm.ComputerUsePlannerModel = value,
+            settings => settings.ComputerUsePlannerModel,
+            (settings, value) => settings with { ComputerUsePlannerModel = value }),
+        [nameof(ComputerUseAllowedApplications)] = new("Allowed applications",
+            vm => vm.ComputerUseAllowedApplications, (vm, value) => vm.ComputerUseAllowedApplications = value,
+            settings => settings.ComputerUseAllowedApplications,
+            (settings, value) => settings with
+            {
+                ComputerUseAllowedApplications = ComputerUseConfiguration.NormalizeAllowlist(value)
+            }),
+        [nameof(ComputerUseAllowedBrowserDomains)] = new("Allowed HTTPS origins",
+            vm => vm.ComputerUseAllowedBrowserDomains, (vm, value) => vm.ComputerUseAllowedBrowserDomains = value,
+            settings => settings.ComputerUseAllowedBrowserDomains,
+            (settings, value) => settings with
+            {
+                ComputerUseAllowedBrowserDomains = ComputerUseConfiguration.NormalizeAllowlist(value)
+            }),
+        [nameof(ComputerUseBrowserEndpoint)] = new("Loopback DevTools endpoint",
+            vm => vm.ComputerUseBrowserEndpoint, (vm, value) => vm.ComputerUseBrowserEndpoint = value,
+            settings => settings.ComputerUseBrowserEndpoint,
+            (settings, value) => settings with { ComputerUseBrowserEndpoint = value },
+            SettingsFieldValidation.LoopbackEndpoint)
+    };
+
+    private void CommitText(string name, bool syncText)
+    {
+        var field = TextFields[name];
+        var value = (field.Get(this) ?? "").Trim();
+        if (field.Validate?.Invoke(value) is { } problem)
+        {
+            // Nothing is written: the last saved value stays in effect until this one is valid.
+            ShowFieldError(name, $"{field.Label} was not saved. {problem}");
+            return;
+        }
+
+        try
+        {
+            var current = _settingsContext.Load();
+            if (field.SecretKey is { } secretKey)
+            {
+                if (!string.Equals(field.Read(current), value, StringComparison.Ordinal))
+                {
+                    _settingsContext.SaveProviderKey(secretKey, value);
+                }
+
+                current = _settingsContext.Load();
+            }
+
+            Persist(name, current, field.Write(current, value));
+        }
+        catch (Exception exception)
+        {
+            // Still pending, so leaving the field or the page tries again.
+            _pendingText.Add(name);
+            ShowFieldError(name, $"{field.Label} could not be saved: {exception.Message}");
+            return;
+        }
+
+        if (syncText)
+        {
+            Untracked(() => field.Set(this, field.Read(_settingsContext.Load())));
+        }
+    }
+
+    private void CommitChoice(string name)
+    {
+        try
+        {
+            var current = _settingsContext.Load();
+            if (ApplyChoice(name, current) is { } draft)
+            {
+                Persist(name, current, draft);
+            }
+        }
+        catch (Exception exception)
+        {
+            // The control must not show a value that is not in effect.
+            RestoreSavedValues();
+            ShowFieldError(name, $"That change could not be saved: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The current settings with one toggle, picker or number applied, or <c>null</c> when
+    /// <paramref name="name"/> is not a setting or holds no real choice. A ComboBox can report an
+    /// empty selection while its list is being assigned; that is not the user picking nothing.
+    /// </summary>
+    private MuesliSettings? ApplyChoice(string name, MuesliSettings settings) => name switch
+    {
+        nameof(OpenDashboardOnLaunch) => settings with { OpenDashboardOnLaunch = OpenDashboardOnLaunch },
+        nameof(StartAtLogin) => settings with { StartAtLogin = StartAtLogin },
+        nameof(AutoMeetingDetectionEnabled) => settings with { AutoMeetingDetectionEnabled = AutoMeetingDetectionEnabled },
+        nameof(SaveMeetingRecordings) => settings with { SaveMeetingRecordings = SaveMeetingRecordings },
+        nameof(AutoExportMarkdownEnabled) => settings with { AutoExportMarkdownEnabled = AutoExportMarkdownEnabled },
+        nameof(AutoExportPdfEnabled) => settings with { AutoExportPdfEnabled = AutoExportPdfEnabled },
+        nameof(PostMeetingHookEnabled) => settings with { PostMeetingHookEnabled = PostMeetingHookEnabled },
+        nameof(PostMeetingHookTimeoutSeconds) =>
+            settings with { PostMeetingHookTimeoutSeconds = Math.Clamp(PostMeetingHookTimeoutSeconds, 1, 600) },
+        nameof(MeetingSummaryTemplate) when MeetingTemplates.Contains(MeetingSummaryTemplate) =>
+            settings with { MeetingSummaryTemplate = MeetingSummaryTemplate },
+        nameof(RemoveFillerWords) => settings with { RemoveFillerWords = RemoveFillerWords },
+        nameof(EnableLocalCleanup) => settings with { EnableLocalCleanup = EnableLocalCleanup },
+        nameof(ShowFloatingIndicator) => settings with { ShowFloatingIndicator = ShowFloatingIndicator },
+        nameof(SoundEnabled) => settings with { SoundEnabled = SoundEnabled },
+        nameof(ShowLiveWaveformOnHover) => settings with { ShowLiveWaveformOnHover = ShowLiveWaveformOnHover },
+        nameof(HotkeyTriggerThresholdMs) =>
+            settings with { HotkeyTriggerThresholdMs = HotkeyTriggerTiming.ClampMilliseconds(HotkeyTriggerThresholdMs) },
+        nameof(ThemeIndex) when ThemeIndex >= 0 =>
+            settings with { Theme = ThemeIndex switch { 1 => "light", 2 => "dark", _ => "system" } },
+        nameof(IndicatorStyleIndex) when IndicatorStyleIndex >= 0 =>
+            settings with { IndicatorStyle = IndicatorStyleIndex == 1 ? "minimal" : "classic" },
+        nameof(RecordingColorIndex) when RecordingColorIndex >= 0 && RecordingColorIndex < RecordingColors.Length =>
+            settings with { RecordingColorHex = RecordingColors[RecordingColorIndex].Hex },
+        nameof(SelectedMicrophone) when SelectedMicrophone is { Length: > 0 } microphone && Microphones.Contains(microphone) =>
+            settings with { MicrophoneName = microphone == "Automatic" ? null : microphone },
+        nameof(SelectedDictationModel) when TranscriptionModelId(SelectedDictationModel) is { } id =>
+            settings with { DictationModelId = id },
+        nameof(SelectedMeetingModel) when TranscriptionModelId(SelectedMeetingModel) is { } id =>
+            settings with { FinalMeetingModelId = id },
+        nameof(SelectedLiveModel) when SelectedLiveModel == "Off" => settings with { LiveMeetingModelId = null },
+        nameof(SelectedLiveModel) when StreamingModelCatalog.Models
+            .FirstOrDefault(model => model.DisplayName == SelectedLiveModel)?.Id is { } id =>
+            settings with { LiveMeetingModelId = id },
+        nameof(SelectedChatGptModel) when SelectedChatGptModel is { } model => settings with { ChatGptModel = model.Id },
+        nameof(SelectedClaudeCodeModel) when SelectedClaudeCodeModel is { } model => settings with { ClaudeCodeModel = model.Id },
+        nameof(SelectedSummaryProvider) when SelectedSummaryProvider is { } provider =>
+            settings with { MeetingSummaryProvider = provider.Id },
+        nameof(ComputerUseEnabled) => settings with { ComputerUseEnabled = ComputerUseEnabled },
+        nameof(ComputerUseProviderIndex) when ComputerUseProviderIndex >= 0 =>
+            settings with { ComputerUsePlannerProvider = ComputerUseProviderIndex == 1 ? "openai" : "none" },
+        nameof(ComputerUsePlannerTimeoutSeconds) =>
+            settings with { ComputerUsePlannerTimeoutSeconds = ComputerUsePlannerTimeoutSeconds },
+        nameof(ComputerUsePerActionTimeoutSeconds) =>
+            settings with { ComputerUsePerActionTimeoutSeconds = ComputerUsePerActionTimeoutSeconds },
+        nameof(ComputerUseMaximumActionCount) =>
+            settings with { ComputerUseMaximumActionCount = ComputerUseMaximumActionCount },
+        nameof(ComputerUseBrowserInterfaceIndex) when ComputerUseBrowserInterfaceIndex >= 0 => settings with
+        {
+            ComputerUseBrowserInterface = ComputerUseBrowserInterfaceIndex == 1 ? "loopback-devtools" : "none"
+        },
+        _ => null
+    };
+
+    private static string? TranscriptionModelId(string? displayName) =>
+        TranscriptionModelCatalog.Models.FirstOrDefault(model => model.DisplayName == displayName)?.Id;
+
+    /// <summary>
+    /// Writes <paramref name="draft"/> when it differs from <paramref name="current"/> and applies
+    /// what depends on the setting that changed. Unchanged values write nothing, so a setting's
+    /// side effects run once, when that setting changes.
+    /// </summary>
+    private void Persist(string name, MuesliSettings current, MuesliSettings draft)
+    {
+        string? computerUseProblem = null;
+        if (name.StartsWith("ComputerUse", StringComparison.Ordinal) || name == nameof(OpenAIApiKey))
+        {
+            // The observation switches are not offered yet, so they stay off whatever the file says.
+            draft = draft with
+            {
+                ComputerUseIncludeWindowText = false,
+                ComputerUseIncludeBrowserPageText = false,
+                ComputerUseIncludeScreenshots = false
+            };
+            if (draft.ComputerUseEnabled &&
+                !ComputerUseConfiguration.TryValidate(draft, draft.ResolvedOpenAIApiKey, out var error))
+            {
+                draft = draft with { ComputerUseEnabled = false };
+                computerUseProblem = $"Computer Use was turned off: {error}";
+            }
+        }
+
+        if (draft != current)
+        {
+            _settingsContext.Save(draft);
+            if (draft.AutoMeetingDetectionEnabled != current.AutoMeetingDetectionEnabled)
+            {
+                _applyDetection(draft.AutoMeetingDetectionEnabled);
+            }
+        }
+
+        if (computerUseProblem is null)
+        {
+            ClearFieldError(name);
+            return;
+        }
+
+        Untracked(() => ComputerUseEnabled = false);
+        ShowFieldError(nameof(ComputerUseEnabled), computerUseProblem);
+    }
+
+    /// <summary>
+    /// Windows owns the startup task and can refuse it (for example when it was disabled in Task
+    /// Manager), so the task is changed first and the toggle is put back if Windows says no.
+    /// </summary>
+    private async Task ApplyStartAtLoginAsync(bool enabled)
+    {
+        if (!IsStartupAvailable) return;
+        try
+        {
+            await _startup.SetEnabledAsync(enabled);
+        }
+        catch (Exception exception)
+        {
+            Untracked(() => StartAtLogin = !enabled);
+            ShowFieldError(nameof(StartAtLogin), $"Launch at login could not be changed: {exception.Message}");
+            return;
+        }
+
+        CommitChoice(nameof(StartAtLogin));
+    }
+
+    private void RestoreSavedValues()
+    {
+        _pendingText.Clear();
+        Untracked(() =>
+        {
+            ApplySnapshot(_settingsContext.Load());
+            ReapplyPickerSelections();
+        });
+    }
+
+    private void Untracked(Action change)
+    {
+        var tracking = _tracking;
+        _tracking = false;
+        try
+        {
+            change();
+        }
+        finally
+        {
+            _tracking = tracking;
+        }
+    }
+
+    private void ShowFieldError(string name, string message)
+    {
+        ShowStatus(message, isError: true);
+        _errorField = name;
+    }
+
+    /// <summary>Closes the error once the field it was about has been saved.</summary>
+    private void ClearFieldError(string name)
+    {
+        if (_errorField != name) return;
+        _errorField = null;
+        IsStatusOpen = false;
+    }
 
     public async Task LoadAsync()
     {
-        _trackEdits = false;
-        _source = _settingsContext.Load();
-        UserName = _source.UserName;
-        OpenDashboardOnLaunch = _source.OpenDashboardOnLaunch;
+        _tracking = false;
+        var settings = _settingsContext.Load();
+        ApplySnapshot(settings);
         try
         {
             StartAtLogin = await _startup.IsEnabledAsync();
             IsStartupAvailable = true;
             StartupAvailabilityNotice = "";
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             // The Windows startup task lives in the MSIX manifest, so it is only reachable
             // when the shell runs with package identity. Say so instead of leaving a dead toggle.
             StartAtLogin = false;
             IsStartupAvailable = false;
-            StartupAvailabilityNotice =
-                "Launch at sign-in is unavailable: this build is running without package identity, " +
-                $"so the Windows startup task cannot be read ({exception.GetType().Name}). " +
-                "Install the packaged build to manage it here.";
+            StartupAvailabilityNotice = "Launch at login isn't available in this build.";
         }
 
-        AutoMeetingDetectionEnabled = _source.AutoMeetingDetectionEnabled;
-        SaveMeetingRecordings = _source.SaveMeetingRecordings;
-        AutoExportMarkdownEnabled = _source.AutoExportMarkdownEnabled;
-        AutoExportMarkdownDirectory = _source.AutoExportMarkdownDirectory;
-        AutoExportPdfEnabled = _source.AutoExportPdfEnabled;
-        PostMeetingHookEnabled = _source.PostMeetingHookEnabled;
-        PostMeetingHookExecutablePath = _source.PostMeetingHookExecutablePath;
-        PostMeetingHookTimeoutSeconds = _source.PostMeetingHookTimeoutSeconds;
+        await RefreshMicrophonePermissionAsync();
+        NotifySections();
+    }
+
+    /// <summary>Fills every field from saved settings. Launch at login comes from Windows, not from here.</summary>
+    private void ApplySnapshot(MuesliSettings settings)
+    {
+        UserName = settings.UserName;
+        OpenDashboardOnLaunch = settings.OpenDashboardOnLaunch;
+        AutoMeetingDetectionEnabled = settings.AutoMeetingDetectionEnabled;
+        SaveMeetingRecordings = settings.SaveMeetingRecordings;
+        AutoExportMarkdownEnabled = settings.AutoExportMarkdownEnabled;
+        AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory;
+        AutoExportPdfEnabled = settings.AutoExportPdfEnabled;
+        PostMeetingHookEnabled = settings.PostMeetingHookEnabled;
+        PostMeetingHookExecutablePath = settings.PostMeetingHookExecutablePath;
+        PostMeetingHookTimeoutSeconds = settings.PostMeetingHookTimeoutSeconds;
         MeetingTemplates = MeetingSummaryService.BuiltInTemplateNames.Concat(_library.LoadMeetingTemplates().Select(item => item.Name)).Distinct().ToList();
-        MeetingSummaryTemplate = MeetingSummaryService.NormalizeTemplateName(_source.MeetingSummaryTemplate);
-        RemoveFillerWords = _source.RemoveFillerWords;
-        EnableLocalCleanup = _source.EnableLocalCleanup;
-        ComputerUseEnabled = _source.ComputerUseEnabled;
-        ShowFloatingIndicator = _source.ShowFloatingIndicator;
-        SoundEnabled = _source.SoundEnabled;
-        ShowLiveWaveformOnHover = _source.ShowLiveWaveformOnHover;
-        HotkeyTriggerThresholdMs = _source.HotkeyTriggerThresholdMs;
-        Hotkey = _source.Hotkey;
-        ThemeIndex = _source.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
-        IndicatorStyleIndex = _source.IndicatorStyle == "minimal" ? 1 : 0;
-        RecordingColorIndex = Array.FindIndex(RecordingColors, color => color.Hex == _source.RecordingColorHex);
+        MeetingSummaryTemplate = MeetingSummaryService.NormalizeTemplateName(settings.MeetingSummaryTemplate);
+        RemoveFillerWords = settings.RemoveFillerWords;
+        EnableLocalCleanup = settings.EnableLocalCleanup;
+        ComputerUseEnabled = settings.ComputerUseEnabled;
+        ShowFloatingIndicator = settings.ShowFloatingIndicator;
+        SoundEnabled = settings.SoundEnabled;
+        ShowLiveWaveformOnHover = settings.ShowLiveWaveformOnHover;
+        HotkeyTriggerThresholdMs = settings.HotkeyTriggerThresholdMs;
+        Hotkey = settings.Hotkey;
+        ThemeIndex = settings.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
+        IndicatorStyleIndex = settings.IndicatorStyle == "minimal" ? 1 : 0;
+        RecordingColorIndex = Array.FindIndex(RecordingColors, color => color.Hex == settings.RecordingColorHex);
         Microphones = new[] { "Automatic" }.Concat(_dictation.ListMicrophones()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        SelectedMicrophone = string.IsNullOrWhiteSpace(_source.MicrophoneName) ? "Automatic" : _source.MicrophoneName;
+        SelectedMicrophone = string.IsNullOrWhiteSpace(settings.MicrophoneName) ? "Automatic" : settings.MicrophoneName;
         // macOS lists only installed models; the Models page owns downloads. The saved selections
         // stay listed so the picker never shows blank (dictation then fails closed with guidance).
         DictationModels = TranscriptionModelCatalog.Models
             .Where(model => TranscriptionModelReadiness.IsVerified(model) ||
-                model.Id == _source.DictationModelId || model.Id == _source.FinalMeetingModelId)
+                model.Id == settings.DictationModelId || model.Id == settings.FinalMeetingModelId)
             .Select(model => model.DisplayName).ToList();
         MeetingModels = DictationModels;
-        SelectedDictationModel = TranscriptionModelCatalog.Get(_source.DictationModelId).DisplayName;
-        SelectedMeetingModel = TranscriptionModelCatalog.Get(_source.FinalMeetingModelId).DisplayName;
+        SelectedDictationModel = TranscriptionModelCatalog.Get(settings.DictationModelId).DisplayName;
+        SelectedMeetingModel = TranscriptionModelCatalog.Get(settings.FinalMeetingModelId).DisplayName;
         LiveModels = new[] { "Off" }.Concat(StreamingModelCatalog.Models.Select(model => model.DisplayName)).ToList();
-        SelectedLiveModel = string.IsNullOrWhiteSpace(_source.LiveMeetingModelId)
+        SelectedLiveModel = string.IsNullOrWhiteSpace(settings.LiveMeetingModelId)
             ? "Off"
-            : StreamingModelCatalog.Get(_source.LiveMeetingModelId)?.DisplayName ?? "Off";
-        ComputerUseProviderIndex = ComputerUseConfiguration.ProviderLabel(_source.ComputerUsePlannerProvider) == "OpenAI" ? 1 : 0;
-        ComputerUsePlannerModel = _source.ComputerUsePlannerModel;
-        ComputerUsePlannerTimeoutSeconds = _source.ComputerUsePlannerTimeoutSeconds;
-        ComputerUsePerActionTimeoutSeconds = _source.ComputerUsePerActionTimeoutSeconds;
-        ComputerUseMaximumActionCount = _source.ComputerUseMaximumActionCount;
-        ComputerUseAllowedApplications = _source.ComputerUseAllowedApplications;
-        ComputerUseAllowedBrowserDomains = _source.ComputerUseAllowedBrowserDomains;
-        ComputerUseBrowserInterfaceIndex = ComputerUseConfiguration.BrowserInterfaceLabel(_source.ComputerUseBrowserInterface) == "Loopback DevTools" ? 1 : 0;
-        ComputerUseBrowserEndpoint = _source.ComputerUseBrowserEndpoint;
+            : StreamingModelCatalog.Get(settings.LiveMeetingModelId)?.DisplayName ?? "Off";
+        ComputerUseProviderIndex = ComputerUseConfiguration.ProviderLabel(settings.ComputerUsePlannerProvider) == "OpenAI" ? 1 : 0;
+        ComputerUsePlannerModel = settings.ComputerUsePlannerModel;
+        ComputerUsePlannerTimeoutSeconds = settings.ComputerUsePlannerTimeoutSeconds;
+        ComputerUsePerActionTimeoutSeconds = settings.ComputerUsePerActionTimeoutSeconds;
+        ComputerUseMaximumActionCount = settings.ComputerUseMaximumActionCount;
+        ComputerUseAllowedApplications = settings.ComputerUseAllowedApplications;
+        ComputerUseAllowedBrowserDomains = settings.ComputerUseAllowedBrowserDomains;
+        ComputerUseBrowserInterfaceIndex = ComputerUseConfiguration.BrowserInterfaceLabel(settings.ComputerUseBrowserInterface) == "Loopback DevTools" ? 1 : 0;
+        ComputerUseBrowserEndpoint = settings.ComputerUseBrowserEndpoint;
         ComputerUseStatus = _computerUse.Status;
         ComputerUseVoiceLabel = _computerUse.VoiceButtonText;
         ComputerUseStopEnabled = _computerUse.StopEnabled;
         _computerUse.RefreshDiagnostics();
         ComputerUseDiagnostics = _computerUse.Diagnostics;
-        CaptureStatus = _meetings.CaptureStatus;
-        DetectionStatus = _detection.Status;
-        SelectedSummaryProvider = SummaryProviderDisclosure.For(_source.MeetingSummaryProvider);
-        OllamaEndpoint = _source.OllamaEndpoint;
-        OllamaModel = _source.OllamaModel;
-        LmStudioEndpoint = _source.LmStudioEndpoint;
-        LmStudioModel = _source.LmStudioModel;
-        CustomLlmEndpoint = _source.CustomLlmEndpoint;
-        CustomLlmModel = _source.CustomLlmModel;
-        CustomLlmApiKey = _source.ResolvedCustomLlmApiKey;
-        OpenAIModel = _source.OpenAIModel;
-        SelectedChatGptModel = ChatGptModels.FirstOrDefault(choice => choice.Id.Equals(ChatGptResponsesClient.NormalizeModel(_source.ChatGptModel), StringComparison.OrdinalIgnoreCase)) ?? ChatGptModels[0];
-        SelectedClaudeCodeModel = ClaudeCodeModels.FirstOrDefault(choice => choice.Id.Equals(_source.ClaudeCodeModel, StringComparison.OrdinalIgnoreCase)) ?? ClaudeCodeModels[0];
-        ClaudeCodeExecutablePath = _source.ClaudeCodeExecutablePath;
+        SelectedSummaryProvider = SummaryProviderDisclosure.For(settings.MeetingSummaryProvider);
+        OllamaEndpoint = settings.OllamaEndpoint;
+        OllamaModel = settings.OllamaModel;
+        LmStudioEndpoint = settings.LmStudioEndpoint;
+        LmStudioModel = settings.LmStudioModel;
+        CustomLlmEndpoint = settings.CustomLlmEndpoint;
+        CustomLlmModel = settings.CustomLlmModel;
+        CustomLlmApiKey = settings.ResolvedCustomLlmApiKey;
+        OpenAIModel = settings.OpenAIModel;
+        SelectedChatGptModel = ChatGptModels.FirstOrDefault(choice => choice.Id.Equals(ChatGptResponsesClient.NormalizeModel(settings.ChatGptModel), StringComparison.OrdinalIgnoreCase)) ?? ChatGptModels[0];
+        SelectedClaudeCodeModel = ClaudeCodeModels.FirstOrDefault(choice => choice.Id.Equals(settings.ClaudeCodeModel, StringComparison.OrdinalIgnoreCase)) ?? ClaudeCodeModels[0];
+        ClaudeCodeExecutablePath = settings.ClaudeCodeExecutablePath;
         RefreshChatGptAccount();
-        OpenRouterModel = _source.OpenRouterModel;
-        OpenAIApiKey = _source.ResolvedOpenAIApiKey;
-        OpenRouterApiKey = _source.ResolvedOpenRouterApiKey;
-        await RefreshMicrophonePermissionAsync();
-        NotifySections();
+        OpenRouterModel = settings.OpenRouterModel;
+        OpenAIApiKey = settings.ResolvedOpenAIApiKey;
+        OpenRouterApiKey = settings.ResolvedOpenRouterApiKey;
     }
 
     partial void OnSectionIndexChanged(int value) => NotifySections();
-
-    [RelayCommand]
-    private async Task SaveAsync()
-    {
-        var threshold = HotkeyTriggerTiming.ClampMilliseconds(HotkeyTriggerThresholdMs);
-        var theme = ThemeIndex switch { 1 => "light", 2 => "dark", _ => "system" };
-        var dictationModel = TranscriptionModelCatalog.Models.FirstOrDefault(model =>
-            model.DisplayName == SelectedDictationModel)?.Id ?? _source.DictationModelId;
-        var meetingModel = TranscriptionModelCatalog.Models.FirstOrDefault(model =>
-            model.DisplayName == SelectedMeetingModel)?.Id ?? _source.FinalMeetingModelId;
-        var liveModel = SelectedLiveModel == "Off"
-            ? null
-            : StreamingModelCatalog.Models.FirstOrDefault(model => model.DisplayName == SelectedLiveModel)?.Id;
-        var enableComputerUse = ComputerUseEnabled;
-        var draft = _source with
-        {
-            UserName = UserName.Trim(),
-            OpenDashboardOnLaunch = OpenDashboardOnLaunch,
-            StartAtLogin = StartAtLogin,
-            AutoMeetingDetectionEnabled = AutoMeetingDetectionEnabled,
-            SaveMeetingRecordings = SaveMeetingRecordings,
-            AutoExportMarkdownEnabled = AutoExportMarkdownEnabled,
-            AutoExportMarkdownDirectory = AutoExportMarkdownDirectory.Trim(),
-            AutoExportPdfEnabled = AutoExportPdfEnabled,
-            PostMeetingHookEnabled = PostMeetingHookEnabled,
-            PostMeetingHookExecutablePath = PostMeetingHookExecutablePath.Trim(),
-            PostMeetingHookTimeoutSeconds = Math.Clamp(PostMeetingHookTimeoutSeconds, 1, 600),
-            MeetingSummaryTemplate = MeetingSummaryTemplate,
-            RemoveFillerWords = RemoveFillerWords,
-            EnableLocalCleanup = EnableLocalCleanup,
-            ComputerUseEnabled = enableComputerUse,
-            ShowFloatingIndicator = ShowFloatingIndicator,
-            SoundEnabled = SoundEnabled,
-            ShowLiveWaveformOnHover = ShowLiveWaveformOnHover,
-            HotkeyTriggerThresholdMs = threshold,
-            Theme = theme,
-            IndicatorStyle = IndicatorStyleIndex == 1 ? "minimal" : "classic",
-            RecordingColorHex = RecordingColorIndex >= 0 ? RecordingColors[RecordingColorIndex].Hex : _source.RecordingColorHex,
-            MicrophoneName = SelectedMicrophone == "Automatic" ? null : SelectedMicrophone,
-            DictationModelId = dictationModel,
-            FinalMeetingModelId = meetingModel,
-            LiveMeetingModelId = liveModel,
-            LiveTranscriptOwnership = LiveTranscriptOwnershipDescriptor.UnifiedSettingValue,
-            ComputerUsePlannerProvider = ComputerUseProviderIndex == 1 ? "openai" : "none",
-            ComputerUsePlannerModel = ComputerUsePlannerModel.Trim(),
-            ComputerUsePlannerTimeoutSeconds = ComputerUsePlannerTimeoutSeconds,
-            ComputerUsePerActionTimeoutSeconds = ComputerUsePerActionTimeoutSeconds,
-            ComputerUseMaximumActionCount = ComputerUseMaximumActionCount,
-            ComputerUseAllowedApplications = ComputerUseConfiguration.NormalizeAllowlist(ComputerUseAllowedApplications),
-            ComputerUseAllowedBrowserDomains = ComputerUseConfiguration.NormalizeAllowlist(ComputerUseAllowedBrowserDomains),
-            ComputerUseIncludeWindowText = false,
-            ComputerUseIncludeBrowserPageText = false,
-            ComputerUseIncludeScreenshots = false,
-            ComputerUseBrowserInterface = ComputerUseBrowserInterfaceIndex == 1 ? "loopback-devtools" : "none",
-            ComputerUseBrowserEndpoint = ComputerUseBrowserEndpoint.Trim(),
-            MeetingSummaryProvider = SelectedSummaryProvider?.Id ?? "local",
-            OllamaEndpoint = OllamaEndpoint.Trim(),
-            OllamaModel = OllamaModel.Trim(),
-            LmStudioEndpoint = LmStudioEndpoint.Trim(),
-            LmStudioModel = LmStudioModel.Trim(),
-            CustomLlmEndpoint = CustomLlmEndpoint.Trim(),
-            CustomLlmModel = CustomLlmModel.Trim(),
-            OpenAIModel = OpenAIModel.Trim(),
-            ChatGptModel = SelectedChatGptModel?.Id ?? "",
-            ClaudeCodeModel = SelectedClaudeCodeModel?.Id ?? "",
-            ClaudeCodeExecutablePath = ClaudeCodeExecutablePath.Trim(),
-            OpenRouterModel = OpenRouterModel.Trim(),
-            ResolvedOpenAIApiKey = OpenAIApiKey.Trim(),
-            ResolvedOpenRouterApiKey = OpenRouterApiKey.Trim(),
-            ResolvedCustomLlmApiKey = CustomLlmApiKey.Trim()
-        };
-        string? warning = null;
-        if (draft.ComputerUseEnabled &&
-            !ComputerUseConfiguration.TryValidate(draft, draft.ResolvedOpenAIApiKey, out var error))
-        {
-            draft = draft with { ComputerUseEnabled = false };
-            ComputerUseEnabled = false;
-            warning = $"Computer Use was turned off: {error}";
-        }
-
-        HotkeyTriggerThresholdMs = threshold;
-        ComputerUseAllowedApplications = draft.ComputerUseAllowedApplications;
-        ComputerUseAllowedBrowserDomains = draft.ComputerUseAllowedBrowserDomains;
-        // Windows can refuse the startup task (e.g. disabled in Task Manager). That must not
-        // block keys and every other setting from saving.
-        if (IsStartupAvailable)
-        {
-            try { await _startup.SetEnabledAsync(StartAtLogin); }
-            catch (Exception exception)
-            {
-                warning = (warning is null ? "" : warning + " ") + $"Launch at sign-in could not be changed: {exception.Message}";
-            }
-        }
-
-        try
-        {
-            _settingsContext.SaveProviderKeys(OpenAIApiKey, OpenRouterApiKey, CustomLlmApiKey);
-            _settingsContext.Save(draft);
-            _source = draft;
-            _applyDetection(draft.AutoMeetingDetectionEnabled);
-            HasUnsavedChanges = false;
-            ShowStatus(warning is null ? "Settings saved." : $"Settings saved. {warning}", isError: warning is not null);
-        }
-        catch (Exception exception)
-        {
-            // The dirty badge deliberately stays up: nothing reached disk, so the edits are
-            // still pending and the user must be able to see that from any tab.
-            ShowStatus($"Settings could not be saved: {exception.Message}", isError: true);
-        }
-    }
 
     [RelayCommand]
     private async Task TestMicrophoneAsync()
@@ -487,7 +709,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private async Task ClearDictationsAsync(CancellationToken cancellationToken)
     {
         var choice = await _dialogs.ConfirmAsync(
-            "Permanently clear dictation history in this isolated WinUI profile?",
+            "Permanently clear your dictation history?",
             "Clear dictation history",
             "Clear history",
             "Cancel",
@@ -501,7 +723,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private async Task ClearMeetingsAsync(CancellationToken cancellationToken)
     {
         var choice = await _dialogs.ConfirmAsync(
-            "Permanently clear meeting history in this isolated WinUI profile? Retained recordings are not deleted.",
+            "Permanently clear your meeting history? Saved recordings are not deleted.",
             "Clear meeting history",
             "Clear history",
             "Cancel",
@@ -556,8 +778,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     /// </remarks>
     public void ReapplyPickerSelections()
     {
-        var tracking = _trackEdits;
-        _trackEdits = false;
+        var tracking = _tracking;
+        _tracking = false;
         try
         {
             var live = string.IsNullOrWhiteSpace(SelectedLiveModel) ? "Off" : SelectedLiveModel;
@@ -585,7 +807,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            _trackEdits = tracking;
+            _tracking = tracking;
         }
     }
 
@@ -645,6 +867,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
     private void ShowStatus(string message, bool isError = false)
     {
+        _errorField = null;
         StatusMessage = message;
         IsStatusError = isError;
         IsStatusOpen = true;

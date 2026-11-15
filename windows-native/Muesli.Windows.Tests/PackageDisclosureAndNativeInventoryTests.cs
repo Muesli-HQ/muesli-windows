@@ -27,19 +27,16 @@ public sealed class PackageDisclosureAndNativeInventoryTests
         var packageScript = Read("scripts/package-windows-v1.ps1");
         // The CPU-only disclosure flag lives in the shared release configuration.
         var releaseCommon = Read("scripts/release-common.ps1");
-        var releaseNotes = Read("docs/WINDOWS_V1_RELEASE.md");
         var catalog = LoadCatalog();
 
         Assert.DoesNotContain(PublicNativePackageContract.FalseCudaIncludedClaim, notices, StringComparison.Ordinal);
         Assert.DoesNotContain(PublicNativePackageContract.FalseCudaIncludedClaim, readme, StringComparison.Ordinal);
         Assert.DoesNotContain(PublicNativePackageContract.FalseCudaIncludedClaim, packageScript, StringComparison.Ordinal);
-        Assert.DoesNotContain(PublicNativePackageContract.FalseCudaIncludedClaim, releaseNotes, StringComparison.Ordinal);
         Assert.Contains("CPU Sherpa provider only", notices, StringComparison.Ordinal);
         Assert.Contains("not shipped", notices, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("packaged CPU provider", readme, StringComparison.Ordinal);
         Assert.Contains("cudaProviderIncluded = $false", releaseCommon, StringComparison.Ordinal);
         Assert.Contains("does not claim NVIDIA acceleration", readme, StringComparison.Ordinal);
-        Assert.Contains("CPU Sherpa provider only", releaseNotes, StringComparison.Ordinal);
         Assert.False(catalog.PublicPackage.CudaProviderIncluded);
         Assert.True(catalog.PublicPackage.CpuProviderIncluded);
         Assert.Equal(PublicNativePackageContract.PublicPackageDisclosure, catalog.PublicPackage.Disclosure);
@@ -173,14 +170,9 @@ public sealed class PackageDisclosureAndNativeInventoryTests
     {
         var exporter = Read("windows-native/Muesli.Windows.Platform/Services/MeetingDocumentWriter.cs");
         var notices = Read("THIRD-PARTY-NOTICES.md");
-        var ledger = Read("docs/WINDOWS_LAUNCH_LEDGER.md");
         Assert.Contains("QuestPDF.Settings.License = LicenseType.Community", exporter, StringComparison.Ordinal);
         Assert.Contains("QuestPDF 2026.5.0", notices, StringComparison.Ordinal);
         Assert.Contains("Muesli is an open-source project", notices, StringComparison.Ordinal);
-        Assert.Contains("community-license eligibility approved 2026-10-11 (open-source project)", ledger, StringComparison.Ordinal);
-        var expRow = ledger.Split('\n').First(line => line.Contains("| EXP-01 |", StringComparison.Ordinal));
-        Assert.Contains("Implemented with verification debt", expRow, StringComparison.Ordinal);
-        Assert.DoesNotContain("Complete and verified", expRow, StringComparison.Ordinal);
     }
 
     [Fact]

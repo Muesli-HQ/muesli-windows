@@ -5,7 +5,7 @@ namespace Muesli.Windows.Services;
 /// <summary>
 /// Framework-neutral geometry for the meeting-notification panel. Values mirror the shipping macOS
 /// <c>MeetingNotificationController</c>; the HTML design system disagrees on several (fade-in,
-/// corner radius, colours), and those discrepancies are recorded in docs/WINDOWS_UI_QUALIFICATION.md.
+/// corner radius, colours), and these values follow the Swift controller.
 /// All values are DIPs in a top-left origin.
 /// </summary>
 public static class MeetingNotificationLayout
