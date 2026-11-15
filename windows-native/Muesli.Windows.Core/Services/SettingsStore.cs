@@ -352,11 +352,10 @@ public sealed class SettingsStore
     private static string? NormalizeStreamingModelId(string? modelId) =>
         StreamingModelCatalog.Get(modelId)?.Id;
 
-    private static string NormalizeOwnership(string? value) => value?.Trim().ToLowerInvariant() switch
-    {
-        "unified-live-final" => "unified-live-final",
-        _ => "preview-only"
-    };
+    // As on macOS, what is transcribed during the meeting is the final transcript; there is no
+    // "preview only" mode that transcribes the whole recording again after Stop. Older settings
+    // files that say "preview-only" are read as unified.
+    private static string NormalizeOwnership(string? value) => LiveTranscriptOwnershipDescriptor.UnifiedSettingValue;
 
     private static string NormalizeHookTranscriptPolicy(string? value) => value?.Trim().ToLowerInvariant() switch
     {
@@ -440,7 +439,7 @@ public sealed record MuesliSettings
     public string DictationModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
     public string FinalMeetingModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
     public string? LiveMeetingModelId { get; init; }
-    public string LiveTranscriptOwnership { get; init; } = "preview-only";
+    public string LiveTranscriptOwnership { get; init; } = LiveTranscriptOwnershipDescriptor.UnifiedSettingValue;
 
     /// <summary>
     /// Requested execution provider: <c>auto</c>, <c>cpu</c>, <c>cuda</c>, or <c>directml</c>.

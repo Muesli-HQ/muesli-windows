@@ -129,7 +129,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string SelectedMeetingModel { get; set; } = "";
     [ObservableProperty] public partial IReadOnlyList<string> LiveModels { get; private set; } = [];
     [ObservableProperty] public partial string SelectedLiveModel { get; set; } = "Off";
-    [ObservableProperty] public partial int LiveOwnershipIndex { get; set; }
     [ObservableProperty] public partial int ComputerUseProviderIndex { get; set; }
     [ObservableProperty] public partial string ComputerUsePlannerModel { get; set; } = "";
     [ObservableProperty] public partial int ComputerUsePlannerTimeoutSeconds { get; set; } = 30;
@@ -322,8 +321,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         SelectedLiveModel = string.IsNullOrWhiteSpace(_source.LiveMeetingModelId)
             ? "Off"
             : StreamingModelCatalog.Get(_source.LiveMeetingModelId)?.DisplayName ?? "Off";
-        LiveOwnershipIndex = LiveTranscriptOwnershipDescriptor.ModeFromSettingValue(_source.LiveTranscriptOwnership)
-            == LiveTranscriptOwnershipMode.UnifiedLiveAndFinal ? 1 : 0;
         ComputerUseProviderIndex = ComputerUseConfiguration.ProviderLabel(_source.ComputerUsePlannerProvider) == "OpenAI" ? 1 : 0;
         ComputerUsePlannerModel = _source.ComputerUsePlannerModel;
         ComputerUsePlannerTimeoutSeconds = _source.ComputerUsePlannerTimeoutSeconds;
@@ -403,10 +400,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             DictationModelId = dictationModel,
             FinalMeetingModelId = meetingModel,
             LiveMeetingModelId = liveModel,
-            LiveTranscriptOwnership = LiveTranscriptOwnershipDescriptor.SettingValueFor(
-                LiveOwnershipIndex == 1
-                    ? LiveTranscriptOwnershipMode.UnifiedLiveAndFinal
-                    : LiveTranscriptOwnershipMode.PreviewOnly),
+            LiveTranscriptOwnership = LiveTranscriptOwnershipDescriptor.UnifiedSettingValue,
             ComputerUsePlannerProvider = ComputerUseProviderIndex == 1 ? "openai" : "none",
             ComputerUsePlannerModel = ComputerUsePlannerModel.Trim(),
             ComputerUsePlannerTimeoutSeconds = ComputerUsePlannerTimeoutSeconds,

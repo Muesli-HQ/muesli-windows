@@ -686,8 +686,8 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Live preview model" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Creates the live transcript while recording." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Live transcript model" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Optional streaming model. When set, what it writes during the meeting is the saved transcript. Off uses the meeting model below." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <ComboBox Grid.Column="1"
                                           Style="{StaticResource PickerStyle}"
@@ -701,7 +701,7 @@
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Final transcript" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Used after recorded meetings and for imported audio." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Transcribes meetings as they are recorded, fills in anything missed, and handles imported audio." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <ComboBox Grid.Column="1"
                                           Style="{StaticResource PickerStyle}"
@@ -710,21 +710,7 @@
                                           AutomationProperties.Name="Final transcript model"
                                           AutomationProperties.AutomationId="MeetingModelPicker" />
                             </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Final transcript ownership" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Preview-only saves the final model. Unified keeps live output and uses the final model for measured gaps." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ComboBox Grid.Column="1"
-                                          Style="{StaticResource PickerStyle}"
-                                          SelectedIndex="{x:Bind ViewModel.LiveOwnershipIndex, Mode=TwoWay}"
-                                          AutomationProperties.Name="Final transcript ownership"
-                                          AutomationProperties.AutomationId="LiveOwnershipPicker">
-                                    <ComboBoxItem Content="Preview-only" />
-                                    <ComboBoxItem Content="Unified live + final" />
-                                </ComboBox>
-                            </Grid>
+
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">

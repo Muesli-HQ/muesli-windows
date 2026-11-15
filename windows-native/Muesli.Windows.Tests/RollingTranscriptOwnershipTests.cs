@@ -89,4 +89,20 @@ public sealed class RollingTranscriptOwnershipTests
         Assert.Equal("also kept", system.Text);
         Assert.Equal(5000, Assert.Single(system.Segments!).StartMs);
     }
-}
+    [Fact]
+    public void NoSettingCanBringBackAFullPassAfterStop()
+    {
+        // "Preview-only" re-transcribed the whole recording after Stop; macOS has no such mode.
+        using var directory = new TestDirectory();
+        var store = new SettingsStore(directory.File("settings.json"), new InMemorySecretStore());
+        store.Save(new MuesliSettings { LiveTranscriptOwnership = "preview-only" });
+        Assert.Equal(LiveTranscriptOwnershipDescriptor.UnifiedSettingValue, store.Load().LiveTranscriptOwnership);
+        Assert.Equal(LiveTranscriptOwnershipDescriptor.UnifiedSettingValue, new MuesliSettings().LiveTranscriptOwnership);
+
+        var settingsPage = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "Pages", "SettingsPage.xaml"));
+        Assert.DoesNotContain("Preview-only", settingsPage, StringComparison.Ordinal);
+        var context = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "Services", "WinUiMeetingContext.cs"));
+        Assert.DoesNotContain("ModeFromSettingValue", context, StringComparison.Ordinal);
+    }}

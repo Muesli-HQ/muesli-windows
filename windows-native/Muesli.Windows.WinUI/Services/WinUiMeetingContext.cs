@@ -249,7 +249,8 @@ public sealed class WinUiMeetingContext : IDisposable
         {
             liveConfiguration = new LiveTranscriptionConfiguration(
                 _settings.LiveMeetingModelId,
-                LiveTranscriptOwnershipDescriptor.ModeFromSettingValue(_settings.LiveTranscriptOwnership),
+                // The live model's text is the final transcript; only measured gaps are redone.
+                LiveTranscriptOwnershipMode.UnifiedLiveAndFinal,
                 _settings.ShowLiveWaveformOnHover);
         }
 
