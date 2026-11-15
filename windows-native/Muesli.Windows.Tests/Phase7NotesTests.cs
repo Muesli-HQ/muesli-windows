@@ -344,17 +344,21 @@ public sealed class Phase7NotesTests
         Assert.All(SummaryProviderDisclosure.Available, info =>
         {
             Assert.False(string.IsNullOrWhiteSpace(info.Disclosure));
-            Assert.Equal(info.SendsTranscriptOffMachine, info.RequiresApiKey);
+            // ChatGPT and Claude Code are cloud providers that sign in with an account instead of a key.
+            var accountBacked = info.Id is SummaryProviderDisclosure.ChatGpt or SummaryProviderDisclosure.ClaudeCode;
+            Assert.Equal(info.SendsTranscriptOffMachine && !accountBacked, info.RequiresApiKey);
+            if (accountBacked) Assert.True(info.SendsTranscriptOffMachine);
         });
         Assert.Contains("ollama", SummaryProviderDisclosure.AvailableIds);
     }
 
     [Fact]
-    public void ChatGptSubscriptionIsNotOfferedAndItsBlockerIsRecorded()
+    public void ChatGptSignInAndClaudeCodeAreOfferedAndDisclosedAsLeavingTheMachine()
     {
-        Assert.DoesNotContain(SummaryProviderDisclosure.ChatGptSubscription, SummaryProviderDisclosure.AvailableIds);
-        Assert.Contains("no published OAuth client",
-            SummaryProviderDisclosure.ChatGptSubscriptionBlocker, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(SummaryProviderDisclosure.ChatGpt, SummaryProviderDisclosure.AvailableIds);
+        Assert.Contains(SummaryProviderDisclosure.ClaudeCode, SummaryProviderDisclosure.AvailableIds);
+        Assert.True(SummaryProviderDisclosure.LeavesMachine(SummaryProviderDisclosure.ChatGpt));
+        Assert.True(SummaryProviderDisclosure.LeavesMachine(SummaryProviderDisclosure.ClaudeCode));
     }
 
     [Fact]

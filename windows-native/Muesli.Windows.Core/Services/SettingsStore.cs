@@ -235,6 +235,9 @@ public sealed class SettingsStore
             ExecutionProvider = NormalizeExecutionProvider(settings.ExecutionProvider),
             CleanupModelId = CleanupModelCatalog.Normalize(settings.CleanupModelId),
             OpenAIModel = DefaultIfBlank(settings.OpenAIModel, "gpt-5.4-mini").Trim(),
+            ChatGptModel = (settings.ChatGptModel ?? "").Trim(),
+            ClaudeCodeModel = (settings.ClaudeCodeModel ?? "").Trim(),
+            ClaudeCodeExecutablePath = (settings.ClaudeCodeExecutablePath ?? "").Trim(),
             OpenRouterModel = DefaultIfBlank(settings.OpenRouterModel, "stepfun/step-3.5-flash:free").Trim(),
             OllamaEndpoint = NormalizeOllamaEndpoint(settings.OllamaEndpoint),
             OllamaModel = DefaultIfBlank(settings.OllamaModel, "llama3.1:8b").Trim(),
@@ -519,6 +522,15 @@ public sealed record MuesliSettings
     [JsonIgnore]
     public string ResolvedOpenAIApiKey { get; init; } = "";
     public string OpenAIModel { get; init; } = "gpt-5.4-mini";
+
+    /// <summary>Model used with "Sign in with ChatGPT"; blank means the default preset.</summary>
+    public string ChatGptModel { get; init; } = "";
+
+    /// <summary>Claude Code model alias or id; blank follows Claude Code's own setting.</summary>
+    public string ClaudeCodeModel { get; init; } = "";
+
+    /// <summary>Optional path to the Claude Code CLI; blank lets Muesli find it.</summary>
+    public string ClaudeCodeExecutablePath { get; init; } = "";
     [JsonPropertyName("OpenRouterApiKey")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string? PlaintextOpenRouterApiKeyForMigration { get; init; }

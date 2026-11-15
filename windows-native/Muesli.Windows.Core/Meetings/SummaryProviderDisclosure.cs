@@ -22,7 +22,8 @@ public static class SummaryProviderDisclosure
     public const string Ollama = "ollama";
     public const string LmStudio = "lmstudio";
     public const string CustomLlm = "custom";
-    public const string ChatGptSubscription = "chatgpt-subscription";
+    public const string ChatGpt = "chatgpt";
+    public const string ClaudeCode = "claude_code";
 
     private static readonly SummaryProviderInfo LocalInfo = new(
         Local,
@@ -66,8 +67,23 @@ public static class SummaryProviderDisclosure
         RequiresApiKey: true,
         "Uploads the full meeting transcript to OpenRouter over HTTPS, which routes it to the model you select.");
 
+    private static readonly SummaryProviderInfo ChatGptInfo = new(
+        ChatGpt,
+        "ChatGPT",
+        SendsTranscriptOffMachine: true,
+        RequiresApiKey: false,
+        "Uses your ChatGPT subscription. Uploads the meeting transcript and your notes to ChatGPT over HTTPS.");
+
+    private static readonly SummaryProviderInfo ClaudeCodeInfo = new(
+        ClaudeCode,
+        "Claude Code",
+        SendsTranscriptOffMachine: true,
+        RequiresApiKey: false,
+        "Uses the Claude Code sign-in on this PC. Meeting transcripts and notes go through your Claude account or configured proxy; the model does not run on this PC.");
+
+    /// <summary>The macOS order for the account-backed providers, then the API and local ones.</summary>
     public static IReadOnlyList<SummaryProviderInfo> Available { get; } =
-        [LocalInfo, OllamaInfo, LmStudioInfo, CustomLlmInfo, OpenAIInfo, OpenRouterInfo];
+        [LocalInfo, ChatGptInfo, ClaudeCodeInfo, OpenAIInfo, OpenRouterInfo, OllamaInfo, LmStudioInfo, CustomLlmInfo];
 
     public static IReadOnlyList<string> AvailableIds { get; } = Available.Select(info => info.Id).ToList();
 
@@ -128,16 +144,4 @@ public static class SummaryProviderDisclosure
         if (!Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out var uri)) return false;
         return uri.IsLoopback;
     }
-
-    /// <summary>
-    /// The ChatGPT subscription provider is deliberately absent from <see cref="Available"/>.
-    /// It is not offered as a disabled row either, because an unusable control is still a promise.
-    /// </summary>
-    public const string ChatGptSubscriptionBlocker =
-        "ChatGPT subscription sign-in is not available on Windows. The macOS build authenticates against a " +
-        "private, undocumented ChatGPT desktop endpoint using a client identity issued to that application. " +
-        "There is no published OAuth client, scope set, or redirect contract that a third-party Windows " +
-        "application may legitimately use, and reproducing the macOS flow would mean impersonating another " +
-        "application's client credentials. Muesli therefore does not offer it. Unblocking it requires an " +
-        "official, documented OAuth client registration from OpenAI that permits third-party desktop use.";
 }
