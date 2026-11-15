@@ -96,6 +96,36 @@ public sealed class WinUiSettingsContext
     }
 
     /// <summary>
+    /// Writes one provider key, leaving the other credentials untouched. An empty value removes it.
+    /// </summary>
+    public void SaveProviderKey(string secretKey, string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        lock (_gate)
+        {
+            var current = CurrentForWrite();
+            var resolved = value.Trim();
+            var updated = secretKey switch
+            {
+                SettingsStore.OpenAISecretKey => current with { ResolvedOpenAIApiKey = resolved },
+                SettingsStore.OpenRouterSecretKey => current with { ResolvedOpenRouterApiKey = resolved },
+                SettingsStore.CustomLlmSecretKey => current with { ResolvedCustomLlmApiKey = resolved },
+                _ => throw new ArgumentOutOfRangeException(nameof(secretKey), secretKey, "Unknown provider key.")
+            };
+            if (resolved.Length == 0)
+            {
+                _secrets.Delete(secretKey);
+            }
+            else
+            {
+                _secrets.Write(secretKey, resolved);
+            }
+
+            Publish(updated);
+        }
+    }
+
+    /// <summary>
     /// The snapshot to base a write on. A load can leave a one-off warning (a file recovered from
     /// its backup, a transient Credential Manager failure). Before the snapshot, every save re-read
     /// the file first, which cleared such warnings; re-read here the same way so they cannot block
