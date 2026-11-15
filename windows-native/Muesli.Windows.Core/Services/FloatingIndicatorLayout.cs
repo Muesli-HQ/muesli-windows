@@ -251,12 +251,19 @@ public static class FloatingIndicatorLayout
             FloatingIndicatorState.Recording =>
                 new DipSize(LiveWidth, LiveHeight, LiveRadius),
             FloatingIndicatorState.Transcribing =>
-                new DipSize(TranscribingWidth, TranscribingHeight, TranscribingRadius),
+                new DipSize(TranscribingWidthFor(message), TranscribingHeight, TranscribingRadius),
             FloatingIndicatorState.Success or FloatingIndicatorState.Error =>
                 new DipSize(StatusWidthFor(message), StatusHeight, StatusRadius),
             _ => new DipSize(CompactIdleWidth, CompactIdleHeight, CompactIdleRadius)
         };
     }
+
+    /// <summary>
+    /// The processing pill fits its stage label: "Transcribing" keeps the 124 width, a longer
+    /// stage such as "Identifying Speakers" widens it, as the macOS pill sizes to its title.
+    /// </summary>
+    public static double TranscribingWidthFor(string? message) =>
+        Math.Clamp(52 + Math.Max(12, message?.Length ?? 0) * 6.0, TranscribingWidth, 220);
 
     /// <summary>
     /// The width of a status pill: compact by default, widening for long status text.

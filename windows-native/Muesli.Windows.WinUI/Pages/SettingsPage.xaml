@@ -657,8 +657,8 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Live preview model" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Creates the live transcript while recording." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Live transcript model" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Optional streaming model. When set, what it writes during the meeting is the saved transcript. Off uses the meeting model below." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <ComboBox Grid.Column="1"
                                           Style="{StaticResource PickerStyle}"
@@ -672,7 +672,7 @@
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Final transcript" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Used after recorded meetings and for imported audio." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Transcribes meetings as they are recorded, fills in anything missed, and handles imported audio." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <ComboBox Grid.Column="1"
                                           Style="{StaticResource PickerStyle}"
@@ -680,21 +680,6 @@
                                           SelectedItem="{x:Bind ViewModel.SelectedMeetingModel, Mode=TwoWay}"
                                           AutomationProperties.Name="Final transcript model"
                                           AutomationProperties.AutomationId="MeetingModelPicker" />
-                            </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Final transcript ownership" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Preview-only saves the final model's transcript. Unified keeps the live transcript and fills its gaps." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ComboBox Grid.Column="1"
-                                          Style="{StaticResource PickerStyle}"
-                                          SelectedIndex="{x:Bind ViewModel.LiveOwnershipIndex, Mode=TwoWay}"
-                                          AutomationProperties.Name="Final transcript ownership"
-                                          AutomationProperties.AutomationId="LiveOwnershipPicker">
-                                    <ComboBoxItem Content="Preview-only" />
-                                    <ComboBoxItem Content="Unified live + final" />
-                                </ComboBox>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -819,6 +804,81 @@
                                              AutomationProperties.AutomationId="OpenAIApiKeyBox" />
                                 <TextBlock Text="Stored in Windows Credential Manager. Clear the field to remove the key." Style="{StaticResource RowHelpStyle}" />
                             </StackPanel>
+                            <!-- ChatGPT: the account row (sign in / out) and the model, as on macOS. -->
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowChatGptSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowChatGptSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Account" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.ChatGptAccountStatus, Mode=OneWay}" Style="{StaticResource RowHelpStyle}"
+                                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="ChatGptAccountStatus" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsChatGptSigningIn, Mode=OneWay}"
+                                                  Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsChatGptSigningIn), Mode=OneWay}" />
+                                    <Button Content="Sign in with ChatGPT" Style="{StaticResource MuesliPrimaryButtonStyle}"
+                                            Command="{x:Bind ViewModel.SignInChatGptCommand}"
+                                            Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsChatGptSignedOut), Mode=OneWay}"
+                                            AutomationProperties.AutomationId="ChatGptSignInButton" />
+                                    <Button Content="Sign Out" Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                            Command="{x:Bind ViewModel.SignOutChatGptCommand}"
+                                            Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsChatGptSignedIn), Mode=OneWay}"
+                                            ToolTipService.ToolTip="Sign out of ChatGPT"
+                                            AutomationProperties.AutomationId="ChatGptSignOutButton" />
+                                </StackPanel>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowChatGptSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowChatGptSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Model" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Use your ChatGPT Plus or Pro subscription." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.ChatGptModels}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedChatGptModel, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          AutomationProperties.Name="ChatGPT meeting summary model"
+                                          AutomationProperties.AutomationId="ChatGptModelBox" />
+                            </Grid>
+                            <!-- Claude Code: uses the CLI already installed and signed in on this PC. -->
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowClaudeCodeSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowClaudeCodeSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Account" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.ClaudeCodeAccountStatus, Mode=OneWay}" Style="{StaticResource RowHelpStyle}"
+                                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="ClaudeCodeAccountStatus" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Check again" Style="{StaticResource MuesliSecondaryButtonStyle}" VerticalAlignment="Center"
+                                        Command="{x:Bind ViewModel.CheckClaudeCodeCommand}"
+                                        AutomationProperties.AutomationId="ClaudeCodeCheckButton" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowClaudeCodeSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowClaudeCodeSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Model" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Uses your Claude Code model preference, or your account's default." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.ClaudeCodeModels}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedClaudeCodeModel, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          AutomationProperties.Name="Claude Code meeting summary model"
+                                          AutomationProperties.AutomationId="ClaudeCodeModelBox" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowClaudeCodeSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowClaudeCodeSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Custom executable path" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Override the Claude Code CLI muesli detected." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <TextBox Grid.Column="1"
+                                         Style="{StaticResource ValueBoxStyle}"
+                                         PlaceholderText="Optional path"
+                                         Text="{x:Bind ViewModel.ClaudeCodeExecutablePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Claude Code executable path"
+                                         AutomationProperties.AutomationId="ClaudeCodePathBox" />
+                            </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">

@@ -84,7 +84,7 @@ public sealed partial class MeetingDetailPage : Page
         base.OnNavigatedTo(e);
         if (e.Parameter is string id && id == App.Meetings.ActiveMeetingId)
         {
-            DispatcherQueue.TryEnqueue(() => Frame.Navigate(typeof(MeetingsPage)));
+            DispatcherQueue.TryEnqueue(() => Frame.Navigate(typeof(MeetingRecordingPage)));
             return;
         }
         ViewModel.Load(e.Parameter as string ?? "");
@@ -97,7 +97,7 @@ public sealed partial class MeetingDetailPage : Page
         if (Frame.CanGoBack) Frame.GoBack();
     }
 
-    private void OnRecordingStarted(object? sender, EventArgs e) => Frame.Navigate(typeof(MeetingsPage));
+    private void OnRecordingStarted(object? sender, EventArgs e) => Frame.Navigate(typeof(MeetingRecordingPage));
     private void RelatedMeeting_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string id }) Frame.Navigate(typeof(MeetingDetailPage), id);

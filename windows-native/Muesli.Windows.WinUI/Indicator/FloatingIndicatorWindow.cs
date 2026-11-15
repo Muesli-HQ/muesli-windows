@@ -428,7 +428,7 @@ internal sealed class FloatingIndicatorWindow : Window
         stack.Children.Add(icon);
         stack.Children.Add(new TextBlock
         {
-            Text = "Transcribing",
+            Text = string.IsNullOrWhiteSpace(_message) ? "Transcribing" : _message,
             FontSize = 11,
             Foreground = _highContrast ? brush : Solid(0xD1, 0xFF, 0xFF, 0xFF),
             Margin = new Thickness(6, 0, 0, 0),

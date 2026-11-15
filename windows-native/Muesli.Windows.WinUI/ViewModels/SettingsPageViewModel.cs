@@ -116,7 +116,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string SelectedMeetingModel { get; set; } = "";
     [ObservableProperty] public partial IReadOnlyList<string> LiveModels { get; private set; } = [];
     [ObservableProperty] public partial string SelectedLiveModel { get; set; } = "Off";
-    [ObservableProperty] public partial int LiveOwnershipIndex { get; set; }
     [ObservableProperty] public partial int ComputerUseProviderIndex { get; set; }
     [ObservableProperty] public partial string ComputerUsePlannerModel { get; set; } = "";
     [ObservableProperty] public partial int ComputerUsePlannerTimeoutSeconds { get; set; } = 30;
@@ -322,6 +321,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         [nameof(CustomLlmModel)] = new("Custom model",
             vm => vm.CustomLlmModel, (vm, value) => vm.CustomLlmModel = value,
             settings => settings.CustomLlmModel, (settings, value) => settings with { CustomLlmModel = value }),
+        [nameof(ClaudeCodeExecutablePath)] = new("Claude Code path",
+            vm => vm.ClaudeCodeExecutablePath, (vm, value) => vm.ClaudeCodeExecutablePath = value,
+            settings => settings.ClaudeCodeExecutablePath, (settings, value) => settings with { ClaudeCodeExecutablePath = value }),
         [nameof(OpenAIModel)] = new("OpenAI model",
             vm => vm.OpenAIModel, (vm, value) => vm.OpenAIModel = value,
             settings => settings.OpenAIModel, (settings, value) => settings with { OpenAIModel = value }),
@@ -464,13 +466,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(SelectedLiveModel) when StreamingModelCatalog.Models
             .FirstOrDefault(model => model.DisplayName == SelectedLiveModel)?.Id is { } id =>
             settings with { LiveMeetingModelId = id },
-        nameof(LiveOwnershipIndex) when LiveOwnershipIndex >= 0 => settings with
-        {
-            LiveTranscriptOwnership = LiveTranscriptOwnershipDescriptor.SettingValueFor(
-                LiveOwnershipIndex == 1
-                    ? LiveTranscriptOwnershipMode.UnifiedLiveAndFinal
-                    : LiveTranscriptOwnershipMode.PreviewOnly)
-        },
+        nameof(SelectedChatGptModel) when SelectedChatGptModel is { } model => settings with { ChatGptModel = model.Id },
+        nameof(SelectedClaudeCodeModel) when SelectedClaudeCodeModel is { } model => settings with { ClaudeCodeModel = model.Id },
         nameof(SelectedSummaryProvider) when SelectedSummaryProvider is { } provider =>
             settings with { MeetingSummaryProvider = provider.Id },
         nameof(ComputerUseEnabled) => settings with { ComputerUseEnabled = ComputerUseEnabled },
@@ -660,8 +657,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         SelectedLiveModel = string.IsNullOrWhiteSpace(settings.LiveMeetingModelId)
             ? "Off"
             : StreamingModelCatalog.Get(settings.LiveMeetingModelId)?.DisplayName ?? "Off";
-        LiveOwnershipIndex = LiveTranscriptOwnershipDescriptor.ModeFromSettingValue(settings.LiveTranscriptOwnership)
-            == LiveTranscriptOwnershipMode.UnifiedLiveAndFinal ? 1 : 0;
         ComputerUseProviderIndex = ComputerUseConfiguration.ProviderLabel(settings.ComputerUsePlannerProvider) == "OpenAI" ? 1 : 0;
         ComputerUsePlannerModel = settings.ComputerUsePlannerModel;
         ComputerUsePlannerTimeoutSeconds = settings.ComputerUsePlannerTimeoutSeconds;
@@ -685,6 +680,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         CustomLlmModel = settings.CustomLlmModel;
         CustomLlmApiKey = settings.ResolvedCustomLlmApiKey;
         OpenAIModel = settings.OpenAIModel;
+        SelectedChatGptModel = ChatGptModels.FirstOrDefault(choice => choice.Id.Equals(ChatGptResponsesClient.NormalizeModel(settings.ChatGptModel), StringComparison.OrdinalIgnoreCase)) ?? ChatGptModels[0];
+        SelectedClaudeCodeModel = ClaudeCodeModels.FirstOrDefault(choice => choice.Id.Equals(settings.ClaudeCodeModel, StringComparison.OrdinalIgnoreCase)) ?? ClaudeCodeModels[0];
+        ClaudeCodeExecutablePath = settings.ClaudeCodeExecutablePath;
+        RefreshChatGptAccount();
         OpenRouterModel = settings.OpenRouterModel;
         OpenAIApiKey = settings.ResolvedOpenAIApiKey;
         OpenRouterApiKey = settings.ResolvedOpenRouterApiKey;
@@ -873,4 +872,100 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         IsStatusError = isError;
         IsStatusOpen = true;
     }
+
+    // ─── Account-backed notes providers (ChatGPT sign-in, Claude Code) ───────────────────────
+
+    public bool ShowChatGptSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.ChatGpt;
+    public bool ShowClaudeCodeSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.ClaudeCode;
+
+    public IReadOnlyList<SettingsChoice> ChatGptModels { get; } =
+        ChatGptResponsesClient.Models.Select(model => new SettingsChoice(model.Id, model.Label)).ToList();
+
+    public IReadOnlyList<SettingsChoice> ClaudeCodeModels { get; } =
+        ClaudeCodeSummarizer.Models.Select(model => new SettingsChoice(model.Id, model.Label)).ToList();
+
+    [ObservableProperty] public partial SettingsChoice? SelectedChatGptModel { get; set; }
+    [ObservableProperty] public partial SettingsChoice? SelectedClaudeCodeModel { get; set; }
+    [ObservableProperty] public partial string ClaudeCodeExecutablePath { get; set; } = "";
+
+    [NotifyPropertyChangedFor(nameof(IsChatGptSignedOut))]
+    [ObservableProperty] public partial bool IsChatGptSignedIn { get; private set; }
+    [ObservableProperty] public partial bool IsChatGptSigningIn { get; private set; }
+    [ObservableProperty] public partial string ChatGptAccountStatus { get; private set; } = "Not signed in";
+    [ObservableProperty] public partial string ClaudeCodeAccountStatus { get; private set; } = "Checking Claude Code…";
+
+    public bool IsChatGptSignedOut => !IsChatGptSignedIn;
+
+    private CancellationTokenSource? _chatGptSignIn;
+
+    private void RefreshChatGptAccount(string? error = null)
+    {
+        IsChatGptSignedIn = ChatGptAuthManager.Shared?.IsSignedIn == true;
+        ChatGptAccountStatus = error ?? (IsChatGptSigningIn ? "Signing in… finish in your browser."
+            : IsChatGptSignedIn ? "Signed in" : "Not signed in");
+    }
+
+    [RelayCommand]
+    private async Task SignInChatGptAsync()
+    {
+        if (ChatGptAuthManager.Shared is not { } auth || IsChatGptSigningIn) return;
+        _chatGptSignIn = new CancellationTokenSource();
+        IsChatGptSigningIn = true;
+        RefreshChatGptAccount();
+        string? error = null;
+        try
+        {
+            await auth.SignInAsync(uri => _ = global::Windows.System.Launcher.LaunchUriAsync(uri), _chatGptSignIn.Token);
+            // As on macOS, a successful sign-in selects ChatGPT for notes; Save keeps the choice.
+            SelectedSummaryProvider = SummaryProviders.FirstOrDefault(info => info.Id == SummaryProviderDisclosure.ChatGpt) ?? SelectedSummaryProvider;
+        }
+        catch (OperationCanceledException) { }
+        catch (ChatGptAuthException exception) { error = exception.Message; }
+        catch (Exception exception) { error = $"Sign-in failed: {exception.GetType().Name}"; }
+        finally
+        {
+            IsChatGptSigningIn = false;
+            _chatGptSignIn = null;
+            RefreshChatGptAccount(error);
+        }
+    }
+
+    [RelayCommand]
+    private void SignOutChatGpt()
+    {
+        _chatGptSignIn?.Cancel();
+        ChatGptAuthManager.Shared?.SignOut();
+        RefreshChatGptAccount();
+    }
+
+    [RelayCommand]
+    private async Task CheckClaudeCodeAsync()
+    {
+        ClaudeCodeAccountStatus = "Checking Claude Code…";
+        var path = ClaudeCodeExecutablePath;
+        var status = await Task.Run(() => ClaudeCodeSummarizer.CheckStatusAsync(path));
+        ClaudeCodeAccountStatus = status switch
+        {
+            ClaudeCodeStatus.SignedIn => "Connected to Claude Code",
+            ClaudeCodeStatus.SignedOut => "Claude Code is installed but not signed in. Run \"claude auth login\" in a terminal, then check again.",
+            ClaudeCodeStatus.Unknown => "muesli could not check Claude Code's sign-in status.",
+            _ => string.IsNullOrWhiteSpace(path)
+                ? "Claude Code was not found on this PC. Install it, or enter the path to claude.exe below."
+                : "Claude Code was not found at that path."
+        };
+    }
+
+    partial void OnSelectedSummaryProviderChanged(SummaryProviderInfo? value)
+    {
+        OnPropertyChanged(nameof(ShowChatGptSettings));
+        OnPropertyChanged(nameof(ShowClaudeCodeSettings));
+        if (value?.Id == SummaryProviderDisclosure.ClaudeCode) _ = CheckClaudeCodeAsync();
+        if (value?.Id == SummaryProviderDisclosure.ChatGpt) RefreshChatGptAccount();
+    }
+}
+
+/// <summary>An id with the label a picker shows for it.</summary>
+public sealed record SettingsChoice(string Id, string Label)
+{
+    public override string ToString() => Label;
 }

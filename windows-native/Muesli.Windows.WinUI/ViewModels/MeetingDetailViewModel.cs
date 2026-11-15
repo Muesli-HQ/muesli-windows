@@ -514,7 +514,12 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             : [];
         HasHealthWarnings = HealthWarnings.Count > 0;
         ApplyAutomationDiagnostics(meeting);
-        SelectedTemplate = string.IsNullOrWhiteSpace(meeting.TemplateName) ? "Standard Meeting Notes" : meeting.TemplateName;
+        // The saved value can be a settings id ("standard") or a template that no longer exists; the
+        // picker only shows an item that is in its list, so resolve it or it renders blank.
+        var savedTemplate = MeetingSummaryService.NormalizeTemplateName(meeting.TemplateName);
+        SelectedTemplate = TemplateNames.FirstOrDefault(name => string.Equals(name, savedTemplate, StringComparison.OrdinalIgnoreCase))
+            ?? TemplateNames.FirstOrDefault(name => string.Equals(name, "Standard Meeting Notes", StringComparison.OrdinalIgnoreCase))
+            ?? TemplateNames.FirstOrDefault() ?? "Standard Meeting Notes";
         SpeakerAliases = meeting.SpeakerAliases
             .OrderBy(pair => pair.Key, StringComparer.CurrentCultureIgnoreCase)
             .Select(pair => new SpeakerAliasItem(pair.Key, pair.Value)).ToList();

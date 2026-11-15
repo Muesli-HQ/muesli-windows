@@ -26,6 +26,9 @@ public sealed class WinUiMeetingDetectionService : IDisposable
     public void Start() => _detector.Start();
     public void Stop() { _detector.Stop(); Status = "Meeting detection is off."; }
     public void Dismiss(string? key) => _detector.DismissCandidate(key);
+    public void Reprompt(string? key) => _detector.RepromptCandidate(key);
+    public void SuppressForOwnAudio() => _detector.SuppressForOwnAudio();
+    public void ResumeAfterOwnAudio() => _detector.ResumeAfterOwnAudio();
     public void Dispose() => _detector.Dispose();
 }
 

@@ -241,7 +241,7 @@ public sealed class WinUiShellQualificationTests
             // stay collapsed rather than showing controls that would act on a session that does
             // not exist, or listing recoverable audio that was never recorded.
             session.RequireAbsentAutomationId(
-                "ActiveMeetingPanel",
+                "ActiveMeetingBanner",
                 "no capture or import is running on an empty profile.");
             session.RequireAbsentAutomationId(
                 "MeetingRecoveryPanel",

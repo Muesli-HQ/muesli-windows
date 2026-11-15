@@ -174,6 +174,21 @@ public sealed class MeetingCandidateResolver
         _confirmations = 0;
     }
 
+    /// <summary>
+    /// Lets a meeting that is still going on prompt once more, after its first prompt timed out
+    /// unanswered. It has to be confirmed again across consecutive scans, so a meeting that ended
+    /// in the meantime stays quiet. A meeting the user dismissed is not re-offered.
+    /// </summary>
+    public void Reprompt(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key) || _dismissed.Contains(key)) return;
+        if (_confirmedKey is not null && _confirmedKey.Equals(key, StringComparison.OrdinalIgnoreCase))
+        {
+            _confirmedKey = null;
+            _absences = 0;
+        }
+    }
+
     /// <summary>Clears dismissal memory when a meeting genuinely ends, so a later session can prompt again.</summary>
     public void Forget(string? key)
     {

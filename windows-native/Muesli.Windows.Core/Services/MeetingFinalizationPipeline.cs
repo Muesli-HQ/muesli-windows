@@ -34,6 +34,9 @@ internal sealed class MeetingFinalizationPipeline
     private readonly MeetingPersistenceBoundary _persistence;
     private readonly AppLogService? _logService;
 
+    /// <summary>Raised as finalization moves between steps, for the processing pill.</summary>
+    public event Action<MeetingProcessingStage>? StageChanged;
+
     public MeetingFinalizationPipeline(
         NativeTranscriptionClient transcriptionClient,
         MeetingPersistenceBoundary persistence,
@@ -78,6 +81,7 @@ internal sealed class MeetingFinalizationPipeline
             }
 
             request.CancellationToken.ThrowIfCancellationRequested();
+            StageChanged?.Invoke(MeetingProcessingStage.Transcribing);
             TranscriptionResult micTranscript;
             TranscriptionResult systemTranscript;
             if (request.LiveResult?.OwnershipMode == LiveTranscriptOwnershipMode.UnifiedLiveAndFinal)
@@ -124,6 +128,7 @@ internal sealed class MeetingFinalizationPipeline
             List<DiarizedSegment> diarizationSegments = [];
             if (diarizationTask is not null)
             {
+                StageChanged?.Invoke(MeetingProcessingStage.IdentifyingSpeakers);
                 try
                 {
                     diarizationObserved = true;

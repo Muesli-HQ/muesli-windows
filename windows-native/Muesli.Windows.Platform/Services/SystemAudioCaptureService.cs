@@ -54,6 +54,10 @@ public sealed class SystemAudioCaptureService : IDisposable
     public event EventHandler<CaptureFaultedEventArgs>? CaptureFaulted;
     public event EventHandler<LivePcmSamplesEventArgs>? PcmSamplesAvailable;
 
+    /// <summary>Shown when the meeting app could not be recorded on its own.</summary>
+    public const string MeetingAppAudioFallbackWarning =
+        "Muesli couldn't record the meeting app on its own, so it recorded all sound from this computer. Other sounds may be included.";
+
     public async Task<SystemAudioCaptureStartResult> StartAsync(
         int? targetProcessId = null,
         CancellationToken cancellationToken = default)
@@ -91,7 +95,7 @@ public sealed class SystemAudioCaptureService : IDisposable
                         CurrentMode.Value,
                         targetProcessId,
                         true,
-                        "Windows rejected process-targeted capture. Muesli is using default-output loopback, so unrelated system sounds may be included.",
+                        MeetingAppAudioFallbackWarning,
                         endpoint.FriendlyName);
                 }
             }
@@ -103,9 +107,9 @@ public sealed class SystemAudioCaptureService : IDisposable
                 CurrentMode.Value,
                 targetProcessId,
                 targetProcessId is > 0,
-                targetProcessId is > 0
-                    ? $"{capability.Diagnostic} Muesli is using default-output loopback, so unrelated system sounds may be included."
-                    : "Muesli is capturing the default Windows output mix. Unrelated system sounds can be included because no meeting process was identified.",
+                // With no meeting app to follow (a Quick Note), recording all computer sound is the
+                // expected mode, not a problem: the recording page discloses it, so it is no warning.
+                targetProcessId is > 0 ? MeetingAppAudioFallbackWarning : null,
                 fallbackEndpoint.FriendlyName);
         }
         finally

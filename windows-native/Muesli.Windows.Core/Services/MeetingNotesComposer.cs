@@ -10,7 +10,7 @@ public static class MeetingTitleService
 {
     public const int MaxTitleLength = 72;
     private static readonly Regex SpeakerPrefix = new(
-        @"^\s*(?:\[\d{2}:\d{2}:\d{2}\]\s*)?(?:\[[^\]]+\]|[^:\r\n]{1,40}):\s*",
+        @"^\s*(?:\[\d{2}:\d{2}:\d{2}\]\s*)?(?:\[[^\]]+\]:?|[^:\r\n]{1,40}:)\s*",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
 
