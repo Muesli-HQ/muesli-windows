@@ -306,15 +306,80 @@
                 <StackPanel x:Name="DictationPanel" Spacing="14" Visibility="Collapsed">
                     <TextBlock Text="SPEECH RECOGNITION" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                            <TextBlock Text="Dictation model" Style="{StaticResource RowTitleStyle}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1"
-                                      Style="{StaticResource PickerStyle}"
-                                      ItemsSource="{x:Bind ViewModel.DictationModels, Mode=OneWay}"
-                                      SelectedItem="{x:Bind ViewModel.SelectedDictationModel, Mode=TwoWay}"
-                                      AutomationProperties.Name="Dictation model"
-                                      AutomationProperties.AutomationId="DictationModelPicker" />
-                        </Grid>
+                        <StackPanel>
+                            <!-- Local is the default. A hosted provider is chosen by the user, and
+                                 the line under the picker says where the audio goes. -->
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Provider" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.DictationDisclosure, Mode=OneWay}" Style="{StaticResource RowHelpStyle}"
+                                               AutomationProperties.AutomationId="DictationProviderDisclosure" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.DictationProviderChoices}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedDictationProvider, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          AutomationProperties.Name="Dictation provider"
+                                          AutomationProperties.AutomationId="DictationProviderPicker" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAIDictationSettings), Mode=OneWay}" />
+                            <StackPanel Padding="16,10" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAIDictationSettings), Mode=OneWay}">
+                                <PasswordBox Header="OpenAI API key"
+                                             Password="{x:Bind ViewModel.OpenAIApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PasswordRevealMode="Hidden"
+                                             AutomationProperties.Name="OpenAI API key for dictation"
+                                             AutomationProperties.AutomationId="DictationOpenAIApiKeyBox" />
+                                <TextBlock Text="The same key meeting summaries use. Stored in Windows Credential Manager. Clear the field to remove the key." Style="{StaticResource RowHelpStyle}" />
+                            </StackPanel>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAIDictationSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenAIDictationSettings), Mode=OneWay}">
+                                <TextBlock Text="Model" Style="{StaticResource RowTitleStyle}" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.OpenAIDictationModels}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedOpenAIDictationModel, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          AutomationProperties.Name="OpenAI dictation model"
+                                          AutomationProperties.AutomationId="OpenAIDictationModelPicker" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterDictationSettings), Mode=OneWay}" />
+                            <StackPanel Padding="16,10" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterDictationSettings), Mode=OneWay}">
+                                <PasswordBox Header="OpenRouter API key"
+                                             Password="{x:Bind ViewModel.OpenRouterApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PasswordRevealMode="Hidden"
+                                             AutomationProperties.Name="OpenRouter API key for dictation"
+                                             AutomationProperties.AutomationId="DictationOpenRouterApiKeyBox" />
+                                <TextBlock Text="The same key meeting summaries use. Stored in Windows Credential Manager. Clear the field to remove the key." Style="{StaticResource RowHelpStyle}" />
+                            </StackPanel>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterDictationSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterDictationSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Model ID" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="An OpenRouter speech-to-text model, written as provider/model. Dictation will not start until one is entered." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <TextBox Grid.Column="1"
+                                         Style="{StaticResource ValueBoxStyle}"
+                                         PlaceholderText="provider/model"
+                                         Text="{x:Bind ViewModel.OpenRouterDictationModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="OpenRouter dictation model"
+                                         AutomationProperties.AutomationId="OpenRouterDictationModelBox" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind ViewModel.DictationModelRowTitle, Mode=OneWay}" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.DictationModelHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}"
+                                               Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsDictationHosted), Mode=OneWay}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.DictationModels, Mode=OneWay}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedDictationModel, Mode=TwoWay}"
+                                          AutomationProperties.Name="Dictation model"
+                                          AutomationProperties.AutomationId="DictationModelPicker" />
+                            </Grid>
+                        </StackPanel>
                     </Border>
 
                     <TextBlock Text="TRANSCRIPTION" Style="{StaticResource SettingsSectionLabelStyle}" />
@@ -803,6 +868,30 @@
                                              AutomationProperties.Name="OpenAI API key"
                                              AutomationProperties.AutomationId="OpenAIApiKeyBox" />
                                 <TextBlock Text="Stored in Windows Credential Manager. Clear the field to remove the key." Style="{StaticResource RowHelpStyle}" />
+                            </StackPanel>
+                            <!-- Anthropic API: an API key and a model preset, as on macOS. -->
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowAnthropicSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowAnthropicSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Model" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="The Claude model used to write meeting notes and titles." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.AnthropicModels}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedAnthropicModel, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          AutomationProperties.Name="Anthropic meeting summary model"
+                                          AutomationProperties.AutomationId="AnthropicModelBox" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowAnthropicSettings), Mode=OneWay}" />
+                            <StackPanel Padding="16,10" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowAnthropicSettings), Mode=OneWay}">
+                                <PasswordBox Header="Anthropic API key"
+                                             Password="{x:Bind ViewModel.AnthropicApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PasswordRevealMode="Hidden"
+                                             AutomationProperties.Name="Anthropic API key"
+                                             AutomationProperties.AutomationId="AnthropicApiKeyBox" />
+                                <TextBlock Text="Use an API key from the Claude Console. Stored in Windows Credential Manager. Clear the field to remove the key." Style="{StaticResource RowHelpStyle}" />
                             </StackPanel>
                             <!-- ChatGPT: the account row (sign in / out) and the model, as on macOS. -->
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowChatGptSettings), Mode=OneWay}" />

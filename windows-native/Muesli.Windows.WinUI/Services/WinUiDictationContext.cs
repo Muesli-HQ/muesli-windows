@@ -24,6 +24,7 @@ public sealed class WinUiDictationContext : IDisposable
     private string? _captureTraceId;
     private volatile bool _auxiliarySession;
     private volatile bool _delivering;
+    private IHostedDictationSession? _hostedSession;
     private volatile DictationTestRoute? _testRoute;
     private volatile bool _testKeyHeld;
     private int _disposed;
@@ -297,6 +298,7 @@ public sealed class WinUiDictationContext : IDisposable
         _auxiliarySession = false;
         StopTimers();
         RequestCancellation();
+        ReleaseHostedSession();
         await _coordinator.CancelAsync();
         _hotkeyState.Reset();
         _pasteTarget = IntPtr.Zero;
@@ -495,9 +497,20 @@ public sealed class WinUiDictationContext : IDisposable
             await _coordinator.SwitchModelAsync(current.DictationModelId);
         }
 
+        // A hosted provider is only ever used because the user chose it in Settings. A missing key or
+        // model is reported here, before the microphone opens, not after they have spoken.
+        var provider = DictationProviders.Normalize(current.DictationProvider);
+        if (HostedDictationSessions.BlockingMessage(current) is { } blocked)
+        {
+            Status = blocked;
+            _log.Info($"Dictation start blocked. trace={_captureTraceId}; provider={provider}; reason=hosted-not-configured");
+            RaiseChanged();
+            return;
+        }
+
         // Fail closed before opening the microphone (macOS blocks at the hotkey press): speaking into
         // a session that cannot produce text throws the user's words away.
-        if (!_coordinator.IsModelReady)
+        if (provider == DictationProviders.Local && !_coordinator.IsModelReady)
         {
             Status = $"Download {_coordinator.ModelDisplayName} in Models to dictate";
             _log.Info($"Dictation start blocked. trace={_captureTraceId}; model={_coordinator.ModelId}; reason=model-not-ready");
@@ -513,10 +526,18 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
         try
         {
+            ReleaseHostedSession();
+            if (HostedDictationSessions.Create(current) is { } hosted)
+            {
+                _hostedSession = hosted;
+                _coordinator.AttachHostedSession(hosted);
+            }
+
             await _coordinator.StartAsync(
                 current.MicrophoneName ?? _coordinator.PickPreferredMicrophone(),
                 DictationSessionKind.Interactive,
-                decodeDuringCapture);
+                // A hosted provider transcribes this dictation, so nothing is decoded locally meanwhile.
+                decodeDuringCapture && _hostedSession is null);
         }
         catch (Exception exception)
         {
@@ -534,13 +555,16 @@ public sealed class WinUiDictationContext : IDisposable
             {
                 _log.Error("Could not start dictation microphone.", exception);
             }
+            ReleaseHostedSession();
             _pasteTarget = IntPtr.Zero;
             RaiseChanged();
             return;
         }
 
-        _log.Info($"Dictation capture start result. trace={_captureTraceId}; recording={_coordinator.IsRecording}; model={_coordinator.ModelId}");
+        _log.Info($"Dictation capture start result. trace={_captureTraceId}; recording={_coordinator.IsRecording}; model={_coordinator.ModelId}; provider={provider}");
+        if (!_coordinator.IsRecording) ReleaseHostedSession();
         Status = !_coordinator.IsRecording ? "Ready" :
+            _hostedSession is not null ? $"Listening · audio goes to {DictationProviders.Label(provider)}" :
             _coordinator.ModelId == current.DictationModelId ? "Listening" : "Listening with Parakeet (low memory)";
         RaiseChanged();
     }
@@ -569,7 +593,9 @@ public sealed class WinUiDictationContext : IDisposable
         _operationCancellation?.Dispose();
         _operationCancellation = new CancellationTokenSource();
         _delivering = true;
-        Status = "Transcribing locally…";
+        Status = _hostedSession is { } sending
+            ? $"Transcribing with {DictationProviders.Label(sending.Provider)}…"
+            : "Transcribing locally…";
         RaiseChanged();
         try
         {
@@ -582,6 +608,13 @@ public sealed class WinUiDictationContext : IDisposable
             if (!asrPath.StartsWith("ASR during capture:", StringComparison.Ordinal) &&
                 !asrPath.StartsWith("Rolling fallback:", StringComparison.Ordinal))
                 asrPath = "whole-file";
+            // As on macOS, text a hosted provider returned is delivered as it came: those models already
+            // write clean prose, so cleanup, filler removal and the dictionary pass are skipped. A
+            // recording that fell back to the local model goes through the usual pipeline.
+            var hostedText = HostedDictationTranscriber.IsHostedResult(result);
+            var fellBack = HostedDictationTranscriber.IsFallbackResult(result);
+            if (hostedText) asrPath = "hosted";
+            else if (fellBack) asrPath = "hosted-fallback-local";
             // Strip engine tokens like [BLANK_AUDIO] instead of discarding the speech around them.
             var recognized = TranscriptionEngineArtifactsFilter.Apply(result.Text ?? "");
             if (string.IsNullOrWhiteSpace(recognized))
@@ -594,11 +627,13 @@ public sealed class WinUiDictationContext : IDisposable
 
             var settings = _settings.Load();
             var stageStarted = Stopwatch.StartNew();
-            var text = await _pipeline.PrepareDictationTextAsync(
-                recognized,
-                settings.EnableLocalCleanup,
-                settings.RemoveFillerWords,
-                _library.LoadDictionary());
+            var text = hostedText
+                ? recognized.Trim()
+                : await _pipeline.PrepareDictationTextAsync(
+                    recognized,
+                    settings.EnableLocalCleanup,
+                    settings.RemoveFillerWords,
+                    _library.LoadDictionary());
             pipelineMs = stageStarted.ElapsedMilliseconds;
             _operationCancellation.Token.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(text))
@@ -613,7 +648,7 @@ public sealed class WinUiDictationContext : IDisposable
                 DateTime.Now,
                 text,
                 result.DurationMs,
-                _coordinator.ModelId));
+                hostedText ? HostedDictationTranscriber.ModelLabel(result) : _coordinator.ModelId));
             persisted = true;
             persistenceMs = stageStarted.ElapsedMilliseconds;
 
@@ -629,7 +664,7 @@ public sealed class WinUiDictationContext : IDisposable
                     deliveryFocusMs = paste.FocusWaitMs;
                     deliveryInputMs = paste.InputMs;
                     deliveryClipboardMs = paste.ClipboardMs;
-                    Status = "Dictation inserted";
+                    Status = fellBack ? "Dictation inserted (transcribed on this PC)" : "Dictation inserted";
                 }
                 catch (OperationCanceledException) when (_operationCancellation.IsCancellationRequested)
                 {
@@ -652,6 +687,11 @@ public sealed class WinUiDictationContext : IDisposable
         {
             Status = persisted ? "Dictation saved; insertion cancelled" : "Dictation cancelled";
         }
+        catch (HostedDictationException exception)
+        {
+            // The hosted provider failed and no local model is installed to fall back to.
+            Status = $"Dictation failed: {exception.Message}";
+        }
         finally
         {
             _log.Info(
@@ -665,6 +705,7 @@ public sealed class WinUiDictationContext : IDisposable
                 $"deliveryInputMs={deliveryInputMs}; deliveryClipboardMs={deliveryClipboardMs}; " +
                 $"totalMs={totalStarted.ElapsedMilliseconds}; " +
                 $"outcome={Status}");
+            ReleaseHostedSession();
             _pasteTarget = IntPtr.Zero;
             _delivering = false;
             // A live token makes the Escape hook swallow the key in every app, so it must not
@@ -674,6 +715,13 @@ public sealed class WinUiDictationContext : IDisposable
             finished?.Dispose();
             RaiseChanged();
         }
+    }
+
+    /// <summary>Ends the hosted session of the dictation that just finished, failed to start or was cancelled.</summary>
+    private void ReleaseHostedSession()
+    {
+        _coordinator.DetachHostedSession();
+        Interlocked.Exchange(ref _hostedSession, null)?.Dispose();
     }
 
     private void StartTimers()

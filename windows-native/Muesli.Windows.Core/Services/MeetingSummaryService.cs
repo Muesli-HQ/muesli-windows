@@ -219,6 +219,7 @@ public static class MeetingSummaryService
             var summary = provider switch
             {
                 "openai" => await SummarizeWithOpenAIAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
+                SummaryProviderDisclosure.Anthropic => await SummarizeWithAnthropicAsync(transcript, meetingTitle, settings, httpClient ?? AnthropicHttp, cancellationToken, manualNotes),
                 "openrouter" => await SummarizeWithOpenRouterAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
                 "ollama" => await SummarizeWithOllamaAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
                 "lmstudio" => await SummarizeWithLmStudioAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
@@ -254,9 +255,36 @@ public static class MeetingSummaryService
     /// <summary>Providers that run a language model, as opposed to the built-in local notes.</summary>
     public static bool IsModelProvider(string? provider) =>
         (provider ?? "").Trim().ToLowerInvariant() is "openai" or "openrouter" or "ollama" or "lmstudio" or "custom"
-            or SummaryProviderDisclosure.ChatGpt or SummaryProviderDisclosure.ClaudeCode;
+            or SummaryProviderDisclosure.ChatGpt or SummaryProviderDisclosure.ClaudeCode
+            or SummaryProviderDisclosure.Anthropic;
 
     private static readonly HttpClient ChatGptHttp = new() { Timeout = TimeSpan.FromSeconds(180) };
+
+    // The reply is not streamed and the model thinks before it writes, so a long meeting needs
+    // more than the 90 seconds the other API providers get.
+    private static readonly HttpClient AnthropicHttp = new() { Timeout = TimeSpan.FromSeconds(300) };
+
+    private static Task<string> SummarizeWithAnthropicAsync(
+        string transcript, string meetingTitle, MuesliSettings settings, HttpClient httpClient,
+        CancellationToken cancellationToken, string? manualNotes)
+    {
+        var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            apiKey = settings.ResolvedAnthropicApiKey;
+        }
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new SummaryProviderException("missing-key");
+        }
+
+        return AnthropicMessagesClient.RespondAsync(
+            httpClient, apiKey, settings.AnthropicModel,
+            EffectiveSystemPrompt(settings), SummaryUserPrompt(transcript, meetingTitle, manualNotes),
+            briefTask: settings.MeetingSummaryPromptOverride.StartsWith(TitlePromptPrefix, StringComparison.Ordinal),
+            cancellationToken);
+    }
 
     // A title is a short side request; the notes themselves get the full budget.
     private static TimeSpan ClaudeCodeRunTimeout(MuesliSettings settings) =>

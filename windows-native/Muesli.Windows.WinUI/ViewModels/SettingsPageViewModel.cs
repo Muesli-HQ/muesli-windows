@@ -338,6 +338,14 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             vm => vm.OpenRouterApiKey, (vm, value) => vm.OpenRouterApiKey = value,
             settings => settings.ResolvedOpenRouterApiKey, (settings, _) => settings,
             SecretKey: SettingsStore.OpenRouterSecretKey),
+        [nameof(AnthropicApiKey)] = new("Anthropic API key",
+            vm => vm.AnthropicApiKey, (vm, value) => vm.AnthropicApiKey = value,
+            settings => settings.ResolvedAnthropicApiKey, (settings, _) => settings,
+            SecretKey: SettingsStore.AnthropicSecretKey),
+        [nameof(OpenRouterDictationModel)] = new("OpenRouter dictation model",
+            vm => vm.OpenRouterDictationModel, (vm, value) => vm.OpenRouterDictationModel = value,
+            settings => settings.OpenRouterDictationModel,
+            (settings, value) => settings with { OpenRouterDictationModel = value }),
         [nameof(CustomLlmApiKey)] = new("Custom API key",
             vm => vm.CustomLlmApiKey, (vm, value) => vm.CustomLlmApiKey = value,
             settings => settings.ResolvedCustomLlmApiKey, (settings, _) => settings,
@@ -468,6 +476,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             settings with { LiveMeetingModelId = id },
         nameof(SelectedChatGptModel) when SelectedChatGptModel is { } model => settings with { ChatGptModel = model.Id },
         nameof(SelectedClaudeCodeModel) when SelectedClaudeCodeModel is { } model => settings with { ClaudeCodeModel = model.Id },
+        nameof(SelectedAnthropicModel) when SelectedAnthropicModel is { } model => settings with { AnthropicModel = model.Id },
+        nameof(SelectedDictationProvider) when SelectedDictationProvider is { } provider =>
+            settings with { DictationProvider = provider.Id },
+        nameof(SelectedOpenAIDictationModel) when SelectedOpenAIDictationModel is { } model =>
+            settings with { OpenAIDictationModel = model.Id },
         nameof(SelectedSummaryProvider) when SelectedSummaryProvider is { } provider =>
             settings with { MeetingSummaryProvider = provider.Id },
         nameof(ComputerUseEnabled) => settings with { ComputerUseEnabled = ComputerUseEnabled },
@@ -683,6 +696,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         SelectedChatGptModel = ChatGptModels.FirstOrDefault(choice => choice.Id.Equals(ChatGptResponsesClient.NormalizeModel(settings.ChatGptModel), StringComparison.OrdinalIgnoreCase)) ?? ChatGptModels[0];
         SelectedClaudeCodeModel = ClaudeCodeModels.FirstOrDefault(choice => choice.Id.Equals(settings.ClaudeCodeModel, StringComparison.OrdinalIgnoreCase)) ?? ClaudeCodeModels[0];
         ClaudeCodeExecutablePath = settings.ClaudeCodeExecutablePath;
+        SelectedAnthropicModel = AnthropicModels.FirstOrDefault(choice => choice.Id.Equals(AnthropicMessagesClient.NormalizeModel(settings.AnthropicModel), StringComparison.OrdinalIgnoreCase)) ?? AnthropicModels[0];
+        AnthropicApiKey = settings.ResolvedAnthropicApiKey;
+        SelectedDictationProvider = DictationProviderChoices.First(choice => choice.Id == DictationProviders.Normalize(settings.DictationProvider));
+        SelectedOpenAIDictationModel = OpenAIDictationModels.FirstOrDefault(choice => choice.Id.Equals(OpenAIRealtimeProtocol.NormalizeModel(settings.OpenAIDictationModel), StringComparison.OrdinalIgnoreCase)) ?? OpenAIDictationModels[0];
+        OpenRouterDictationModel = settings.OpenRouterDictationModel;
         RefreshChatGptAccount();
         OpenRouterModel = settings.OpenRouterModel;
         OpenAIApiKey = settings.ResolvedOpenAIApiKey;
@@ -959,9 +977,51 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(ShowChatGptSettings));
         OnPropertyChanged(nameof(ShowClaudeCodeSettings));
+        OnPropertyChanged(nameof(ShowAnthropicSettings));
         if (value?.Id == SummaryProviderDisclosure.ClaudeCode) _ = CheckClaudeCodeAsync();
         if (value?.Id == SummaryProviderDisclosure.ChatGpt) RefreshChatGptAccount();
     }
+    // ─── Anthropic API notes provider ────────────────────────────────────────────────────────
+
+    public bool ShowAnthropicSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.Anthropic;
+
+    public IReadOnlyList<SettingsChoice> AnthropicModels { get; } =
+        AnthropicMessagesClient.Models.Select(model => new SettingsChoice(model.Id, model.Label)).ToList();
+
+    [ObservableProperty] public partial SettingsChoice? SelectedAnthropicModel { get; set; }
+    [ObservableProperty] public partial string AnthropicApiKey { get; set; } = "";
+
+    // ─── Dictation provider (macOS Speech Recognition → Provider) ────────────────────────────
+    // Local is the default. Choosing OpenAI or OpenRouter is what sends dictation audio off this
+    // PC, so the disclosure under the picker changes with the choice.
+
+    public IReadOnlyList<SettingsChoice> DictationProviderChoices { get; } =
+    [
+        new(DictationProviders.Local, "Local (on this PC)"),
+        new(DictationProviders.OpenAI, "OpenAI"),
+        new(DictationProviders.OpenRouter, "OpenRouter"),
+    ];
+
+    public IReadOnlyList<SettingsChoice> OpenAIDictationModels { get; } =
+        OpenAIRealtimeProtocol.ModelPresets.Select(model => new SettingsChoice(model, model)).ToList();
+
+    [NotifyPropertyChangedFor(nameof(IsDictationHosted))]
+    [NotifyPropertyChangedFor(nameof(ShowOpenAIDictationSettings))]
+    [NotifyPropertyChangedFor(nameof(ShowOpenRouterDictationSettings))]
+    [NotifyPropertyChangedFor(nameof(DictationDisclosure))]
+    [NotifyPropertyChangedFor(nameof(DictationModelRowTitle))]
+    [NotifyPropertyChangedFor(nameof(DictationModelHelp))]
+    [ObservableProperty] public partial SettingsChoice? SelectedDictationProvider { get; set; }
+    [ObservableProperty] public partial SettingsChoice? SelectedOpenAIDictationModel { get; set; }
+    [ObservableProperty] public partial string OpenRouterDictationModel { get; set; } = "";
+
+    public bool IsDictationHosted => DictationProviders.IsHosted(SelectedDictationProvider?.Id);
+    public bool ShowOpenAIDictationSettings => SelectedDictationProvider?.Id == DictationProviders.OpenAI;
+    public bool ShowOpenRouterDictationSettings => SelectedDictationProvider?.Id == DictationProviders.OpenRouter;
+    public string DictationDisclosure => DictationProviders.Disclosure(SelectedDictationProvider?.Id);
+    public string DictationModelRowTitle => IsDictationHosted ? "Fallback model" : "Dictation model";
+    public string DictationModelHelp =>
+        $"Used on this PC if {DictationProviders.Label(SelectedDictationProvider?.Id)} transcription fails.";
 }
 
 /// <summary>An id with the label a picker shows for it.</summary>

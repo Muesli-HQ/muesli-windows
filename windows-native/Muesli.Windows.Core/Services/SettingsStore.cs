@@ -9,6 +9,7 @@ public sealed class SettingsStore
     public const string OpenAISecretKey = "openai-api-key";
     public const string OpenRouterSecretKey = "openrouter-api-key";
     public const string CustomLlmSecretKey = "custom-llm-api-key";
+    public const string AnthropicSecretKey = "anthropic-api-key";
 
     private readonly string _settingsPath;
     private readonly AtomicJsonFile _json;
@@ -104,7 +105,8 @@ public sealed class SettingsStore
                 PlaintextOpenRouterApiKeyForMigration = null,
                 ResolvedOpenAIApiKey = _secretStore.Read(OpenAISecretKey) ?? "",
                 ResolvedOpenRouterApiKey = _secretStore.Read(OpenRouterSecretKey) ?? "",
-                ResolvedCustomLlmApiKey = _secretStore.Read(CustomLlmSecretKey) ?? ""
+                ResolvedCustomLlmApiKey = _secretStore.Read(CustomLlmSecretKey) ?? "",
+                ResolvedAnthropicApiKey = _secretStore.Read(AnthropicSecretKey) ?? ""
             };
             if (migrated)
             {
@@ -170,7 +172,8 @@ public sealed class SettingsStore
             ComputerUseBrowserEndpoint = NormalizeLoopbackEndpoint(settings.ComputerUseBrowserEndpoint),
             ResolvedOpenAIApiKey = "",
             ResolvedOpenRouterApiKey = "",
-            ResolvedCustomLlmApiKey = ""
+            ResolvedCustomLlmApiKey = "",
+            ResolvedAnthropicApiKey = ""
         };
         _json.Save(_settingsPath, sanitized, saveMode);
         return sanitized;
@@ -237,6 +240,10 @@ public sealed class SettingsStore
             OpenAIModel = DefaultIfBlank(settings.OpenAIModel, "gpt-5.4-mini").Trim(),
             ChatGptModel = (settings.ChatGptModel ?? "").Trim(),
             ClaudeCodeModel = (settings.ClaudeCodeModel ?? "").Trim(),
+            AnthropicModel = (settings.AnthropicModel ?? "").Trim(),
+            DictationProvider = DictationProviders.Normalize(settings.DictationProvider),
+            OpenAIDictationModel = (settings.OpenAIDictationModel ?? "").Trim(),
+            OpenRouterDictationModel = (settings.OpenRouterDictationModel ?? "").Trim(),
             ClaudeCodeExecutablePath = (settings.ClaudeCodeExecutablePath ?? "").Trim(),
             OpenRouterModel = DefaultIfBlank(settings.OpenRouterModel, "stepfun/step-3.5-flash:free").Trim(),
             OllamaEndpoint = NormalizeOllamaEndpoint(settings.OllamaEndpoint),
@@ -252,6 +259,7 @@ public sealed class SettingsStore
             ResolvedOpenAIApiKey = settings.ResolvedOpenAIApiKey ?? "",
             ResolvedOpenRouterApiKey = settings.ResolvedOpenRouterApiKey ?? "",
             ResolvedCustomLlmApiKey = settings.ResolvedCustomLlmApiKey ?? "",
+            ResolvedAnthropicApiKey = settings.ResolvedAnthropicApiKey ?? "",
         };
     }
 
@@ -437,6 +445,19 @@ public sealed record MuesliSettings
     public string Hotkey { get; init; } = "F8";
     public string PasteBehavior { get; init; } = "active-app";
     public string DictationModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
+
+    /// <summary>
+    /// Who transcribes dictation: <c>local</c> (the default), <c>openai</c> or <c>openrouter</c>. A hosted
+    /// provider receives the recorded audio; <see cref="DictationModelId"/> stays selected as the
+    /// fallback and for switching back.
+    /// </summary>
+    public string DictationProvider { get; init; } = DictationProviders.Local;
+
+    /// <summary>OpenAI transcription model; blank means the default.</summary>
+    public string OpenAIDictationModel { get; init; } = "";
+
+    /// <summary>OpenRouter transcription model id (provider/model). There is no default.</summary>
+    public string OpenRouterDictationModel { get; init; } = "";
     public string FinalMeetingModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
     public string? LiveMeetingModelId { get; init; }
     public string LiveTranscriptOwnership { get; init; } = LiveTranscriptOwnershipDescriptor.UnifiedSettingValue;
@@ -530,6 +551,11 @@ public sealed record MuesliSettings
 
     /// <summary>Optional path to the Claude Code CLI; blank lets Muesli find it.</summary>
     public string ClaudeCodeExecutablePath { get; init; } = "";
+
+    /// <summary>Anthropic API model for meeting notes; blank means the default.</summary>
+    public string AnthropicModel { get; init; } = "";
+    [JsonIgnore]
+    public string ResolvedAnthropicApiKey { get; init; } = "";
     [JsonPropertyName("OpenRouterApiKey")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string? PlaintextOpenRouterApiKeyForMigration { get; init; }
