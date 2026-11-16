@@ -1022,6 +1022,72 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public string DictationModelRowTitle => IsDictationHosted ? "Fallback model" : "Dictation model";
     public string DictationModelHelp =>
         $"Used on this PC if {DictationProviders.Label(SelectedDictationProvider?.Id)} transcription fails.";
+    // ─── Connect OpenRouter (browser sign-in, as on macOS) ───────────────────────────────────
+    // Approving access in the browser gives muesli its own API key, stored where a pasted key
+    // goes, so meeting summaries and dictation both use it.
+
+    [NotifyPropertyChangedFor(nameof(IsOpenRouterDisconnected))]
+    [ObservableProperty] public partial bool IsOpenRouterConnected { get; private set; }
+    [ObservableProperty] public partial bool IsOpenRouterConnecting { get; private set; }
+    [ObservableProperty] public partial string OpenRouterAccountStatus { get; private set; } = "Not connected";
+
+    public bool IsOpenRouterDisconnected => !IsOpenRouterConnected;
+
+    private CancellationTokenSource? _openRouterSignIn;
+
+    partial void OnOpenRouterApiKeyChanged(string value) => RefreshOpenRouterAccount();
+
+    private void RefreshOpenRouterAccount(string? message = null)
+    {
+        IsOpenRouterConnected = !string.IsNullOrWhiteSpace(OpenRouterApiKey);
+        OpenRouterAccountStatus = message ?? (IsOpenRouterConnecting ? "Connecting… approve access in your browser."
+            : IsOpenRouterConnected ? "OpenRouter connected" : "Not connected");
+    }
+
+    [RelayCommand]
+    private async Task ConnectOpenRouterAsync()
+    {
+        if (IsOpenRouterConnecting) return;
+        _openRouterSignIn = new CancellationTokenSource();
+        IsOpenRouterConnecting = true;
+        RefreshOpenRouterAccount();
+        string? error = null;
+        try
+        {
+            var key = await new OpenRouterAuthFlow().SignInAsync(
+                uri => _ = global::Windows.System.Launcher.LaunchUriAsync(uri), _openRouterSignIn.Token);
+            _pendingText.Remove(nameof(OpenRouterApiKey));
+            _settingsContext.SaveProviderKey(SettingsStore.OpenRouterSecretKey, key);
+            Untracked(() => OpenRouterApiKey = key);
+        }
+        catch (OperationCanceledException) { }
+        catch (OpenRouterAuthException exception) { error = exception.Message; }
+        catch (Exception exception) { error = $"OpenRouter sign-in failed: {exception.GetType().Name}"; }
+        finally
+        {
+            IsOpenRouterConnecting = false;
+            _openRouterSignIn = null;
+            RefreshOpenRouterAccount(error);
+        }
+    }
+
+    [RelayCommand]
+    private void DisconnectOpenRouter()
+    {
+        _openRouterSignIn?.Cancel();
+        try
+        {
+            _pendingText.Remove(nameof(OpenRouterApiKey));
+            _settingsContext.SaveProviderKey(SettingsStore.OpenRouterSecretKey, "");
+            Untracked(() => OpenRouterApiKey = "");
+            // As on macOS, only this PC's copy is removed.
+            RefreshOpenRouterAccount("Disconnected. The key stays active at OpenRouter until you delete it there.");
+        }
+        catch (Exception exception)
+        {
+            RefreshOpenRouterAccount($"Could not remove the OpenRouter key: {exception.Message}");
+        }
+    }
 }
 
 /// <summary>An id with the label a picker shows for it.</summary>

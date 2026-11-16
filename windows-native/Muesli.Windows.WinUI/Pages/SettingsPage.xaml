@@ -343,6 +343,27 @@
                                           AutomationProperties.Name="OpenAI dictation model"
                                           AutomationProperties.AutomationId="OpenAIDictationModelPicker" />
                             </Grid>
+                            <!-- Connect OpenRouter in the browser, or paste a key below. -->
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterDictationSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterDictationSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Account" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.OpenRouterAccountStatus, Mode=OneWay}" Style="{StaticResource RowHelpStyle}"
+                                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="DictationOpenRouterAccountStatus" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsOpenRouterConnecting, Mode=OneWay}"
+                                                  Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsOpenRouterConnecting), Mode=OneWay}" />
+                                    <Button Content="Connect OpenRouter"
+                                            Command="{x:Bind ViewModel.ConnectOpenRouterCommand}"
+                                            Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsOpenRouterDisconnected), Mode=OneWay}"
+                                            AutomationProperties.AutomationId="DictationOpenRouterConnectButton" />
+                                    <Button Content="Disconnect"
+                                            Command="{x:Bind ViewModel.DisconnectOpenRouterCommand}"
+                                            Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsOpenRouterConnected), Mode=OneWay}"
+                                            AutomationProperties.AutomationId="DictationOpenRouterDisconnectButton" />
+                                </StackPanel>
+                            </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterDictationSettings), Mode=OneWay}" />
                             <StackPanel Padding="16,10" Spacing="8" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterDictationSettings), Mode=OneWay}">
                                 <PasswordBox Header="OpenRouter API key"
@@ -967,6 +988,27 @@
                                          Text="{x:Bind ViewModel.ClaudeCodeExecutablePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          AutomationProperties.Name="Claude Code executable path"
                                          AutomationProperties.AutomationId="ClaudeCodePathBox" />
+                            </Grid>
+                            <!-- Connect OpenRouter in the browser, or paste a key below. -->
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Account" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.OpenRouterAccountStatus, Mode=OneWay}" Style="{StaticResource RowHelpStyle}"
+                                               AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="SummaryOpenRouterAccountStatus" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsOpenRouterConnecting, Mode=OneWay}"
+                                                  Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsOpenRouterConnecting), Mode=OneWay}" />
+                                    <Button Content="Connect OpenRouter"
+                                            Command="{x:Bind ViewModel.ConnectOpenRouterCommand}"
+                                            Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsOpenRouterDisconnected), Mode=OneWay}"
+                                            AutomationProperties.AutomationId="SummaryOpenRouterConnectButton" />
+                                    <Button Content="Disconnect"
+                                            Command="{x:Bind ViewModel.DisconnectOpenRouterCommand}"
+                                            Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.IsOpenRouterConnected), Mode=OneWay}"
+                                            AutomationProperties.AutomationId="SummaryOpenRouterDisconnectButton" />
+                                </StackPanel>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOpenRouterSettings), Mode=OneWay}">

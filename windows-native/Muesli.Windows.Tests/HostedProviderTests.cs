@@ -587,6 +587,130 @@ public sealed class HostedProviderTests
         }
     }
 
+    // ─── Connect OpenRouter (browser sign-in) ────────────────────────────────────────────────
+
+    [Fact]
+    public void OpenRouterAuthorizationUrlCarriesTheCallbackAndAnS256Challenge()
+    {
+        var (verifier, challenge) = OpenRouterAuthFlow.CreatePkce();
+        Assert.Equal(43, verifier.Length);
+        Assert.Equal(43, challenge.Length);
+        Assert.NotEqual(verifier, challenge);
+        Assert.NotEqual(verifier, OpenRouterAuthFlow.CreatePkce().Verifier);
+
+        var uri = OpenRouterAuthFlow.BuildAuthorizationUri(new Uri("http://localhost:51234/muesli/openrouter/oauth/abc"), challenge).AbsoluteUri;
+        Assert.StartsWith("https://openrouter.ai/auth?callback_url=", uri, StringComparison.Ordinal);
+        Assert.Contains("callback_url=http%3A%2F%2Flocalhost%3A51234%2Fmuesli%2Fopenrouter%2Foauth%2Fabc", uri, StringComparison.Ordinal);
+        Assert.Contains($"code_challenge={challenge}", uri, StringComparison.Ordinal);
+        Assert.Contains("code_challenge_method=S256", uri, StringComparison.Ordinal);
+
+        Assert.Equal(
+            "https://openrouter.ai/keys/" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("sk-or-x"))),
+            OpenRouterAuthFlow.ManageKeyUri("sk-or-x").AbsoluteUri);
+    }
+
+    [Fact]
+    public void OpenRouterCallbackIsAcceptedOnlyOnThisSignInsPath()
+    {
+        const string path = "/muesli/openrouter/oauth/secret";
+        Assert.Equal(
+            new OpenRouterAuthFlow.Callback(OpenRouterAuthFlow.CallbackKind.AuthorizationCode, "abc 123"),
+            OpenRouterAuthFlow.ParseCallback($"GET {path}?code=abc%20123 HTTP/1.1\r\nHost: localhost\r\n\r\n", path));
+        Assert.Equal(
+            new OpenRouterAuthFlow.Callback(OpenRouterAuthFlow.CallbackKind.ProviderError, "access_denied"),
+            OpenRouterAuthFlow.ParseCallback($"GET {path}?error=access_denied HTTP/1.1", path));
+        Assert.Equal(OpenRouterAuthFlow.CallbackKind.MissingCode, OpenRouterAuthFlow.ParseCallback($"GET {path} HTTP/1.1", path).Kind);
+        Assert.Equal(OpenRouterAuthFlow.CallbackKind.MissingCode, OpenRouterAuthFlow.ParseCallback($"GET {path}?code= HTTP/1.1", path).Kind);
+        Assert.Equal(OpenRouterAuthFlow.CallbackKind.Invalid, OpenRouterAuthFlow.ParseCallback($"POST {path}?code=abc HTTP/1.1", path).Kind);
+        Assert.Equal(OpenRouterAuthFlow.CallbackKind.Invalid, OpenRouterAuthFlow.ParseCallback("garbage", path).Kind);
+        // A favicon, a port scanner or a guess at another path neither completes nor fails the sign-in.
+        Assert.Equal(OpenRouterAuthFlow.CallbackKind.Unrelated, OpenRouterAuthFlow.ParseCallback("GET /favicon.ico HTTP/1.1", path).Kind);
+        Assert.Equal(OpenRouterAuthFlow.CallbackKind.Unrelated, OpenRouterAuthFlow.ParseCallback("GET /muesli/openrouter/oauth/other?code=abc HTTP/1.1", path).Kind);
+    }
+
+    [Fact]
+    public async Task OpenRouterSignInWaitsForTheBrowserCallbackAndExchangesTheCodeForAKey()
+    {
+        var exchange = new RecordingHandler(HttpStatusCode.OK, """{"key":" sk-or-v1-new ","user_id":"user_1"}""");
+        var flow = new OpenRouterAuthFlow(new HttpClient(exchange));
+        Uri? opened = null;
+        string? strayStatus = null;
+
+        var key = await flow.SignInAsync(uri =>
+        {
+            opened = uri;
+            // Stands in for the browser: OpenRouter redirects it to the loopback callback address.
+            var callback = Uri.UnescapeDataString(uri.Query.Split("callback_url=")[1].Split('&')[0]);
+            _ = Task.Run(async () =>
+            {
+                using var browser = new HttpClient();
+                strayStatus = ((int)(await browser.GetAsync(new Uri(new Uri(callback), "/favicon.ico"))).StatusCode).ToString();
+                await browser.GetAsync(callback + "?code=auth-code-1");
+            });
+        }).WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.Equal("sk-or-v1-new", key);
+        Assert.Equal("404", strayStatus);
+        Assert.StartsWith("https://openrouter.ai/auth?", opened!.AbsoluteUri, StringComparison.Ordinal);
+        Assert.Contains("callback_url=http%3A%2F%2Flocalhost%3A", opened.AbsoluteUri, StringComparison.Ordinal);
+
+        var request = Assert.Single(exchange.Requests);
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("https://openrouter.ai/api/v1/auth/keys", request.Uri);
+        Assert.False(request.Headers.ContainsKey("Authorization"));
+        using var body = JsonDocument.Parse(request.Body);
+        Assert.Equal("auth-code-1", body.RootElement.GetProperty("code").GetString());
+        Assert.Equal("S256", body.RootElement.GetProperty("code_challenge_method").GetString());
+        // The verifier sent to the exchange is the one whose hash went to the browser.
+        var verifier = body.RootElement.GetProperty("code_verifier").GetString()!;
+        var challenge = Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(Encoding.ASCII.GetBytes(verifier)))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        Assert.Contains($"code_challenge={challenge}", opened.AbsoluteUri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OpenRouterSignInReportsARefusalATimeoutACancellationAndABadExchange()
+    {
+        static Action<Uri> Browser(string query) => uri =>
+        {
+            var callback = Uri.UnescapeDataString(uri.Query.Split("callback_url=")[1].Split('&')[0]);
+            _ = Task.Run(async () =>
+            {
+                using var browser = new HttpClient();
+                await browser.GetAsync(callback + query);
+            });
+        };
+
+        var unused = new RecordingHandler(HttpStatusCode.OK, """{"key":"sk-or"}""");
+        var flow = new OpenRouterAuthFlow(new HttpClient(unused));
+        var refused = await Assert.ThrowsAsync<OpenRouterAuthException>(
+            () => flow.SignInAsync(Browser("?error=access_denied%3Cscript%3E")).WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.Contains("not approved (access_deniedscript)", refused.Message, StringComparison.Ordinal);
+
+        var timedOut = await Assert.ThrowsAsync<OpenRouterAuthException>(
+            () => flow.SignInAsync(_ => { }, callbackTimeout: TimeSpan.FromMilliseconds(100)).WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.Contains("timed out", timedOut.Message, StringComparison.Ordinal);
+
+        using var cancel = new CancellationTokenSource();
+        var pending = flow.SignInAsync(_ => { }, cancel.Token);
+        cancel.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.Empty(unused.Requests);
+
+        var rejected = await Assert.ThrowsAsync<OpenRouterAuthException>(
+            () => new OpenRouterAuthFlow(new HttpClient(new RecordingHandler(HttpStatusCode.Forbidden, """{"error":"sk-or-leak"}""")))
+                .ExchangeAsync("code", "verifier", CancellationToken.None));
+        Assert.Equal("OpenRouter key exchange failed (HTTP 403)", rejected.Message);
+
+        foreach (var payload in new[] { "{}", """{"key":"  "}""", "not json" })
+        {
+            var invalid = await Assert.ThrowsAsync<OpenRouterAuthException>(
+                () => new OpenRouterAuthFlow(new HttpClient(new RecordingHandler(HttpStatusCode.OK, payload)))
+                    .ExchangeAsync("code", "verifier", CancellationToken.None));
+            Assert.Contains("invalid response", invalid.Message, StringComparison.Ordinal);
+        }
+    }
+
     // ─── Fakes ───────────────────────────────────────────────────────────────────────────────
 
     private sealed record RecordedRequest(

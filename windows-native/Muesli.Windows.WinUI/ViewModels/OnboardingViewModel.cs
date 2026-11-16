@@ -818,7 +818,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         if (App.Window is MainWindow mainWindow)
         {
             mainWindow.ShowDashboard("settings");
-            ApplyStatus("Add your key in Settings, then come back here.");
+            ApplyStatus("Set up the provider in Settings, then come back here.");
         }
         else
         {
@@ -1297,6 +1297,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
 
     private void RefreshCloudKeyStatus()
     {
+        RefreshProviderSetup();
         var current = _settings.Load();
         var keys = new[]
         {
@@ -1304,7 +1305,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             string.IsNullOrWhiteSpace(current.ResolvedOpenRouterApiKey) ? null : "OpenRouter"
         }.OfType<string>().ToList();
         CloudKeyStatus = keys.Count == 0
-            ? "To use OpenAI or OpenRouter, add a key in Settings."
+            ? "This provider's server address and model are set in Settings."
             : $"{string.Join(" and ", keys)} key added.";
     }
 
