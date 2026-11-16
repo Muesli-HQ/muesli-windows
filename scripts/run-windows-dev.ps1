@@ -12,7 +12,8 @@
     run time (see MuesliDevSlot.cs):
       * its profile is %APPDATA%\MuesliDev<Slot>, never the production %APPDATA%\muesli;
       * it has its own single-instance scope;
-      * it appears as "Muesli Dev <Slot>" in Start and the startup-task list.
+      * it appears as "Muesli Dev <Slot>" in Start, the window title and the tray tooltip, and its
+        taskbar and Start icons carry the slot letter in a slot-specific colour.
     Downloaded models are shared with the normal build and every other slot: all model caches
     live under %USERPROFILE%\.cache\muesli, outside any profile, so nothing is downloaded twice.
 
@@ -134,6 +135,76 @@ Get-ChildItem -LiteralPath $slotLayout -File -Recurse | ForEach-Object {
     }
 }
 Copy-Item -LiteralPath $slotManifest -Destination (Join-Path $slotLayout 'AppxManifest.xml') -Force
+
+# Every slot would otherwise show the same icon as the main build. Stamp the slot's letter in a
+# slot-specific colour on the staged taskbar/Start logos and the window icon. Only the staged
+# copies change; the project's assets are untouched.
+Add-Type -AssemblyName System.Drawing
+$badgePalette = '#F97316', '#22C55E', '#A855F7', '#EF4444', '#06B6D4', '#EAB308'
+$badgeLetter = $Slot.Substring(0, 1).ToUpperInvariant()
+$badgeColor = [System.Drawing.ColorTranslator]::FromHtml($badgePalette[[int][char]$badgeLetter % $badgePalette.Count])
+
+function Add-SlotBadge([string]$Path) {
+    # Read through memory so the file is not locked while it is rewritten.
+    $stream = New-Object IO.MemoryStream (, [IO.File]::ReadAllBytes($Path))
+    $source = [System.Drawing.Image]::FromStream($stream)
+    $bitmap = New-Object System.Drawing.Bitmap $source.Width, $source.Height, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    try {
+        $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $graphics.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+        $graphics.DrawImage($source, 0, 0, $source.Width, $source.Height)
+        $diameter = [Math]::Max(8, [int]([Math]::Min($source.Width, $source.Height) * 0.58))
+        $left = $source.Width - $diameter
+        $top = $source.Height - $diameter
+        $fill = New-Object System.Drawing.SolidBrush $badgeColor
+        $graphics.FillEllipse($fill, $left, $top, $diameter - 1, $diameter - 1)
+        $font = New-Object System.Drawing.Font 'Segoe UI', ([single]($diameter * 0.62)), ([System.Drawing.FontStyle]::Bold), ([System.Drawing.GraphicsUnit]::Pixel)
+        $format = New-Object System.Drawing.StringFormat
+        $format.Alignment = [System.Drawing.StringAlignment]::Center
+        $format.LineAlignment = [System.Drawing.StringAlignment]::Center
+        $bounds = New-Object System.Drawing.RectangleF $left, $top, $diameter, $diameter
+        $graphics.DrawString($badgeLetter, $font, [System.Drawing.Brushes]::White, $bounds, $format)
+        $fill.Dispose(); $font.Dispose(); $format.Dispose()
+    } finally {
+        $graphics.Dispose()
+        $source.Dispose()
+        $stream.Dispose()
+    }
+    $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bitmap.Dispose()
+}
+
+$assets = Join-Path $slotLayout 'Assets'
+Get-ChildItem -LiteralPath $assets -File |
+    Where-Object { $_.Name -like 'Square44x44Logo*.png' -or $_.Name -like 'Square150x150Logo*.png' } |
+    ForEach-Object { Add-SlotBadge $_.FullName }
+
+# The window icon decides what the taskbar button shows. Rebuild it from the badged logos; an
+# .ico may hold PNG images directly.
+$iconImages = foreach ($size in 16, 24, 32, 48, 256) {
+    $png = Join-Path $assets "Square44x44Logo.targetsize-$size.png"
+    if (Test-Path -LiteralPath $png) { [pscustomobject]@{ Size = $size; Bytes = [IO.File]::ReadAllBytes($png) } }
+}
+if ($iconImages) {
+    $iconImages = @($iconImages)
+    $iconStream = New-Object IO.MemoryStream
+    $iconWriter = New-Object IO.BinaryWriter $iconStream
+    $iconWriter.Write([uint16]0); $iconWriter.Write([uint16]1); $iconWriter.Write([uint16]$iconImages.Count)
+    $offset = 6 + 16 * $iconImages.Count
+    foreach ($image in $iconImages) {
+        $dimension = if ($image.Size -ge 256) { 0 } else { $image.Size }
+        $iconWriter.Write([byte]$dimension); $iconWriter.Write([byte]$dimension)
+        $iconWriter.Write([byte]0); $iconWriter.Write([byte]0)
+        $iconWriter.Write([uint16]1); $iconWriter.Write([uint16]32)
+        $iconWriter.Write([uint32]$image.Bytes.Length); $iconWriter.Write([uint32]$offset)
+        $offset += $image.Bytes.Length
+    }
+    foreach ($image in $iconImages) { $iconWriter.Write($image.Bytes) }
+    $iconWriter.Flush()
+    [IO.File]::WriteAllBytes((Join-Path $assets 'AppIcon.ico'), $iconStream.ToArray())
+    $iconWriter.Dispose()
+}
 
 Write-Host "Launching $packageName ($Configuration, x64)..." -ForegroundColor Cyan
 Write-Host "Layout: $slotLayout ($copied copied, $removed removed)" -ForegroundColor DarkGray

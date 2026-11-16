@@ -16,6 +16,15 @@ public static class MuesliDevSlot
     /// <summary>The slot's package name, e.g. <c>MuesliDevA</c>, or null for every other build.</summary>
     public static string? Current { get; } = Resolve(CurrentPackageName());
 
+    /// <summary>
+    /// The name shown in window titles and the tray tooltip: "Muesli Dev A" in a slot, so several
+    /// running builds can be told apart, and plain "Muesli" everywhere else.
+    /// </summary>
+    public static string AppDisplayName { get; } = DisplayNameFor(Current);
+
+    internal static string DisplayNameFor(string? slot) =>
+        slot is null ? "Muesli" : $"Muesli Dev {slot[PackageNamePrefix.Length..]}";
+
     internal static string? Resolve(string? packageName)
     {
         if (packageName is null ||

@@ -15,4 +15,11 @@ public sealed class MuesliDevSlotTests
     [InlineData("MuesliDevTooLongName", null)]
     public void OnlyDevelopmentPackageNamesAreSlots(string? packageName, string? expected) =>
         Assert.Equal(expected, MuesliDevSlot.Resolve(packageName));
+
+    [Theory]
+    [InlineData(null, "Muesli")]
+    [InlineData("MuesliDevA", "Muesli Dev A")]
+    [InlineData("MuesliDevB2", "Muesli Dev B2")]
+    public void SlotsNameThemselvesAndOtherBuildsStayMuesli(string? slot, string expected) =>
+        Assert.Equal(expected, MuesliDevSlot.DisplayNameFor(slot));
 }
