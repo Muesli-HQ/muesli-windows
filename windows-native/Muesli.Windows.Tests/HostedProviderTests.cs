@@ -178,6 +178,16 @@ public sealed class HostedProviderTests
         Assert.Contains("No audio leaves", DictationProviders.Disclosure("local"), StringComparison.Ordinal);
         Assert.Contains("sent to OpenAI", DictationProviders.Disclosure("openai"), StringComparison.Ordinal);
         Assert.Contains("sent to OpenRouter", DictationProviders.Disclosure("openrouter"), StringComparison.Ordinal);
+        // The fallback is only promised when the local model is there to provide it.
+        Assert.Contains("transcribed on this PC", DictationProviders.Disclosure("openai"), StringComparison.Ordinal);
+        foreach (var hosted in new[] { "openai", "openrouter" })
+        {
+            var withoutModel = DictationProviders.Disclosure(hosted, fallbackModelInstalled: false);
+            Assert.Contains("sent to", withoutModel, StringComparison.Ordinal);
+            Assert.Contains("that dictation is lost", withoutModel, StringComparison.Ordinal);
+            Assert.DoesNotContain("transcribed on this PC", withoutModel, StringComparison.Ordinal);
+        }
+        Assert.Equal(DictationProviders.Disclosure("local"), DictationProviders.Disclosure("local", fallbackModelInstalled: false));
     }
 
     [Fact]
@@ -635,6 +645,7 @@ public sealed class HostedProviderTests
         var flow = new OpenRouterAuthFlow(new HttpClient(exchange));
         Uri? opened = null;
         string? strayStatus = null;
+        string? approvedPage = null;
 
         var key = await flow.SignInAsync(uri =>
         {
@@ -645,12 +656,16 @@ public sealed class HostedProviderTests
             {
                 using var browser = new HttpClient();
                 strayStatus = ((int)(await browser.GetAsync(new Uri(new Uri(callback), "/favicon.ico"))).StatusCode).ToString();
-                await browser.GetAsync(callback + "?code=auth-code-1");
+                approvedPage = await (await browser.GetAsync(callback + "?code=auth-code-1")).Content.ReadAsStringAsync();
             });
+            return Task.FromResult(true);
         }).WaitAsync(TimeSpan.FromSeconds(20));
 
         Assert.Equal("sk-or-v1-new", key);
         Assert.Equal("404", strayStatus);
+        // The page is served before the key exchange, so it reports approval and not a finished connection.
+        Assert.Contains(OpenRouterAuthFlow.ApprovedPageTitle, approvedPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("connected", approvedPage, StringComparison.OrdinalIgnoreCase);
         Assert.StartsWith("https://openrouter.ai/auth?", opened!.AbsoluteUri, StringComparison.Ordinal);
         Assert.Contains("callback_url=http%3A%2F%2Flocalhost%3A", opened.AbsoluteUri, StringComparison.Ordinal);
 
@@ -671,7 +686,7 @@ public sealed class HostedProviderTests
     [Fact]
     public async Task OpenRouterSignInReportsARefusalATimeoutACancellationAndABadExchange()
     {
-        static Action<Uri> Browser(string query) => uri =>
+        static Func<Uri, Task<bool>> Browser(string query) => uri =>
         {
             var callback = Uri.UnescapeDataString(uri.Query.Split("callback_url=")[1].Split('&')[0]);
             _ = Task.Run(async () =>
@@ -679,6 +694,7 @@ public sealed class HostedProviderTests
                 using var browser = new HttpClient();
                 await browser.GetAsync(callback + query);
             });
+            return Task.FromResult(true);
         };
 
         var unused = new RecordingHandler(HttpStatusCode.OK, """{"key":"sk-or"}""");
@@ -688,13 +704,21 @@ public sealed class HostedProviderTests
         Assert.Contains("not approved (access_deniedscript)", refused.Message, StringComparison.Ordinal);
 
         var timedOut = await Assert.ThrowsAsync<OpenRouterAuthException>(
-            () => flow.SignInAsync(_ => { }, callbackTimeout: TimeSpan.FromMilliseconds(100)).WaitAsync(TimeSpan.FromSeconds(20)));
+            () => flow.SignInAsync(_ => Task.FromResult(true), callbackTimeout: TimeSpan.FromMilliseconds(100)).WaitAsync(TimeSpan.FromSeconds(20)));
         Assert.Contains("timed out", timedOut.Message, StringComparison.Ordinal);
 
         using var cancel = new CancellationTokenSource();
-        var pending = flow.SignInAsync(_ => { }, cancel.Token);
+        var pending = flow.SignInAsync(_ => Task.FromResult(true), cancel.Token);
         cancel.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(20)));
+        // No browser could be opened: fail at once instead of waiting out the callback timeout.
+        foreach (var launch in new Func<Uri, Task<bool>>[] { _ => Task.FromResult(false), _ => throw new InvalidOperationException("no browser") })
+        {
+            var noBrowser = await Assert.ThrowsAsync<OpenRouterAuthException>(
+                () => flow.SignInAsync(launch).WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Contains("Could not open the browser", noBrowser.Message, StringComparison.Ordinal);
+        }
+
         Assert.Empty(unused.Requests);
 
         var rejected = await Assert.ThrowsAsync<OpenRouterAuthException>(

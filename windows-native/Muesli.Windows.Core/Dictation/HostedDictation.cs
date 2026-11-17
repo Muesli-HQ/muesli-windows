@@ -37,14 +37,22 @@ public static class DictationProviders
     };
 
     /// <summary>What the user is told happens to their audio. Shown beside the provider picker.</summary>
-    public static string Disclosure(string? value) => Normalize(value) switch
+    /// <param name="fallbackModelInstalled">
+    /// Whether the selected local model is downloaded. Without it a failed hosted request has
+    /// nothing to fall back to, and the text must not promise otherwise.
+    /// </param>
+    public static string Disclosure(string? value, bool fallbackModelInstalled = true) => Normalize(value) switch
     {
         OpenAI => "Your dictation audio is sent to OpenAI over the internet while you speak, using your OpenAI API key. " +
-                  "If OpenAI fails, the recording is transcribed on this PC with the fallback model.",
+                  FallbackNote("OpenAI", fallbackModelInstalled),
         OpenRouter => "Your dictation audio is sent to OpenRouter over the internet after you stop speaking, using your OpenRouter API key. " +
-                      "OpenRouter passes it to the model you choose. If it fails, the recording is transcribed on this PC with the fallback model.",
+                      "OpenRouter passes it to the model you choose. " + FallbackNote("OpenRouter", fallbackModelInstalled),
         _ => "Dictation is transcribed on this PC. No audio leaves your computer."
     };
+
+    public static string FallbackNote(string providerLabel, bool fallbackModelInstalled) => fallbackModelInstalled
+        ? $"If {providerLabel} fails, the recording is transcribed on this PC with the fallback model."
+        : $"The fallback model is not downloaded, so if {providerLabel} fails that dictation is lost. Download it in Models.";
 }
 
 public sealed record HostedDictationResult(string Text, string Backend, string Model, string Endpoint);

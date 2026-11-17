@@ -171,7 +171,7 @@ public partial class OnboardingViewModel
         try
         {
             var key = await new OpenRouterAuthFlow().SignInAsync(
-                uri => _ = global::Windows.System.Launcher.LaunchUriAsync(uri), _openRouterSignIn.Token);
+                uri => global::Windows.System.Launcher.LaunchUriAsync(uri).AsTask(), _openRouterSignIn.Token);
             _settings.SaveProviderKey(SettingsStore.OpenRouterSecretKey, key);
         }
         catch (OperationCanceledException) { }

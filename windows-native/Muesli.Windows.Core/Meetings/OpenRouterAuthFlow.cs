@@ -20,6 +20,7 @@ public sealed class OpenRouterAuthFlow(HttpClient? http = null)
     public const string AuthorizationEndpoint = "https://openrouter.ai/auth";
     public const string KeyExchangeEndpoint = "https://openrouter.ai/api/v1/auth/keys";
     public static readonly TimeSpan CallbackTimeout = TimeSpan.FromSeconds(600);
+    public const string ApprovedPageTitle = "OpenRouter approved access";
 
     private static readonly HttpClient SharedHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
     private readonly HttpClient _http = http ?? SharedHttp;
@@ -29,8 +30,9 @@ public sealed class OpenRouterAuthFlow(HttpClient? http = null)
     public readonly record struct Callback(CallbackKind Kind, string? Value = null);
 
     /// <summary>Runs the whole flow and returns the new API key.</summary>
+    /// <param name="openBrowser">Opens the address in the browser and reports whether it could.</param>
     public async Task<string> SignInAsync(
-        Action<Uri> openBrowser, CancellationToken cancellationToken = default, TimeSpan? callbackTimeout = null)
+        Func<Uri, Task<bool>> openBrowser, CancellationToken cancellationToken = default, TimeSpan? callbackTimeout = null)
     {
         var (verifier, challenge) = CreatePkce();
         // A random port and a random path: only the browser tab we opened knows where to call back.
@@ -50,14 +52,18 @@ public sealed class OpenRouterAuthFlow(HttpClient? http = null)
         try
         {
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            bool opened;
             try
             {
-                openBrowser(BuildAuthorizationUri(new Uri($"http://localhost:{port}{path}"), challenge));
+                opened = await openBrowser(BuildAuthorizationUri(new Uri($"http://localhost:{port}{path}"), challenge)).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                throw new OpenRouterAuthException("Could not open the browser for OpenRouter sign-in");
+                opened = false;
             }
+
+            // Without a browser nothing will ever call back; say so now instead of after the timeout.
+            if (!opened) throw new OpenRouterAuthException("Could not open the browser for OpenRouter sign-in");
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(callbackTimeout ?? CallbackTimeout);
@@ -180,7 +186,7 @@ public sealed class OpenRouterAuthFlow(HttpClient? http = null)
             switch (callback.Kind)
             {
                 case CallbackKind.AuthorizationCode:
-                    await RespondAsync(stream, "200 OK", "OpenRouter connected to muesli", "You can close this window.", token).ConfigureAwait(false);
+                    await RespondAsync(stream, "200 OK", ApprovedPageTitle, "Return to muesli to finish connecting. You can close this window.", token).ConfigureAwait(false);
                     return callback.Value!;
                 case CallbackKind.Unrelated:
                     await RespondAsync(stream, "404 Not Found", "Not found", "", token).ConfigureAwait(false);

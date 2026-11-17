@@ -806,12 +806,18 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             var meeting = SelectedMeetingModel;
             var template = MeetingSummaryService.NormalizeTemplateName(MeetingSummaryTemplate);
             var summary = SelectedSummaryProvider ?? SummaryProviderDisclosure.For("local");
+            var dictationProvider = SelectedDictationProvider;
+            var openAIDictationModel = SelectedOpenAIDictationModel;
+            var anthropicModel = SelectedAnthropicModel;
             SelectedLiveModel = "";
             SelectedMicrophone = "";
             SelectedDictationModel = "";
             SelectedMeetingModel = "";
             MeetingSummaryTemplate = "";
             SelectedSummaryProvider = null;
+            SelectedDictationProvider = null;
+            SelectedOpenAIDictationModel = null;
+            SelectedAnthropicModel = null;
             SelectedLiveModel = LiveModels.Contains(live) ? live : "Off";
             SelectedMicrophone = Microphones.Contains(microphone) ? microphone : "Automatic";
             if (!string.IsNullOrWhiteSpace(dictation)) SelectedDictationModel = dictation;
@@ -822,6 +828,13 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             SelectedSummaryProvider = SummaryProviders.Contains(summary)
                 ? summary
                 : SummaryProviderDisclosure.For(summary.Id);
+            // A cleared provider picker would show the local disclosure while a hosted provider is in use.
+            SelectedDictationProvider = DictationProviderChoices.FirstOrDefault(choice => choice.Id == dictationProvider?.Id)
+                ?? DictationProviderChoices[0];
+            SelectedOpenAIDictationModel = OpenAIDictationModels.FirstOrDefault(choice => choice.Id == openAIDictationModel?.Id)
+                ?? OpenAIDictationModels[0];
+            SelectedAnthropicModel = AnthropicModels.FirstOrDefault(choice => choice.Id == anthropicModel?.Id)
+                ?? AnthropicModels[0];
         }
         finally
         {
@@ -1018,10 +1031,23 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public bool IsDictationHosted => DictationProviders.IsHosted(SelectedDictationProvider?.Id);
     public bool ShowOpenAIDictationSettings => SelectedDictationProvider?.Id == DictationProviders.OpenAI;
     public bool ShowOpenRouterDictationSettings => SelectedDictationProvider?.Id == DictationProviders.OpenRouter;
-    public string DictationDisclosure => DictationProviders.Disclosure(SelectedDictationProvider?.Id);
+    public string DictationDisclosure =>
+        DictationProviders.Disclosure(SelectedDictationProvider?.Id, IsFallbackModelInstalled);
     public string DictationModelRowTitle => IsDictationHosted ? "Fallback model" : "Dictation model";
-    public string DictationModelHelp =>
-        $"Used on this PC if {DictationProviders.Label(SelectedDictationProvider?.Id)} transcription fails.";
+    public string DictationModelHelp => IsFallbackModelInstalled
+        ? $"Used on this PC if {DictationProviders.Label(SelectedDictationProvider?.Id)} transcription fails."
+        : "Not downloaded, so there is no fallback. Download it in Models.";
+
+    /// <summary>Whether the selected local model can take over when the hosted provider fails.</summary>
+    private bool IsFallbackModelInstalled =>
+        TranscriptionModelCatalog.Models.FirstOrDefault(model => model.DisplayName == SelectedDictationModel) is { } model &&
+        TranscriptionModelReadiness.IsVerified(model);
+
+    partial void OnSelectedDictationModelChanged(string value)
+    {
+        OnPropertyChanged(nameof(DictationDisclosure));
+        OnPropertyChanged(nameof(DictationModelHelp));
+    }
     // ─── Connect OpenRouter (browser sign-in, as on macOS) ───────────────────────────────────
     // Approving access in the browser gives muesli its own API key, stored where a pasted key
     // goes, so meeting summaries and dictation both use it.
@@ -1055,7 +1081,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         try
         {
             var key = await new OpenRouterAuthFlow().SignInAsync(
-                uri => _ = global::Windows.System.Launcher.LaunchUriAsync(uri), _openRouterSignIn.Token);
+                uri => global::Windows.System.Launcher.LaunchUriAsync(uri).AsTask(), _openRouterSignIn.Token);
             _pendingText.Remove(nameof(OpenRouterApiKey));
             _settingsContext.SaveProviderKey(SettingsStore.OpenRouterSecretKey, key);
             Untracked(() => OpenRouterApiKey = key);
