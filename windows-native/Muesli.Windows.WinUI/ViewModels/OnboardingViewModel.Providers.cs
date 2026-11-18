@@ -78,6 +78,20 @@ public partial class OnboardingViewModel
         _ => ""
     };
 
+    /// <summary>
+    /// Ends a browser sign-in that is still waiting when the step is left or setup closes. Its
+    /// local callback listener would otherwise stay up for minutes, and a late approval could
+    /// save a credential into a view model that is no longer shown.
+    /// </summary>
+    private void CancelProviderSignIns()
+    {
+        foreach (var signIn in new[] { _openRouterSignIn, _chatGptSignIn })
+        {
+            try { signIn?.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
     /// <summary>Shows the controls of the selected provider with what is already saved for it.</summary>
     private void RefreshProviderSetup()
     {

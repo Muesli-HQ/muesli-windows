@@ -324,6 +324,9 @@ public sealed class WinUiDictationContext : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         StopTimers();
         _operationCancellation?.Cancel();
+        // Closes the provider's socket or request first; the coordinator waits for an in-flight
+        // transcription when it is disposed, and would otherwise wait out the provider's timeout.
+        ReleaseHostedSession();
         _hotkey.Dispose();
         _coordinator.LevelChanged -= OnRecordingLevelChanged;
         _coordinator.Dispose();

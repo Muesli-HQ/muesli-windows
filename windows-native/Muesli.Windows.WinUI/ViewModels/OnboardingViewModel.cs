@@ -1382,6 +1382,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     /// </summary>
     private void CancelActiveOperations()
     {
+        CancelProviderSignIns();
         if (_activeModelOperation is { Live: true } active)
         {
             _liveLifecycle.Cancel(active.Id);
