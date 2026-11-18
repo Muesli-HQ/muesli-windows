@@ -651,7 +651,9 @@ public sealed class HostedProviderTests
         {
             opened = uri;
             // Stands in for the browser: OpenRouter redirects it to the loopback callback address.
-            var callback = Uri.UnescapeDataString(uri.Query.Split("callback_url=")[1].Split('&')[0]);
+            var callback = Uri.UnescapeDataString(uri.Query.Split("callback_url=")[1].Split('&')[0])
+                // The listener is IPv4 only; going straight to it avoids a slow failed attempt on ::1 first.
+                .Replace("localhost", "127.0.0.1");
             _ = Task.Run(async () =>
             {
                 using var browser = new HttpClient();
@@ -688,7 +690,9 @@ public sealed class HostedProviderTests
     {
         static Func<Uri, Task<bool>> Browser(string query) => uri =>
         {
-            var callback = Uri.UnescapeDataString(uri.Query.Split("callback_url=")[1].Split('&')[0]);
+            var callback = Uri.UnescapeDataString(uri.Query.Split("callback_url=")[1].Split('&')[0])
+                // The listener is IPv4 only; going straight to it avoids a slow failed attempt on ::1 first.
+                .Replace("localhost", "127.0.0.1");
             _ = Task.Run(async () =>
             {
                 using var browser = new HttpClient();
@@ -733,6 +737,32 @@ public sealed class HostedProviderTests
                     .ExchangeAsync("code", "verifier", CancellationToken.None));
             Assert.Contains("invalid response", invalid.Message, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public async Task TheOpenRouterCallbackLineIsReadInFullWhenItArrivesInPieces()
+    {
+        const string path = "/muesli/openrouter/oauth/secret";
+        var pieces = new ChunkedStream($"GET {path}?co", "de=abc", "123 HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        var line = await OpenRouterAuthFlow.ReadRequestLineAsync(pieces, CancellationToken.None);
+        Assert.Equal(
+            new OpenRouterAuthFlow.Callback(OpenRouterAuthFlow.CallbackKind.AuthorizationCode, "abc123"),
+            OpenRouterAuthFlow.ParseCallback(line, path));
+
+        // A connection that closes early or never sends a line end still returns what arrived.
+        Assert.Equal("GET /x", await OpenRouterAuthFlow.ReadRequestLineAsync(new ChunkedStream("GET /x"), CancellationToken.None));
+        var endless = new ChunkedStream(Enumerable.Repeat(new string('a', 4096), 10).ToArray());
+        Assert.InRange((await OpenRouterAuthFlow.ReadRequestLineAsync(endless, CancellationToken.None)).Length, 16 * 1024, 20 * 1024);
+    }
+
+    [Fact]
+    public async Task ChatGptSignInFailsAtOnceWhenNoBrowserCouldBeOpened()
+    {
+        var auth = new ChatGptAuthManager(new InMemorySecretStore(), new HttpClient(new RecordingHandler(HttpStatusCode.OK, "{}")));
+        var error = await Assert.ThrowsAsync<ChatGptAuthException>(
+            () => auth.SignInAsync(_ => Task.FromResult(false)).WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Contains("Could not open the browser", error.Message, StringComparison.Ordinal);
+        Assert.False(auth.IsSignedIn);
     }
 
     // ─── Fakes ───────────────────────────────────────────────────────────────────────────────
@@ -825,6 +855,30 @@ public sealed class HostedProviderTests
         }
 
         public void Dispose() => Abort();
+    }
+
+    /// <summary>Hands out one piece per read, as a socket does when a request arrives in several packets.</summary>
+    private sealed class ChunkedStream(params string[] pieces) : Stream
+    {
+        private readonly Queue<byte[]> _pieces = new(pieces.Select(Encoding.ASCII.GetBytes));
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (!_pieces.TryDequeue(out var piece)) return ValueTask.FromResult(0);
+            piece.CopyTo(buffer);
+            return ValueTask.FromResult(piece.Length);
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class TempWav : IDisposable

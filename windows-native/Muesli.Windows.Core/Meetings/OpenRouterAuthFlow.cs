@@ -180,9 +180,7 @@ public sealed class OpenRouterAuthFlow(HttpClient? http = null)
         {
             using var client = await listener.AcceptTcpClientAsync(token).ConfigureAwait(false);
             await using var stream = client.GetStream();
-            var buffer = new byte[8192];
-            var read = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
-            var callback = ParseCallback(Encoding.ASCII.GetString(buffer, 0, read), path);
+            var callback = ParseCallback(await ReadRequestLineAsync(stream, token).ConfigureAwait(false), path);
             switch (callback.Kind)
             {
                 case CallbackKind.AuthorizationCode:
@@ -203,6 +201,26 @@ public sealed class OpenRouterAuthFlow(HttpClient? http = null)
                     throw new OpenRouterAuthException("Received an invalid OpenRouter sign-in callback");
             }
         }
+    }
+
+    /// <summary>
+    /// Reads until the request line is complete. One read can return part of it when the browser's
+    /// request arrives in pieces, and a partial line would be judged an invalid callback.
+    /// </summary>
+    internal static async Task<string> ReadRequestLineAsync(System.IO.Stream stream, CancellationToken token)
+    {
+        const int limit = 16 * 1024;
+        var buffer = new byte[4096];
+        var received = new StringBuilder();
+        while (received.Length < limit)
+        {
+            var read = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
+            if (read == 0) break;
+            received.Append(Encoding.ASCII.GetString(buffer, 0, read));
+            if (received.ToString().Contains('\n')) break;
+        }
+
+        return received.ToString();
     }
 
     private static string Sanitize(string? reason)

@@ -153,7 +153,7 @@ public partial class OnboardingViewModel
         string? error = null;
         try
         {
-            await auth.SignInAsync(uri => _ = global::Windows.System.Launcher.LaunchUriAsync(uri), _chatGptSignIn.Token);
+            await auth.SignInAsync(uri => global::Windows.System.Launcher.LaunchUriAsync(uri).AsTask(), _chatGptSignIn.Token);
         }
         catch (OperationCanceledException) { }
         catch (ChatGptAuthException exception) { error = exception.Message; }

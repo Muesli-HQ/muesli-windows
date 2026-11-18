@@ -62,6 +62,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _computerUse.Changed -= OnComputerUseChanged;
+        // Its local callback listener would otherwise outlive the page, and a late approval would
+        // save a key from a view model that is gone.
+        try { _openRouterSignIn?.Cancel(); }
+        catch (ObjectDisposedException) { }
         _debounce?.Cancel();
         FlushPendingEdits();
     }
@@ -946,7 +950,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         string? error = null;
         try
         {
-            await auth.SignInAsync(uri => _ = global::Windows.System.Launcher.LaunchUriAsync(uri), _chatGptSignIn.Token);
+            await auth.SignInAsync(uri => global::Windows.System.Launcher.LaunchUriAsync(uri).AsTask(), _chatGptSignIn.Token);
             // As on macOS, a successful sign-in selects ChatGPT for notes; Save keeps the choice.
             SelectedSummaryProvider = SummaryProviders.FirstOrDefault(info => info.Id == SummaryProviderDisclosure.ChatGpt) ?? SelectedSummaryProvider;
         }
