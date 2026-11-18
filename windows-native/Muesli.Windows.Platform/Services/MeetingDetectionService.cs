@@ -134,13 +134,13 @@ public sealed class MeetingDetectionService : IDisposable
 
         // A recording follows its own window before whatever happens to be in the foreground.
         // Minimized meeting windows still own audio sessions; do not walk their UIA subtrees.
-        if (Volatile.Read(ref _recordingTarget) is { } target &&
-            ObserveWindow(target.WindowHandle) is { } tracked && tracked.ProcessId == target.ProcessId)
+        if (Volatile.Read(ref _recordingTarget) is { } target)
         {
+            // Recording liveness follows media ownership, never a still-open join URL. Falling
+            // through to general discovery here used to resurrect ended browser meetings.
             var presence = _signals.Capture(MeetingEvidenceStrength.Strong, target.Key, target.ProcessId,
-                isForeground: false, requiresMediaActivity: true, requiresDuplexAudio: !tracked.IsBrowser);
-            if (MeetingCandidateResolver.QualifiesAsMeeting(presence))
-                return CompleteScan(MeetingDetectionScan.Detected(target with { Presence = presence }, "recording source"), stopwatch, 1);
+                isForeground: false, requiresMediaActivity: true, requiresDuplexAudio: !IsBrowserProcess(target.ProcessName));
+            return CompleteScan(MeetingDetectionScan.ForRecordingSource(target, presence), stopwatch, 1);
         }
 
         var foreground = GetForegroundWindow();
@@ -637,6 +637,18 @@ public sealed record MeetingDetectionScan(
 {
     public long ElapsedMs { get; init; }
     public int CandidateCount { get; init; }
+    public bool IsReliable { get; init; } = true;
+    public string? TrackedSourceKey { get; init; }
+    public DateTimeOffset ObservedAt { get; init; } = DateTimeOffset.UtcNow;
+
+    public static MeetingDetectionScan ForRecordingSource(DetectedMeeting target, MeetingPresenceSnapshot presence)
+    {
+        var scan = presence.MediaProbeSucceeded && MeetingCandidateResolver.QualifiesAsMeeting(presence)
+            ? Detected(target with { Presence = presence }, "recording source")
+            : NotFound(presence.MediaProbeSucceeded ? "Recording source media is no longer active"
+                : "Recording source media could not be checked", 0);
+        return scan with { IsReliable = presence.MediaProbeSucceeded, TrackedSourceKey = target.Key };
+    }
 
     public static MeetingDetectionScan Detected(DetectedMeeting meeting, string source)
     {

@@ -70,6 +70,8 @@ public sealed class MeetingAutoStopTracker
     private DateTimeOffset? _lastTranscriptActivity;
     private bool _warningSuppressed;
     private bool _dismissed;
+    private DateTimeOffset? _lastObservation;
+    private bool _sourceMissing;
 
     public MeetingAutoStopTracker(
         MeetingRecordingStartOrigin origin,
@@ -86,13 +88,24 @@ public sealed class MeetingAutoStopTracker
     }
 
     public bool IsArmed => _origin == MeetingRecordingStartOrigin.DetectedMeeting && _sourceKey is not null;
+    public string? SourceKey => _sourceKey;
 
     public void NoteTranscriptActivity(DateTimeOffset now) => _lastTranscriptActivity = now;
     public void SuppressWarning() => _warningSuppressed = true;
     public void DismissWarning() => _dismissed = true;
 
-    public bool Observe(string? visibleSourceKey, DateTimeOffset now, string? visiblePlatform = null)
+    public bool Observe(string? visibleSourceKey, DateTimeOffset now, string? visiblePlatform = null,
+        bool observationReliable = true)
     {
+        _lastObservation = now;
+        _sourceMissing = false;
+        if (!observationReliable)
+        {
+            // A failed probe is unknown, never proof that the call ended.
+            _missingSince = null;
+            _missingObservations = 0;
+            return false;
+        }
         if (!IsArmed)
         {
             return false;
@@ -119,11 +132,17 @@ public sealed class MeetingAutoStopTracker
 
         _missingSince ??= now;
         _missingObservations++;
-        // Losing the source is a warning, never authorization to stop capture. Match macOS's
-        // 45-second speech quiet period and dismissal for the rest of this recording.
-        return !_dismissed && !_warningSuppressed &&
+        // Like the macOS controller, source loss arms a warning before stopping. Retain the
+        // longer Windows grace period and quiet guard to tolerate audio-device reconnections.
+        _sourceMissing = true;
+        return CanStopAfterWarning(now);
+    }
+
+    /// <summary>Recheck at warning expiry; stale scans and explicit dismissal cannot stop capture.</summary>
+    public bool CanStopAfterWarning(DateTimeOffset now) =>
+               IsArmed && _sourceMissing && !_dismissed && !_warningSuppressed &&
+               _lastObservation is { } observed && now - observed <= TimeSpan.FromSeconds(10) &&
                (_lastTranscriptActivity is null || now - _lastTranscriptActivity >= TimeSpan.FromSeconds(45)) &&
                _missingObservations >= _minimumMissingObservations &&
-               now - _missingSince >= _gracePeriod;
-    }
+               _missingSince is { } missing && now - missing >= _gracePeriod;
 }

@@ -164,7 +164,7 @@ public sealed class MeetingBehaviorParityTests
     }
 
     [Fact]
-    public void LostSignalNotificationStopsOnlyOnAnExplicitUserAction()
+    public void LostSignalNotificationOffersStopWithoutMeetingJoinActions()
     {
         var request = new MeetingNotificationRequest("lost", MeetingNotificationKind.SignalLost,
             "Meeting signal lost", "Recording continues", "Meeting", "", "", "", "Stop Transcribing", null);

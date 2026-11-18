@@ -71,6 +71,8 @@ public partial class App : Application
     private string _lastMeetingTranscript = "";
     private string? _signalLossPromptId;
     private DateTimeOffset? _endSuggestionShownAt;
+    private bool _automaticEndWarning;
+    private bool _endWarningSourceMissing;
     private DispatcherTimer? _meetingEndMonitor;
     private bool _exiting;
     private readonly AppLogService _log = new();
@@ -250,9 +252,8 @@ public partial class App : Application
                 if (!string.IsNullOrWhiteSpace(_lastMeetingTranscript))
                 {
                     _autoStop?.NoteTranscriptActivity(DateTimeOffset.UtcNow);
-                    if (Meetings.IsSourceMissing)
+                    if (Meetings.IsSourceMissing && (!_automaticEndWarning || _endWarningSourceMissing))
                     {
-                        _autoStop?.SuppressWarning();
                         CloseMeetingEndSuggestion();
                     }
                 }
@@ -287,6 +288,7 @@ public partial class App : Application
         {
             _autoStop?.DismissWarning();
             Meetings.EndSuggestions.MarkOffered();
+            Meetings.EndSuggestions.DismissAutomaticStop();
             CloseMeetingEndSuggestion();
         };
         ComputerUse.Changed += (_, _) => Tray.Refresh();
@@ -300,11 +302,13 @@ public partial class App : Application
         {
             if (Meetings.IsRecording && !Meetings.IsBusy && _autoStop is { } tracker)
             {
+                if (scan.TrackedSourceKey != tracker.SourceKey) return;
                 if (Meetings.EndSuggestions.LastActivity is { } activity) tracker.NoteTranscriptActivity(activity);
-                var missing = tracker.Observe(scan.DetectedMeeting?.Key, DateTimeOffset.UtcNow,
-                    scan.DetectedMeeting?.Platform);
-                if (missing && !Meetings.IsSourceMissing) PresentMeetingEndSuggestion(sourceMissing: true);
-                else if (!missing && Meetings.IsSourceMissing)
+                var missing = tracker.Observe(scan.DetectedMeeting?.Key, scan.ObservedAt,
+                    observationReliable: scan.IsReliable);
+                if (missing && !_automaticEndWarning)
+                    PresentMeetingEndSuggestion(sourceMissing: true, automaticStop: true);
+                else if (!missing && _automaticEndWarning && _endWarningSourceMissing)
                 {
                     CloseMeetingEndSuggestion();
                 }
@@ -425,26 +429,57 @@ public partial class App : Application
             CloseMeetingEndSuggestion();
             return;
         }
-        if (_endSuggestionShownAt is { } shown && Meetings.EndSuggestions.LastActivity is { } activity && activity > shown)
+        if ((!_automaticEndWarning || _endWarningSourceMissing) && _endSuggestionShownAt is { } shown &&
+            Meetings.EndSuggestions.LastActivity is { } activity && activity > shown)
             CloseMeetingEndSuggestion();
+        if (_automaticEndWarning && !CanAutomaticallyEndMeeting(_endWarningSourceMissing, DateTimeOffset.UtcNow))
+            CloseMeetingEndSuggestion();
+        if (_automaticEndWarning) return;
+        if (CanAutomaticallyEndMeeting(sourceMissing: false, DateTimeOffset.UtcNow))
+        {
+            PresentMeetingEndSuggestion(sourceMissing: false, automaticStop: true);
+            return;
+        }
         if (Meetings.EndSuggestions.ShouldSuggest(DateTimeOffset.UtcNow)) PresentMeetingEndSuggestion(sourceMissing: false);
+    }
+
+    private bool CanAutomaticallyEndMeeting(bool sourceMissing, DateTimeOffset now)
+    {
+        if (!Meetings.IsRecording || Meetings.IsBusy || Meetings.EndSuggestions.AutomaticStopDismissed) return false;
+        if (Meetings.EndSuggestions.LastActivity is { } activity) _autoStop?.NoteTranscriptActivity(activity);
+        if (sourceMissing) return _autoStop?.CanStopAfterWarning(now) == true;
+        // A broken capture path must be repaired, not interpreted as five minutes of silence.
+        var capture = Meetings.CaptureSnapshot;
+        return capture.State == MeetingSessionState.Recording && capture.MicrophoneAvailable &&
+            capture.SystemAudioAvailable && Meetings.EndSuggestions.HasProlongedSilence(now);
     }
 
     private void CloseMeetingEndSuggestion()
     {
         if (_signalLossPromptId is not null) _meetingNotifications?.Close();
+        // Recovery cancels this warning, allowing a fresh countdown after a later loss. Explicit
+        // Keep recording is remembered separately for the rest of this recording.
+        if (_automaticEndWarning && _signalLossPromptId is { } promptId) _meetingNotifications?.Forget(promptId);
         _signalLossPromptId = null;
         _endSuggestionShownAt = null;
+        _automaticEndWarning = false;
+        _endWarningSourceMissing = false;
         Meetings.SetSourceMissing(false);
     }
 
-    private void PresentMeetingEndSuggestion(bool sourceMissing)
+    private void PresentMeetingEndSuggestion(bool sourceMissing, bool automaticStop = false)
     {
         if (Meetings.ActiveMeetingId is not { } id || _meetingNotifications is null ||
-            !Meetings.IsRecording || Meetings.IsBusy || !Meetings.EndSuggestions.CanOffer) return;
-        var request = MeetingNotificationRequestFactory.EndSuggestion(id, sourceMissing);
+            !Meetings.IsRecording || Meetings.IsBusy) return;
+        if (automaticStop ? !CanAutomaticallyEndMeeting(sourceMissing, DateTimeOffset.UtcNow)
+            : !Meetings.EndSuggestions.CanOffer) return;
+        CloseMeetingEndSuggestion();
+        var request = automaticStop ? MeetingNotificationRequestFactory.AutomaticEndWarning(id, sourceMissing)
+            : MeetingNotificationRequestFactory.EndSuggestion(id, sourceMissing);
         var promptId = request.PromptId;
         _signalLossPromptId = promptId;
+        _automaticEndWarning = automaticStop;
+        _endWarningSourceMissing = sourceMissing;
         var outcome = _meetingNotifications.Present(request, new MeetingNotificationCallbacks(
             OnAction: action =>
             {
@@ -455,14 +490,25 @@ public partial class App : Application
                 }
             },
             OnDismiss: () => { if (Meetings.ActiveMeetingId == id) Meetings.KeepRecording(); },
-            OnAutoDismiss: () => { if (Meetings.ActiveMeetingId == id) Meetings.KeepRecording(); }));
+            OnAutoDismiss: () =>
+            {
+                if (Meetings.ActiveMeetingId != id || _signalLossPromptId != promptId) return;
+                var shouldStop = automaticStop && CanAutomaticallyEndMeeting(sourceMissing, DateTimeOffset.UtcNow);
+                CloseMeetingEndSuggestion();
+                if (shouldStop)
+                {
+                    _log.Info($"Meeting automatically stopping after warning. reason={(sourceMissing ? "source-lost" : "five-minutes-silence")}");
+                    _ = StopDetectedMeetingAsync();
+                }
+            }));
         if (outcome is MeetingNotificationOutcome.MeetingEndingSuggested or MeetingNotificationOutcome.MeetingSignalLost)
         {
             Meetings.EndSuggestions.MarkOffered();
             _endSuggestionShownAt = DateTimeOffset.UtcNow;
-            Meetings.SetSourceMissing(sourceMissing);
+            Meetings.SetSourceMissing(automaticStop || sourceMissing);
+            if (automaticStop) _log.Info($"Meeting automatic-stop warning shown. reason={(sourceMissing ? "source-lost" : "five-minutes-silence")}; timeoutSeconds=30");
         }
-        else _signalLossPromptId = null;
+        else CloseMeetingEndSuggestion();
     }
 
     private async Task RequestExitAsync()

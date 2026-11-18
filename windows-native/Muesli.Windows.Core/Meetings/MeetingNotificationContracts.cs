@@ -114,7 +114,8 @@ public sealed record MeetingNotificationRequest(
     string? MeetingUrl,
     MeetingJoinDefaultAction DefaultAction = MeetingJoinDefaultActions.Fallback,
     double DismissAfterSeconds = MeetingNotificationPolicy.ActiveAutoDismissSeconds,
-    nint WindowHandle = 0)
+    nint WindowHandle = 0,
+    bool StopsRecordingOnTimeout = false)
 {
     public bool IsScheduled => Kind == MeetingNotificationKind.ScheduledUpcoming;
     public bool IsEndSuggestion => Kind is MeetingNotificationKind.SignalLost or MeetingNotificationKind.EndingSuggested;

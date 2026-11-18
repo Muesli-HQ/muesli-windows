@@ -171,4 +171,129 @@ public sealed class MeetingEndSuggestionTests
         Assert.False(tracker.Observe(null, Start.AddSeconds(125)));
         Assert.True(tracker.Observe(null, Start.AddSeconds(146)));
     }
+
+    [Fact]
+    public void FiveMinutesOfSilenceDoesNotNeedClosingWordsOrAnUndismissedAdvisory()
+    {
+        var tracker = Tracker();
+        Say(tracker, "We will discuss the budget tomorrow.");
+        tracker.MarkOffered(); // An earlier advisory timed out, without an explicit Keep recording.
+        Assert.False(tracker.HasProlongedSilence(Quiet(tracker, 299)));
+        Assert.True(tracker.HasProlongedSilence(Quiet(tracker, 300)));
+        Assert.True(tracker.HasProlongedSilence(Quiet(tracker, 7200)));
+    }
+
+    [Fact]
+    public void ARecordingThatNeverContainsSpeechStillWarnsAfterFiveMinutes()
+    {
+        var tracker = Tracker();
+        tracker.ObserveAudio(Silence, Start);
+        Assert.True(tracker.HasProlongedSilence(Quiet(tracker, 300, Start)));
+    }
+
+    [Fact]
+    public void SilenceWarningCancelsOnSoundAndRequiresFiveNewQuietMinutes()
+    {
+        var tracker = Tracker();
+        Say(tracker, "Normal conversation.");
+        Assert.True(tracker.HasProlongedSilence(Quiet(tracker, 300)));
+        var resumed = Closing.AddSeconds(315);
+        tracker.ObserveAudio(Sound, resumed);
+        Assert.False(tracker.HasProlongedSilence(Quiet(tracker, 30, resumed)));
+        Assert.True(tracker.HasProlongedSilence(Quiet(tracker, 300, resumed)));
+    }
+
+    [Fact]
+    public void StoppedCaptureIsNotSilenceButAStuckDecoderCannotKeepQuietCaptureRunningForever()
+    {
+        var tracker = Tracker();
+        Say(tracker, "Normal conversation.");
+        var warned = Quiet(tracker, 300);
+        Assert.True(tracker.HasProlongedSilence(warned));
+        Assert.False(tracker.HasProlongedSilence(warned.AddSeconds(30)));
+        tracker.ObserveAudio(Silence, warned.AddSeconds(30));
+        Assert.False(tracker.HasProlongedSilence(warned.AddSeconds(30)));
+        tracker.ObserveTranscript(new([], "Still speaking", "", 0, 0, 0, 0), warned.AddSeconds(31));
+        Assert.True(tracker.HasProlongedSilence(Quiet(tracker, 600, warned.AddSeconds(31))));
+    }
+
+    [Fact]
+    public void KeepRecordingDisablesAutomaticStopAcrossPauseAndResumeButNotANewRecording()
+    {
+        var tracker = Tracker();
+        Say(tracker, "Normal conversation.");
+        tracker.DismissAutomaticStop();
+        Assert.False(tracker.HasProlongedSilence(Quiet(tracker, 7200)));
+        tracker.BeginCapture(Closing.AddHours(3), newRecording: false);
+        Assert.True(tracker.AutomaticStopDismissed);
+        tracker.BeginCapture(Closing.AddHours(4), newRecording: true);
+        Assert.False(tracker.AutomaticStopDismissed);
+    }
+
+    [Fact]
+    public void LostSourceTimeoutRequiresFreshReliableEvidenceAndCancelsOnRecovery()
+    {
+        var tracker = new MeetingAutoStopTracker(MeetingRecordingStartOrigin.DetectedMeeting, "zoom");
+        tracker.Observe("zoom", Start);
+        for (var second = 3; second <= 63; second += 3) tracker.Observe(null, Start.AddSeconds(second));
+        Assert.True(tracker.CanStopAfterWarning(Start.AddSeconds(63)));
+        Assert.False(tracker.CanStopAfterWarning(Start.AddSeconds(94))); // No scans during the countdown.
+        Assert.False(tracker.Observe(null, Start.AddSeconds(95), observationReliable: false));
+        Assert.False(tracker.CanStopAfterWarning(Start.AddSeconds(95)));
+        Assert.False(tracker.Observe(null, Start.AddSeconds(98))); // New grace period.
+        Assert.False(tracker.Observe("zoom", Start.AddSeconds(101)));
+        Assert.False(tracker.CanStopAfterWarning(Start.AddSeconds(101)));
+        for (var second = 104; second <= 167; second += 3) tracker.Observe(null, Start.AddSeconds(second));
+        Assert.True(tracker.CanStopAfterWarning(Start.AddSeconds(167)));
+        tracker.DismissWarning();
+        Assert.False(tracker.CanStopAfterWarning(Start.AddSeconds(168)));
+    }
+
+    [Fact]
+    public void FreshSpeechAtCountdownExpiryPreventsSourceLossStop()
+    {
+        var tracker = new MeetingAutoStopTracker(MeetingRecordingStartOrigin.DetectedMeeting, "zoom");
+        tracker.Observe("zoom", Start);
+        for (var second = 3; second <= 93; second += 3) tracker.Observe(null, Start.AddSeconds(second));
+        Assert.True(tracker.CanStopAfterWarning(Start.AddSeconds(93)));
+        tracker.NoteTranscriptActivity(Start.AddSeconds(93));
+        Assert.False(tracker.CanStopAfterWarning(Start.AddSeconds(93)));
+    }
+
+    [Fact]
+    public void OpenMeetingPageDoesNotKeepAnEndedRecordingSourceAlive()
+    {
+        var source = new DetectedMeeting("Google Meet", "Room", "Room", "chrome",
+            "https://meet.google.com/abc-defg-hij", "meet-room", 123, MeetingEvidenceStrength.Strong);
+        var presence = new MeetingPresenceSnapshot(MeetingEvidenceStrength.Strong, false, false, source.Key,
+            RequiresMediaActivity: true);
+        var ended = MeetingDetectionScan.ForRecordingSource(source, presence);
+        Assert.False(ended.Found);
+        Assert.True(ended.IsReliable);
+        Assert.Equal(source.Key, ended.TrackedSourceKey);
+        Assert.False(MeetingDetectionScan.ForRecordingSource(source,
+            presence with { MicrophoneInUse = true }).Found); // Another app's microphone.
+        Assert.True(MeetingDetectionScan.ForRecordingSource(source,
+            presence with { CandidateMicrophoneInUse = true }).Found);
+        Assert.False(MeetingDetectionScan.ForRecordingSource(source,
+            presence with { MediaProbeSucceeded = false }).IsReliable);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AutomaticWarningIsExplicitAndSeparateFromTheOneTimeClosingAdvisory(bool sourceMissing)
+    {
+        var advisory = MeetingNotificationRequestFactory.EndSuggestion("session");
+        var automatic = MeetingNotificationRequestFactory.AutomaticEndWarning("session", sourceMissing);
+        var state = new MeetingNotificationSuppressionState();
+        state.SuppressForAuto(advisory.PromptId);
+        Assert.True(state.Evaluate(automatic, false, true, false).Show);
+        Assert.True(automatic.StopsRecordingOnTimeout);
+        Assert.Equal(30, automatic.DismissAfterSeconds);
+        Assert.Contains("Stops in 30s", automatic.Subtitle);
+        Assert.False(advisory.StopsRecordingOnTimeout);
+        state.SuppressForUser(automatic.PromptId);
+        Assert.False(state.Evaluate(automatic, false, true, false).Show);
+    }
 }

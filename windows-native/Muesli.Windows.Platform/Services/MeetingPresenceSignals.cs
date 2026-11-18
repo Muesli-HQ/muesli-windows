@@ -30,11 +30,12 @@ public sealed class MeetingPresenceSignals : IDisposable
     /// <summary>True when a process other than Muesli is actively capturing audio input.</summary>
     public bool IsMicrophoneInUseByAnotherProcess() => ActiveInputProcessIds().Count > 0;
 
-    private List<int> ActiveInputProcessIds() => ActiveAudioProcessIds(DataFlow.Capture);
+    private List<int> ActiveInputProcessIds() => ActiveAudioProcessIds(DataFlow.Capture, out _);
 
-    private List<int> ActiveAudioProcessIds(DataFlow flow)
+    private List<int> ActiveAudioProcessIds(DataFlow flow, out bool succeeded)
     {
         var active = new List<int>();
+        succeeded = false;
         if (_disposed) return active;
         try
         {
@@ -55,6 +56,7 @@ public sealed class MeetingPresenceSignals : IDisposable
                     }
                 }
             }
+            succeeded = true;
         }
         catch
         {
@@ -85,10 +87,13 @@ public sealed class MeetingPresenceSignals : IDisposable
     public MeetingPresenceSnapshot Capture(MeetingEvidenceStrength evidence, string candidateKey,
         int candidateProcessId, bool isForeground, bool requiresMediaActivity, bool requiresDuplexAudio = false)
     {
-        var active = ActiveInputProcessIds();
+        var active = ActiveAudioProcessIds(DataFlow.Capture, out var inputSucceeded);
+        var outputSucceeded = true;
+        var outputActive = requiresDuplexAudio && ActiveAudioProcessIds(DataFlow.Render, out outputSucceeded)
+            .Any(processId => RefersToSameApp(processId, candidateProcessId));
         return new(evidence, active.Count > 0, IsCameraInUse(), candidateKey, requiresMediaActivity,
             active.Any(processId => RefersToSameApp(processId, candidateProcessId)), isForeground, requiresDuplexAudio,
-            requiresDuplexAudio && ActiveAudioProcessIds(DataFlow.Render).Any(processId => RefersToSameApp(processId, candidateProcessId)));
+            outputActive, inputSucceeded && outputSucceeded);
     }
 
     private static bool RefersToSameApp(int inputProcessId, int candidateProcessId)

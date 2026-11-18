@@ -6,6 +6,8 @@ namespace Muesli.Windows.WinUI.Services;
 public sealed class WinUiMeetingDetectionService : IDisposable
 {
     private readonly MeetingDetectionService _detector = new();
+    private bool _enabled;
+    private bool _trackingRecording;
     public WinUiMeetingDetectionService()
     {
         _detector.MeetingDetected += (_, meeting) => MeetingDetected?.Invoke(this,
@@ -23,10 +25,22 @@ public sealed class WinUiMeetingDetectionService : IDisposable
     /// <summary>Raised when a confirmed meeting ends, so notification suppression can be forgotten.</summary>
     public event EventHandler<string>? MeetingEnded;
     public string Status { get; private set; } = "No current Windows meeting evidence.";
-    public void Start() => _detector.Start();
-    public void Stop() { _detector.Stop(); Status = "Meeting detection is off."; }
+    public void Start() { _enabled = true; _detector.Start(); }
+    public void Stop()
+    {
+        _enabled = false;
+        if (_trackingRecording) return;
+        _detector.Stop();
+        Status = "Meeting detection is off.";
+    }
     public void Dismiss(string? key) => _detector.DismissCandidate(key);
-    public void TrackRecording(DetectedMeeting? meeting) => _detector.TrackRecording(meeting);
+    public void TrackRecording(DetectedMeeting? meeting)
+    {
+        _trackingRecording = meeting is not null;
+        _detector.TrackRecording(meeting);
+        if (_trackingRecording || _enabled) _detector.Start();
+        else _detector.Stop();
+    }
     public void Dispose() => _detector.Dispose();
 }
 

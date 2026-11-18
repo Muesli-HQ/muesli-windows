@@ -10,6 +10,14 @@ public static class MeetingNotificationRequestFactory
         sourceMissing ? "Meeting no longer detected." : "Recording is still on.",
         "Meeting", "\uE7BA", "#3380FF", "M", "Stop & save", null, DismissAfterSeconds: 15);
 
+    public static MeetingNotificationRequest AutomaticEndWarning(string meetingId, bool sourceMissing) => new(
+        $"meeting-auto-end:{meetingId}",
+        sourceMissing ? MeetingNotificationKind.SignalLost : MeetingNotificationKind.EndingSuggested,
+        sourceMissing ? "Meeting ended?" : "No audio for 5 minutes",
+        "Stops in 30s unless dismissed",
+        "Meeting", "\uE7BA", "#3380FF", "M", "Stop & save", null,
+        DismissAfterSeconds: 30, StopsRecordingOnTimeout: true);
+
     /// <summary>
     /// An already-joined, detected meeting is transcribe-only: it never opens the meeting URL.
     /// </summary>
@@ -80,6 +88,8 @@ public static class MeetingNotificationRequestFactory
 
         return normalized switch
         {
+            "auto-ending" => new[] { AutomaticEndWarning("preview", sourceMissing: false) },
+            "auto-signal-lost" => new[] { AutomaticEndWarning("preview", sourceMissing: true) },
             "ending" => new[] { EndSuggestion("preview") },
             "signal-lost" => new[] { EndSuggestion("preview", sourceMissing: true) },
             "zoom" => new[] { zoom },

@@ -8,7 +8,7 @@ An active meeting has **Notes** and **Live** tabs. Notes is the initial selectio
 
 Ordinary meeting models also produce captions during recording: they do not require the optional streaming model. macOS rotates audio at speech boundaries, processes completed chunks, and flushes the last chunk on stop. Its capture pipeline includes neural echo cancellation. Streaming and final-transcript ownership vary by backend.
 
-Manual Quick Note starts open the meeting document in front. Accepting an automatically detected meeting can start with a background indicator. Losing a meeting's window or media signal does **not** authorize stopping capture. macOS waits for a missing-source grace period and a 45-second transcript quiet period, then warns that recording continues and offers an explicit stop action. Dismissing the warning keeps recording.
+Manual Quick Note starts open the meeting document in front. Accepting an automatically detected meeting can start with a background indicator. The current macOS reference automatically stops detected meetings after source loss and a warning timeout; explicit dismissal keeps recording. Windows follows that behavior with a 60-second missing-source grace period, a 45-second activity quiet guard, and a cancellable 30-second warning. All recordings also warn after five minutes of continuously observed silence and stop/save after 30 more seconds unless cancelled. See the 16 November follow-up below for safeguards and reference details.
 
 Typed notes inform summary and title generation. Discarding a recording with notes offers Keep Notes, Delete Draft, and Cancel. Keeping notes produces a notes-only meeting without inventing recognized speech.
 
@@ -24,7 +24,7 @@ Primary reference files:
 
 ## Windows flow and changes
 
-Windows meeting detection scans native windows and supported browser URLs, corroborates them with Windows microphone/camera evidence, and passes the observations through a shared candidate resolver. A confirmed candidate prompts the user; accepting starts the capture coordinator. The coordinator records microphone and system audio independently, journals recoverable sessions, and runs the final transcription pipeline when explicitly stopped. Process-targeted system capture is used when available; otherwise the existing endpoint-loopback fallback can include other system sounds. SQLite remains the authoritative Windows library.
+Windows meeting detection scans native windows and supported browser URLs, corroborates them with Windows microphone/camera evidence, and passes the observations through a shared candidate resolver. A confirmed candidate prompts the user; accepting starts the capture coordinator. The coordinator records microphone and system audio independently, journals recoverable sessions, and runs the same final transcription pipeline after a manual stop or an automatic-stop warning timeout. Process-targeted system capture is used when available; otherwise the existing endpoint-loopback fallback can include other system sounds. SQLite remains the authoritative Windows library.
 
 | Behavior | Before this update | Current implementation |
 |---|---|---|
@@ -53,6 +53,16 @@ Implementation entry points:
 - [MeetingCapturePolicies.cs](C:/Users/madha/projects/muesli/windows-native/Muesli.Windows.Core/Services/MeetingCapturePolicies.cs:91)
 
 The default-model preview uses the existing native Silero detector, with 0.5 seconds of trailing silence and a 15-second maximum speech segment. Silent input never reaches the preview recognizer. The small, pinned VAD model is prepared independently of the optional streaming recognizer; failure falls back to the earlier quiet-boundary chunks with a visible capture warning. A single decoder processes four queued chunks, and a slow recognizer can skip preview chunks without dropping retained audio. Stop flushes the last speech segment. Preview text never replaces the final transcript owned by the retained-audio pipeline. The existing unified streaming mode continues to own its final transcript and gap recovery; fallback preview text is not incorrectly checkpointed as that mode's authoritative transcript.
+
+## Meeting end detection follow-up — 16 November 2026
+
+The sister checkout at `C:\Workspace\muesli\muesli` differs from the older audit. Its `MeetingAutoStopPolicy.swift` enables automatic stopping for detected/scheduled/joined meetings, while `MuesliController.swift` uses a 20-second source-loss grace period followed by a 30-second warning; timeout stops recording and explicit dismissal keeps it running. `MeetingMonitor.swift` and `MeetingMediaSessionTracker.swift` use app/media attribution, stable meeting identity, and recovery handling. These policies are in the macOS application target, not the portable MuesliCore ABI.
+
+No other-app power assertion reader was found in this checkout. Its own `ProcessInfo.beginActivity` protects work from termination and allows idle sleep; it is not a meeting-end sensor. The Windows `powercfg /requests` experiment was denied by the OS under the normal user token, including outside the tool's restricted environment. Power-request monitoring is therefore not part of this change.
+
+The Windows log for 16 November showed an ending advisory at 12:50 and a manual stop at 14:43. Previously, a 15-second advisory timed out by calling Keep recording, permanently suppressing further suggestions. Closing-language recognition also required multiple English cues; hours of silence alone had no stop path.
+
+Windows now retains its longer source-loss grace period, follows only the recorded source's media activity while recording (a leftover join page cannot resurrect it), treats unreadable media probes as unknown, and rechecks fresh evidence at warning expiry. Monitoring stays active for a tracked recording when automatic start prompts are disabled. Recovery or resumed audio cancels the countdown. The user-approved fallback warns after five minutes of fresh, continuously quiet audio for manual and detected recordings, independent of closing phrases or a stalled transcript decoder; capture failures cannot qualify for this silence fallback. A 30-second visible countdown precedes Stop & save. Explicit Keep recording disables automatic stopping for that recording, including pause/resume. The older closing-phrase advisory remains separate and cannot suppress the fallback.
 
 ## Additional non-calendar parity work
 

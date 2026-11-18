@@ -3,8 +3,8 @@ using System.Text.RegularExpressions;
 namespace Muesli.Windows.Services;
 
 /// <summary>
-/// Advisory only: a short closing exchange followed by quiet can invite the user to finish.
-/// Capture continues until an explicit user action. No transcript text leaves this policy.
+/// Closing exchanges are advisory. Sustained, freshly observed quiet can arm a cancellable
+/// automatic-stop warning independently of closing language. No transcript text leaves this policy.
 /// </summary>
 public sealed class MeetingEndSuggestionTracker
 {
@@ -14,12 +14,14 @@ public sealed class MeetingEndSuggestionTracker
     private DateTimeOffset _started;
     private DateTimeOffset? _lastAudio;
     private DateTimeOffset? _lastSound;
+    private DateTimeOffset? _lastAudioActivity;
     private DateTimeOffset? _lastActivity;
     private DateTimeOffset? _closingAt;
     private ClosingCue _cues;
     private string _partialMicrophone = "";
     private string _partialSystem = "";
     private bool _offered;
+    private bool _automaticStopDismissed;
     private long _dropped;
 
     [Flags]
@@ -43,11 +45,12 @@ public sealed class MeetingEndSuggestionTracker
         lock (_gate)
         {
             _started = now;
-            _lastAudio = _lastSound = _lastActivity = _closingAt = null;
+            _lastAudio = _lastSound = _lastAudioActivity = _lastActivity = _closingAt = null;
             _cues = ClosingCue.None;
             _partialMicrophone = _partialSystem = "";
             if (!newRecording) return;
             _offered = false;
+            _automaticStopDismissed = false;
             _dropped = 0;
             _seen.Clear();
             _seenOrder.Clear();
@@ -64,9 +67,10 @@ public sealed class MeetingEndSuggestionTracker
         lock (_gate)
         {
             // A stopped/recovering capture feed is not evidence of silence.
-            if (_lastAudio is null || now - _lastAudio > TimeSpan.FromSeconds(3)) _lastActivity = now;
+            if (_lastAudio is null || now - _lastAudio > TimeSpan.FromSeconds(3))
+                _lastAudioActivity = _lastActivity = now;
             _lastAudio = now;
-            if (audible) _lastSound = _lastActivity = now;
+            if (audible) _lastSound = _lastAudioActivity = _lastActivity = now;
         }
     }
 
@@ -121,8 +125,26 @@ public sealed class MeetingEndSuggestionTracker
         }
     }
 
-    // Shared with the source-loss prompt: ignoring, dismissing or acting on either surface means
-    // no more end suggestions for this recording, including after a pause or a brief reconnect.
+    public bool AutomaticStopDismissed { get { lock (_gate) return _automaticStopDismissed; } }
+
+    /// <summary>
+    /// Five minutes of observed quiet, even without closing phrases or a detected app. Fresh audio
+    /// is authoritative here: a stuck partial or delayed decoder result cannot prolong silence.
+    /// </summary>
+    public bool HasProlongedSilence(DateTimeOffset now)
+    {
+        lock (_gate)
+        {
+            return !_automaticStopDismissed &&
+                _lastAudio is { } audio && now - audio <= TimeSpan.FromSeconds(3) &&
+                _lastAudioActivity is { } activity && now - activity >= TimeSpan.FromMinutes(5) &&
+                now - _started >= TimeSpan.FromMinutes(5);
+        }
+    }
+
+    public void DismissAutomaticStop() { lock (_gate) _automaticStopDismissed = true; }
+
+    // The one-time closing-language advisory is independent of the automatic-stop warning.
     public void MarkOffered() { lock (_gate) _offered = true; }
 
     private void ClearClosing() { _closingAt = null; _cues = ClosingCue.None; }
