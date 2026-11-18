@@ -591,6 +591,8 @@ public sealed class WinUiDictationContext : IDisposable
         var deliveryClipboardMs = 0L;
         var persisted = false;
         var asrPath = "unavailable";
+        // What the latency log records when the status shown to the user carries provider text.
+        string? loggedOutcome = null;
         DictationLatencyMetrics? latency = null;
         _hotkeyState.Reset();
         _operationCancellation?.Dispose();
@@ -692,8 +694,10 @@ public sealed class WinUiDictationContext : IDisposable
         }
         catch (HostedDictationException exception)
         {
-            // The hosted provider failed and no local model is installed to fall back to.
+            // The hosted provider failed and no local model is installed to fall back to. The
+            // message can quote the provider, so the user sees it and the log gets only its category.
             Status = $"Dictation failed: {exception.Message}";
+            loggedOutcome = $"Dictation failed: hosted provider error ({exception.Category})";
         }
         finally
         {
@@ -707,7 +711,7 @@ public sealed class WinUiDictationContext : IDisposable
                 $"deliveryMs={deliveryMs}; deliveryFocusMs={deliveryFocusMs}; " +
                 $"deliveryInputMs={deliveryInputMs}; deliveryClipboardMs={deliveryClipboardMs}; " +
                 $"totalMs={totalStarted.ElapsedMilliseconds}; " +
-                $"outcome={Status}");
+                $"outcome={loggedOutcome ?? Status}");
             ReleaseHostedSession();
             _pasteTarget = IntPtr.Zero;
             _delivering = false;
