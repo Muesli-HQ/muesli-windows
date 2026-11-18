@@ -46,6 +46,10 @@ internal sealed class FloatingIndicatorWindow : Window
     private readonly DispatcherQueueTimer _waveTimer;
     private readonly DispatcherQueueTimer _collapseTimer;
     private readonly SubclassProc _subclassProc;
+    private readonly WinEventProc _foregroundChangedProc;
+    private readonly IntPtr _foregroundHook;
+    private bool _repairingZOrder;
+    private bool _zOrderCheckQueued;
     private Storyboard? _transcribingWiggle;
 
     private IndicatorSnapshot? _applied;
@@ -92,6 +96,12 @@ internal sealed class FloatingIndicatorWindow : Window
         _subclassProc = WindowSubclass;
         SetWindowSubclass(_hwnd, _subclassProc, 1, IntPtr.Zero);
         InvalidateRect(_hwnd, IntPtr.Zero, true);
+
+        // Delivered on this thread through its message loop; no hook code runs in other processes.
+        // Zero (hook refused) only loses this one trigger for the z-order check.
+        _foregroundChangedProc = (_, _, _, _, _, _, _) => QueueZOrderCheck();
+        _foregroundHook = SetWinEventHook(
+            EventSystemForeground, EventSystemForeground, IntPtr.Zero, _foregroundChangedProc, 0, 0, WinEventOutOfContext);
 
         var queue = DispatcherQueue.GetForCurrentThread();
         _waveTimer = queue.CreateTimer();
@@ -169,6 +179,13 @@ internal sealed class FloatingIndicatorWindow : Window
                     FillRect(wParam, ref client, GetStockObject(BlackBrush));
                 }
                 return (IntPtr)1;
+            case WmWindowPosChanged:
+                // Something reordered the pill. Its own repair is excluded, so this cannot loop.
+                if (!_repairingZOrder && (Marshal.ReadInt32(lParam, WindowPosFlagsOffset) & SwpNoZOrder) == 0)
+                {
+                    QueueZOrderCheck();
+                }
+                break;
             case WmDisplayChange:
             case WmDpiChanged:
                 DispatcherQueue.TryEnqueue(() => Guarded(() =>
@@ -179,6 +196,63 @@ internal sealed class FloatingIndicatorWindow : Window
         }
 
         return DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
+    // ─── Staying in front ────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Puts the pill back in front of ordinary windows when it has fallen behind one. Windows can
+    /// keep <c>WS_EX_TOPMOST</c> set on a window it orders below non-topmost windows, so the real
+    /// order is checked rather than the flag. Runs after each show, on each state change, when the
+    /// pill is reordered and when the foreground window changes; there is no polling. Order only:
+    /// never activates, moves, resizes or shows the window.
+    /// </summary>
+    private void KeepInFront()
+    {
+        if (_closed || !_shown) return;
+
+        var flaggedTopmost = (GetWindowLongPtr(_hwnd, GwlExStyle) & WsExTopmost) != 0;
+        var repair = FloatingIndicatorZOrder.RepairFor(
+            _shown, flaggedTopmost, flaggedTopmost && FloatingIndicatorZOrder.IsBehindOrdinaryWindow(WindowsAbove()));
+        if (repair == IndicatorZOrderRepair.None) return;
+
+        _repairingZOrder = true;
+        try
+        {
+            if (repair == IndicatorZOrderRepair.ResetTopmost)
+            {
+                SetWindowPos(_hwnd, HwndNoTopmost, 0, 0, 0, 0, FloatingIndicatorZOrder.RepairFlags);
+            }
+
+            SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, FloatingIndicatorZOrder.RepairFlags);
+        }
+        finally
+        {
+            _repairingZOrder = false;
+        }
+    }
+
+    /// <summary>Coalesces z-order triggers into one check on a fresh dispatcher turn.</summary>
+    private void QueueZOrderCheck()
+    {
+        if (_closed || !_shown || _zOrderCheckQueued) return;
+        _zOrderCheckQueued = DispatcherQueue.TryEnqueue(() =>
+        {
+            _zOrderCheckQueued = false;
+            Guarded(KeepInFront);
+        });
+    }
+
+    private IEnumerable<IndicatorWindowAbove> WindowsAbove()
+    {
+        for (var above = GetWindow(_hwnd, GwHwndPrev); above != IntPtr.Zero; above = GetWindow(above, GwHwndPrev))
+        {
+            var topmost = (GetWindowLongPtr(above, GwlExStyle) & WsExTopmost) != 0;
+            var visible = IsWindowVisible(above);
+            var cloaked = visible && !topmost &&
+                DwmGetWindowAttribute(above, DwmwaCloaked, out var cloak, sizeof(int)) == 0 && cloak != 0;
+            yield return new IndicatorWindowAbove(visible, topmost, cloaked);
+        }
     }
 
     // ─── Snapshot application ────────────────────────────────────────────────────────────────
@@ -240,6 +314,9 @@ internal sealed class FloatingIndicatorWindow : Window
             AppWindow.Show(false);
             _shown = true;
         }
+
+        // Every show and every state change is a moment the pill has something to say.
+        KeepInFront();
 
         var animate = _state is FloatingIndicatorState.Recording or FloatingIndicatorState.Preparing;
         if (animate && !_waveTimer.IsRunning) _waveTimer.Start();
@@ -844,6 +921,7 @@ internal sealed class FloatingIndicatorWindow : Window
         _waveTimer.Stop();
         _collapseTimer.Stop();
         _transcribingWiggle?.Stop();
+        if (_foregroundHook != IntPtr.Zero) UnhookWinEvent(_foregroundHook);
         RemoveWindowSubclass(_hwnd, _subclassProc, 1);
     }
 
@@ -872,6 +950,15 @@ internal sealed class FloatingIndicatorWindow : Window
     private const long WsExToolWindow = 0x00000080;
     private const long WsExNoActivate = 0x08000000;
     private const long WsExAppWindow = 0x00040000;
+    private const long WsExTopmost = 0x00000008;
+    private static readonly IntPtr HwndTopmost = new(-1);
+    private static readonly IntPtr HwndNoTopmost = new(-2);
+    private const uint GwHwndPrev = 3;
+    private const int DwmwaCloaked = 14;
+    private const uint WmWindowPosChanged = 0x0047;
+    private const int WindowPosFlagsOffset = 32; // WINDOWPOS.flags on x64
+    private const uint EventSystemForeground = 0x0003;
+    private const uint WinEventOutOfContext = 0x0000;
     private const int DwmwaWindowCornerPreference = 33;
     private const int DwmwaBorderColor = 34;
     private const int DwmwaTransitionsForceDisabled = 3;
@@ -955,6 +1042,24 @@ internal sealed class FloatingIndicatorWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool InvalidateRect(IntPtr hwnd, IntPtr rect, bool erase);
+
+    private delegate void WinEventProc(IntPtr hook, uint eventId, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetWinEventHook(
+        uint eventMin, uint eventMax, IntPtr module, WinEventProc proc, uint processId, uint threadId, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnhookWinEvent(IntPtr hook);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
