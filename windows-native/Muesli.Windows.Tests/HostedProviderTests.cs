@@ -646,6 +646,7 @@ public sealed class HostedProviderTests
         Uri? opened = null;
         string? strayStatus = null;
         string? approvedPage = null;
+        Task? browserDone = null;
 
         var key = await flow.SignInAsync(uri =>
         {
@@ -654,7 +655,7 @@ public sealed class HostedProviderTests
             var callback = Uri.UnescapeDataString(uri.Query.Split("callback_url=")[1].Split('&')[0])
                 // The listener is IPv4 only; going straight to it avoids a slow failed attempt on ::1 first.
                 .Replace("localhost", "127.0.0.1");
-            _ = Task.Run(async () =>
+            browserDone = Task.Run(async () =>
             {
                 using var browser = new HttpClient();
                 strayStatus = ((int)(await browser.GetAsync(new Uri(new Uri(callback), "/favicon.ico"))).StatusCode).ToString();
@@ -662,6 +663,8 @@ public sealed class HostedProviderTests
             });
             return Task.FromResult(true);
         }).WaitAsync(TimeSpan.FromSeconds(20));
+        // Sign-in returns once the key is exchanged, which can be before the browser has read its page.
+        await browserDone!.WaitAsync(TimeSpan.FromSeconds(20));
 
         Assert.Equal("sk-or-v1-new", key);
         Assert.Equal("404", strayStatus);
