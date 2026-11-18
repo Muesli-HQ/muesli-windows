@@ -28,20 +28,26 @@ public enum AudioOutputRouteKind
 public readonly record struct OutputDeviceDescription(int FormFactor, bool HasRender);
 
 /// <summary>
-/// Windows equivalent of macOS SoundController: Tink on dictation start, Purr on release,
-/// Glass when a model is ready. Lifecycle cues play only on confirmed speaker-like output.
+/// Windows equivalent of macOS SoundController: a generated wooden knock on dictation start
+/// (see DictationCueSynthesizer; the Windows file is only its fallback), Windows' Navigation
+/// Start click on release, and
+/// a chime when a model is ready. As on macOS, lifecycle cues are muted only on headphone-like
+/// output, where they would play straight into the ear.
 /// </summary>
 public sealed class SoundFeedbackService
 {
     private readonly ISystemSoundPlayer _player;
     private readonly Func<AudioOutputRouteKind> _routeKind;
+    private readonly Action<string>? _report;
 
     public SoundFeedbackService(
         ISystemSoundPlayer? player = null,
-        Func<AudioOutputRouteKind>? routeKind = null)
+        Func<AudioOutputRouteKind>? routeKind = null,
+        Action<string>? report = null)
     {
         _player = player ?? new WindowsSystemSoundPlayer();
         _routeKind = routeKind ?? DefaultRenderRouteInspector.Inspect;
+        _report = report;
     }
 
     public bool Enabled { get; set; } = true;
@@ -58,8 +64,15 @@ public sealed class SoundFeedbackService
 
     private void Play(SoundCue cue, DictationSessionKind sessionKind)
     {
-        if (!SoundFeedbackPolicy.ShouldPlay(cue, Enabled, _routeKind(), sessionKind))
+        var route = _routeKind();
+        if (!SoundFeedbackPolicy.ShouldPlay(cue, Enabled, route, sessionKind))
         {
+            // Setup and auxiliary sessions are silent by design; only a muted real dictation is
+            // worth a line, because "no cue" is otherwise indistinguishable from a broken one.
+            if (sessionKind == DictationSessionKind.Interactive)
+            {
+                _report?.Invoke($"Lifecycle sound {cue} muted. enabled={Enabled}; route={route}");
+            }
             return;
         }
 
@@ -125,17 +138,19 @@ public static class AudioOutputRouteClassifier
         };
     }
 
+    // Many Windows endpoints report no form factor at all; treating those as headphones
+    // silenced the cues on ordinary speakers.
     public static bool SuppressesLifecycleSounds(AudioOutputRouteKind kind) =>
-        kind != AudioOutputRouteKind.SpeakerLike;
+        kind == AudioOutputRouteKind.HeadphoneLike;
 }
 
 public static class WindowsSystemSoundLocator
 {
     public static readonly IReadOnlyList<string> DictationStartCandidates =
-        ["Windows Ding.wav", "ding.wav", "Windows Navigation Start.wav"];
+        ["Windows Ding.wav", "ding.wav"];
 
     public static readonly IReadOnlyList<string> DictationInsertCandidates =
-        ["Windows Notify.wav", "notify.wav", "Windows Balloon.wav"];
+        ["Windows Navigation Start.wav", "Windows Notify.wav", "notify.wav", "Windows Balloon.wav"];
 
     public static readonly IReadOnlyList<string> ModelReadyCandidates =
         ["chimes.wav", "Windows Notify Calendar.wav", "Windows Notify Email.wav"];

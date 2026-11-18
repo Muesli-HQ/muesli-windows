@@ -9,10 +9,7 @@ namespace Muesli.Windows.Tests;
 /// asserts the versioned payload, redaction, bounded output, timeout/cancellation, and descendant
 /// cleanup contracts on the active tree.
 /// </summary>
-[CollectionDefinition("PostMeetingHooks", DisableParallelization = true)]
-public sealed class PostMeetingHookCollection;
-
-[Collection("PostMeetingHooks")]
+[Collection(TimingSensitiveCollection.Name)]
 public sealed class PostMeetingHookTests
 {
     private static string HookExecutable => Path.Combine(

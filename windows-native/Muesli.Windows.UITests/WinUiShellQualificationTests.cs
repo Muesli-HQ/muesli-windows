@@ -18,17 +18,18 @@ public sealed class WinUiShellQualificationTests
     private static readonly (string Page, string Navigation, string Evidence)[] Destinations =
     [
         ("timeline", "NavTimeline", "TimelineRefreshButton"),
-        ("dictations", "NavDictations", "DictationRecordButton"),
-        ("meetings", "NavMeetings", "QuickNoteButton"),
         // P7-06 moved the three unlabelled share-image glyph buttons onto the Share split
         // button's menu, so InsightsPreviewShareButton now lives in a flyout popup and is only
         // realized while that menu is open. The split button itself is the always-present,
-        // Insights-only control, so it is the page sentinel.
-        ("insights", "NavInsights", "InsightsShareButton"),
+        // Insights-only control, so it is the page sentinel. Insights is not a sidebar
+        // destination (macOS parity): it opens from a Timeline stat card, so it follows Timeline.
+        ("insights", "TimelineStatWords", "InsightsShareButton"),
+        ("dictations", "NavDictations", "DictationRecordButton"),
+        ("meetings", "NavMeetings", "QuickNoteButton"),
         ("dictionary", "NavDictionary", "DictionaryAddButton"),
         ("models", "NavModels", "ModelsRefreshButton"),
         ("shortcuts", "NavShortcuts", "ChangePushToTalkButton"),
-        ("settings", "NavSettings", "SettingsSaveButton"),
+        ("settings", "NavSettings", "SettingsSectionPicker"),
         // Prompt 7 moved the raw diagnostics dump into a collapsed Expander ("keep technical
         // diagnostics accessible but secondary"), and a collapsed Expander keeps its content out
         // of the UIA tree, so RuntimeDiagnosticsText is not realized on arrival. The diagnostics
@@ -94,7 +95,6 @@ public sealed class WinUiShellQualificationTests
                     observedDpiScale = session.CurrentDpiScale,
                     highContrast = session.HighContrastAutomationAvailable,
                     highContrastNote = "Not exercised: this harness does not change the interactive desktop contrast theme.",
-                    referenceDirectory = "docs/ui-reference/macos-current-2026-08-27",
                     artifactPolicy = "artifacts/ui-automation"
                 }, new JsonSerializerOptions { WriteIndented = true }));
 
@@ -110,7 +110,11 @@ public sealed class WinUiShellQualificationTests
             session.RequireAutomationId("DictionarySuggestionList", mustBeOnscreen: true);
             session.CaptureReference("winui-populated-dictionary", "dictionary", "DictionaryEntryList");
 
-            session.NavigateTo("insights", "NavInsights", "InsightsHeroCard");
+            session.NavigateTo("timeline", "NavTimeline", "TimelineRefreshButton");
+
+            // Insights is not a sidebar destination (macOS parity); the Timeline stat cards open it.
+
+            session.NavigateTo("insights", "TimelineStatWords", "InsightsHeroCard");
             session.RequirePageSentinel("insights", "InsightsOverviewCard");
             session.CaptureReference("winui-populated-insights-overview", "insights", "InsightsHeroCard");
             // SelectorBar exposes its selectable child item through UIA, while the container is
@@ -167,7 +171,6 @@ public sealed class WinUiShellQualificationTests
         session.NavigateTo("settings", "NavSettings", "SettingsUserName");
         session.SelectAutomationId("SettingsAppearanceTab");
         session.SelectComboBoxItem("ThemePicker", theme);
-        session.SelectAutomationId("SettingsSaveButton");
 
         session.NavigateTo("timeline", "NavTimeline", "TimelineList");
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-timeline", "timeline", "TimelineList");
@@ -183,7 +186,11 @@ public sealed class WinUiShellQualificationTests
         session.RequireAutomationId("DictionarySuggestionList", mustBeOnscreen: true);
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-dictionary", "dictionary", "DictionaryEntryList");
 
-        session.NavigateTo("insights", "NavInsights", "InsightsHeroCard");
+        session.NavigateTo("timeline", "NavTimeline", "TimelineRefreshButton");
+
+        // Insights is not a sidebar destination (macOS parity); the Timeline stat cards open it.
+
+        session.NavigateTo("insights", "TimelineStatWords", "InsightsHeroCard");
         session.RequirePageSentinel("insights", "InsightsOverviewCard");
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-insights-overview", "insights", "InsightsHeroCard");
         session.RequirePageSentinel("insights", "InsightsHeatmap");
@@ -234,7 +241,7 @@ public sealed class WinUiShellQualificationTests
             // stay collapsed rather than showing controls that would act on a session that does
             // not exist, or listing recoverable audio that was never recorded.
             session.RequireAbsentAutomationId(
-                "ActiveMeetingPanel",
+                "ActiveMeetingBanner",
                 "no capture or import is running on an empty profile.");
             session.RequireAbsentAutomationId(
                 "MeetingRecoveryPanel",
@@ -268,7 +275,9 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.Launch();
         session.Run(() =>
         {
-            session.NavigateTo("insights", "NavInsights", "InsightsShareButton");
+            session.NavigateTo("timeline", "NavTimeline", "TimelineRefreshButton");
+            // Insights is not a sidebar destination (macOS parity); the Timeline stat cards open it.
+            session.NavigateTo("insights", "TimelineStatWords", "InsightsShareButton");
 
             // The preview card only exists once a render succeeds; nothing is shown before then.
             session.RequireAbsentAutomationId(
@@ -344,7 +353,7 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.LaunchUnpackaged();
         session.Run(() =>
         {
-            session.NavigateTo("settings", "NavSettings", "SettingsSaveButton");
+            session.NavigateTo("settings", "NavSettings", "SettingsSectionPicker");
 
             // The MSIX startup task needs package identity, which the unpackaged shell does not
             // have. The toggle must go disabled and say why instead of silently doing nothing.
@@ -381,10 +390,9 @@ public sealed class WinUiShellQualificationTests
 
     private static double ApplyThemeAndMeasure(MuesliWinUiSession session, string theme, string slug)
     {
-        session.NavigateTo("settings", "NavSettings", "SettingsSaveButton");
+        session.NavigateTo("settings", "NavSettings", "SettingsSectionPicker");
         session.SelectAutomationId("SettingsAppearanceTab");
         session.SelectComboBoxItem("ThemePicker", theme);
-        session.SelectAutomationId("SettingsSaveButton");
 
         session.NavigateTo("timeline", "NavTimeline", "TimelineRefreshButton");
         return MeanLuminance(session.CaptureReference(slug, "timeline", "TimelineRefreshButton"));
@@ -422,7 +430,7 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.Launch();
         session.Run(() =>
         {
-            session.NavigateTo("settings", "NavSettings", "SettingsSaveButton");
+            session.NavigateTo("settings", "NavSettings", "SettingsSectionPicker");
 
             var toggle = session.RequireAutomationId("StartAtLoginToggle", mustBeOnscreen: true);
             Assert.True(
@@ -441,7 +449,8 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.LaunchOnboarding();
         session.Run(() =>
         {
-            var onboarding = session.RequireSecondaryWindow("OnboardingProgressBar");
+            // The setup window has no progress bar (macOS parity); its step dots and name field identify it.
+            var onboarding = session.RequireSecondaryWindow("OnboardingUserName");
             session.CaptureSecondaryWindow(onboarding, "winui-onboarding-first-run");
         });
     });
@@ -486,7 +495,7 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.LaunchUnpackaged();
         session.Run(() =>
         {
-            session.NavigateTo("settings", "NavSettings", "SettingsSaveButton");
+            session.NavigateTo("settings", "NavSettings", "SettingsSectionPicker");
 
             var start = new ProcessStartInfo
             {

@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -22,6 +23,12 @@ public sealed partial class TimelinePage : Page
     public TimelinePage()
     {
         InitializeComponent();
+        // Code-set colours and item templates resolve brushes once; redo them on a theme switch.
+        ActualThemeChanged += (_, _) =>
+        {
+            UpdateSortPill();
+            ThemeBrushes.Rerealize(TimelineList);
+        };
         ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
         Loaded += (_, _) =>
         {
@@ -56,22 +63,42 @@ public sealed partial class TimelinePage : Page
         return snippet == "No notes yet" ? "No transcript or notes yet" : snippet;
     }
 
-    /// <summary>macOS MeetingStatusDisplay colours: recording red, processing accent, completed green.</summary>
-    public static Brush StatusBrush(string status) => (Brush)Application.Current.Resources[status.ToLowerInvariant() switch
+    /// <summary>
+    /// macOS MeetingStatusDisplay: the label reads in the status text colour (destructiveText,
+    /// accentText, successText, warningText) on a 12% tint of the status fill colour.
+    /// </summary>
+    public static Brush StatusBrush(string status) => ThemeBrushes.Get(StatusKind(status) switch
     {
-        var s when s.Contains("record") => "MuesliErrorBrush",
-        var s when s.Contains("process") || s.Contains("transcrib") => "MuesliAccentBrush",
-        var s when s.Contains("fail") || s.Contains("attention") => "MuesliWarningBrush",
-        var s when s.Contains("complete") => "MuesliSuccessBrush",
+        "recording" => "MuesliDestructiveTextBrush",
+        "processing" => "MuesliAccentTextBrush",
+        "attention" => "MuesliWarningTextBrush",
+        "completed" => "MuesliSuccessTextBrush",
         _ => "MuesliTextTertiaryBrush"
-    }];
+    });
 
-    /// <summary>The status colour at 12%, the capsule's fill.</summary>
+    /// <summary>The status fill colour at 12%, the capsule's background.</summary>
     public static Brush StatusTint(string status)
     {
-        var color = StatusBrush(status) is SolidColorBrush solid ? solid.Color : Microsoft.UI.Colors.Gray;
+        var key = StatusKind(status) switch
+        {
+            "recording" => "MuesliRecordingBrush",
+            "processing" => "MuesliAccentBrush",
+            "attention" => "MuesliTranscribingBrush",
+            "completed" => "MuesliSuccessBrush",
+            _ => "MuesliTextTertiaryBrush"
+        };
+        var color = ThemeBrushes.Get(key) is SolidColorBrush solid ? solid.Color : Microsoft.UI.Colors.Gray;
         return new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x1F, color.R, color.G, color.B));
     }
+
+    private static string StatusKind(string status) => status.ToLowerInvariant() switch
+    {
+        var s when s.Contains("record") => "recording",
+        var s when s.Contains("process") || s.Contains("transcrib") => "processing",
+        var s when s.Contains("fail") || s.Contains("attention") => "attention",
+        var s when s.Contains("complete") => "completed",
+        _ => "other"
+    };
 
     private void StatCard_Click(object sender, RoutedEventArgs e) =>
         (App.Window as MainWindow)?.ShellPage?.NavigateTo("insights");
@@ -96,10 +123,10 @@ public sealed partial class TimelinePage : Page
         OldestFirstItem.IsChecked = oldest;
         SortLabel.Text = "Oldest first";
         SortLabel.Visibility = oldest ? Visibility.Visible : Visibility.Collapsed;
-        var tone = (Brush)Application.Current.Resources[oldest ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush"];
+        var tone = ThemeBrushes.Get(oldest ? "MuesliAccentTextBrush" : "MuesliTextTertiaryBrush");
         SortIcon.Foreground = tone;
         SortLabel.Foreground = tone;
-        if (oldest) SortButton.Background = (Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
+        if (oldest) SortButton.Background = ThemeBrushes.Get("MuesliAccentMutedBrush");
         else SortButton.ClearValue(Control.BackgroundProperty);
     }
 
@@ -112,7 +139,7 @@ public sealed partial class TimelinePage : Page
         EmptyState.Visibility = ViewModel.HasEntries ? Visibility.Collapsed : Visibility.Visible;
         TimelineList.Visibility = ViewModel.HasEntries ? Visibility.Visible : Visibility.Collapsed;
 
-        EmptyStateTitle.Text = "No timeline activity yet";
+        EmptyStateTitle.Text = "No activity yet";
         EmptyStateBody.Text = "Saved dictations and completed meetings will appear here.";
     }
 

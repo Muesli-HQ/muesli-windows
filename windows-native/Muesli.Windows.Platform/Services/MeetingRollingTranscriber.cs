@@ -2,11 +2,19 @@ using System.Threading.Channels;
 
 namespace Muesli.Windows.Services;
 
-/// <summary>Live captions from the selected batch model; retained audio still owns the final transcript.</summary>
+/// <summary>
+/// Transcribes the meeting while it is being recorded, with the selected meeting model. As on
+/// macOS, these pieces are the final transcript: Stop only has to finish the last piece. Anything
+/// that could not be transcribed in time is recorded as a gap, and only those stretches are
+/// transcribed again from the retained audio.
+/// </summary>
 internal sealed class MeetingRollingTranscriber
 {
     private const int SampleRate = 16000;
     private const int ChunkSamples = 16 * SampleRate;
+
+    /// <summary>Pieces waiting for the model; beyond this a piece becomes a gap instead of growing memory.</summary>
+    internal const int QueuedChunkLimit = 16;
     private sealed class Buffer
     {
         public List<float> Samples { get; } = [];
@@ -21,27 +29,38 @@ internal sealed class MeetingRollingTranscriber
     private readonly object _gate = new();
     private readonly Dictionary<LiveTranscriptChannel, Buffer> _buffers = Enum.GetValues<LiveTranscriptChannel>()
         .ToDictionary(channel => channel, _ => new Buffer());
-    private readonly Channel<Chunk> _chunks = Channel.CreateBounded<Chunk>(new BoundedChannelOptions(4)
+    private readonly Channel<Chunk> _chunks = Channel.CreateBounded<Chunk>(new BoundedChannelOptions(QueuedChunkLimit)
     {
         SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait
     });
     private readonly List<LiveTranscriptSegment> _committed;
+    private readonly List<LiveTranscriptGap> _gaps;
     private readonly Task _worker;
     private long _dropped;
     private bool _finished;
     private bool _cancelled;
 
     public MeetingRollingTranscriber(Func<byte[], Task<TranscriptionResult>> decode,
-        IReadOnlyList<LiveTranscriptSegment>? prior = null, ILiveVad? vad = null)
+        IReadOnlyList<LiveTranscriptSegment>? prior = null, ILiveVad? vad = null,
+        IReadOnlyList<LiveTranscriptGap>? priorGaps = null)
     {
         _decode = decode;
         _vad = vad;
         _committed = prior?.ToList() ?? [];
+        _gaps = priorGaps?.ToList() ?? [];
         _worker = Task.Run(DecodeAsync);
     }
 
     public event EventHandler<LiveTranscriptSnapshot>? SnapshotChanged;
     public event EventHandler<Exception>? Failed;
+
+    /// <summary>Stretches of audio that were captured but not transcribed here.</summary>
+    public IReadOnlyList<LiveTranscriptGap> Gaps
+    {
+        get { lock (_gate) return _gaps.ToArray(); }
+    }
+
+    public long DroppedChunks => Interlocked.Read(ref _dropped);
 
     public void Feed(LivePcmSamplesEventArgs packet)
     {
@@ -51,6 +70,9 @@ internal sealed class MeetingRollingTranscriber
             var buffer = _buffers[packet.Channel];
             if (buffer.Next != packet.StartSample)
             {
+                // Audio buffered before a break in the stream was never handed to the model.
+                if (buffer.Samples.Count > 0)
+                    _gaps.Add(new LiveTranscriptGap(packet.Channel, buffer.Start, buffer.Start + buffer.Samples.Count, "stream-discontinuity"));
                 buffer.Samples.Clear();
                 buffer.Start = packet.StartSample;
                 _vad?.Reset(packet.Channel);
@@ -132,7 +154,10 @@ internal sealed class MeetingRollingTranscriber
 
     private void Enqueue(LiveTranscriptChannel channel, long start, float[] samples)
     {
-        if (!_chunks.Writer.TryWrite(new Chunk(channel, start, samples))) _dropped++;
+        if (_chunks.Writer.TryWrite(new Chunk(channel, start, samples))) return;
+        // The model is behind. Keep memory bounded and let Stop transcribe this stretch from the file.
+        Interlocked.Increment(ref _dropped);
+        _gaps.Add(new LiveTranscriptGap(channel, start, start + samples.Length, "transcription-backlog"));
     }
 
     private async Task DecodeAsync()
@@ -147,15 +172,39 @@ internal sealed class MeetingRollingTranscriber
                 lock (_gate)
                 {
                     if (_cancelled) continue;
-                    if (!string.IsNullOrWhiteSpace(result.Text))
-                        _committed.Add(new LiveTranscriptSegment($"batch_{Guid.NewGuid():N}", chunk.Channel,
-                            chunk.Start, chunk.Start + chunk.Samples.Length, result.Text.Trim()));
+                    if (!string.IsNullOrWhiteSpace(result.Text)) _committed.AddRange(Segments(chunk, result));
                     snapshot = new LiveTranscriptSnapshot(_committed.OrderBy(segment => segment.StartSample).ToArray(),
                         "", "", _chunks.Reader.Count, _dropped, 0, 0);
                 }
                 SnapshotChanged?.Invoke(this, snapshot);
             }
-            catch (Exception exception) { Failed?.Invoke(this, exception); }
+            catch (Exception exception)
+            {
+                lock (_gate)
+                    _gaps.Add(new LiveTranscriptGap(chunk.Channel, chunk.Start, chunk.Start + chunk.Samples.Length, "decode-failed"));
+                Failed?.Invoke(this, exception);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The model's own sentence timing inside a piece, so a 15-second piece with two speakers is
+    /// not one block when speakers are matched to it later. Falls back to the whole piece.
+    /// </summary>
+    private static IEnumerable<LiveTranscriptSegment> Segments(Chunk chunk, TranscriptionResult result)
+    {
+        var end = chunk.Start + chunk.Samples.Length;
+        var timed = result.Segments?.Where(segment => !string.IsNullOrWhiteSpace(segment.Text) && segment.EndMs > segment.StartMs).ToList();
+        if (timed is not { Count: > 1 })
+        {
+            yield return new LiveTranscriptSegment($"batch_{Guid.NewGuid():N}", chunk.Channel, chunk.Start, end, result.Text.Trim());
+            yield break;
+        }
+        foreach (var segment in timed)
+        {
+            var from = Math.Clamp(chunk.Start + segment.StartMs * (SampleRate / 1000L), chunk.Start, end);
+            var to = Math.Clamp(chunk.Start + segment.EndMs * (SampleRate / 1000L), from, end);
+            yield return new LiveTranscriptSegment($"batch_{Guid.NewGuid():N}", chunk.Channel, from, to, segment.Text.Trim());
         }
     }
 }

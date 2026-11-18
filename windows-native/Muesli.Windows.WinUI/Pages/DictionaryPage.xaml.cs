@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -147,7 +148,7 @@ public sealed partial class DictionaryPage : Page
         if (row.FindName("RowSave") is Button save) save.IsEnabled = canSave;
         if (row.FindName("RowSaveIcon") is FontIcon icon)
         {
-            icon.Foreground = (Brush)Application.Current.Resources[canSave ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush"];
+            icon.Foreground = ThemeBrushes.Get(canSave ? "MuesliAccentBrush" : "MuesliTextTertiaryBrush");
         }
     }
 

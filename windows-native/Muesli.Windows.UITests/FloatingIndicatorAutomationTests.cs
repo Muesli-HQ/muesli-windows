@@ -60,15 +60,13 @@ public sealed class FloatingIndicatorAutomationTests
             var handle = new IntPtr(window.Current.NativeWindowHandle);
             Assert.True(handle != IntPtr.Zero, "The indicator window must exist even while hidden.");
 
-            session.NavigateTo("settings", "NavSettings", "SettingsSaveButton");
+            session.NavigateTo("settings", "NavSettings", "SettingsSectionPicker");
             session.SelectAutomationId("SettingsAppearanceTab");
 
             ToggleFloatingIndicator(session, turnOn: true);
-            session.SelectAutomationId("SettingsSaveButton");
             WaitUntil(() => IsWindowVisible(handle), "Turning ShowFloatingIndicator on must show the pill.");
 
             ToggleFloatingIndicator(session, turnOn: false);
-            session.SelectAutomationId("SettingsSaveButton");
             WaitUntil(() => !IsWindowVisible(handle), "Turning ShowFloatingIndicator off must hide the pill.");
         });
     });

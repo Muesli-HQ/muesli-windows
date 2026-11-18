@@ -64,7 +64,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
         try
         {
-            _window = new FloatingIndicatorWindow(OnCommand, () => Volatile.Read(ref _amplitude), OnWindowFailure);
+            _window = new FloatingIndicatorWindow(OnCommand, LiveLevel, OnWindowFailure);
             _log.Info("Floating indicator ready (in-process).");
         }
         catch (Exception exception)
@@ -86,6 +86,16 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void OnRecordingLevel(object? sender, float peak) => Volatile.Write(ref _amplitude, Math.Clamp(peak, 0f, 1f));
 
+    /// <summary>
+    /// What the waveform draws, polled by the window's animation timer on the UI thread. A meeting
+    /// reads the capture level of both channels straight from the audio pipeline, so the bars move
+    /// with the microphone and the call audio whether or not live transcription is running.
+    /// </summary>
+    private float LiveLevel() =>
+        _owner != IndicatorOwnerKind.Meeting ? Volatile.Read(ref _amplitude)
+        : _meetingPaused ? 0f
+        : _meetings.CurrentLevel;
+
     private void UpdateState()
     {
         if (Volatile.Read(ref _disposed) != 0 || _window is null) return;
@@ -95,20 +105,14 @@ public sealed class WinUiIndicatorHost : IDisposable
         var owner = IndicatorOwnerKind.Dictation;
         var meetingPaused = false;
 
-        if (_meetings.IsRecording || _meetings.IsPaused)
+        if (FloatingIndicatorStateClassifier.ClassifyMeeting(
+                _meetings.IsRecording, _meetings.IsPaused, _meetings.IsStarting, _meetings.IsBusy) is { } meetingState)
         {
+            // Starting a meeting is Preparing; Transcribing is kept for stop, recovery and import.
+            // The waveform reads the capture level itself (LiveLevel), so nothing is copied here.
             owner = IndicatorOwnerKind.Meeting;
             meetingPaused = _meetings.IsPaused;
-            state = FloatingIndicatorState.Recording;
-            // Levels arrive with live-transcript snapshots only; a flat pill means live transcription is off.
-            Volatile.Write(ref _amplitude, meetingPaused
-                ? 0f
-                : (float)Math.Clamp(Math.Max(_meetings.MicrophoneLevel, _meetings.SystemLevel), 0, 1));
-        }
-        else if (_meetings.IsBusy)
-        {
-            owner = IndicatorOwnerKind.Meeting;
-            state = FloatingIndicatorState.Transcribing;
+            state = meetingState;
         }
         else if (_computerUse.IsListening)
         {
@@ -213,7 +217,7 @@ public sealed class WinUiIndicatorHost : IDisposable
             Owner = _owner,
             Visible = _state != FloatingIndicatorState.Idle || settings.ShowFloatingIndicator,
             HotkeyLabel = string.IsNullOrWhiteSpace(settings.Hotkey) ? "shortcut" : settings.Hotkey,
-            Message = ComposeMessage(_state, _dictation.Status ?? ""),
+            Message = ComposeMessage(_state, _dictation.Status ?? "", _owner == IndicatorOwnerKind.Meeting ? _meetings.ProcessingStage : null),
             RecordingColorHex = settings.RecordingColorHex,
             IndicatorStyle = settings.IndicatorStyle,
             MeetingPaused = _meetingPaused,
@@ -226,10 +230,11 @@ public sealed class WinUiIndicatorHost : IDisposable
         };
     }
 
-    private static string ComposeMessage(FloatingIndicatorState state, string status) =>
+    private static string ComposeMessage(FloatingIndicatorState state, string status, string? meetingStage) =>
         state switch
         {
-            FloatingIndicatorState.Transcribing => "Transcribing",
+            // A meeting names the step it is on after Stop, as the macOS pill does.
+            FloatingIndicatorState.Transcribing => string.IsNullOrWhiteSpace(meetingStage) ? "Transcribing" : meetingStage,
             FloatingIndicatorState.Success or FloatingIndicatorState.Error => status,
             _ => ""
         };
@@ -253,7 +258,7 @@ public sealed class WinUiIndicatorHost : IDisposable
     {
         try
         {
-            if (App.Window is MainWindow main) main.ShowDashboard("meetings");
+            if (App.Window is MainWindow main) main.ShowDashboard("recording");
             await _meetings.ConfirmAndDiscardAsync(App.Dialogs, !string.IsNullOrWhiteSpace(_meetings.ManualNotes));
         }
         catch (Exception exception)

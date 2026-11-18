@@ -240,7 +240,7 @@ public static class ExecutionProviderService
         var note = kind is { } value
             ? TranscriptionProviderPolicy.MeasurementNote(value)
             : streaming
-                ? "Measured: live streaming keeps CPU for now; see docs/WINDOWS_GPU_QUALIFICATION.md."
+                ? "Measured: live streaming keeps CPU for now."
                 : "Measured: automatic kept CPU for this architecture.";
         if (string.IsNullOrWhiteSpace(note))
         {

@@ -35,6 +35,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             transcriptionClient,
             _persistence,
             logService: logService);
+        _finalization.StageChanged += stage => ProcessingStageChanged?.Invoke(this, stage);
         _capture = new MeetingCaptureSession(_persistence, transcriptionClient, logService);
         _recovery = new MeetingRecoveryWorkflow(_persistence, logService);
         _capture.BindRepairHost(new MeetingCaptureRepairHost(
@@ -53,6 +54,11 @@ public sealed class MeetingRecordingCoordinator : IDisposable
         _capture.LevelChanged += (_, args) => LevelChanged?.Invoke(this, args);
         _capture.LiveTranscriptChanged += (_, args) => LiveTranscriptChanged?.Invoke(this, args);
         _capture.LiveTranscriptionFailed += (_, args) => LiveTranscriptionFailed?.Invoke(this, args);
+        _capture.FinishingTranscript += () =>
+        {
+            // Only a real stop shows a stage; a pause finishes its pieces quietly.
+            if (State == MeetingSessionState.Stopping) ProcessingStageChanged?.Invoke(this, MeetingProcessingStage.Transcribing);
+        };
     }
 
     public event EventHandler<MeetingSessionStateChangedEventArgs>? StateChanged;
@@ -60,12 +66,16 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     public event EventHandler<AudioLevelEventArgs>? LevelChanged;
     public event EventHandler<LiveTranscriptSnapshot>? LiveTranscriptChanged;
     public event EventHandler<Exception>? LiveTranscriptionFailed;
+    public event EventHandler<MeetingProcessingStage>? ProcessingStageChanged;
 
     public MeetingSessionState State => _stateMachine.State;
     public bool IsRecording => State is MeetingSessionState.Recording or MeetingSessionState.DegradedRecording;
     public bool IsBusy => State is MeetingSessionState.Preparing or MeetingSessionState.Stopping or MeetingSessionState.Finalizing;
     public PersistedMeeting? ResumedMeeting => _journal?.ResumedMeeting;
     public MeetingEndSuggestionTracker EndSuggestions => _capture.EndSuggestions;
+
+    /// <summary>Live capture levels; silent whenever nothing is being captured.</summary>
+    public MeetingLevelMeter Levels => _capture.Levels;
 
     public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverableSessions() =>
         _recovery.Discover(_journal?.SessionId);
@@ -202,6 +212,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             {
                 _journal = _journal with { RetainRecording = retainRecording };
             }
+            ProcessingStageChanged?.Invoke(this, MeetingProcessingStage.StoppingAudio);
             Transition(State == MeetingSessionState.RecoverableInterruption
                 ? MeetingSessionTrigger.FinalizeInterrupted : MeetingSessionTrigger.Stop, "user requested stop");
             StopHealthLoop();

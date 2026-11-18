@@ -38,6 +38,9 @@ public sealed class SingleInstanceCoordinator : IDisposable
     public static SingleInstanceCoordinator AcquireForCurrentUser()
     {
         var identity = WindowsIdentity.GetCurrent().User?.Value ?? Environment.UserName;
+        // Named objects are not scoped by package, so a development slot needs its own names or
+        // it would hand its launch to the running Muesli and exit.
+        if (Muesli.Windows.Core.Profiles.MuesliDevSlot.Current is { } slot) identity += "|" + slot;
         var suffix = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..20];
         var mutex = new Mutex(initiallyOwned: true, $"Local\\Muesli.Windows.UI.{suffix}", out var createdNew);
         return new SingleInstanceCoordinator(mutex, $"Muesli.Windows.Activation.{suffix}", createdNew);

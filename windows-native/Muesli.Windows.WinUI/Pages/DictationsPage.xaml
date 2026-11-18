@@ -10,6 +10,7 @@
     xmlns:vm="using:Muesli.Windows.WinUI.ViewModels"
     mc:Ignorable="d">
     <Page.Resources>
+        <ResourceDictionary>
         <Style x:Key="DictationRowContainerStyle" TargetType="ListViewItem">
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0" />
@@ -27,17 +28,42 @@
             one row the user is actually pointing at, where the destructive colour is the correct
             signal rather than the loudest thing in the list.
         -->
+        <!-- macOS row actions: 28×28 quiet targets with 12-pt glyphs. -->
         <Style x:Key="DictationRowActionStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
-            <Setter Property="Padding" Value="7,5" />
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
             <Setter Property="Foreground" Value="{ThemeResource MuesliTextTertiaryBrush}" />
             <Setter Property="VerticalAlignment" Value="Top" />
             <Setter Property="UseSystemFocusVisuals" Value="True" />
         </Style>
+        <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+        <!-- macOS rows hover with backgroundHover and are never drawn as selected. -->
+        <ResourceDictionary.ThemeDictionaries>
+            <ResourceDictionary x:Key="Default">
+                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#232528" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#232528" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="Transparent" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#232528" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#232528" />
+            </ResourceDictionary>
+            <ResourceDictionary x:Key="Light">
+                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#E8E8EC" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#E8E8EC" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="Transparent" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#E8E8EC" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#E8E8EC" />
+            </ResourceDictionary>
+            <ResourceDictionary x:Key="HighContrast" />
+        </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
     </Page.Resources>
 
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="20">
+            <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="16">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Text="Dictations" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
@@ -46,6 +72,7 @@
                                 Height="30" MinHeight="30" Padding="12,0" CornerRadius="6"
                                 VerticalAlignment="Center"
                                 Background="{x:Bind local:DictationsPage.RecordBackground(ViewModel.IsRecording), Mode=OneWay}"
+                            Foreground="{x:Bind local:DictationsPage.RecordForeground(ViewModel.IsRecording), Mode=OneWay}"
                                 Command="{x:Bind ViewModel.ToggleDictationCommand}"
                                 AutomationProperties.Name="Start or stop dashboard dictation"
                                 AutomationProperties.AutomationId="DictationRecordButton">
@@ -128,12 +155,12 @@
                 <Grid ColumnDefinitions="*,Auto" Margin="0,-4,0,-8">
                     <Button x:Name="SortButton" Grid.Column="1"
                             Style="{StaticResource MuesliGhostButtonStyle}"
-                            Padding="8,3" MinHeight="0" CornerRadius="12"
+                            Padding="8,3" MinHeight="0" MinWidth="0" CornerRadius="10"
                             ToolTipService.ToolTip="Sort"
                             AutomationProperties.Name="Sort dictations"
                             AutomationProperties.AutomationId="DictationsSort">
                         <StackPanel Orientation="Horizontal" Spacing="5">
-                            <FontIcon x:Name="SortIcon" Glyph="&#xE71C;" FontSize="12" />
+                            <FontIcon x:Name="SortIcon" Glyph="&#xE8CB;" FontSize="11" />
                             <TextBlock x:Name="SortLabel" Text="Oldest first" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" />
                         </StackPanel>
                         <Button.Flyout>
@@ -207,7 +234,7 @@
                                                                        Text="{x:Bind Text}"
                                                                        FontFamily="{StaticResource MuesliFontFamily}"
                                                                        FontSize="15"
-                                                                       LineHeight="21"
+                                                                       LineHeight="23"
                                                                        Foreground="{ThemeResource MuesliTextPrimaryBrush}"
                                                                        TextWrapping="Wrap"
                                                                        MaxLines="3"
@@ -245,7 +272,7 @@
                                                                         ToolTipService.ToolTip="Delete dictation"
                                                                         AutomationProperties.Name="Delete dictation"
                                                                         AutomationProperties.AutomationId="DictationDeleteButton">
-                                                                    <FontIcon Glyph="&#xE74D;" FontSize="12" Foreground="{ThemeResource MuesliErrorBrush}" Opacity="0.6" />
+                                                                    <FontIcon Glyph="&#xE74D;" FontSize="12" Foreground="{ThemeResource MuesliDestructiveTextBrush}" />
                                                                 </Button>
                                                             </StackPanel>
                                                         </Grid>
@@ -259,11 +286,11 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-                    <Border x:Name="EmptyState" MinHeight="260">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                    <Border x:Name="EmptyState" MinHeight="200">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
                             <FontIcon Glyph="&#xE720;" FontSize="40" Foreground="{ThemeResource MuesliTextTertiaryBrush}" HorizontalAlignment="Center" />
-                            <TextBlock x:Name="EmptyStateTitle" Text="No dictations yet" FontSize="18" FontWeight="SemiBold" Foreground="{ThemeResource MuesliTextSecondaryBrush}" HorizontalAlignment="Center" />
-                            <TextBlock x:Name="EmptyStateBody" Text="Your first completed dictation will be stored here." FontSize="13" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateTitle" Text="No dictations yet" Style="{StaticResource MuesliTitle3Style}" Foreground="{ThemeResource MuesliTextSecondaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="EmptyStateBody" Style="{StaticResource MuesliCalloutStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextAlignment="Center" />
                         </StackPanel>
                     </Border>
                 </Grid>

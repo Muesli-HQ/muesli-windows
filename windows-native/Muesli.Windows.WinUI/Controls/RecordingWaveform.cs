@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -95,8 +96,8 @@ public sealed class RecordingWaveform : UserControl
     private void Recolor()
     {
         if (_bars.Count == 0) return;
-        var accent = (Brush)Application.Current.Resources["MuesliAccentBrush"];
-        var rest = (Brush)Application.Current.Resources["MuesliTextTertiaryBrush"];
+        var accent = ThemeBrushes.Get("MuesliAccentBrush");
+        var rest = ThemeBrushes.Get("MuesliTextTertiaryBrush");
         var playedX = ActualWidth * Math.Clamp(Progress, 0, 1);
         foreach (var bar in _bars)
         {

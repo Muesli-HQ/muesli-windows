@@ -96,8 +96,11 @@ public static class FloatingIndicatorLayout
     public static readonly (double Seconds, double Degrees)[] TranscribingWiggleKeys =
         [(0, 0), (0.12, -12), (0.26, 10), (0.4, -6), (0.52, 0), (1.6, 0)];
 
-    /// <summary>Transcribing: macOS <c>transcribingPillSize</c>'s 190-point minimum at 32 tall.</summary>
-    public const double TranscribingWidth = 190;
+    /// <summary>
+    /// Transcribing: 32 tall and just wide enough for the icon and label. macOS uses a 190-point
+    /// minimum; on Windows that read as oversized next to the 76-wide recording pill.
+    /// </summary>
+    public const double TranscribingWidth = 124;
     public const double TranscribingHeight = 32;
     public const double TranscribingRadius = 16;
 
@@ -163,6 +166,33 @@ public static class FloatingIndicatorLayout
         return (bar / scale, gap / scale, heights);
     }
 
+    /// <summary>The sidebar mark's height on macOS: drawn 14 tall in an 18-pt image shown in a 22-pt frame.</summary>
+    public const double SidebarBrandMarkHeight = 14.0 * 22 / 18;
+
+    /// <summary>
+    /// The brand mark at whole physical pixels in the icon's own proportions (bar 32, gap 18, tallest
+    /// bar 513, canonical 1024px icon). The bar pitch is the whole number of pixels closest to
+    /// <paramref name="targetHeight"/> (at least 2, so gaps never vanish); bar, gap and height all
+    /// follow from it, so the mark keeps the icon's aspect instead of growing denser or wider when
+    /// bar and gap round independently. Returns DIPs, with the overall width and height.
+    /// </summary>
+    public static (double BarWidth, double Gap, double[] Heights, double Width, double Height) ProportionalBrandMark(
+        double targetHeight,
+        double scale)
+    {
+        scale = scale > 0 ? scale : 1;
+        var pitch = Math.Max(2, Math.Round(targetHeight * scale * 50 / 513, MidpointRounding.AwayFromZero));
+        var bar = Math.Clamp(Math.Round(pitch * 32 / 50, MidpointRounding.AwayFromZero), 1, pitch - 1);
+        var gap = pitch - bar;
+        var tallest = Math.Round(pitch * 513 / 50);
+        // Bar heights share the tallest bar's parity, so every bar centres on a whole pixel.
+        var heights = BrandMarkBars
+            .Select(m => Math.Max(bar, tallest - 2 * Math.Round((tallest - m * tallest) / 2)) / scale)
+            .ToArray();
+        var width = BrandMarkBars.Length * bar + (BrandMarkBars.Length - 1) * gap;
+        return (bar / scale, gap / scale, heights, width / scale, tallest / scale);
+    }
+
     /// <summary>Stop square size in DIPs (6×6) and its corner radius (1 DIP).</summary>
     public const double StopSquareSize = 6;
     public const double StopSquareRadius = 1;
@@ -221,12 +251,19 @@ public static class FloatingIndicatorLayout
             FloatingIndicatorState.Recording =>
                 new DipSize(LiveWidth, LiveHeight, LiveRadius),
             FloatingIndicatorState.Transcribing =>
-                new DipSize(TranscribingWidth, TranscribingHeight, TranscribingRadius),
+                new DipSize(TranscribingWidthFor(message), TranscribingHeight, TranscribingRadius),
             FloatingIndicatorState.Success or FloatingIndicatorState.Error =>
                 new DipSize(StatusWidthFor(message), StatusHeight, StatusRadius),
             _ => new DipSize(CompactIdleWidth, CompactIdleHeight, CompactIdleRadius)
         };
     }
+
+    /// <summary>
+    /// The processing pill fits its stage label: "Transcribing" keeps the 124 width, a longer
+    /// stage such as "Identifying Speakers" widens it, as the macOS pill sizes to its title.
+    /// </summary>
+    public static double TranscribingWidthFor(string? message) =>
+        Math.Clamp(52 + Math.Max(12, message?.Length ?? 0) * 6.0, TranscribingWidth, 220);
 
     /// <summary>
     /// The width of a status pill: compact by default, widening for long status text.

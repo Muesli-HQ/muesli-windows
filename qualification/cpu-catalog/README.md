@@ -5,7 +5,6 @@ a passing L10 qualification. Ledger row MOD-02 stays **Implemented with
 verification debt** until `scripts/smoke-transcription-models.ps1` plus
 provider-specific CPU gates pass on real speech for every advertised model.
 
-Authoritative inventory: `docs/L10_CPU_CATALOG_INVENTORY.md`.
 Runtime catalog: `windows-native/Muesli.Windows/Services/TranscriptionModelCatalog.cs`.
 
 ## Layout
@@ -40,5 +39,5 @@ That command must fail today because `english-speech.wav` is not checked in.
 
 ## Remaining physical gate
 
-See `docs/L10_CPU_CATALOG_INVENTORY.md`. Public package metadata stays CPU-only.
+Public package metadata stays CPU-only.
 CUDA is L11 and is not an L10 pass path.

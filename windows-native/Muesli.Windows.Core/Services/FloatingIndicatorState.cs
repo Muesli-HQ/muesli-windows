@@ -77,6 +77,18 @@ public static class FloatingIndicatorStateClassifier
         return FloatingIndicatorState.Idle;
     }
 
+    /// <summary>
+    /// The pill state a meeting asks for, or null when no meeting owns the pill. Starting (and
+    /// resuming) capture is Preparing, as on macOS; Transcribing is only for work on audio that
+    /// already exists: stopping, finalizing, recovering or importing.
+    /// </summary>
+    public static FloatingIndicatorState? ClassifyMeeting(bool isRecording, bool isPaused, bool isStarting, bool isBusy)
+    {
+        if (isRecording || isPaused) return FloatingIndicatorState.Recording;
+        if (isStarting) return FloatingIndicatorState.Preparing;
+        return isBusy ? FloatingIndicatorState.Transcribing : null;
+    }
+
     /// <summary>True while the pill is showing a live capture/preparation/transcription surface.</summary>
     public static bool IsActive(FloatingIndicatorState state) =>
         state is FloatingIndicatorState.Preparing

@@ -16,11 +16,19 @@ public static class HotkeyGestureParser
         var keyLabel = string.Empty;
         var keyCount = 0;
         var modifiers = HotkeyModifiers.None;
+        var sideModifier = false;
 
         foreach (var rawPart in input.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var part = rawPart.Replace(" ", string.Empty, StringComparison.Ordinal);
-            if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ||
+            if (TryParseSideModifier(part, out var sideKey, out var sideLabel))
+            {
+                virtualKey = sideKey;
+                keyLabel = sideLabel;
+                keyCount++;
+                sideModifier = true;
+            }
+            else if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ||
                 part.Equals("Control", StringComparison.OrdinalIgnoreCase))
             {
                 modifiers |= HotkeyModifiers.Control;
@@ -57,7 +65,40 @@ public static class HotkeyGestureParser
             throw new InvalidOperationException($"Unsupported hotkey: {input}");
         }
 
+        // A right-side modifier is a hold-to-talk key on its own (macOS-style "hold Right Option");
+        // combined with other keys it would collide with the system's own Ctrl/Alt/Shift shortcuts.
+        if (sideModifier && modifiers != HotkeyModifiers.None)
+        {
+            throw new InvalidOperationException($"A right-side modifier works on its own, not in a combination: {input}");
+        }
+
         return new HotkeyGesture(virtualKey, modifiers, CanonicalLabel(keyLabel, modifiers));
+    }
+
+    /// <summary>
+    /// True for a lone right-side modifier gesture (Right Ctrl, Right Alt, Right Shift, Right Win).
+    /// The keyboard hook treats these as hold-to-talk keys that still pass through to apps.
+    /// </summary>
+    public static bool IsModifierOnly(HotkeyGesture gesture) =>
+        gesture.Modifiers == HotkeyModifiers.None && IsRightSideModifier(gesture.VirtualKey);
+
+    /// <summary>VK_RSHIFT, VK_RCONTROL, VK_RMENU, VK_RWIN: the side-specific codes a low-level hook reports.</summary>
+    public static bool IsRightSideModifier(int virtualKey) => virtualKey is 0xA1 or 0xA3 or 0xA5 or 0x5C;
+
+    /// <summary>Right Alt is AltGr on many layouts, so holding it also types characters such as é or €.</summary>
+    public static bool IsRightAlt(HotkeyGesture gesture) => gesture.VirtualKey == 0xA5 && IsModifierOnly(gesture);
+
+    private static bool TryParseSideModifier(string part, out int virtualKey, out string label)
+    {
+        (virtualKey, label) = part.ToUpperInvariant() switch
+        {
+            "RIGHTCTRL" or "RIGHTCONTROL" or "RCTRL" => (0xA3, "Right Ctrl"),
+            "RIGHTALT" or "RALT" => (0xA5, "Right Alt"),
+            "RIGHTSHIFT" or "RSHIFT" => (0xA1, "Right Shift"),
+            "RIGHTWIN" or "RIGHTWINDOWS" or "RWIN" => (0x5C, "Right Win"),
+            _ => (0, string.Empty)
+        };
+        return virtualKey != 0;
     }
 
     public static bool Matches(HotkeyGesture gesture, int virtualKey, HotkeyModifiers modifiers) =>

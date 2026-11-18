@@ -59,7 +59,8 @@ public sealed class ReleasePackageReproducibilityTests
     [Fact]
     public void CiWorkflowMatchesLocalUnsignedRehearsalAndUploadsReviewArtifacts()
     {
-        var workflow = Read(".github/workflows/windows-ci.yml");
+        // Every job prepares its build through the shared composite action.
+        var workflow = Read(".github/workflows/windows-ci.yml") + Read(".github/actions/prepare-windows-build/action.yml");
         Assert.Contains("runs-on: windows-latest", workflow, StringComparison.Ordinal);
         Assert.Contains("global-json-file: global.json", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("dotnet-version: 10.0.x", workflow, StringComparison.Ordinal);

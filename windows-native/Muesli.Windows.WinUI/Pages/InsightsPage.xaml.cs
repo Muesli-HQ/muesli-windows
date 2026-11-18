@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
@@ -111,7 +112,7 @@ public sealed partial class InsightsPage : Page
     /// <summary>macOS word cloud: the top word cyan, words at half its count accent, the rest secondary.</summary>
     public static Brush WordBrush(bool isTop, bool isStrong) => isTop
         ? new SolidColorBrush(Color.FromArgb(0xFF, 0x32, 0xD2, 0xE6))
-        : (Brush)Application.Current.Resources[isStrong ? "MuesliAccentBrush" : "MuesliTextSecondaryBrush"];
+        : ThemeBrushes.Get(isStrong ? "MuesliAccentBrush" : "MuesliTextSecondaryBrush");
 
     // Heatmap palette (macOS InsightsPalette.intensity): empty = surface 62%, then accent at
     // 24/48/72/100%. Two themed layers share the cell so Light/Dark/Contrast repaint through

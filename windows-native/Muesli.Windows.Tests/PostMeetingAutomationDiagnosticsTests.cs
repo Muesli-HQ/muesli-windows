@@ -4,7 +4,7 @@ namespace Muesli.Windows.Tests;
 
 /// <summary>
 /// The meeting-detail automation diagnostics surface renders this Core formatter, so it is the
-/// shared contract between POST_MEETING_AUTOMATION.md, persistence, and the WinUI shell.
+/// shared contract between the hook runner, persistence, and the WinUI shell.
 /// </summary>
 public sealed class PostMeetingAutomationDiagnosticsTests
 {

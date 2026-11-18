@@ -69,7 +69,11 @@ public sealed class MeetingBehaviorParityTests
         release.SetResult(new TranscriptionResult("ignored"));
         await preview.FinishAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, failures);
-        Assert.InRange(calls, 2, 6); // One in flight, four queued, one final tail.
+        // One in flight, a bounded queue, one final tail.
+        Assert.InRange(calls, 2, MeetingRollingTranscriber.QueuedChunkLimit + 2);
+        // Nothing is silently lost: the failed piece and the skipped ones are gaps Stop repairs from the file.
+        Assert.Contains(preview.Gaps, gap => gap.Reason == "decode-failed" && gap.StartSample == 0);
+        Assert.Equal(preview.DroppedChunks, preview.Gaps.Count(gap => gap.Reason == "transcription-backlog"));
         Assert.True(latest!.DroppedPackets > 0);
         Assert.Contains("continued", latest.CommittedText);
     }

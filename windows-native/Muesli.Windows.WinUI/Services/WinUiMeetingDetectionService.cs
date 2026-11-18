@@ -41,6 +41,9 @@ public sealed class WinUiMeetingDetectionService : IDisposable
         if (_trackingRecording || _enabled) _detector.Start();
         else _detector.Stop();
     }
+    public void Reprompt(string? key) => _detector.RepromptCandidate(key);
+    public void SuppressForOwnAudio() => _detector.SuppressForOwnAudio();
+    public void ResumeAfterOwnAudio() => _detector.ResumeAfterOwnAudio();
     public void Dispose() => _detector.Dispose();
 }
 

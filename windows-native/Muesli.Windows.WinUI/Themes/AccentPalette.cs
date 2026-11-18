@@ -1,87 +1,97 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Muesli.Windows.Services.Appearance;
 using Windows.UI;
 
 namespace Muesli.Windows.WinUI.Themes;
 
 /// <summary>
-/// Applies the user's accent colour app-wide, as macOS does with <c>MuesliTheme.accentOverrideHex</c>.
-/// The theme brushes are retinted in place, so every element already bound to them updates live.
-/// "1e1e2e" (Default) restores the original Muesli blues. High Contrast keeps its system brushes.
+/// Applies the user's accent colour app-wide with the macOS accent roles
+/// (<see cref="MuesliAccentRoles"/>): the raw accent fills buttons and toggles, the label ink on it
+/// is black or white by contrast, accent text is a same-hue shade with 6:1 contrast, and tints are
+/// 15/21/27%. The theme brushes are retinted in place, so every bound element updates live.
+/// High Contrast keeps its system brushes.
 /// </summary>
 public static class AccentPalette
 {
-    // ponytail: brushes MuesliTheme.xaml declares are retinted; other generic.xaml brushes built from
-    // the SystemAccentColor* ramp (list selection, hyperlinks) stay Muesli blue. Redeclare one there to add it.
-    private static readonly string[] BaseKeys =
+    // ponytail: brushes MuesliTheme.xaml declares are retinted; generic.xaml brushes that alias the
+    // SystemAccentColor* ramp with StaticResource (toggle on-fill, progress) keep the XAML ramp,
+    // which matches the default accent. Redeclare one there to make it follow a custom accent.
+    private static readonly string[] FillKeys =
     [
-        "MuesliAccentBrush", "MuesliBorderStrongBrush", "MuesliFocusInnerBrush",
-        "AccentTextFillColorPrimaryBrush", "ControlStrongStrokeColorDefaultBrush", "FocusStrokeColorInnerBrush",
-        "AccentFillColorSelectedTextBackgroundBrush"
+        "MuesliAccentBrush", "MuesliAccentStrongBrush", "AccentFillColorDefaultBrush", "MuesliBorderStrongBrush",
+        "ControlStrongStrokeColorDefaultBrush", "AccentFillColorSelectedTextBackgroundBrush",
+        "TextControlElevationBorderFocusedBrush", "AccentButtonBackground", "ToggleSwitchFillOn", "ProgressBarForeground"
     ];
-    private static readonly string[] StrongKeys =
+    private static readonly string[] HoverKeys =
+        ["AccentFillColorSecondaryBrush", "AccentButtonBackgroundPointerOver", "ToggleSwitchFillOnPointerOver"];
+    private static readonly string[] PressedKeys =
+        ["AccentFillColorTertiaryBrush", "AccentButtonBackgroundPressed", "ToggleSwitchFillOnPressed"];
+    private static readonly string[] TextKeys =
     [
-        "MuesliAccentStrongBrush", "AccentFillColorDefaultBrush", "SelectorBarItemBackgroundSelected",
-        "TextControlElevationBorderFocusedBrush"
+        "MuesliAccentTextBrush", "AccentTextFillColorPrimaryBrush", "AccentTextFillColorSecondaryBrush",
+        "AccentTextFillColorTertiaryBrush", "MuesliFocusInnerBrush", "FocusStrokeColorInnerBrush"
     ];
-
-    // Keyed by the brush, or by the accent stop of a gradient brush.
-    private static readonly Dictionary<DependencyObject, Color> Originals = [];
+    private static readonly string[] OnFillKeys =
+    [
+        "MuesliOnAccentBrush", "TextOnAccentFillColorPrimaryBrush", "AccentButtonForeground",
+        "AccentButtonForegroundPointerOver", "AccentButtonForegroundPressed"
+    ];
 
     public static void Apply(string? hex)
     {
-        var accent = Parse(hex);
         foreach (var dictionary in Application.Current.Resources.MergedDictionaries)
         {
             foreach (var (themeKey, value) in dictionary.ThemeDictionaries)
             {
                 if (value is not ResourceDictionary theme || Equals(themeKey, "HighContrast")) continue;
-                var light = Equals(themeKey, "Light");
-                foreach (var key in BaseKeys) Set(theme, key, accent, c => c);
-                foreach (var key in StrongKeys) Set(theme, key, accent, c => Mix(c, Black, 0.15));
-                Set(theme, "MuesliAccentMutedBrush", accent, c => Color.FromArgb((byte)(light ? 0x1F : 0x22), c.R, c.G, c.B));
-                Set(theme, "AccentFillColorSecondaryBrush", accent, c => Mix(c, Black, 0.08));
-                Set(theme, "AccentFillColorTertiaryBrush", accent, c => Mix(c, Black, 0.22));
-                // Secondary/tertiary accent text steps away from the background: lighter on dark, darker on light.
-                var away = light ? Black : White;
-                Set(theme, "AccentTextFillColorSecondaryBrush", accent, c => Mix(c, away, light ? 0.15 : 0.25));
-                Set(theme, "AccentTextFillColorTertiaryBrush", accent, c => Mix(c, away, light ? 0.30 : 0.45));
+                var roles = MuesliAccentRoles.For(hex, dark: !Equals(themeKey, "Light"));
+                var fill = ToColor(roles.Fill);
+                var shade = ToColor(roles.StateShade);
+                foreach (var key in FillKeys) Set(theme, key, fill);
+                foreach (var key in TextKeys) Set(theme, key, ToColor(roles.Text));
+                foreach (var key in OnFillKeys) Set(theme, key, ToColor(roles.OnFill));
+                Set(theme, "TextOnAccentFillColorSecondaryBrush", WithAlpha(ToColor(roles.OnFill), 0xC8));
+                foreach (var key in HoverKeys) Set(theme, key, Over(fill, shade, MuesliAccentRoles.StateShadeHover));
+                foreach (var key in PressedKeys) Set(theme, key, Over(fill, shade, MuesliAccentRoles.StateShadePressed));
+                Set(theme, "MuesliAccentMutedBrush", Tint(fill, MuesliAccentRoles.TintRest));
+                Set(theme, "MuesliAccentTintHoverBrush", Tint(fill, MuesliAccentRoles.TintHover));
+                Set(theme, "MuesliAccentTintPressedBrush", Tint(fill, MuesliAccentRoles.TintPressed));
+                Set(theme, "MuesliBadgeFillBrush", ToColor(roles.BadgeFill));
+                Set(theme, "MuesliAccentBorderHoverBrush", Tint(fill, 0.38));
             }
         }
     }
 
-    private static void Set(ResourceDictionary theme, string key, Color? accent, Func<Color, Color> derive)
+    private static void Set(ResourceDictionary theme, string key, Color color)
     {
         if (!theme.TryGetValue(key, out var value)) return;
-        // A gradient's first stop is the accent; the second is the neutral control stroke.
-        DependencyObject? target = value switch
+        switch (value)
         {
-            SolidColorBrush brush => brush,
-            LinearGradientBrush gradient when gradient.GradientStops.Count > 0 => gradient.GradientStops[0],
-            _ => null
-        };
-        if (target is null) return;
-        var current = target is SolidColorBrush solid ? solid.Color : ((GradientStop)target).Color;
-        if (!Originals.TryGetValue(target, out var original)) Originals[target] = original = current;
-        var next = accent is { } color ? derive(color) : original;
-        if (target is SolidColorBrush b) b.Color = next;
-        else ((GradientStop)target).Color = next;
+            case SolidColorBrush brush:
+                brush.Color = color;
+                break;
+            // A gradient's first stop is the accent; the second is the neutral control stroke.
+            case LinearGradientBrush gradient when gradient.GradientStops.Count > 0:
+                gradient.GradientStops[0].Color = color;
+                break;
+        }
     }
 
-    private static Color? Parse(string? hex)
+    private static Color ToColor(int rgb) => Color.FromArgb(0xFF, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+
+    private static Color WithAlpha(Color color, byte alpha) => Color.FromArgb(alpha, color.R, color.G, color.B);
+
+    private static Color Tint(Color color, double opacity) =>
+        WithAlpha(color, (byte)Math.Round(opacity * 255, MidpointRounding.AwayFromZero));
+
+    // An opaque fill with a state-shade overlay composited on top (macOS accentStateShade).
+    private static Color Over(Color fill, Color overlay, double opacity)
     {
-        var value = (hex ?? "").Trim().TrimStart('#');
-        if (value.Length != 6 || value.Equals("1e1e2e", StringComparison.OrdinalIgnoreCase) ||
-            !uint.TryParse(value, System.Globalization.NumberStyles.HexNumber, null, out var rgb)) return null;
-        return Color.FromArgb(0xFF, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+        var mixed = MuesliAccentRoles.Mix(
+            (fill.R << 16) | (fill.G << 8) | fill.B,
+            (overlay.R << 16) | (overlay.G << 8) | overlay.B,
+            opacity);
+        return ToColor(mixed);
     }
-
-    private static readonly Color Black = Color.FromArgb(0xFF, 0, 0, 0);
-    private static readonly Color White = Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-
-    private static Color Mix(Color from, Color to, double amount) => Color.FromArgb(
-        from.A,
-        (byte)Math.Round(from.R + (to.R - from.R) * amount),
-        (byte)Math.Round(from.G + (to.G - from.G) * amount),
-        (byte)Math.Round(from.B + (to.B - from.B) * amount));
 }

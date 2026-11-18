@@ -9,59 +9,46 @@ public sealed record MeetingCaptureSnapshot(
     bool IsPaused,
     bool RecoveredFromInterruption);
 
-/// <summary>Truthful labels for microphone and system-audio capture. Never invents a working loopback.</summary>
+/// <summary>
+/// Plain-language disclosure of what a meeting is capturing. It always names both sources
+/// truthfully (microphone, sound from this computer) and never claims a source that is not
+/// running; the capture mechanism itself stays in the logs.
+/// </summary>
 public static class MeetingCaptureStatusFormatter
 {
     public static string Describe(MeetingCaptureSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        var state = snapshot.State switch
+        return snapshot.State switch
         {
-            MeetingSessionState.Recording => "Recording",
-            MeetingSessionState.DegradedRecording => "Recording with a missing channel",
-            MeetingSessionState.Preparing => "Preparing capture",
-            MeetingSessionState.Stopping => "Stopping",
-            MeetingSessionState.Finalizing => "Finalizing transcript",
+            MeetingSessionState.Recording or MeetingSessionState.DegradedRecording =>
+                DescribeSources(snapshot.MicrophoneAvailable, snapshot.SystemAudioAvailable, snapshot.SystemCaptureMode),
+            MeetingSessionState.Preparing => "Starting…",
+            MeetingSessionState.Stopping or MeetingSessionState.Finalizing => "Saving and transcribing…",
             MeetingSessionState.RecoverableInterruption => snapshot.IsPaused
-                ? "Paused · audio retained"
-                : "Interrupted · audio retained",
-            MeetingSessionState.Completed => "Completed",
-            MeetingSessionState.Cancelled => "Cancelled",
-            MeetingSessionState.Failed => "Failed",
-            _ => "Idle"
+                ? "Paused. Nothing is being recorded."
+                : "Recording was interrupted. What was captured is saved.",
+            _ => "Not recording"
         };
-        var mic = snapshot.MicrophoneAvailable ? "Microphone capturing" : "Microphone unavailable";
-        var system = DescribeSystemAudio(snapshot.SystemCaptureMode, snapshot.SystemAudioAvailable);
-        var recovered = snapshot.RecoveredFromInterruption ? "Recovered from an interruption." : null;
-        var warnings = snapshot.HealthWarnings.Count == 0
-            ? null
-            : string.Join(" ", snapshot.HealthWarnings);
-        return string.Join(" · ", new[] { state, mic, system, recovered, warnings }.Where(part => !string.IsNullOrWhiteSpace(part)));
     }
 
-    public static string DescribeSystemAudio(string? mode, bool available)
+    /// <summary>What is being recorded right now, in the words a person would use.</summary>
+    public static string DescribeSources(bool microphone, bool systemAudio, string? systemCaptureMode)
     {
-        var normalized = (mode ?? "").Trim().ToLowerInvariant();
-        return normalized switch
+        var system = IsAppTargeted(systemCaptureMode)
+            ? "sound from the meeting app"
+            : "all sound playing on this computer";
+        return (microphone, systemAudio) switch
         {
-            "processtreeloopback" or "process-loopback" or "process-tree-loopback" =>
-                available
-                    ? "System audio: process-tree loopback"
-                    : "System audio: process-tree loopback requested but not capturing",
-            "endpointloopback" or "endpoint-loopback" =>
-                available
-                    ? "System audio: render-endpoint loopback (not process-targeted)"
-                    : "System audio: render-endpoint loopback unavailable",
-            "imported-media" => "System audio: imported media file",
-            "unavailable" or "pending" or "idle" or "" =>
-                available
-                    ? "System audio capturing"
-                    : "System audio not captured",
-            _ => available
-                ? $"System audio: {mode}"
-                : $"System audio unavailable ({mode})"
+            (true, true) => $"Recording your microphone and {system}.",
+            (true, false) => "Recording your microphone only. Sound from this computer isn't being recorded, so other people may be missing.",
+            (false, true) => $"Recording {system} only. Your microphone isn't being recorded.",
+            _ => "Nothing is being recorded."
         };
     }
+
+    private static bool IsAppTargeted(string? mode) =>
+        (mode ?? "").Trim().ToLowerInvariant() is "processtreeloopback" or "process-loopback" or "process-tree-loopback";
 
     public static string DescribeDetection(string? candidateKey, MeetingEvidenceStrength evidence, bool microphoneInUse, bool cameraInUse)
     {

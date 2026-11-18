@@ -12,7 +12,7 @@ public sealed class FloatingIndicatorLayoutTests
     // Preparing shares the live 76x22 pill, per the current macOS frameForState.
     [InlineData(FloatingIndicatorState.Preparing, false, 76, 22, 11)]
     [InlineData(FloatingIndicatorState.Recording, false, 76, 22, 11)]
-    [InlineData(FloatingIndicatorState.Transcribing, false, 190, 32, 16)]
+    [InlineData(FloatingIndicatorState.Transcribing, false, 124, 32, 16)]
     [InlineData(FloatingIndicatorState.Success, false, 180, 36, 18)]
     [InlineData(FloatingIndicatorState.Error, false, 180, 36, 18)]
     public void SizeFor_maps_every_state(FloatingIndicatorState state, bool hovered, double width, double height, double radius)
@@ -239,6 +239,33 @@ public sealed class FloatingIndicatorLayoutTests
     }
 
     // ─── Brand mark ──────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    [InlineData(1.75)]
+    [InlineData(2.0)]
+    [InlineData(3.0)]
+    public void ProportionalBrandMark_stays_crisp_and_keeps_the_icon_aspect(double scale)
+    {
+        var mark = FloatingIndicatorLayout.ProportionalBrandMark(FloatingIndicatorLayout.SidebarBrandMarkHeight, scale);
+        static bool Whole(double pixels) => Math.Abs(pixels - Math.Round(pixels)) < 1e-9;
+
+        // Every edge on a whole pixel, and the gaps never vanish.
+        Assert.True(Whole(mark.BarWidth * scale) && mark.BarWidth * scale >= 1);
+        Assert.True(Whole(mark.Gap * scale) && mark.Gap * scale >= 1);
+        Assert.All(mark.Heights, h => Assert.True(Whole(h * scale)));
+        Assert.Equal(mark.Height, mark.Heights.Max(), 6);
+        Assert.Equal(mark.Heights, mark.Heights.Reverse());
+
+        // The icon's own aspect (635 wide, 513 tall), within one pitch of rounding.
+        var pitch = mark.BarWidth + mark.Gap;
+        Assert.InRange(mark.Width / mark.Height, 632.0 / 513 - pitch / mark.Height, 632.0 / 513 + pitch / mark.Height);
+
+        // Close to the macOS sidebar size, and never taller than the 22-pt frame plus one pitch.
+        Assert.InRange(mark.Height, FloatingIndicatorLayout.SidebarBrandMarkHeight * 0.75, 22 + pitch);
+    }
 
     [Theory]
     [InlineData(1.0)]

@@ -74,6 +74,9 @@ public partial class App : Application
     private bool _automaticEndWarning;
     private bool _endWarningSourceMissing;
     private DispatcherTimer? _meetingEndMonitor;
+    private bool _meetingWasLive;
+    private bool _ownAudioActive;
+    private readonly HashSet<string> _repromptedMeetings = new(StringComparer.OrdinalIgnoreCase);
     private bool _exiting;
     private readonly AppLogService _log = new();
     private UiExceptionPolicy _uiExceptionPolicy = null!;
@@ -140,7 +143,8 @@ public partial class App : Application
     protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         var currentInstance = AppInstance.GetCurrent();
-        _mainInstance = AppInstance.FindOrRegisterForKey("Muesli.WinUI.Primary");
+        _mainInstance = AppInstance.FindOrRegisterForKey(
+            MuesliDevSlot.Current is { } slot ? $"Muesli.WinUI.Primary.{slot}" : "Muesli.WinUI.Primary");
         if (!_mainInstance.IsCurrent)
         {
             // Unpackaged hosts do not raise AppInstance.Activated reliably, so the primary shell
@@ -177,6 +181,8 @@ public partial class App : Application
 
         Library = new WinUiLibraryContext(MuesliProfilePaths.Current());
         Settings = new WinUiSettingsContext(Library);
+        // ChatGPT sign-in for meeting notes keeps its tokens in the Windows credential store.
+        ChatGptAuthManager.Shared = new ChatGptAuthManager(new WindowsCredentialSecretStore(Library.Profile.RootDirectory));
         // Execution-provider and cleanup-model choices are fixed before the first native recognizer
         // is created: the packaged CPU and the optional CUDA sherpa builds cannot be mixed inside
         // one process, so a provider change is applied on the next launch.
@@ -226,7 +232,7 @@ public partial class App : Application
                 else
                 {
                     await Meetings.StartQuickNoteAsync();
-                    mainWindow.ShowDashboard("meetings");
+                    mainWindow.ShowDashboard(MainPage.RecordingRoute);
                 }
             },
             mainWindow.ShowDashboard,
@@ -238,10 +244,30 @@ public partial class App : Application
             () => ShowOnboarding(explicitResume: true),
             ShowFeatureTour,
             Path.Combine(AppContext.BaseDirectory, "Assets", "TrayIconLightTaskbar.ico"));
-        Dictation.Changed += (_, _) => Tray.Refresh();
+        Dictation.Changed += (_, _) =>
+        {
+            Tray.Refresh();
+            // Dictation must never look like a call starting: detection is held while Muesli itself
+            // uses the microphone and for the cooldown after (macOS suppressWhileActive).
+            var ownAudio = Dictation.IsRecording || Dictation.IsBusy;
+            if (ownAudio && !_ownAudioActive) MeetingDetection.SuppressForOwnAudio();
+            else if (!ownAudio && _ownAudioActive) MeetingDetection.ResumeAfterOwnAudio();
+            _ownAudioActive = ownAudio;
+        };
         Meetings.Changed += (_, _) =>
         {
             Tray.Refresh();
+            // macOS opens the meeting document when a recording starts. The shell moves to the
+            // meeting's own page as capture goes live; it does not raise or focus the window, so a
+            // recording started from a detection prompt stays in the background with the pill.
+            var live = Meetings.IsRecording || Meetings.IsPaused;
+            if (live && !_meetingWasLive)
+            {
+                _meetingWasLive = true;
+                mainWindow.ShellPage?.NavigateTo(MainPage.RecordingRoute);
+            }
+            // Resuming from a pause passes through a busy, not-live moment; that is not a new start.
+            else if (!live && !Meetings.IsBusy) _meetingWasLive = false;
             if (Meetings.ActiveMeetingId is null && _signalLossPromptId is not null)
             {
                 CloseMeetingEndSuggestion();
@@ -297,7 +323,7 @@ public partial class App : Application
         MeetingDetection.MeetingDetected += (_, meeting) =>
             UiDispatcher.TryEnqueue(() => PresentDetectedMeeting(meeting));
         MeetingDetection.MeetingEnded += (_, key) =>
-            UiDispatcher.TryEnqueue(() => _meetingNotifications?.Forget(key));
+            UiDispatcher.TryEnqueue(() => { _meetingNotifications?.Forget(key); _repromptedMeetings.Remove(key); });
         MeetingDetection.ScanCompleted += (_, scan) => UiDispatcher.TryEnqueue(() =>
         {
             if (Meetings.IsRecording && !Meetings.IsBusy && _autoStop is { } tracker)
@@ -713,12 +739,13 @@ public partial class App : Application
             store.Save(progress with
             {
                 Deferred = false,
-                LastStatus = "Setup resumed. Continue from the saved step."
+                LastStatus = ""
             });
         }
 
+        // Setup is always dark, as on macOS (OnboardingWindow sets RequestedTheme on its root), so it
+        // does not follow the app theme.
         _onboarding = new OnboardingWindow();
-        TrackTheme(_onboarding);
         _onboarding.Closed += (_, _) =>
         {
             var finished = _onboarding?.Completed == true;
@@ -740,8 +767,25 @@ public partial class App : Application
         var callbacks = new MeetingNotificationCallbacks(
             OnAction: action => _ = HandleMeetingNotificationActionAsync(meeting, action),
             OnDismiss: () => { },
-            OnAutoDismiss: () => { });
+            OnAutoDismiss: () => _ = RepromptBrowserMeetingLaterAsync(meeting));
         _meetingNotifications.Present(request, callbacks);
+    }
+
+    /// <summary>
+    /// A browser meeting whose prompt timed out unanswered is offered once more after the macOS
+    /// cooldown, if it is still going on. Desktop meeting apps and dismissed prompts stay quiet.
+    /// </summary>
+    private async Task RepromptBrowserMeetingLaterAsync(DetectedMeeting meeting)
+    {
+        // Once per meeting: a prompt the user ignored twice is an answer.
+        if (string.IsNullOrWhiteSpace(meeting.BrowserUrl) || !_repromptedMeetings.Add(meeting.Key)) return;
+        await Task.Delay(MeetingDetectionSuppression.BrowserRepromptDelay);
+        UiDispatcher.TryEnqueue(() =>
+        {
+            if (Meetings.IsRecording || Meetings.IsPaused || Meetings.IsBusy) return;
+            _meetingNotifications?.Forget(meeting.Key);
+            MeetingDetection.Reprompt(meeting.Key);
+        });
     }
 
     private async Task HandleMeetingNotificationActionAsync(DetectedMeeting meeting, MeetingNotificationAction action)
@@ -787,7 +831,8 @@ public partial class App : Application
             sourcePlatform: meeting.Platform);
         _autoStop.Observe(meeting.Key, DateTimeOffset.UtcNow, meeting.Platform);
         MeetingDetection.TrackRecording(meeting);
-        ShowLiveTranscript();
+        // macOS starts a detected meeting in the background (.backgroundPill): only the floating
+        // pill appears. The live transcript is one hover or click away, not pushed over the call.
     }
 
     private static bool TryGetMeetingNotificationPreview(out string state)

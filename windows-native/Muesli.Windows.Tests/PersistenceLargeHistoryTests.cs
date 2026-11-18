@@ -103,6 +103,7 @@ public sealed class LargeHistoryFixture : IDisposable
         string.Join(' ', Enumerable.Range(0, length).Select(_ => Vocabulary[random.Next(Vocabulary.Length)]));
 }
 
+[Collection(TimingSensitiveCollection.Name)]
 public sealed class PersistenceLargeHistoryTests : IClassFixture<LargeHistoryFixture>
 {
     /// <summary>

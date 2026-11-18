@@ -47,8 +47,10 @@
     <Content Include="Assets\TrayIcon*.ico" />
     <!-- The floating indicator's Muesli mark, carried over from the retired WPF reference's
          Assets\menu_m_template@2x.png so the pill shows the real glyph, not a typographic "m". -->
-    <!-- Inter is the product typeface for the shipping Windows app. -->
+    <!-- Nunito Sans, the macOS app's typeface (static faces from the same Resources/Fonts). It is
+         OFL-1.1, which requires the license to ship alongside the font files. -->
     <Content Include="Assets\fonts\*.ttf" />
+    <Content Include="Assets\fonts\NunitoSans-OFL.txt" />
     <!--
       Vendor family marks used by the Models page. Reused from the macOS repository's assets
       (nvidia/openai/qwen/cohere) so the marks are repository-owned rather than fetched.

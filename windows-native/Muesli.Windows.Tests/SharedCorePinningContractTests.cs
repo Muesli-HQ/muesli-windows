@@ -41,8 +41,10 @@ public sealed class SharedCorePinningContractTests
     [Fact]
     public void WindowsCiResolvesTheSharedRepositoryFromTheLockWithAnEmptyRevisionGuard()
     {
-        var workflow = File.ReadAllText(TestRepositoryLayout.Combine(
-            ".github", "workflows", "windows-ci.yml"));
+        // The shared-core guards live in the composite action every Windows CI job uses.
+        var workflow = File.ReadAllText(TestRepositoryLayout.Combine(".github", "workflows", "windows-ci.yml")) +
+                       File.ReadAllText(TestRepositoryLayout.Combine(".github", "actions", "prepare-windows-build", "action.yml"));
+        Assert.Contains("uses: ./.github/actions/prepare-windows-build", workflow, StringComparison.Ordinal);
 
         Assert.Contains("shared-core.lock.json", workflow, StringComparison.Ordinal);
         Assert.Contains("ref: ${{ steps.shared_core_lock.outputs.revision }}", workflow, StringComparison.Ordinal);

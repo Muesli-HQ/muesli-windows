@@ -20,8 +20,33 @@ public sealed class WinUiShellParityTests
     {
         Assert.Equal(7, OnboardingStepCatalog.Steps.Count);
         Assert.Equal(OnboardingProgress.LastStep, OnboardingStepCatalog.Steps[^1].Step);
-        Assert.Equal("Welcome to Muesli", OnboardingStepCatalog.Get(0).Title);
-        Assert.Equal("You are ready", OnboardingStepCatalog.Get(99).Title);
+        Assert.Equal("Welcome to muesli", OnboardingStepCatalog.Get(0).Title);
+        Assert.Equal("You're all set", OnboardingStepCatalog.Get(99).Title);
+        // macOS OnboardingFlow.Step order: welcome, model, hotkey, permissions, test, summaries.
+        Assert.Equal(
+            ["Welcome to muesli", "Choose your transcription model", "Dictation Shortcut", "Microphone", "Test Dictation", "Meeting Summaries"],
+            OnboardingStepCatalog.Steps.Take(6).Select(step => step.Title));
+        Assert.All(OnboardingStepCatalog.Steps, step => Assert.Equal(step, OnboardingStepCatalog.Steps[step.Step]));
+    }
+
+    [Theory]
+    [InlineData(OnboardingUseCases.Dictation, new[] { 0, 1, 2, 3, 4, 6 })]
+    [InlineData(OnboardingUseCases.Meetings, new[] { 0, 1, 3, 5, 6 })]
+    [InlineData(OnboardingUseCases.Everything, new[] { 0, 1, 2, 3, 4, 5, 6 })]
+    [InlineData("voice_notes", new[] { 0, 1, 2, 3, 4, 5, 6 })]
+    public void The_use_case_decides_which_setup_steps_follow(string useCase, int[] expected)
+    {
+        Assert.Equal(expected, OnboardingUseCases.Steps(useCase));
+    }
+
+    [Fact]
+    public void Use_case_toggles_keep_one_workflow_and_skip_to_the_next_kept_step()
+    {
+        Assert.Equal(OnboardingUseCases.Meetings, OnboardingUseCases.Toggle(OnboardingUseCases.Everything, OnboardingUseCases.Dictation));
+        Assert.Equal(OnboardingUseCases.Everything, OnboardingUseCases.Toggle(OnboardingUseCases.Meetings, OnboardingUseCases.Dictation));
+        Assert.Equal(OnboardingUseCases.Dictation, OnboardingUseCases.Toggle(OnboardingUseCases.Dictation, OnboardingUseCases.Dictation));
+        Assert.Equal(OnboardingSteps.Summaries, OnboardingUseCases.Normalize(OnboardingSteps.Test, OnboardingUseCases.Meetings));
+        Assert.Equal(OnboardingSteps.Ready, OnboardingUseCases.Normalize(OnboardingSteps.Summaries, OnboardingUseCases.Dictation));
     }
 
     [Fact]
@@ -50,8 +75,22 @@ public sealed class WinUiShellParityTests
             [],
             false,
             false));
-        Assert.Contains("Microphone capturing", recording);
-        Assert.Contains("System audio not captured", recording);
+        Assert.Contains("your microphone only", recording);
+        Assert.Contains("isn't being recorded", recording);
+
+        // The disclosure names both sources in plain words and keeps capture mechanics out of it.
+        var both = MeetingCaptureStatusFormatter.Describe(new MeetingCaptureSnapshot(
+            MeetingSessionState.Recording, "EndpointLoopback", true, true, ["loopback dropped"], false, false));
+        Assert.Equal("Recording your microphone and all sound playing on this computer.", both);
+        var targeted = MeetingCaptureStatusFormatter.Describe(new MeetingCaptureSnapshot(
+            MeetingSessionState.Recording, "ProcessTreeLoopback", true, true, [], false, false));
+        Assert.Equal("Recording your microphone and sound from the meeting app.", targeted);
+        foreach (var text in new[] { recording, both, targeted })
+        {
+            Assert.DoesNotContain("loopback", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("endpoint", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("process", text, StringComparison.OrdinalIgnoreCase);
+        }
 
         var paused = MeetingCaptureStatusFormatter.Describe(new MeetingCaptureSnapshot(
             MeetingSessionState.RecoverableInterruption,
@@ -61,9 +100,7 @@ public sealed class WinUiShellParityTests
             ["loopback dropped"],
             true,
             true));
-        Assert.Contains("Paused", paused);
-        Assert.Contains("process-tree loopback", paused);
-        Assert.Contains("Recovered from an interruption", paused);
+        Assert.Equal("Paused. Nothing is being recorded.", paused);
 
         Assert.Contains(
             "Calendar join is unavailable",
@@ -112,8 +149,9 @@ public sealed class WinUiShellParityTests
         Assert.DoesNotContain("This Mac", timeline);
 
         var meetings = File.ReadAllText(Path.Combine(winUi, "Pages", "MeetingsPage.xaml"));
-        Assert.Contains("PauseMeetingButton", meetings);
-        Assert.Contains("ShowLiveTranscriptButton", meetings);
+        var recordingPage = File.ReadAllText(Path.Combine(winUi, "Pages", "MeetingRecordingPage.xaml"));
+        Assert.Contains("PauseMeetingButton", recordingPage);
+        Assert.Contains("ShowLiveTranscriptButton", recordingPage);
         Assert.Contains("MeetingRecoveryPanel", meetings);
 
         var main = File.ReadAllText(Path.Combine(winUi, "MainPage.xaml"));

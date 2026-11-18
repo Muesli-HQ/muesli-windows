@@ -428,7 +428,7 @@ internal sealed class FloatingIndicatorWindow : Window
         stack.Children.Add(icon);
         stack.Children.Add(new TextBlock
         {
-            Text = "Transcribing",
+            Text = string.IsNullOrWhiteSpace(_message) ? "Transcribing" : _message,
             FontSize = 11,
             Foreground = _highContrast ? brush : Solid(0xD1, 0xFF, 0xFF, 0xFF),
             Margin = new Thickness(6, 0, 0, 0),
@@ -580,7 +580,7 @@ internal sealed class FloatingIndicatorWindow : Window
     {
         FloatingIndicatorState.Idle => hovered ? new Thickness(12, 0, 12, 0) : new Thickness(0),
         FloatingIndicatorState.Preparing or FloatingIndicatorState.Recording => new Thickness(0),
-        FloatingIndicatorState.Transcribing => new Thickness(14, 0, 14, 0),
+        FloatingIndicatorState.Transcribing => new Thickness(12, 0, 12, 0),
         _ => new Thickness(18, 0, 18, 0)
     };
 

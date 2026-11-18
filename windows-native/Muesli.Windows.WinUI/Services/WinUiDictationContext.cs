@@ -23,6 +23,9 @@ public sealed class WinUiDictationContext : IDisposable
     private IntPtr _pasteTarget;
     private string? _captureTraceId;
     private volatile bool _auxiliarySession;
+    private volatile bool _delivering;
+    private volatile DictationTestRoute? _testRoute;
+    private volatile bool _testKeyHeld;
     private int _disposed;
 
     // WPF dispatched every shortcut callback with DispatcherPriority.Send, so shortcut down, up,
@@ -47,7 +50,7 @@ public sealed class WinUiDictationContext : IDisposable
         _cleanup = new NativeTextCleanupService(_log);
         _pipeline = new TranscriptionPipelineService(_cleanup, _log);
         _paste = new ActiveAppPasteService(
-            new WinRtClipboardAdapter(),
+            new Win32ClipboardAdapter(),
             new NativeWindowActivationAdapter(),
             new NativeKeyboardInputAdapter());
         Status = "Ready";
@@ -61,9 +64,11 @@ public sealed class WinUiDictationContext : IDisposable
     /// </summary>
     public event EventHandler<float>? RecordingLevelChanged;
 
-    public bool IsRecording => _coordinator.IsRecording;
+    public bool IsRecording => _coordinator.IsRecording && !_delivering;
     public bool IsBusy => _coordinator.IsBusy || _coordinator.IsTranscribing;
-    public bool IsTranscribing => _coordinator.IsTranscribing;
+    // From key release until the text is delivered. The coordinator only reports recognition
+    // itself and raises no event when it starts, which left the pill idle while the user waited.
+    public bool IsTranscribing => _delivering || _coordinator.IsTranscribing;
     public bool IsHotkeyRegistered { get; private set; }
     public string Status { get; private set; }
 
@@ -74,10 +79,29 @@ public sealed class WinUiDictationContext : IDisposable
         {
             _hotkey.Register(
                 _settings.Load().Hotkey,
-                () => EnqueueHotkeyWork(() => ExecuteActionAsync(
-                    _hotkeyState.KeyDown(_settings.Load().EnableDoubleTapDictation)), "down"),
-                () => EnqueueHotkeyWork(() => ExecuteActionAsync(
-                    _hotkeyState.KeyUp(_settings.Load().EnableDoubleTapDictation)), "up"),
+                () =>
+                {
+                    // Only the setup test step takes the shortcut; everywhere else it dictates.
+                    // The choice is made here, on press, so the release always goes to the same
+                    // owner even if the step changes while the key is held.
+                    if (_testRoute is { } route && route.CanStart())
+                    {
+                        _testKeyHeld = true;
+                        EnqueueHotkeyWork(() => StartTestAsync(route), "test-down");
+                    }
+                    else EnqueueHotkeyWork(() => ExecuteActionAsync(
+                        _hotkeyState.KeyDown(_settings.Load().EnableDoubleTapDictation)), "down");
+                },
+                () =>
+                {
+                    if (_testKeyHeld && _testRoute is { } route)
+                    {
+                        _testKeyHeld = false;
+                        EnqueueHotkeyWork(() => StopTestAsync(route), "test-up");
+                    }
+                    else EnqueueHotkeyWork(() => ExecuteActionAsync(
+                        _hotkeyState.KeyUp(_settings.Load().EnableDoubleTapDictation)), "up");
+                },
                 // WPF's cancellation predicate. Escape must reach a dictation that is merely armed
                 // or preparing, one that is transcribing, and one whose operation token is still
                 // live — not only an actively recording one.
@@ -94,8 +118,23 @@ public sealed class WinUiDictationContext : IDisposable
                     // runs token callbacks inline, so it must not run on the keyboard-hook thread.
                     _ = Task.Run(RequestCancellation);
                     EnqueueHotkeyWork(CancelCoreAsync, "escape");
+                    if (_testKeyHeld && _testRoute is { } route)
+                    {
+                        _testKeyHeld = false;
+                        Post(() => route.Failed("Test cancelled. Hold the shortcut to try again."));
+                    }
                 },
-                () => EnqueueHotkeyWork(() => ExecuteActionAsync(_hotkeyState.OtherKeyWhileArmed()), "other-key"));
+                () =>
+                {
+                    if (_testKeyHeld && _testRoute is { } route)
+                    {
+                        // A combination is typing, not a test: drop it as hold-to-talk would.
+                        _testKeyHeld = false;
+                        EnqueueHotkeyWork(CancelCoreAsync, "test-other-key");
+                        Post(() => route.Failed("Another key was pressed. Hold only the shortcut to test."));
+                    }
+                    else EnqueueHotkeyWork(() => ExecuteActionAsync(_hotkeyState.OtherKeyWhileArmed()), "other-key");
+                });
             IsHotkeyRegistered = true;
             PrepareMicrophone();
             Status = $"Ready · {_settings.Load().Hotkey}";
@@ -169,6 +208,83 @@ public sealed class WinUiDictationContext : IDisposable
             _auxiliarySession = false;
         }
     }
+
+    /// <summary>
+    /// macOS dictationTestCallback: while setup's test step is open, the real shortcut records a
+    /// test instead of a dictation. Hold to record, release to transcribe; nothing is saved or
+    /// pasted. Callbacks run on the UI thread. Pass null to give the shortcut back to dictation.
+    /// </summary>
+    public void RouteHotkeyToTest(DictationTestRoute? route) => _testRoute = route;
+
+    /// <summary>
+    /// Lets every key reach the app while a window records a new shortcut, so pressing the current
+    /// one records it instead of starting a dictation (Handy suspends its shortcuts the same way).
+    /// </summary>
+    public void PauseHotkey(bool paused)
+    {
+        _hotkey.Paused = paused;
+        if (!paused) _testKeyHeld = false;
+    }
+
+    private async Task StartTestAsync(DictationTestRoute route)
+    {
+        if (!route.CanStart() || IsRecording || IsBusy) return;
+        try
+        {
+            var current = _settings.Load();
+            if (!string.Equals(_coordinator.ModelId, current.DictationModelId, StringComparison.OrdinalIgnoreCase))
+            {
+                await _coordinator.SwitchModelAsync(current.DictationModelId);
+            }
+            if (!_coordinator.IsModelReady)
+            {
+                Post(() => route.Failed($"{_coordinator.ModelDisplayName} is still downloading. The test starts once it is ready."));
+                return;
+            }
+
+            await StartAuxiliaryAsync(route.Microphone());
+            if (IsRecording) Post(route.Listening);
+        }
+        catch (Exception exception)
+        {
+            _auxiliarySession = false;
+            var message = MicrophoneAccessDiagnostics.DescribeFailure(exception);
+            _log.Error("Setup dictation test could not start.", exception);
+            Post(() => route.Failed(message));
+        }
+    }
+
+    private async Task StopTestAsync(DictationTestRoute route)
+    {
+        if (!_auxiliarySession || !IsRecording) return;
+        // Owning the operation token is what lets Escape reach a test that is still transcribing:
+        // the hook's cancel predicate sees a live operation, and RequestCancellation cancels it
+        // straight away instead of waiting behind this work on the serialized chain.
+        var cancellation = new CancellationTokenSource();
+        _operationCancellation = cancellation;
+        try
+        {
+            var text = await StopWithoutPersistingAsync(cancellation.Token);
+            Post(() => route.Captured(text));
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            Post(() => route.Failed("Test cancelled. Hold the shortcut to try again."));
+        }
+        catch (Exception exception)
+        {
+            _log.Error("Setup dictation test could not transcribe.", exception);
+            Post(() => route.Failed(exception.Message));
+        }
+        finally
+        {
+            // A token left behind would keep the cancel predicate true and swallow every Escape.
+            if (ReferenceEquals(_operationCancellation, cancellation)) _operationCancellation = null;
+            cancellation.Dispose();
+        }
+    }
+
+    private void Post(Action callback) => _dispatcher.TryEnqueue(callback);
 
     public Task CancelAsync()
     {
@@ -303,6 +419,9 @@ public sealed class WinUiDictationContext : IDisposable
                 Status = "Ready";
                 RaiseChanged();
                 StartTimers();
+                // The key is down: initialize the device now, in parallel with the hold threshold.
+                _coordinator.PrimeMicrophone(
+                    _settings.Load().MicrophoneName ?? _coordinator.PickPreferredMicrophone());
                 break;
 
             case DictationHotkeyAction.ShowPreparing:
@@ -322,7 +441,7 @@ public sealed class WinUiDictationContext : IDisposable
                 StopTimers();
                 Status = "Hands-free dictation active";
                 RaiseChanged();
-                await StartAsync(shouldPasteToActiveApp: true);
+                await StartAsync(shouldPasteToActiveApp: true, decodeDuringCapture: true);
                 if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
                 break;
 
@@ -357,7 +476,9 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
     }
 
-    private async Task StartAsync(bool shouldPasteToActiveApp)
+    // Push-to-talk is transcribed in one pass after release. Only hands-free, which has no bound
+    // on its length, decodes while capture is still running.
+    private async Task StartAsync(bool shouldPasteToActiveApp, bool decodeDuringCapture = false)
     {
         if (IsRecording || IsBusy)
         {
@@ -392,7 +513,10 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
         try
         {
-            await _coordinator.StartAsync(current.MicrophoneName ?? _coordinator.PickPreferredMicrophone());
+            await _coordinator.StartAsync(
+                current.MicrophoneName ?? _coordinator.PickPreferredMicrophone(),
+                DictationSessionKind.Interactive,
+                decodeDuringCapture);
         }
         catch (Exception exception)
         {
@@ -444,6 +568,7 @@ public sealed class WinUiDictationContext : IDisposable
         _hotkeyState.Reset();
         _operationCancellation?.Dispose();
         _operationCancellation = new CancellationTokenSource();
+        _delivering = true;
         Status = "Transcribing locally…";
         RaiseChanged();
         try
@@ -541,6 +666,7 @@ public sealed class WinUiDictationContext : IDisposable
                 $"totalMs={totalStarted.ElapsedMilliseconds}; " +
                 $"outcome={Status}");
             _pasteTarget = IntPtr.Zero;
+            _delivering = false;
             // A live token makes the Escape hook swallow the key in every app, so it must not
             // outlive the dictation it belongs to.
             var finished = _operationCancellation;
@@ -611,3 +737,11 @@ public sealed class WinUiDictationContext : IDisposable
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 }
+
+/// <summary>Where setup's dictation test receives the shortcut's results.</summary>
+public sealed record DictationTestRoute(
+    Func<string?> Microphone,
+    Func<bool> CanStart,
+    Action Listening,
+    Action<string> Captured,
+    Action<string> Failed);

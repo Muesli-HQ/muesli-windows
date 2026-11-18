@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -19,20 +20,22 @@ public sealed partial class MeetingsPage : Page
         App.MeetingDetection,
         App.FilePickers,
         App.Dialogs,
-        App.UiDispatcher,
-        App.ShowLiveTranscript,
-        App.Clipboard);
+        App.UiDispatcher);
 
     public MeetingsPage()
     {
         InitializeComponent();
+        // Code-set colours and item templates resolve brushes once; redo them on a theme switch.
+        ActualThemeChanged += (_, _) =>
+        {
+            UpdateSortPill();
+            UpdateTimeRangePill();
+            ThemeBrushes.Rerealize(MeetingList);
+        };
         Unloaded += (_, _) => ViewModel.Dispose();
         ViewModel.PropertyChanged += (_, args) =>
         {
             UpdateEmptyState();
-            if (args.PropertyName is nameof(ViewModel.LiveTranscript) or nameof(ViewModel.PartialYou) or nameof(ViewModel.PartialOthers)) UpdateLiveFeed();
-            if (args.PropertyName == nameof(ViewModel.ShowLiveTab))
-                RecordingModeBar.SelectedItem = ViewModel.ShowLiveTab ? RecordingLiveTab : RecordingNotesTab;
 
             // A reload republishes the folder list, which drops the ListView's SelectedItem because
             // it is a different instance. Without this, refreshing or saving a folder silently
@@ -64,26 +67,8 @@ public sealed partial class MeetingsPage : Page
 
     public static Visibility NotToVisibility(bool value) => BoolToVisibility(!value);
 
-    private void RecordingMode_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
-    {
-        ViewModel.ShowLiveTab = sender.SelectedItem == RecordingLiveTab;
-        if (ViewModel.ShowLiveTab) UpdateLiveFeed();
-    }
-
-    private void UpdateLiveFeed()
-    {
-        LiveFeed.Update(App.Meetings.LatestLiveSnapshot, ViewModel.LiveTranscript, App.Meetings.LiveTranscriptPrefix);
-        PreviousNotes.Markdown = App.Meetings.PreviousMeetingNotes;
-        PreviousNotes.Visibility = string.IsNullOrWhiteSpace(PreviousNotes.Markdown) ? Visibility.Collapsed : Visibility.Visible;
-        LiveCopyButton.IsEnabled = LiveFeed.CopyText.Length > 0;
-    }
-
-    private async void CopyLive_Click(object sender, RoutedEventArgs e) =>
-        await Controls.LiveTranscriptFeed.CopyAsync(LiveCopyButton, LiveFeed.CopyText);
-
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        UpdateLiveFeed();
         UpdateEmptyState();
         UpdateSortPill();
         UpdateTimeRangePill();
@@ -125,11 +110,7 @@ public sealed partial class MeetingsPage : Page
             Grid.SetColumn(FolderEditorFields, 0);
 
             Grid.SetRow(ActiveMeetingActions, 1);
-            Grid.SetColumn(ActiveMeetingActions, 0);
-            Grid.SetColumnSpan(ActiveMeetingActions, 2);
-            ActiveMeetingActions.HorizontalAlignment = HorizontalAlignment.Left;
-            Grid.SetRow(ActiveMeetingDetails, 2);
-            Grid.SetRow(RecordingWorkspace, 3);
+            Grid.SetColumn(ActiveMeetingActions, 1);
         }
         else
         {
@@ -147,11 +128,7 @@ public sealed partial class MeetingsPage : Page
             Grid.SetColumn(FolderEditorFields, 1);
 
             Grid.SetRow(ActiveMeetingActions, 0);
-            Grid.SetColumn(ActiveMeetingActions, 1);
-            Grid.SetColumnSpan(ActiveMeetingActions, 1);
-            ActiveMeetingActions.HorizontalAlignment = HorizontalAlignment.Right;
-            Grid.SetRow(ActiveMeetingDetails, 1);
-            Grid.SetRow(RecordingWorkspace, 2);
+            Grid.SetColumn(ActiveMeetingActions, 2);
         }
     }
 
@@ -341,12 +318,12 @@ public sealed partial class MeetingsPage : Page
     {
         if (active)
         {
-            var accent = (Brush)Application.Current.Resources["MuesliAccentBrush"];
-            button.Background = (Brush)Application.Current.Resources["MuesliAccentMutedBrush"];
-            button.Foreground = accent;
-            button.BorderBrush = accent;
-            icon.Foreground = accent;
-            label.Foreground = accent;
+            // macOS: accent at 12% with accent text, no border.
+            var accentText = ThemeBrushes.Get("MuesliAccentTextBrush");
+            button.Background = ThemeBrushes.Get("MuesliAccentMutedBrush");
+            button.Foreground = accentText;
+            icon.Foreground = accentText;
+            label.Foreground = accentText;
         }
         else
         {
@@ -358,18 +335,35 @@ public sealed partial class MeetingsPage : Page
         }
     }
 
+    /// <summary>macOS source badge: "Imported" in accent text on accent 12%, others textSecondary at 12%.</summary>
+    public static Brush SourceTint(string label)
+    {
+        var imported = label.Contains("import", StringComparison.OrdinalIgnoreCase);
+        var key = imported ? "MuesliAccentBrush" : "MuesliTextSecondaryBrush";
+        var color = ThemeBrushes.Get(key) is SolidColorBrush solid ? solid.Color : Microsoft.UI.Colors.Gray;
+        return new SolidColorBrush(global::Windows.UI.Color.FromArgb(0x1F, color.R, color.G, color.B));
+    }
+
+    public static Brush SourceForeground(string label) => ThemeBrushes.Get(
+        label.Contains("import", StringComparison.OrdinalIgnoreCase) ? "MuesliAccentTextBrush" : "MuesliTextSecondaryBrush");
+
     private void MeetingList_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is MeetingListItem meeting)
         {
             if (meeting.Id == App.Meetings.ActiveMeetingId)
             {
-                RecordingNotesEditor.Focus(FocusState.Programmatic);
+                OpenRecording();
                 return;
             }
             Frame.Navigate(typeof(MeetingDetailPage), meeting.Id);
         }
     }
+
+    private void OpenRecording_Click(object sender, RoutedEventArgs e) => OpenRecording();
+
+    /// <summary>Opens the meeting in progress on its own page.</summary>
+    private void OpenRecording() => Frame.Navigate(typeof(MeetingRecordingPage));
 
     private void ManageTemplates_Click(object sender, RoutedEventArgs e) =>
         Frame.Navigate(typeof(MeetingTemplatesPage));

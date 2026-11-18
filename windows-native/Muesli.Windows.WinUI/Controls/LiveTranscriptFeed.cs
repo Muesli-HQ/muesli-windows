@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -173,7 +174,7 @@ public sealed class LiveTranscriptFeed : UserControl
             await App.Clipboard.SetTextAsync(text.Trim());
             var previous = button.Content;
             button.Content = new FontIcon { Glyph = "\uE73E", FontSize = previous is FontIcon icon ? icon.FontSize : 12,
-                Foreground = (Brush)Application.Current.Resources["MuesliSuccessBrush"] };
+                Foreground = ThemeBrushes.Get("MuesliSuccessBrush") };
             await Task.Delay(1200);
             button.Content = previous;
         }

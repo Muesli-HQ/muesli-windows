@@ -230,11 +230,15 @@ public static class MeetingSummaryService
                 "ollama" => await SummarizeWithOllamaAsync(transcript, meetingTitle, settings, httpClient ?? LocalModelHttp, cancellationToken, manualNotes),
                 "lmstudio" => await SummarizeWithLmStudioAsync(transcript, meetingTitle, settings, httpClient ?? LocalModelHttp, cancellationToken, manualNotes),
                 "custom" => await SummarizeWithCustomLlmAsync(transcript, meetingTitle, settings, httpClient ?? Http, cancellationToken, manualNotes),
+                SummaryProviderDisclosure.ChatGpt => await SummarizeWithChatGptAsync(transcript, meetingTitle, settings, httpClient, cancellationToken, manualNotes),
+                SummaryProviderDisclosure.ClaudeCode => await ClaudeCodeSummarizer.RunAsync(
+                    EffectiveSystemPrompt(settings), SummaryUserPrompt(transcript, meetingTitle, manualNotes),
+                    settings.ClaudeCodeModel, settings.ClaudeCodeExecutablePath, ClaudeCodeRunTimeout(settings), cancellationToken),
                 _ => CreateLocalSummary(localInput, meetingTitle, settings)
             };
             return new SummaryGenerationResult(
                 summary,
-                provider is "openai" or "openrouter" or "ollama" or "lmstudio" or "custom" ? provider : "local",
+                IsModelProvider(provider) ? provider : "local",
                 false,
                 null);
         }
@@ -247,10 +251,37 @@ public static class MeetingSummaryService
             var fallback = CreateLocalSummary(localInput, meetingTitle, settings);
             var reason = exception is SummaryProviderException providerException
                 ? providerException.SafeReason
+                : exception is ChatGptAuthException ? "not-signed-in"
                 : exception is TaskCanceledException ? "timeout"
                 : exception is JsonException ? "malformed-response" : "provider-error";
             return new SummaryGenerationResult(fallback, provider, true, reason);
         }
+    }
+
+    /// <summary>Providers that run a language model, as opposed to the built-in local notes.</summary>
+    public static bool IsModelProvider(string? provider) =>
+        (provider ?? "").Trim().ToLowerInvariant() is "openai" or "openrouter" or "ollama" or "lmstudio" or "custom"
+            or SummaryProviderDisclosure.ChatGpt or SummaryProviderDisclosure.ClaudeCode;
+
+    private static readonly HttpClient ChatGptHttp = new() { Timeout = TimeSpan.FromSeconds(180) };
+
+    // A title is a short side request; the notes themselves get the full budget.
+    private static TimeSpan ClaudeCodeRunTimeout(MuesliSettings settings) =>
+        settings.MeetingSummaryPromptOverride.StartsWith(TitlePromptPrefix, StringComparison.Ordinal)
+            ? ClaudeCodeSummarizer.TitleTimeout : ClaudeCodeSummarizer.SummaryTimeout;
+
+    private const string TitlePromptPrefix = "Write a concise 3–7 word meeting title.";
+
+    private static async Task<string> SummarizeWithChatGptAsync(
+        string transcript, string meetingTitle, MuesliSettings settings, HttpClient? httpClient,
+        CancellationToken cancellationToken, string? manualNotes)
+    {
+        var auth = ChatGptAuthManager.Shared ?? throw new SummaryProviderException("not-signed-in");
+        var credential = await auth.GetValidCredentialAsync(cancellationToken);
+        var version = typeof(MeetingSummaryService).Assembly.GetName().Version?.ToString(3) ?? "0";
+        return await ChatGptResponsesClient.RespondAsync(
+            httpClient ?? ChatGptHttp, credential, ChatGptResponsesClient.NormalizeModel(settings.ChatGptModel),
+            EffectiveSystemPrompt(settings), SummaryUserPrompt(transcript, meetingTitle, manualNotes), version, cancellationToken);
     }
 
     private static string CreateLocalSummary(string transcript, string meetingTitle, MuesliSettings settings)
@@ -1283,7 +1314,7 @@ public static class MeetingSummaryService
     {
         if (meeting.TitleIsManual) return meeting.Title;
         var fallback = MeetingTitleService.Generate(meeting.Transcript, meeting.CreatedAt, meeting.Title, meeting.ManualNotes);
-        if (settings.MeetingSummaryProvider.Trim().ToLowerInvariant() is not ("openai" or "openrouter" or "ollama" or "lmstudio" or "custom")) return fallback;
+        if (!IsModelProvider(settings.MeetingSummaryProvider)) return fallback;
         var result = await CreateSummaryResultAsync(meeting.Transcript, meeting.Title, settings with
         {
             MeetingSummaryPromptOverride = "Write a concise 3–7 word meeting title. Prioritize the user's written notes when choosing the topic. Return only the title, without quotes, Markdown, or explanation."

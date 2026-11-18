@@ -23,6 +23,9 @@ public sealed class GlobalHotkeyService : IDisposable
     private HotkeyGesture _gesture = HotkeyGestureParser.Parse("F8");
     private bool _isDown;
     private bool _escapeDown;
+    // Set for a lone right-side modifier gesture (Right Ctrl/Alt/Shift/Win); null otherwise.
+    private ModifierHoldTracker? _modifierHold;
+    private volatile bool _paused;
     private Action? _onDown;
     private Action? _onUp;
     private Func<bool>? _canCancel;
@@ -49,6 +52,7 @@ public sealed class GlobalHotkeyService : IDisposable
         _canCancel = canCancel;
         _onCancel = onCancel;
         _onOtherKey = onOtherKey;
+        _modifierHold = HotkeyGestureParser.IsModifierOnly(_gesture) ? new ModifierHoldTracker(_gesture.VirtualKey) : null;
         _hookProc = HookCallback;
         // Windows silently removes a low-level hook when its installing thread cannot pump
         // messages within one second. Keep it independent of UI, capture and inference stalls.
@@ -78,7 +82,23 @@ public sealed class GlobalHotkeyService : IDisposable
 
         _isDown = false;
         _escapeDown = false;
+        _modifierHold = null;
         _hookProc = null;
+    }
+
+    /// <summary>
+    /// While true the hook lets every key through untouched, so a window can record a new shortcut
+    /// (including the current one) without starting a dictation. Survives re-registration.
+    /// </summary>
+    public bool Paused
+    {
+        get => _paused;
+        set
+        {
+            _paused = value;
+            _isDown = false;
+            _modifierHold?.Reset();
+        }
     }
 
     private void RunHook(TaskCompletionSource ready)
@@ -114,7 +134,7 @@ public sealed class GlobalHotkeyService : IDisposable
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0)
+        if (nCode >= 0 && !_paused)
         {
             var message = wParam.ToInt32();
             var virtualKey = Marshal.ReadInt32(lParam);
@@ -135,6 +155,26 @@ public sealed class GlobalHotkeyService : IDisposable
                 }
 
                 return (IntPtr)1;
+            }
+
+            if (_modifierHold is { } hold)
+            {
+                var scanCode = unchecked((uint)Marshal.ReadInt32(lParam, 4));
+                var flags = Marshal.ReadInt32(lParam, 8);
+                var action = hold.Process(
+                    virtualKey,
+                    scanCode,
+                    isKeyDownMessage,
+                    isKeyUpMessage,
+                    injected: (flags & LlkhfInjected) != 0,
+                    otherModifiersHeld: () => !NoOtherModifiersHeld(_gesture.VirtualKey));
+                // The mask goes in while the key is still held, so it lands between press and release.
+                if (action.HasFlag(ModifierHoldAction.SendMenuMask)) SendMaskKey();
+                if (action.HasFlag(ModifierHoldAction.Start)) _onDown?.Invoke();
+                else if (action.HasFlag(ModifierHoldAction.Stop)) _onUp?.Invoke();
+                else if (action.HasFlag(ModifierHoldAction.Cancel)) _onOtherKey?.Invoke();
+                // Never swallowed: Right Ctrl must still work as Ctrl for every other shortcut.
+                return CallNextHookEx(_hookId, nCode, wParam, lParam);
             }
 
             if (isKeyDownMessage && HotkeyGestureParser.Matches(_gesture, virtualKey, ModifierKeysFromState()))
@@ -168,6 +208,71 @@ public sealed class GlobalHotkeyService : IDisposable
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
     }
+
+    private const int LlkhfInjected = 0x10;
+    private const ushort MenuMaskKey = 0xE8; // unassigned virtual key, as AutoHotkey's #MenuMaskKey
+
+    private static bool NoOtherModifiersHeld(int gestureKey)
+    {
+        foreach (var key in new[] { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C })
+        {
+            if (key == gestureKey) continue;
+            // AltGr layouts report Right Alt as Left Ctrl + Right Alt; that Ctrl belongs to the key.
+            if (gestureKey == 0xA5 && key == 0xA2) continue;
+            if (IsKeyDown(key)) return false;
+        }
+
+        return true;
+    }
+
+    private static void SendMaskKey()
+    {
+        var inputs = new[]
+        {
+            new Input { Type = 1, Union = new InputUnion { Keyboard = new KeyboardInput { VirtualKey = MenuMaskKey } } },
+            new Input { Type = 1, Union = new InputUnion { Keyboard = new KeyboardInput { VirtualKey = MenuMaskKey, Flags = 0x0002 } } }
+        };
+        _ = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Input
+    {
+        public uint Type;
+        public InputUnion Union;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputUnion
+    {
+        [FieldOffset(0)] public KeyboardInput Keyboard;
+        [FieldOffset(0)] public MouseInput Mouse;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardInput
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    // Present only so the union has the size Windows expects for INPUT.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int X;
+        public int Y;
+        public uint Data;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint count, Input[] inputs, int size);
 
     private static HotkeyModifiers ModifierKeysFromState()
     {

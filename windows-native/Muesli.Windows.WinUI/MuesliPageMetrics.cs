@@ -40,9 +40,9 @@ internal static class MuesliPageMetrics
     /// <summary>Content widths below this (and at or above <see cref="CompactContentWidth"/>) use the medium gutter.</summary>
     public const double MediumContentWidth = 900;
 
-    private static readonly Thickness LargeFallback = new(34, 26, 34, 40);
-    private static readonly Thickness MediumFallback = new(28, 26, 28, 40);
-    private static readonly Thickness CompactFallback = new(20, 22, 20, 32);
+    private static readonly Thickness LargeFallback = new(32, 8, 32, 40);
+    private static readonly Thickness MediumFallback = new(28, 8, 28, 40);
+    private static readonly Thickness CompactFallback = new(20, 8, 20, 32);
 
     public static bool IsCompact(double contentWidth) => contentWidth > 0 && contentWidth < CompactContentWidth;
 

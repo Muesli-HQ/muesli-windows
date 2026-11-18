@@ -32,6 +32,9 @@ public static class HotkeyConflictProbe
     public static bool IsAdvisoryRegistrationAvailable(string gesture)
     {
         var parsed = HotkeyGestureParser.Parse(gesture);
+        // RegisterHotKey cannot express a lone right-side modifier, and nothing registers one
+        // exclusively: the keyboard hook shares the key with every app, so there is nothing to probe.
+        if (HotkeyGestureParser.IsModifierOnly(parsed)) return true;
         var id = unchecked((int)(0x4D550000 | (Environment.TickCount & 0x7fff)));
         try
         {

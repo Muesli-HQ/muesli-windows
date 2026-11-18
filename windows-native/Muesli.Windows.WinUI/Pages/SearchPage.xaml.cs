@@ -1,3 +1,4 @@
+using Muesli.Windows.WinUI.Themes;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -113,7 +114,7 @@ public sealed partial class SearchPage : Page
         }
     }
 
-    private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
+    private static Brush Brush(string key) => ThemeBrushes.Get(key);
 
     private async void CopyDictation_Click(object sender, RoutedEventArgs e)
     {

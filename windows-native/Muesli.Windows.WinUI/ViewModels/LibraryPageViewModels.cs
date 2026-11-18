@@ -90,7 +90,7 @@ public partial class TimelinePageViewModel : ObservableObject
             ? "TODAY"
             : localDate == today.AddDays(-1)
                 ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
+                : LibraryDayHeading.Format(localDate);
     }
 
     private void NotifyDerived()
@@ -245,9 +245,10 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         // about to go: the dialog is the last point at which the user can tell that the pointer
         // was over the row they meant.
         var choice = await _dialogs.ConfirmAsync(
-            $"Delete this dictation permanently?\n\n{item.TimeLabel} · “{Snippet(item.Text)}”\n\n" +
-            "This removes its saved transcript from this profile.",
-            "Delete dictation",
+            // macOS wording, plus the record itself: actions appear on hover, so the dialog is
+            // the last point at which the user can tell which row the pointer was over.
+            $"Are you sure you want to delete this dictation? This cannot be undone.\n\n{item.TimeLabel} · “{Snippet(item.Text)}”",
+            "Delete Dictation",
             cancellationToken);
         if (choice != AppDialogChoice.Primary) return;
 
@@ -328,7 +329,7 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
             ? "TODAY"
             : localDate == today.AddDays(-1)
                 ? "YESTERDAY"
-                : localDate.ToString("MMMM d, yyyy").ToUpperInvariant();
+                : LibraryDayHeading.Format(localDate);
     }
 
     private void ShowStatus(string message, bool isError = false)
@@ -386,10 +387,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     private readonly IFilePickerService _filePickers;
     private readonly IAppDialogService _dialogs;
     private readonly IUiDispatcher _dispatcher;
-    private readonly Action _showLiveTranscript;
-    private readonly IClipboardService _clipboard;
-    private string? _notesMeetingId;
-    private bool _loadingNotes;
     private IReadOnlyList<MeetingListItem> _allItems = [];
 
     public MeetingsPageViewModel(
@@ -398,9 +395,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         WinUiMeetingDetectionService detection,
         IFilePickerService filePickers,
         IAppDialogService dialogs,
-        IUiDispatcher dispatcher,
-        Action showLiveTranscript,
-        IClipboardService clipboard)
+        IUiDispatcher dispatcher)
     {
         _library = library;
         _meetingRuntime = meetingRuntime;
@@ -408,8 +403,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         _filePickers = filePickers;
         _dialogs = dialogs;
         _dispatcher = dispatcher;
-        _showLiveTranscript = showLiveTranscript;
-        _clipboard = clipboard;
         _meetingRuntime.Changed += OnMeetingChanged;
         Reload();
         UpdateRuntimeState();
@@ -478,83 +471,10 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     public partial string MeetingStatus { get; private set; } = "Ready";
 
     [ObservableProperty]
-    public partial string LiveTranscript { get; private set; } = "";
-
-    [ObservableProperty] public partial string ManualNotes { get; set; } = "";
-    [ObservableProperty] public partial string NotesSaveStatus { get; private set; } = "Saved";
-    [ObservableProperty] public partial bool ShowLiveTab { get; set; }
-    [ObservableProperty] public partial bool IsSourceMissing { get; private set; }
-    [ObservableProperty] public partial IReadOnlyList<MeetingLiveCaption> LiveCaptions { get; private set; } = [];
-    [ObservableProperty] public partial string PartialYou { get; private set; } = "";
-    [ObservableProperty] public partial string PartialOthers { get; private set; } = "";
-
-    public bool ShowRecordingNotes => !ShowLiveTab;
-    public bool CanEditRecordingNotes => _meetingRuntime.ActiveMeetingId is not null && CanStop;
-    public bool HasLiveCaptions => LiveCaptions.Count > 0;
-    public bool HasPartialYou => !string.IsNullOrWhiteSpace(PartialYou);
-    public bool HasPartialOthers => !string.IsNullOrWhiteSpace(PartialOthers);
-    public string LiveCaptionHint => _meetingRuntime.IsRollingPreview
-        ? "Captions appear as the meeting model finishes each audio chunk."
-        : "Captions appear as speech is recognized.";
-
-    partial void OnShowLiveTabChanged(bool value) => OnPropertyChanged(nameof(ShowRecordingNotes));
-    // Typing updates the in-memory draft (which Stop and discard already persist) and writes to
-    // disk only after a pause.
-    private CancellationTokenSource? _notesDebounce;
-
-    partial void OnManualNotesChanged(string value)
-    {
-        if (_loadingNotes || !CanEditRecordingNotes) return;
-        _meetingRuntime.UpdateManualNotesDraft(value);
-        NotesSaveStatus = "Saving…";
-        _notesDebounce?.Cancel();
-        _notesDebounce = new CancellationTokenSource();
-        _ = SaveNotesAfterPauseAsync(_notesDebounce.Token);
-    }
-
-    private async Task SaveNotesAfterPauseAsync(CancellationToken token)
-    {
-        try { await Task.Delay(700, token); }
-        catch (OperationCanceledException) { return; }
-        if (CanEditRecordingNotes) SaveRecordingNotes();
-    }
-
-    [RelayCommand(CanExecute = nameof(CanEditRecordingNotes))]
-    private void SaveRecordingNotes()
-    {
-        try
-        {
-            _meetingRuntime.SaveManualNotes(ManualNotes);
-            NotesSaveStatus = "Saved";
-        }
-        catch (Exception exception) { NotesSaveStatus = $"Could not save notes: {exception.Message}"; }
-    }
-
-    [RelayCommand] private void KeepRecording() => _meetingRuntime.KeepRecording();
-
-    [RelayCommand]
-    private async Task CopyLiveTranscriptAsync(CancellationToken cancellationToken)
-    {
-        try { await _clipboard.SetTextAsync(LiveTranscript, cancellationToken); }
-        catch (Exception exception) { MeetingStatus = $"Could not copy transcript: {WinUiClipboardService.DescribeFailure(exception)}"; }
-    }
-
-    [RelayCommand]
-    private async Task CopyLiveCaptionAsync(MeetingLiveCaption? caption, CancellationToken cancellationToken)
-    {
-        if (caption is null) return;
-        try { await _clipboard.SetTextAsync(caption.Text, cancellationToken); }
-        catch (Exception exception) { MeetingStatus = $"Could not copy caption: {WinUiClipboardService.DescribeFailure(exception)}"; }
-    }
-
-    [ObservableProperty]
     public partial double ImportProgress { get; private set; }
 
     [ObservableProperty]
     public partial bool IsPaused { get; private set; }
-
-    [ObservableProperty]
-    public partial string CaptureStatus { get; private set; } = "Idle";
 
     [ObservableProperty]
     public partial string DetectionStatus { get; private set; } = "";
@@ -604,6 +524,28 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     public bool CanStop => (IsRecording || IsPaused) && !IsBusy;
     public bool CanPause => IsRecording && !IsBusy;
     public bool CanResume => IsPaused && !IsBusy;
+    /// <summary>A recording exists (live or paused) that the banner can open, pause or stop.</summary>
+    public bool HasLiveMeeting => IsRecording || IsPaused;
+
+    /// <summary>The spinner shows for work without a recording dot: starting, saving, importing.</summary>
+    public bool ShowBannerProgress => IsImporting || (IsBusy && !CanPause && !CanResume);
+
+    /// <summary>macOS activeMeetingBanner: the meeting title, or what the list is busy with.</summary>
+    public string BannerTitle =>
+        HasLiveMeeting ? (string.IsNullOrWhiteSpace(_meetingRuntime.ActiveTitle) ? "Meeting" : _meetingRuntime.ActiveTitle)
+        : _meetingRuntime.IsStarting ? "Preparing transcription"
+        : IsImporting ? "Importing"
+        : "Finalizing notes";
+
+    public string BannerStatus =>
+        _meetingRuntime.ProcessingStage.Length > 0 ? $"{_meetingRuntime.ProcessingStage}…"
+        : IsBusy && HasLiveMeeting ? "Finalizing notes"
+        : IsRecording ? "Recording now"
+        : IsPaused ? (_meetingRuntime.FinalizationFailed ? "Saving failed. The recording is kept. Choose Stop to try again." : "Recording paused")
+        : _meetingRuntime.IsStarting ? "Meeting transcription will start shortly."
+        : IsBusy && !IsImporting && string.Equals(MeetingStatus, "Ready", StringComparison.Ordinal) ? "Saving and transcribing…"
+        : MeetingStatus;
+
     public bool HasRecoverable => RecoverableSessions.Count > 0;
 
     public bool HasItems => Items.Count > 0;
@@ -615,7 +557,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         !string.Equals(MeetingStatus, "Ready", StringComparison.Ordinal);
 
     public string ResultCountHint =>
-        $"{(Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings")}  •  Open a meeting to review notes, transcript, and template-driven summaries";
+        (Items.Count == 1 ? "1 meeting" : $"{Items.Count:N0} meetings");
 
     /// <summary>Current sort, shown on the compact sort pill (MeetingsView.swift parity).</summary>
     public string SortLabel => SortIndex == 1 ? "Oldest first" : "Newest first";
@@ -666,9 +608,9 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     {
         try
         {
-            MeetingStatus = "Starting recording…";
+            MeetingStatus = "Meeting transcription will start shortly.";
             await _meetingRuntime.StartQuickNoteAsync(cancellationToken);
-            MeetingStatus = "Recording Quick Note";
+            MeetingStatus = "Ready";
         }
         catch (Exception exception)
         {
@@ -699,26 +641,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         catch (Exception exception)
         {
             MeetingStatus = $"Could not finalize meeting: {exception.Message}";
-        }
-        finally
-        {
-            UpdateRuntimeState();
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanStop))]
-    private async Task DiscardRecordingAsync()
-    {
-        try
-        {
-            var status = await _meetingRuntime.ConfirmAndDiscardAsync(_dialogs, !string.IsNullOrWhiteSpace(ManualNotes));
-            if (status is null) return;
-            Reload();
-            MeetingStatus = status;
-        }
-        catch (Exception exception)
-        {
-            MeetingStatus = $"Could not discard recording: {exception.Message}";
         }
         finally
         {
@@ -761,9 +683,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
             UpdateRuntimeState();
         }
     }
-
-    [RelayCommand]
-    private void ShowLiveTranscript() => _showLiveTranscript();
 
     [RelayCommand]
     private async Task FinalizeRecoveryAsync(RecoverableMeetingListItem? item, CancellationToken cancellationToken)
@@ -1103,32 +1022,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         IsRecording = _meetingRuntime.IsRecording;
         IsBusy = _meetingRuntime.IsBusy;
         IsPaused = _meetingRuntime.IsPaused;
-        LiveTranscript = _meetingRuntime.LiveTranscript;
-        IsSourceMissing = _meetingRuntime.IsSourceMissing;
-        if (_meetingRuntime.ActiveMeetingId is { } id && id != _notesMeetingId)
-        {
-            _notesMeetingId = id;
-            _loadingNotes = true;
-            ManualNotes = _meetingRuntime.ManualNotes;
-            _loadingNotes = false;
-            NotesSaveStatus = _meetingRuntime.AreNotesSaved ? "Saved" : "Notes have not been saved. Retry saving.";
-            ShowLiveTab = false;
-            LiveCaptions = [];
-        }
-        var snapshot = _meetingRuntime.LatestLiveSnapshot;
-        if ((snapshot?.Committed.Count ?? 0) != LiveCaptions.Count)
-            LiveCaptions = snapshot?.Committed.OrderBy(segment => segment.StartSample)
-                .Select(segment => new MeetingLiveCaption(segment.Text, segment.Channel == LiveTranscriptChannel.Microphone))
-                .ToArray() ?? [];
-        PartialYou = snapshot?.PartialMicrophone ?? "";
-        PartialOthers = snapshot?.PartialSystem ?? "";
-        OnPropertyChanged(nameof(HasLiveCaptions));
-        OnPropertyChanged(nameof(HasPartialYou));
-        OnPropertyChanged(nameof(HasPartialOthers));
-        OnPropertyChanged(nameof(LiveCaptionHint));
-        OnPropertyChanged(nameof(CanEditRecordingNotes));
-        SaveRecordingNotesCommand.NotifyCanExecuteChanged();
-        CaptureStatus = _meetingRuntime.CaptureStatus;
         DetectionStatus = _detection.Status;
         RecoverableSessions = _meetingRuntime.RecoverableSessions
             .Select(session => new RecoverableMeetingListItem(
@@ -1136,10 +1029,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
                 string.IsNullOrWhiteSpace(session.Journal.Title) ? "Recoverable recording" : session.Journal.Title,
                 $"{session.Journal.StartedAtUtc.ToLocalTime():g} · {session.MicrophonePartCount} mic part(s) · {session.SystemPartCount} system part(s)"))
             .ToList();
-        if (IsRecording) MeetingStatus = $"Recording · {_meetingRuntime.ActiveTitle}";
-        else if (IsPaused) MeetingStatus = _meetingRuntime.FinalizationFailed
-            ? "Saving failed · audio kept. Choose Stop to retry."
-            : "Paused · audio retained";
         if (wasActive && !IsActive) Reload();
         NotifyCommandState();
         OnPropertyChanged(nameof(IsActive));
@@ -1149,14 +1038,28 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(HasRecoverable));
         OnPropertyChanged(nameof(HasIdleNotice));
+        NotifyBanner();
     }
 
-    partial void OnMeetingStatusChanged(string value) => OnPropertyChanged(nameof(HasIdleNotice));
+    private void NotifyBanner()
+    {
+        OnPropertyChanged(nameof(HasLiveMeeting));
+        OnPropertyChanged(nameof(ShowBannerProgress));
+        OnPropertyChanged(nameof(BannerTitle));
+        OnPropertyChanged(nameof(BannerStatus));
+    }
+
+    partial void OnMeetingStatusChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasIdleNotice));
+        NotifyBanner();
+    }
 
     partial void OnIsImportingChanged(bool value)
     {
         NotifyCommandState();
         OnPropertyChanged(nameof(HasIdleNotice));
+        NotifyBanner();
     }
 
     private void NotifyCommandState()
@@ -1165,15 +1068,9 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         DiscardRecoveryCommand.NotifyCanExecuteChanged();
         ImportAudioCommand.NotifyCanExecuteChanged();
         StopRecordingCommand.NotifyCanExecuteChanged();
-        DiscardRecordingCommand.NotifyCanExecuteChanged();
         PauseRecordingCommand.NotifyCanExecuteChanged();
         ResumeRecordingCommand.NotifyCanExecuteChanged();
     }
-}
-
-public sealed record MeetingLiveCaption(string Text, bool IsYou)
-{
-    public string Speaker => IsYou ? "You" : "Others";
 }
 
 public sealed record MeetingListItem(
@@ -1236,7 +1133,7 @@ public sealed record MeetingListItem(
             MeetingPreviewText.Snippet(
                 !string.IsNullOrWhiteSpace(item.ManualNotes) && item.SessionState != MeetingSessionState.Completed ? item.ManualNotes
                 : string.IsNullOrWhiteSpace(item.Summary) ? item.Transcript : item.Summary),
-            item.CreatedAt.ToLocalTime().ToString("d MMM yyyy 'at' h:mm:ss tt"),
+            item.CreatedAt.ToLocalTime().ToString("MMM d, yyyy 'at' h:mm:ss tt", System.Globalization.CultureInfo.CurrentCulture),
             FormatDuration(item.DurationMs),
             SessionStateLabel(item.SessionState, item.RecoveredFromInterruption),
             string.IsNullOrWhiteSpace(item.ModelProfile) ? "Local model" : item.ModelProfile,
@@ -1414,5 +1311,19 @@ public sealed record MeetingFolderListItem(string Id, string Name, int Count)
         }
 
         return result;
+    }
+}
+
+/// <summary>
+/// macOS day headings (TimelineView.swift): "TODAY", "YESTERDAY", otherwise the abbreviated
+/// weekday, day and month in the locale's order, uppercased, with no year ("WED, NOV 12").
+/// </summary>
+internal static class LibraryDayHeading
+{
+    public static string Format(DateTime date)
+    {
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        var monthDay = culture.DateTimeFormat.MonthDayPattern.Replace("MMMM", "MMM", StringComparison.Ordinal);
+        return $"{date.ToString("ddd", culture)}, {date.ToString(monthDay, culture)}".ToUpper(culture);
     }
 }

@@ -203,6 +203,7 @@ public sealed class SettingsStore
         return settings with
         {
             UserName = settings.UserName ?? "",
+            OnboardingUseCase = OnboardingUseCases.Resolve(settings.OnboardingUseCase),
             Hotkey = DefaultIfBlank(settings.Hotkey, "F8").Trim(),
             PasteBehavior = DefaultIfBlank(settings.PasteBehavior, "active-app").Trim(),
             DictationModelId = NormalizePersistedModelId(settings.DictationModelId),
@@ -234,6 +235,9 @@ public sealed class SettingsStore
             ExecutionProvider = NormalizeExecutionProvider(settings.ExecutionProvider),
             CleanupModelId = CleanupModelCatalog.Normalize(settings.CleanupModelId),
             OpenAIModel = DefaultIfBlank(settings.OpenAIModel, "gpt-5.4-mini").Trim(),
+            ChatGptModel = (settings.ChatGptModel ?? "").Trim(),
+            ClaudeCodeModel = (settings.ClaudeCodeModel ?? "").Trim(),
+            ClaudeCodeExecutablePath = (settings.ClaudeCodeExecutablePath ?? "").Trim(),
             OpenRouterModel = DefaultIfBlank(settings.OpenRouterModel, "stepfun/step-3.5-flash:free").Trim(),
             OllamaEndpoint = NormalizeOllamaEndpoint(settings.OllamaEndpoint),
             OllamaModel = DefaultIfBlank(settings.OllamaModel, "llama3.1:8b").Trim(),
@@ -348,11 +352,10 @@ public sealed class SettingsStore
     private static string? NormalizeStreamingModelId(string? modelId) =>
         StreamingModelCatalog.Get(modelId)?.Id;
 
-    private static string NormalizeOwnership(string? value) => value?.Trim().ToLowerInvariant() switch
-    {
-        "unified-live-final" => "unified-live-final",
-        _ => "preview-only"
-    };
+    // As on macOS, what is transcribed during the meeting is the final transcript; there is no
+    // "preview only" mode that transcribes the whole recording again after Stop. Older settings
+    // files that say "preview-only" are read as unified.
+    private static string NormalizeOwnership(string? value) => LiveTranscriptOwnershipDescriptor.UnifiedSettingValue;
 
     private static string NormalizeHookTranscriptPolicy(string? value) => value?.Trim().ToLowerInvariant() switch
     {
@@ -428,12 +431,15 @@ public sealed record MuesliSettings
     public const int CurrentSchemaVersion = 11;
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string UserName { get; init; } = "";
+
+    /// <summary>What setup was told muesli is for (macOS onboarding_use_case values).</summary>
+    public string OnboardingUseCase { get; init; } = OnboardingUseCases.Everything;
     public string Hotkey { get; init; } = "F8";
     public string PasteBehavior { get; init; } = "active-app";
     public string DictationModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
     public string FinalMeetingModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
     public string? LiveMeetingModelId { get; init; }
-    public string LiveTranscriptOwnership { get; init; } = "preview-only";
+    public string LiveTranscriptOwnership { get; init; } = LiveTranscriptOwnershipDescriptor.UnifiedSettingValue;
 
     /// <summary>
     /// Requested execution provider: <c>auto</c>, <c>cpu</c>, <c>cuda</c>, or <c>directml</c>.
@@ -515,6 +521,15 @@ public sealed record MuesliSettings
     [JsonIgnore]
     public string ResolvedOpenAIApiKey { get; init; } = "";
     public string OpenAIModel { get; init; } = "gpt-5.4-mini";
+
+    /// <summary>Model used with "Sign in with ChatGPT"; blank means the default preset.</summary>
+    public string ChatGptModel { get; init; } = "";
+
+    /// <summary>Claude Code model alias or id; blank follows Claude Code's own setting.</summary>
+    public string ClaudeCodeModel { get; init; } = "";
+
+    /// <summary>Optional path to the Claude Code CLI; blank lets Muesli find it.</summary>
+    public string ClaudeCodeExecutablePath { get; init; } = "";
     [JsonPropertyName("OpenRouterApiKey")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string? PlaintextOpenRouterApiKeyForMigration { get; init; }
