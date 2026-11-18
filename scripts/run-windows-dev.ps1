@@ -177,12 +177,13 @@ function Add-SlotBadge([string]$Path) {
 
 $assets = Join-Path $slotLayout 'Assets'
 Get-ChildItem -LiteralPath $assets -File |
-    Where-Object { $_.Name -like 'Square44x44Logo*.png' -or $_.Name -like 'Square150x150Logo*.png' } |
+    Where-Object { $_.Name -like 'Square44x44Logo*.png' -or $_.Name -like 'Square150x150Logo*.png' -or $_.Name -like 'Wide310x150Logo*.png' } |
     ForEach-Object { Add-SlotBadge $_.FullName }
 
 # The window icon decides what the taskbar button shows. Rebuild it from the badged logos; an
-# .ico may hold PNG images directly.
-$iconImages = foreach ($size in 16, 24, 32, 48, 256) {
+# .ico may hold PNG images directly. Same frame sizes as Write-ProductAppIcon in
+# generate-winui-assets.ps1, so scaled-DPI requests (20, 30 px) still get an exact frame.
+$iconImages = foreach ($size in 16, 20, 24, 30, 32, 48, 64, 256) {
     $png = Join-Path $assets "Square44x44Logo.targetsize-$size.png"
     if (Test-Path -LiteralPath $png) { [pscustomobject]@{ Size = $size; Bytes = [IO.File]::ReadAllBytes($png) } }
 }
