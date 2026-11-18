@@ -17,6 +17,7 @@ public sealed record JsonHistorySnapshot
     public IReadOnlyList<SnapshotMeeting> Meetings { get; init; } = [];
     public IReadOnlyList<PersistedMeetingFolder> Folders { get; init; } = [];
     public IReadOnlyList<PersistedMeetingTemplate> Templates { get; init; } = [];
+    public IReadOnlyList<DictionaryEntryRecord> Dictionary { get; init; } = [];
     public IReadOnlyList<SnapshotProblem> Problems { get; init; } = [];
 
     /// <summary>
@@ -52,6 +53,7 @@ public static class JsonHistorySnapshotReader
     public const string MeetingsFileName = "windows-meetings.json";
     public const string FoldersFileName = "windows-meeting-folders.json";
     public const string TemplatesFileName = "windows-meeting-templates.json";
+    public const string LibraryMutationFileName = "windows-library-mutation.json";
 
     /// <summary>
     /// Matches <see cref="AtomicJsonFile"/>'s serializer settings. The two must agree: this reader
@@ -98,15 +100,68 @@ public static class JsonHistorySnapshotReader
             ref newest,
             element => element.Deserialize<PersistedMeetingTemplate>(JsonOptions));
 
+        // A committed JSON folder-mutation journal wins over either partially replaced file.
+        var journalPath = Path.Combine(directory, LibraryMutationFileName);
+        if (File.Exists(journalPath) || File.Exists(journalPath + ".bak"))
+        {
+            try
+            {
+                var journal = ReadDocument(journalPath);
+                if (!TryGetProperty(journal, "folders", out var journalFolders) ||
+                    !TryGetProperty(journal, "meetings", out var journalMeetings) ||
+                    journalFolders.ValueKind != JsonValueKind.Array || journalMeetings.ValueKind != JsonValueKind.Array)
+                    throw new InvalidDataException("The pending folder mutation is incomplete.");
+                folders = journalFolders.EnumerateArray().Select(element =>
+                    element.Deserialize<PersistedMeetingFolder>(JsonOptions) ?? throw new JsonException()).ToList();
+                meetings = journalMeetings.EnumerateArray().Select(element =>
+                    ReadMeeting(element) ?? throw new JsonException()).ToList();
+                problems.RemoveAll(problem => problem.FileName is FoldersFileName or MeetingsFileName);
+            }
+            catch (Exception exception) when (exception is JsonException or InvalidDataException)
+            {
+                problems.Add(new(LibraryMutationFileName, "The pending folder mutation could not be read safely.", true));
+            }
+        }
+
+        var dictionary = ReadDictionary(directory);
+        problems.AddRange(dictionary.Problems);
         return new JsonHistorySnapshot
         {
             Dictations = dictations,
             Meetings = meetings,
             Folders = folders,
             Templates = templates,
+            Dictionary = dictionary.Dictionary,
             Problems = problems,
             SourceTimestampUtc = newest
         };
+    }
+
+    public static JsonHistorySnapshot ReadDictionary(string directory)
+    {
+        var problems = new List<SnapshotProblem>();
+        var newest = DateTimeOffset.UnixEpoch;
+        var entries = ReadArray(directory, PersistenceCutover.DictionaryFileName, problems, ref newest,
+            element => element.Deserialize<DictionaryEntryRecord>(JsonOptions));
+        try { SqliteDictionaryRepository.Validate(entries); }
+        catch (PersistenceException exception) { problems.Add(new(PersistenceCutover.DictionaryFileName, exception.Message, true)); }
+        return new JsonHistorySnapshot { Dictionary = entries, Problems = problems };
+    }
+
+    private static JsonElement ReadDocument(string path)
+    {
+        // A missing primary with a surviving backup is recovery input, never an empty profile.
+        if (!File.Exists(path) && File.Exists(path + ".bak")) path += ".bak";
+        using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+        var root = document.RootElement;
+        if (root.ValueKind == JsonValueKind.Object && TryGetProperty(root, "data", out var data))
+        {
+            if (!TryGetProperty(root, "schemaVersion", out var version) || !version.TryGetInt32(out var number) ||
+                number != AtomicJsonFile.CurrentSchemaVersion)
+                throw new InvalidDataException("The persisted JSON envelope has an unsupported schema version.");
+            root = data;
+        }
+        return root.Clone();
     }
 
     private static SnapshotMeeting? ReadMeeting(JsonElement element)
@@ -149,7 +204,9 @@ public static class JsonHistorySnapshotReader
         var path = Path.Combine(directory, fileName);
         if (!File.Exists(path))
         {
-            return [];
+            if (!File.Exists(path + ".bak")) return [];
+            problems.Add(new(fileName, $"{fileName} was missing; its backup was used instead.", false));
+            path += ".bak";
         }
 
         var written = new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
@@ -235,10 +292,8 @@ public static class JsonHistorySnapshotReader
         foreach (var element in root.EnumerateArray())
         {
             var mapped = map(element);
-            if (mapped is not null)
-            {
-                results.Add(mapped);
-            }
+            if (mapped is null) throw new JsonException("A history array contains a null record.");
+            results.Add(mapped);
         }
 
         return results;

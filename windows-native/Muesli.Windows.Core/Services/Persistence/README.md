@@ -1,8 +1,12 @@
 # Persistence
 
-The SQLite substrate for dictation and meeting history. The JSON stores in `AppDataStore` remain
-authoritative while the L27 gate is disabled; production switches the active history adapter only
-after a verified startup cutover.
+SQLite is the sole live store for structured library data: dictations, meetings, raw/edited transcripts,
+generated/manual notes, folders, templates, dictionary entries and remembered correction rules.
+Every production startup runs `PersistenceCutover.EnsureMigrated` before opening the adapter.
+Fresh profiles create an authoritative database directly, without a flag or a legacy-history snapshot.
+`AppDataStore` and the JSON adapter remain legacy migration/import/test utilities, not a production mode.
+Settings and recording recovery journals use atomic JSON, audio/models remain files, and credentials
+remain in Windows Credential Manager. Windows owns its database; the Swift DictationStore ABI is not connected.
 
 ## Layout
 
@@ -19,12 +23,15 @@ after a verified startup cutover.
 | `JsonToSqliteMigrationService.cs` | Runs the import, verifies it, and can undo it. |
 | `PersistenceDigest.cs` | Content hashes used to prove an import was faithful. |
 | `Adapters/PersistenceCutover.cs` | L27 `EnsureMigrated`: JSON snapshot, digest import, durable authority transition, fail closed. |
-| `Adapters/SqliteLibraryHistoryAdapter.cs` | SQLite-backed `ILibraryHistoryAdapter` used after the verified production cutover. Dictionary stays JSON. |
-| `Adapters/PersistenceCutoverGate.cs` | Feature flag `L27SqliteHistoryCutover`, default **off**; qualification uses `MUESLI_SQLITE_HISTORY_CUTOVER=1`. |
+| `Adapters/SqliteLibraryHistoryAdapter.cs` | SQLite-backed library, dictionary and atomic correction operations. |
+| `Adapters/PersistenceCutoverGate.cs` | Compatibility constants only; always enabled. The former environment variable cannot select JSON. |
 | `Adapters/PersistenceCutoverState.cs` | Singleton schema-v2 authority row and first-post-cutover-write marker. |
+| `SqliteDictionaryRepository.cs`, `DictionaryMigration.cs` | Schema-v3 rules, full-value verification and transactional import-completion record. |
+| `SqliteAuthorityMarker.cs` | Payload-free profile marker preventing JSON fallback if the authoritative database disappears. |
+| `LegacyLibraryRecovery.cs` | Bounded migration-copy retention and targeted redaction on explicit deletion. |
 
 Start at `MuesliPersistenceStore`, which opens a database and hands back the five repositories. The
-production composition root owns the gate and selects the active adapter before history loads.
+production composition root opens the SQLite adapter only after checked initialization/upgrade succeeds.
 
 ## Decisions worth knowing before you change something
 
@@ -62,6 +69,54 @@ committed. Once it is `sqlite`, startup ignores retained-JSON fingerprint change
 back or re-imports from that snapshot. Every adapter mutation records the first write's UTC and
 operation; JSON rollback is allowed only before that marker exists. Afterward an operator must use
 an explicit SQLite backup/restore procedure.
+
+The profile's `sqlite-authority` marker is flushed before startup returns a usable store. If `muesli.db`
+is missing, corrupt, unavailable or newer than this build supports, startup reports failure and never
+opens an empty replacement or retained JSON. Restore an explicit SQLite backup while Muesli is stopped;
+do not remove the authority marker to force a legacy import. An unmarked populated database with no
+identified migration run also fails closed for explicit recovery instead of guessing which source is newer.
+
+Schema 3 imports `windows-dictionary.json` for both JSON-history profiles and already-authoritative
+SQLite profiles. For the latter, only dictionary files are captured; old history is never read. Import,
+all-field/count readback and the completion record commit together. The record is written even for an
+empty dictionary, so later startup cannot resurrect an old rule file. Existing rule IDs, order, phrases,
+replacements and double-precision thresholds are preserved. Invalid/duplicate IDs block import.
+Dictionary import/export continues using `DictionaryExchangeService`'s existing JSON format.
+
+For legacy history, the checked capture includes primary files, `.bak` files and a pending folder mutation
+journal. A surviving backup can recover a missing or malformed primary, with warnings. Newer envelopes
+and meeting schemas block migration rather than falling back. Originals are unchanged during migration.
+History import is verified by normalized counts/content digests; dictionary import is verified by complete
+record equality. A crash before authority activates can resume the recorded import without duplicating rows.
+
+## Recovery copies and privacy
+
+`json-history-pre-sqlite-*` directories and retained `windows-*.json` library files are recovery inputs only.
+Content-addressed snapshots reuse identical retries. Failed migrations keep their recovery inputs until
+resolved; they never activate an alternate history store. After successful transition, automatic startup
+cleanup retains migration originals/snapshots and pre-migration database backups for 30 days, measured
+from the later of history activation and dictionary import. User-created exports and explicit backups with
+other names are not touched. Explicit deletion redacts the deleted IDs from retained JSON and pre-migration
+SQLite copies while preserving unrelated records; unreadable/locked copies cause a visible failure.
+Settings, in-progress recording journals, audio and model assets are outside this cleanup.
+
+`Rollback` is a support operation available only before the first post-cutover write; it also removes the
+external authority marker after restoring/removing the initial database. There is no automatic rollback.
+
+## Correction integration and remaining limits
+
+`IAtomicDictationCorrectionStore.SaveCorrection(id, expectedText, replacementText, phraseToRemember,
+rememberedReplacement, confirmedConflicts)` returns `DictationCorrectionResult`. Pass null phrase and
+replacement for a one-off edit. The operation compares the complete expected transcript, checks the current
+phrase conflicts, and writes the rule, text, word count and search index in one SQLite transaction. An exact
+confirmed-conflicts list is required before replacing conflicting rules; a stale confirmation is rejected.
+It preserves IDs, timestamps, title, folder and recording metadata. `IDictationTextEditor` remains available.
+
+Append, correction and single-record deletion are targeted writes. The compatibility dictionary list-save
+diffs rows, writing only changed entries. Dashboard snapshots and several list pages still load whole histories;
+meeting list projection still fetches details per meeting. Bulk save/clear and dictionary list APIs still
+enumerate collections. Repository/search pagination exists, but migrating every UI list is outside this task.
+Passing regression and timing tests is evidence for these paths, not a claim of complete release qualification.
 
 ## Migrating from JSON
 

@@ -1,10 +1,9 @@
 namespace Muesli.Windows.Services.Persistence;
 
 /// <summary>
-/// Adapter for the pre-cutover JSON history. The production composition root uses this adapter
-/// while the L27 gate is disabled, so FeatureRuntime has one history contract in either mode.
+/// Legacy JSON import/test adapter. Production startup always opens the verified SQLite library.
 /// </summary>
-public sealed class JsonLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibrarySearchAdapter, ILibraryFolderAdapter
+public sealed class JsonLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibrarySearchAdapter, ILibraryFolderAdapter, IDictationTextEditor
 {
     public JsonLibraryHistoryAdapter(AppDataStore store)
     {
@@ -86,10 +85,11 @@ public sealed class JsonLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibrary
     public void AppendDictation(PersistedDictation dictation)
     {
         ArgumentNullException.ThrowIfNull(dictation);
-        var dictations = Store.LoadDictations().ToList();
-        dictations.Insert(0, dictation);
-        Store.SaveDictations(dictations);
+        Store.AppendDictation(dictation);
     }
+
+    public bool TryUpdateDictationText(string id, string expectedText, string replacementText) =>
+        Store.TryUpdateDictationText(id, expectedText, replacementText);
 
     public void SaveDictations(IEnumerable<PersistedDictation> dictations, bool afterExplicitDeletion = false)
     {

@@ -14,7 +14,6 @@ namespace Muesli.Windows.WinUI.Services;
 public sealed class WinUiLibraryContext : IDisposable
 {
     private readonly IMuesliProfileLease? _profileLease;
-    private readonly AppDataStore _jsonStore;
 
     public WinUiLibraryContext(IMuesliProfilePaths paths)
     {
@@ -28,15 +27,11 @@ public sealed class WinUiLibraryContext : IDisposable
                 $"The WinUI profile is already in use: {paths.RootDirectory}");
         try
         {
-            _jsonStore = new AppDataStore(paths.DataDirectory);
-            if (PersistenceCutoverGate.IsEnabled || File.Exists(PersistencePaths.DatabasePathFor(paths.DataDirectory)))
-            {
-                var result = new PersistenceCutover(paths.DataDirectory).EnsureMigrated();
-                if (!result.Succeeded)
-                    throw new InvalidOperationException("Muesli history could not be opened. No history was changed.");
-                History = SqliteLibraryHistoryAdapter.Open(paths.DataDirectory);
-            }
-            else History = new JsonLibraryHistoryAdapter(_jsonStore);
+            var result = new PersistenceCutover(paths.DataDirectory).EnsureMigrated();
+            if (!result.Succeeded)
+                throw new InvalidOperationException(result.Failure ?? "Muesli history could not be opened. Recovery is required.");
+            History = SqliteLibraryHistoryAdapter.Open(paths.DataDirectory,
+                result.Warnings.Count == 0 ? null : string.Join(" ", result.Warnings));
             Profile = paths;
         }
         catch
@@ -50,6 +45,10 @@ public sealed class WinUiLibraryContext : IDisposable
 
     public ILibraryHistoryAdapter History { get; }
 
+    public DictationCorrectionResult CorrectDictation(DictationCorrectionSelection selection, string replacement,
+        bool remember, IReadOnlyList<DictionaryEntryRecord>? confirmedConflicts = null) =>
+        new DictationCorrectionService(History).Save(selection, replacement, remember, confirmedConflicts);
+
     /// <summary>
     /// Permanently removes one dictation from the active profile. The privacy-sensitive
     /// save path also removes recoverable temporary copies that could otherwise retain deleted
@@ -58,6 +57,7 @@ public sealed class WinUiLibraryContext : IDisposable
     public bool DeleteDictation(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        if (History is SqliteLibraryHistoryAdapter sqlite) return sqlite.DeleteDictation(id);
         var dictations = History.LoadDictations().ToList();
         var removed = dictations.RemoveAll(item =>
             string.Equals(item.Id, id, StringComparison.Ordinal)) > 0;
@@ -111,14 +111,10 @@ public sealed class WinUiLibraryContext : IDisposable
     public bool DeleteMeeting(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        if (History is SqliteLibraryHistoryAdapter sqlite)
-            foreach (var link in sqlite.Store.Meetings.ListFollowUpsLinkedTo(id).Where(link => link.Id == $"meeting_thread_{id}"))
-                sqlite.Store.Meetings.DeleteFollowUp(link.Id);
-        var meetings = History.LoadMeetings().ToList();
-        var meeting = meetings.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
+        var meeting = FindMeeting(id);
         if (meeting is null) return false;
-        meetings.Remove(meeting);
-        History.SaveMeetings(meetings, afterExplicitDeletion: true);
+        if (History is SqliteLibraryHistoryAdapter sqlite) sqlite.DeleteMeeting(id);
+        else History.SaveMeetings(History.LoadMeetings().Where(item => item.Id != id), afterExplicitDeletion: true);
         // macOS deletes the saved recording with the meeting. Only Muesli-owned capture files under
         // recordings/<id> are touched; imported originals are never deleted.
         var cleanup = new CaptureStorageService(Profile.CaptureDirectory).DeleteOwnedMeetingAudio(

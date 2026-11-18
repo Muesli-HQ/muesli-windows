@@ -14,9 +14,9 @@ Run only on a disposable or otherwise approved interactive desktop:
 
 The harness never terminates a pre-existing 'Muesli.exe'; it refuses to run
 when the matching executable is already running. It terminates only the primary
-and secondary processes that it started, and it can pass
-'MUESLI_SQLITE_HISTORY_CUTOVER=1' to those child processes through
-'MuesliUiSession.LaunchProduction(enableSqliteHistoryCutover: true)'.
+and secondary processes that it started. Production always initializes/upgrades SQLite;
+legacy JSON fixtures are migration input. `enableSqliteHistoryCutover` is retained only
+for older harness callers and is no longer required to select the live store.
 
 Shell navigation relies on the production controls' stable
 'AutomationProperties.Name' values, and the meeting-detail controls now expose

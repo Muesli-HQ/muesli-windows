@@ -22,6 +22,9 @@ public sealed record PersistenceCutoverOptions
     /// <summary>Test-only pause immediately before the SQLite authority transaction opens.</summary>
     internal Action? BeforeAuthorityCommit { get; init; }
 
+    /// <summary>Test-only fault boundary inside the dictionary/authority transaction.</summary>
+    internal Action? BeforeDictionaryCommit { get; init; }
+
     /// <summary>Maximum number of complete source captures attempted after a detected mutation.</summary>
     internal int CaptureAttemptCount { get; init; } = 3;
 }

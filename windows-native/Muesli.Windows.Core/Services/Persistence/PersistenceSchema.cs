@@ -19,7 +19,7 @@ public sealed record SchemaMigration(int Version, string Description, Action<Sql
 public static class PersistenceSchema
 {
     /// <summary>The schema this build writes and expects.</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     public const string DictationKind = "dictation";
     public const string MeetingKind = "meeting";
@@ -222,7 +222,26 @@ public static class PersistenceSchema
         new SchemaMigration(
             2,
             "Durable JSON/SQLite cutover authority and first-write state.",
-            connection => Execute(connection, CutoverStateSchema))
+            connection => Execute(connection, CutoverStateSchema)),
+        new SchemaMigration(
+            3,
+            "SQLite dictionary rules and durable legacy dictionary import completion.",
+            connection => Execute(connection, """
+                CREATE TABLE dictionary_entries (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    phrase TEXT NOT NULL,
+                    phrase_key TEXT NOT NULL,
+                    replacement TEXT NOT NULL,
+                    matching_threshold REAL NOT NULL,
+                    sort_order INTEGER NOT NULL
+                ) STRICT;
+                CREATE INDEX ix_dictionary_phrase ON dictionary_entries (phrase_key);
+                CREATE TABLE dictionary_import_state (
+                    id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+                    completed_at_utc INTEGER NOT NULL,
+                    imported_count INTEGER NOT NULL
+                ) STRICT;
+                """))
     ];
 
     internal static void Execute(SqliteConnection connection, string sql)

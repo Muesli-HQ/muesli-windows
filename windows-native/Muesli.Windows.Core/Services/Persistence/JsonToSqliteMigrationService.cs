@@ -65,7 +65,7 @@ public sealed record JsonToSqliteMigrationResult
 
     /// <summary>
     /// Dated copy of the JSON history files taken before import. Null when there was nothing to copy.
-    /// L27 does not delete this directory; retention is a later point.
+    /// Production bounds retention through LegacyLibraryRecovery after successful startup migration.
     /// </summary>
     public string? JsonSnapshotDirectory { get; init; }
 

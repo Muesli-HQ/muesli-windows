@@ -9,8 +9,7 @@ using Microsoft.Data.Sqlite;
 namespace Muesli.Windows.Services.Persistence;
 
 /// <summary>
-/// Startup-only JSON → SQLite cutover. Call from <c>FeatureServiceScope.CreateProduction</c> when
-/// <see cref="PersistenceCutoverGate.IsEnabled"/> is true — never from FeatureRuntime.
+/// Startup-only JSON → SQLite cutover. Every production profile passes through this checked path.
 /// </summary>
 /// <remarks>
 /// The composition root calls <see cref="EnsureMigrated"/> before it opens the SQLite adapter.
@@ -39,7 +38,8 @@ public sealed class PersistenceCutover : IPersistenceCutover
         JsonHistorySnapshotReader.MeetingsFileName,
         JsonHistorySnapshotReader.FoldersFileName,
         JsonHistorySnapshotReader.TemplatesFileName,
-        DictionaryFileName
+        DictionaryFileName,
+        JsonHistorySnapshotReader.LibraryMutationFileName
     ];
 
     private readonly string _jsonDirectory;
@@ -98,6 +98,8 @@ public sealed class PersistenceCutover : IPersistenceCutover
         try
         {
             databaseExistedBeforeRun = ValidateDatabasePathBeforeOpen();
+            if (SqliteAuthorityMarker.Exists(_jsonDirectory) && !databaseExistedBeforeRun)
+                return Failed("The authoritative SQLite library is missing. Restore its SQLite backup; retained JSON was not opened.");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -116,22 +118,54 @@ public sealed class PersistenceCutover : IPersistenceCutover
                     throw new IOException("The SQLite history disappeared before it could be opened.");
                 }
 
-                using var existing = MuesliDatabase.Open(_databasePath);
+                using var existing = MuesliDatabase.OpenExisting(_databasePath);
                 var existingState = PersistenceCutoverState.Read(existing);
                 if (existingState.Authority == PersistenceAuthority.Sqlite)
                 {
                     // Once SQLite is authoritative, the retained JSON is a rollback snapshot, not
                     // an input. Do not read it, compare it, re-import it, or fall back to it after a
                     // restart when the snapshot has naturally diverged from live history.
-                    return AlreadyAuthoritative(existing, existingState);
+                    SqliteAuthorityMarker.Record(_jsonDirectory);
+                    IReadOnlyList<string> dictionaryWarnings = [];
+                    if (!DictionaryMigration.IsComplete(existing))
+                    {
+                        using var dictionaryCapture = CaptureJsonHistory(profileLock!, [DictionaryFileName]);
+                        profileLock = null;
+                        var dictionary = JsonHistorySnapshotReader.ReadDictionary(dictionaryCapture.StagingDirectory);
+                        if (dictionary.HasBlockingProblems)
+                            return Failed("The legacy dictionary could not be read in full. SQLite history was preserved; dictionary import must be recovered.");
+                        dictionaryWarnings = dictionary.Problems.Select(problem => SafeFailure(problem.Message)).ToList();
+                        SnapshotJsonHistory(dictionaryCapture.StagingDirectory);
+                        if (_options.FailAfterJsonSnapshot)
+                            return Failed("Dictionary migration was stopped after its recovery snapshot.");
+                        using var transaction = existing.BeginTransaction();
+                        DictionaryMigration.Import(existing, dictionary.Dictionary);
+                        _options.BeforeDictionaryCommit?.Invoke();
+                        transaction.Commit();
+                    }
+                    var dictionaryImportedAt = DictionaryMigration.CompletedAt(existing);
+                    var retentionStartedAt = dictionaryImportedAt > existingState.ActivatedAtUtc || existingState.ActivatedAtUtc is null
+                        ? dictionaryImportedAt : existingState.ActivatedAtUtc;
+                    LegacyLibraryRecovery.PruneExpired(_jsonDirectory, retentionStartedAt);
+                    return AlreadyAuthoritative(existing, existingState) with { Warnings = dictionaryWarnings };
                 }
+                if (SqliteAuthorityMarker.Exists(_jsonDirectory))
+                    return Failed("The SQLite library no longer matches its authority marker. Restore the authoritative database; JSON was not imported.");
+                // Unknown pre-cutover rows may be newer than the JSON. Only an identified import
+                // attempt is resumable; never guess that an unmarked populated database is disposable.
+                var unknownRows = existing.Read(connection => Db.Command(connection, """
+                    SELECT ((SELECT count(*) FROM dictations) + (SELECT count(*) FROM meetings)
+                        + (SELECT count(*) FROM folders) + (SELECT count(*) FROM templates)) > 0
+                        AND (SELECT count(*) FROM migration_runs) = 0;
+                    """).ScalarInt32() != 0);
+                if (unknownRows) return Failed("An unmarked SQLite library contains data. Automatic import was stopped to preserve it; explicit recovery is required.");
             }
             catch (PersistenceSchemaException)
             {
                 SafeReport("The SQLite history was written by a newer Muesli build and was not opened.");
                 return Failed("The SQLite history was written by a newer Muesli build and was not opened.");
             }
-            catch (Exception exception) when (exception is PersistenceException or SqliteException or IOException)
+            catch (Exception exception) when (exception is PersistenceException or SqliteException or IOException or UnauthorizedAccessException)
             {
                 SafeReport("The SQLite history could not be opened, so nothing was imported.");
                 return Failed("The SQLite history could not be opened, so nothing was imported.");
@@ -189,6 +223,10 @@ public sealed class PersistenceCutover : IPersistenceCutover
 
                 var plan = MigrationPlan.Build(snapshot, warnings);
 
+                if (!databaseExistedBeforeRun && !Directory.EnumerateFiles(captured.StagingDirectory, "*.json*").Any() &&
+                    ExistingSnapshotDirectory() is not null)
+                    return Failed("Recovery snapshots exist but the original library and database are missing. Explicit recovery is required; an empty library was not created.");
+
                 string? snapshotDirectory;
                 try
                 {
@@ -225,7 +263,7 @@ public sealed class PersistenceCutover : IPersistenceCutover
                 {
                     migrated = _migration.Migrate(plan);
                 }
-                catch (Exception exception) when (exception is PersistenceException or SqliteException or IOException)
+                catch (Exception exception) when (exception is PersistenceException or SqliteException or IOException or UnauthorizedAccessException)
                 {
                     if (!databaseExistedBeforeRun)
                     {
@@ -274,12 +312,16 @@ public sealed class PersistenceCutover : IPersistenceCutover
                         return AlreadyAuthoritative(database, state);
                     }
 
+                    using var transaction = database.BeginTransaction();
+                    DictionaryMigration.Import(database, snapshot.Dictionary);
+                    _options.BeforeDictionaryCommit?.Invoke();
                     PersistenceCutoverState.SetSqliteAuthority(
                         database,
                         plan.Fingerprint,
                         migrated.BackupPath);
+                    transaction.Commit();
                 }
-                catch (Exception exception) when (exception is PersistenceException or SqliteException or IOException)
+                catch (Exception exception) when (exception is PersistenceException or SqliteException or IOException or UnauthorizedAccessException)
                 {
                     if (!databaseExistedBeforeRun)
                     {
@@ -295,6 +337,12 @@ public sealed class PersistenceCutover : IPersistenceCutover
                         JsonSnapshotDirectory = snapshotDirectory
                     };
                 }
+
+                // The no-payload marker is written only after commit, before returning a usable
+                // store. If this fails, preserve the authoritative DB so restart can finish it.
+                try { SqliteAuthorityMarker.Record(_jsonDirectory); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                { return Failed("SQLite was activated but its authority marker could not be saved. Retry startup; no JSON fallback is allowed."); }
 
                 return migrated with
                 {
@@ -359,6 +407,7 @@ public sealed class PersistenceCutover : IPersistenceCutover
         }
 
         _migration.Rollback(result);
+        File.Delete(SqliteAuthorityMarker.PathFor(_jsonDirectory));
         SafeReport("Rolled back SQLite; JSON history files and the pre-sqlite snapshot were left in place.");
     }
 
@@ -383,7 +432,7 @@ public sealed class PersistenceCutover : IPersistenceCutover
         return databaseKind == PathKind.RegularFile;
     }
 
-    private CapturedJsonHistory CaptureJsonHistory(FileStream profileLock)
+    private CapturedJsonHistory CaptureJsonHistory(FileStream profileLock, string[]? fileNames = null)
     {
         CleanupStaleCaptureDirectories();
         var attemptCount = _options.CaptureAttemptCount > 0
@@ -396,8 +445,8 @@ public sealed class PersistenceCutover : IPersistenceCutover
             try
             {
                 _options.CaptureDirectoryCreated?.Invoke(capture.Directory);
-                var before = ReadCaptureManifest(_jsonDirectory);
-                foreach (var name in EnumerateCaptureFileNames())
+                var before = ReadCaptureManifest(_jsonDirectory, fileNames);
+                foreach (var name in EnumerateCaptureFileNames(fileNames))
                 {
                     var expected = before[name];
                     CaptureFile(
@@ -407,7 +456,7 @@ public sealed class PersistenceCutover : IPersistenceCutover
                     _options.AfterCaptureFile?.Invoke(name);
                 }
 
-                var after = ReadCaptureManifest(_jsonDirectory);
+                var after = ReadCaptureManifest(_jsonDirectory, fileNames);
                 if (!CaptureManifestsEqual(before, after))
                 {
                     throw new CaptureChangedException();
@@ -828,9 +877,9 @@ public sealed class PersistenceCutover : IPersistenceCutover
         }
     }
 
-    private static IEnumerable<string> EnumerateCaptureFileNames()
+    private static IEnumerable<string> EnumerateCaptureFileNames(string[]? fileNames = null)
     {
-        foreach (var name in HistoryFileNames)
+        foreach (var name in fileNames ?? HistoryFileNames)
         {
             yield return name;
             yield return name + ".bak";
@@ -838,11 +887,16 @@ public sealed class PersistenceCutover : IPersistenceCutover
     }
 
     private IReadOnlyDictionary<string, CaptureFileFingerprint> ReadCaptureManifest(
-        string directory)
+        string directory, string[]? fileNames = null)
     {
         EnsureDirectoryPathSafe(directory, allowMissing: false);
+        foreach (var sourceName in fileNames ?? HistoryFileNames)
+            if (GetPathKind(Path.Combine(directory, sourceName)) == PathKind.Missing &&
+                GetPathKind(Path.Combine(directory, sourceName + ".bak")) == PathKind.Missing &&
+                Directory.EnumerateFiles(directory, sourceName + ".corrupt-*").Any())
+                throw new IOException("A quarantined legacy library file needs recovery; it cannot be treated as empty.");
         var manifest = new Dictionary<string, CaptureFileFingerprint>(StringComparer.OrdinalIgnoreCase);
-        foreach (var name in EnumerateCaptureFileNames())
+        foreach (var name in EnumerateCaptureFileNames(fileNames))
         {
             var path = Path.Combine(directory, name);
             EnsureNoReparseAncestors(path);
@@ -881,7 +935,7 @@ public sealed class PersistenceCutover : IPersistenceCutover
     private static bool CaptureManifestsEqual(
         IReadOnlyDictionary<string, CaptureFileFingerprint> left,
         IReadOnlyDictionary<string, CaptureFileFingerprint> right) =>
-        EnumerateCaptureFileNames().All(name => left[name].Equals(right[name]));
+        left.Count == right.Count && left.All(item => right.TryGetValue(item.Key, out var value) && item.Value.Equals(value));
 
     private void CaptureFile(
         string source,
@@ -991,13 +1045,45 @@ public sealed class PersistenceCutover : IPersistenceCutover
             return ExistingSnapshotDirectory();
         }
 
-        var directory = Path.Combine(
-            _jsonDirectory,
-            $"{JsonSnapshotDirectoryPrefix}{DateTime.UtcNow:yyyyMMddTHHmmssfff}Z");
+        // Identical retries reuse the same recovery copy instead of retaining unbounded plaintext.
+        using var snapshotHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var source in sources.OrderBy(Path.GetFileName, StringComparer.Ordinal))
+        {
+            snapshotHash.AppendData(Encoding.UTF8.GetBytes(Path.GetFileName(source)));
+            snapshotHash.AppendData(SHA256.HashData(File.ReadAllBytes(source)));
+        }
+        var directory = Path.Combine(_jsonDirectory, JsonSnapshotDirectoryPrefix + Convert.ToHexString(snapshotHash.GetHashAndReset()));
         EnsureNoReparseAncestors(directory);
         if (GetPathKind(directory) != PathKind.Missing)
         {
-            throw new IOException("The retained JSON snapshot destination already exists.");
+            EnsureDirectoryPathSafe(directory, allowMissing: false);
+            foreach (var source in sources)
+            {
+                var retained = Path.Combine(directory, Path.GetFileName(source));
+                EnsureNoReparseAncestors(retained);
+                // A crash while retaining the snapshot may leave only a prefix of its files.
+                // Fill missing files from the same captured generation, never overwrite changed bytes.
+                if (GetPathKind(retained) == PathKind.Missing) CopyFileHandleBound(source, retained, _jsonDirectory);
+                else if (GetPathKind(retained) == PathKind.RegularFile)
+                {
+                    var expected = File.ReadAllBytes(source);
+                    var prefix = File.ReadAllBytes(retained);
+                    // Interrupted writes are a proper prefix of this content-addressed generation.
+                    // Complete only that verified prefix; different bytes require explicit recovery.
+                    if (prefix.Length < expected.Length && expected.AsSpan(0, prefix.Length).SequenceEqual(prefix))
+                    {
+                        using var output = new FileStream(retained, FileMode.Append, FileAccess.Write, FileShare.None,
+                            4096, FileOptions.WriteThrough);
+                        EnsureHandleBoundToPath(output.SafeFileHandle, retained, _jsonDirectory);
+                        output.Write(expected.AsSpan(prefix.Length));
+                        output.Flush(true);
+                    }
+                }
+                if (GetPathKind(retained) != PathKind.RegularFile ||
+                    !SHA256.HashData(File.ReadAllBytes(source)).SequenceEqual(SHA256.HashData(File.ReadAllBytes(retained))))
+                    throw new IOException("The retained JSON recovery snapshot is incomplete or changed.");
+            }
+            return directory;
         }
 
         Directory.CreateDirectory(directory);

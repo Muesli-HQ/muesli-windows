@@ -23,9 +23,8 @@ public static class PersistencePaths
 /// <summary>
 /// The persistence layer's entry point: one database and the repositories over it.
 /// <para>
-/// The production composition root opens this store after a verified L27 cutover and hands it
-/// to the active SQLite history adapter. The gate remains off by default, so JSON remains
-/// authoritative unless the process explicitly opts in.
+/// The production composition root opens this store after verified initialization/cutover.
+/// SQLite owns all live structured library data; legacy JSON is recovery/import input only.
 /// </para>
 /// </summary>
 public sealed class MuesliPersistenceStore : IDisposable
@@ -41,6 +40,7 @@ public sealed class MuesliPersistenceStore : IDisposable
         Meetings = new SqliteMeetingRepository(database);
         Folders = new SqliteFolderRepository(database);
         Templates = new SqliteTemplateRepository(database);
+        Dictionary = new SqliteDictionaryRepository(database);
         Search = new SqliteSearchRepository(database);
     }
 
@@ -59,6 +59,8 @@ public sealed class MuesliPersistenceStore : IDisposable
     public IFolderRepository Folders { get; }
 
     public ITemplateRepository Templates { get; }
+
+    public SqliteDictionaryRepository Dictionary { get; }
 
     public ISearchRepository Search { get; }
 

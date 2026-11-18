@@ -8,6 +8,9 @@ public sealed class AppDataStore
     private readonly string _dataDirectory;
     private readonly AtomicJsonFile _json;
     private readonly object _libraryMutationGate = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> DictationGates =
+        new(StringComparer.OrdinalIgnoreCase);
+    private object DictationGate => DictationGates.GetOrAdd(_dataDirectory, static _ => new object());
 
     public AppDataStore(string? dataDirectory = null, Action<string>? report = null)
     {
@@ -20,17 +23,35 @@ public sealed class AppDataStore
 
     public IReadOnlyList<PersistedDictation> LoadDictations()
     {
-        return ReadJson("windows-dictations.json", new List<PersistedDictation>());
+        lock (DictationGate) return ReadJson("windows-dictations.json", new List<PersistedDictation>());
     }
 
     public void SaveDictations(IEnumerable<PersistedDictation> dictations)
     {
-        WriteJson("windows-dictations.json", dictations.ToList());
+        lock (DictationGate) WriteJson("windows-dictations.json", dictations.ToList());
+    }
+
+    public void AppendDictation(PersistedDictation dictation)
+    {
+        lock (DictationGate) SaveDictations(new[] { dictation }.Concat(LoadDictations()));
+    }
+
+    public bool TryUpdateDictationText(string id, string expectedText, string replacementText)
+    {
+        lock (DictationGate)
+        {
+            var rows = LoadDictations().ToList();
+            var index = rows.FindIndex(row => row.Id == id);
+            if (index < 0 || rows[index].Text != expectedText) return false;
+            rows[index] = rows[index] with { Text = replacementText };
+            SaveDictations(rows);
+            return true;
+        }
     }
 
     public void SaveDictationsAfterDeletion(IEnumerable<PersistedDictation> dictations)
     {
-        WriteJson(
+        lock (DictationGate) WriteJson(
             "windows-dictations.json",
             dictations.ToList(),
             AtomicJsonSaveMode.PrivacySensitive);

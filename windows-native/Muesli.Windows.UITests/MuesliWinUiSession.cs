@@ -27,7 +27,7 @@ internal sealed class MuesliWinUiSession : IDisposable
     private static readonly IntPtr HwndNotTopmost = new(-2);
 
     private readonly MuesliCleanProfile _profile;
-    private readonly Process _process;
+    private Process _process;
     private readonly bool _nonActivatingShell;
     private AutomationElement? _window;
     private bool _disposed;
@@ -99,6 +99,31 @@ internal sealed class MuesliWinUiSession : IDisposable
 
     public static MuesliWinUiSession Launch(bool seedDeterministicMeeting, bool seedPopulatedData)
         => LaunchPackaged(new MuesliCleanProfile(seedDeterministicMeeting, seedPopulatedData));
+
+    public static MuesliWinUiSession LaunchDictationCorrectionFixture(string text)
+    {
+        var profile = new MuesliCleanProfile();
+        try
+        {
+            var data = Path.Combine(profile.MuesliRoot, "data");
+            Directory.CreateDirectory(data);
+            File.WriteAllText(Path.Combine(data, "windows-dictations.json"), System.Text.Json.JsonSerializer.Serialize(new[]
+            {
+                new { id = "correction-ui", timestamp = DateTime.UtcNow, text, durationMs = 1200, modelProfile = "ui-test" }
+            }));
+            return LaunchPackaged(profile);
+        }
+        catch { profile.Dispose(); throw; }
+    }
+
+    public void RestartPackaged()
+    {
+        _window = null;
+        TryKill(_process);
+        _process = StartPackagedShell(_profile);
+        _window = WaitForShellWindow(_process, TimeSpan.FromSeconds(90), "MainNavigation");
+        ActivateMainWindow();
+    }
 
     /// <summary>
     /// Launches the supported packaged host through the WinApp CLI. The isolated profile is
@@ -209,12 +234,16 @@ internal sealed class MuesliWinUiSession : IDisposable
             CreateNoWindow = true
         };
         start.ArgumentList.Add("run");
-        start.ArgumentList.Add(TestPaths.WinUiProjectPath);
-        start.ArgumentList.Add("--no-restore");
+        var builtLayout = Environment.GetEnvironmentVariable("MUESLI_UI_PACKAGED_LAYOUT");
+        start.ArgumentList.Add(builtLayout ?? TestPaths.WinUiProjectPath);
+        if (builtLayout is null)
+        {
+            start.ArgumentList.Add("--no-restore");
+            start.ArgumentList.Add("--property");
+            start.ArgumentList.Add("Platform=x64");
+        }
         start.ArgumentList.Add("--detach");
         start.ArgumentList.Add("--json");
-        start.ArgumentList.Add("--property");
-        start.ArgumentList.Add("Platform=x64");
         start.ArgumentList.Add("--args");
         var forwarded = $"--profile-root \"{profile.MuesliRoot}\"";
         if (indicatorProbe) forwarded += $" {IndicatorProbeFlag}";
@@ -1136,14 +1165,11 @@ internal sealed class MuesliWinUiSession : IDisposable
 
     private static void WaitForIdle() => Thread.Sleep(350);
 
-    private void ActivateMainWindow()
+    public void ActivateMainWindow()
     {
         try
         {
-            _process.Refresh();
-            var handle = _process.MainWindowHandle;
-            if (handle == IntPtr.Zero)
-                handle = Window.Current.NativeWindowHandle;
+            var handle = GetNativeWindowHandle();
 
             if (handle != 0)
             {
@@ -1223,10 +1249,9 @@ internal sealed class MuesliWinUiSession : IDisposable
 
     private IntPtr GetNativeWindowHandle()
     {
-        _process.Refresh();
-        var handle = _process.MainWindowHandle;
-        if (handle == IntPtr.Zero)
-            handle = Window.Current.NativeWindowHandle;
+        // Process.MainWindowHandle can identify the floating indicator. Always operate on the
+        // window whose UI Automation tree was matched to the requested shell/probe instead.
+        var handle = (IntPtr)Window.Current.NativeWindowHandle;
         if (handle == IntPtr.Zero)
             throw new InvalidOperationException("The WinUI shell has no native window handle.");
         return handle;

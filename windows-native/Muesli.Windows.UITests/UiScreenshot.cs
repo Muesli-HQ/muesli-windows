@@ -7,6 +7,7 @@ namespace Muesli.Windows.UITests;
 internal static class UiScreenshot
 {
     public static string ArtifactDirectory =>
+        Environment.GetEnvironmentVariable("MUESLI_UI_ARTIFACT_ROOT") ??
         Path.Combine(TestPaths.RepositoryRoot, "artifacts", "ui-automation");
 
     public static string Capture(AutomationElement? window, string slug)

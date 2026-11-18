@@ -95,6 +95,7 @@ public sealed class MeetingContinuationTests
         try
         {
             Directory.CreateDirectory(directory);
+            Assert.True(new PersistenceCutover(directory).EnsureMigrated().Succeeded);
             using var adapter = SqliteLibraryHistoryAdapter.Open(directory);
             var parent = new PersistedMeeting { Id = "parent", Title = "Prior meeting", CreatedAt = DateTime.Now };
             var child = new PersistedMeeting { Id = "child", Title = "Follow-up: Prior meeting", CreatedAt = DateTime.Now };

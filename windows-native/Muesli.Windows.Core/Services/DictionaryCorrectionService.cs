@@ -125,6 +125,23 @@ public static partial class DictionaryCorrectionService
     private static IReadOnlyList<string> TokenizePhrase(string phrase) =>
         WordToken().Matches(phrase.Trim()).Select(match => match.Value).ToList();
 
+    // Use the matcher's own tokenization for conflict detection, including legacy entries whose
+    // punctuation/spacing is ignored by the matcher. Case-only replacement differences still matter.
+    internal static string PhraseKey(string phrase) => string.Join(" ", TokenizePhrase(phrase)).ToUpperInvariant();
+
+    internal static bool CanRememberSelection(string text, int start, int length)
+    {
+        var matches = WordToken().Matches(text).Cast<Match>()
+            .Where(match => match.Index >= start && match.Index + match.Length <= start + length).ToList();
+        if (matches.Count is 0 or > 12 || matches[0].Index != start ||
+            matches[^1].Index + matches[^1].Length != start + length) return false;
+        // No discarded punctuation: a remembered phrase must mean the same thing to the matcher.
+        for (var i = 1; i < matches.Count; i++)
+            if (!text.AsSpan(matches[i - 1].Index + matches[i - 1].Length,
+                    matches[i].Index - matches[i - 1].Index - matches[i - 1].Length).IsWhiteSpace()) return false;
+        return true;
+    }
+
     private static double ConservativeThreshold(string expected, double configured)
     {
         var length = expected.Length;
@@ -230,7 +247,7 @@ public static partial class DictionaryCorrectionService
             : replacement;
     }
 
-    [GeneratedRegex(@"[\p{L}\p{N}]+(?:['\u2019-][\p{L}\p{N}]+)*", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"[\p{L}\p{N}][\p{L}\p{N}\p{M}]*(?:['\u2019-][\p{L}\p{N}][\p{L}\p{N}\p{M}]*)*", RegexOptions.CultureInvariant)]
     private static partial Regex WordToken();
 
     private sealed record Candidate(IReadOnlyList<string> PhraseTokens, string Replacement, double Threshold);

@@ -17,19 +17,19 @@ public sealed class PersistenceCutoverImplementationTests
     private const string AudioPathToken = @"C:\captures\secret-microphone.wav";
 
     [Fact]
-    public void FeatureFlagDefaultsOffAndIsNotProductionWiring()
+    public void SqliteIsAlwaysEnabledIncludingWithLegacyEnvironmentValues()
     {
         Assert.Equal("L27SqliteHistoryCutover", PersistenceCutoverGate.FeatureFlagName);
-        Assert.False(PersistenceCutoverGate.DefaultEnabled);
+        Assert.True(PersistenceCutoverGate.DefaultEnabled);
         var previous = Environment.GetEnvironmentVariable(PersistenceCutoverGate.EnvironmentVariableName);
         try
         {
             Environment.SetEnvironmentVariable(PersistenceCutoverGate.EnvironmentVariableName, null);
-            Assert.False(PersistenceCutoverGate.IsEnabled);
+            Assert.True(PersistenceCutoverGate.IsEnabled);
             Environment.SetEnvironmentVariable(PersistenceCutoverGate.EnvironmentVariableName, "1");
             Assert.True(PersistenceCutoverGate.IsEnabled);
             Environment.SetEnvironmentVariable(PersistenceCutoverGate.EnvironmentVariableName, "true");
-            Assert.False(PersistenceCutoverGate.IsEnabled);
+            Assert.True(PersistenceCutoverGate.IsEnabled);
         }
         finally
         {
@@ -720,7 +720,7 @@ public sealed class PersistenceCutoverImplementationTests
     }
 
     [Fact]
-    public void DictionaryStaysOnJsonAndHasNoSqliteTable()
+    public void DictionaryMigratesIntoSqliteAndLeavesItsOriginalAsRecoveryInput()
     {
         using var directory = new TestDirectory();
         WriteClonedProfile(directory.Path);
@@ -751,7 +751,9 @@ public sealed class PersistenceCutoverImplementationTests
 
             return names;
         });
-        Assert.DoesNotContain(tables, name => name.Contains("dictionary", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("dictionary_entries", tables);
+        Assert.Single(new AppDataStore(directory.Path).LoadDictionary());
+        Assert.True(DictionaryMigration.IsComplete(adapter.Store.Database));
     }
 
     [Fact]

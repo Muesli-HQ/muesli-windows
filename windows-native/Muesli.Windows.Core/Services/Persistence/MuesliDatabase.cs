@@ -71,7 +71,11 @@ public sealed class MuesliDatabase : IDisposable
     /// Opens (creating if needed) the database at <paramref name="databasePath"/> and brings it to
     /// the current schema.
     /// </summary>
-    public static MuesliDatabase Open(string databasePath)
+    public static MuesliDatabase Open(string databasePath) => OpenFile(databasePath, create: true);
+
+    public static MuesliDatabase OpenExisting(string databasePath) => OpenFile(databasePath, create: false);
+
+    private static MuesliDatabase OpenFile(string databasePath, bool create)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         var fullPath = Path.GetFullPath(databasePath);
@@ -82,7 +86,7 @@ public sealed class MuesliDatabase : IDisposable
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = fullPath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
+            Mode = create ? SqliteOpenMode.ReadWriteCreate : SqliteOpenMode.ReadWrite,
             Cache = SqliteCacheMode.Private,
             ForeignKeys = true,
 

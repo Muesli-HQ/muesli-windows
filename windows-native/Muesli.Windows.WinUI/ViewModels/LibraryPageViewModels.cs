@@ -189,6 +189,31 @@ public partial class DictationsPageViewModel : ObservableObject, IDisposable
         !string.IsNullOrWhiteSpace(id) &&
         _allItems.Any(item => string.Equals(item.Id, id, StringComparison.Ordinal));
 
+    public DictationCorrectionResult Correct(DictationCorrectionSelection selection, string replacement,
+        bool remember, IReadOnlyList<DictionaryEntryRecord>? confirmedConflicts)
+    {
+        selection = DictationCorrectionService.TrimSelection(selection);
+        replacement = replacement.Trim();
+        var result = _library.CorrectDictation(selection, replacement, remember, confirmedConflicts);
+        if (result.Succeeded || result.Outcome == DictationCorrectionOutcome.PartialFailure)
+        {
+            if (result.Succeeded)
+            {
+                var corrected = selection.SourceText.Remove(selection.Start, selection.Length).Insert(selection.Start, replacement);
+                _allItems = _allItems.Select(item => item.Id == selection.DictationId ? item with { Text = corrected } : item).ToList();
+                ApplyFilterAndSort();
+            }
+            try { Reload(); }
+            catch
+            {
+                ShowStatus(result.Message + " The list could not be refreshed. Reopen Dictations.", isError: true);
+                return result;
+            }
+            ShowStatus(result.Message, isError: !result.Succeeded);
+        }
+        return result;
+    }
+
     [RelayCommand]
     private void Refresh()
     {
@@ -364,7 +389,7 @@ public sealed record DictationListItem(
 
     public static DictationListItem From(PersistedDictation item) => new(
         item.Id,
-        string.IsNullOrWhiteSpace(item.Text) ? "No text was saved" : item.Text.Trim(),
+        item.Text,
         item.Timestamp,
         item.Timestamp.ToLocalTime().ToString("MMM d, yyyy · hh:mm tt"),
         FormatDuration(item.DurationMs),
