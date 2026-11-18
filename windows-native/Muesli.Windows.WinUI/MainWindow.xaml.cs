@@ -42,6 +42,8 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
+        // A development slot names itself in the taskbar preview and Alt+Tab.
+        Title = Muesli.Windows.Core.Profiles.MuesliDevSlot.AppDisplayName;
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         ResizeForDpi(_lastDpi, forceDefaultSize: true);
         AppWindow.Changed += AppWindow_Changed;

@@ -64,6 +64,12 @@ public sealed partial class OnboardingWindow : Window
             App.Models,
             new OnboardingProgressStore(App.Library.Profile.OnboardingProgressPath));
         InitializeComponent();
+        // A development slot names itself in the taskbar preview and Alt+Tab; other builds keep
+        // the welcome title from XAML.
+        if (Muesli.Windows.Core.Profiles.MuesliDevSlot.Current is not null)
+        {
+            Title = Muesli.Windows.Core.Profiles.MuesliDevSlot.AppDisplayName;
+        }
         RootGrid.DataContext = ViewModel;
         ViewModel.Completed += (_, finished) =>
         {

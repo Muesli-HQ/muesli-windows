@@ -57,7 +57,7 @@ public sealed class WindowsTrayIconService : IDisposable
         _lightTaskbarIconPath = lightTaskbarIconPath;
         _icon = new Forms.NotifyIcon
         {
-            Text = "Muesli",
+            Text = AppName,
             Icon = LoadThemedIcon(),
             Visible = true,
             ContextMenuStrip = BuildMenu()
@@ -129,10 +129,13 @@ public sealed class WindowsTrayIconService : IDisposable
 
     // Hovering the tray icon must disclose any active capture.
     private string StatusText() =>
-        _meetingPaused?.Invoke() == true ? "Muesli · Meeting paused"
-        : _meetingRecording() ? "Muesli · Recording meeting"
-        : _dictationRecording() ? "Muesli · Dictating"
-        : "Muesli";
+        _meetingPaused?.Invoke() == true ? $"{AppName} · Meeting paused"
+        : _meetingRecording() ? $"{AppName} · Recording meeting"
+        : _dictationRecording() ? $"{AppName} · Dictating"
+        : AppName;
+
+    // "Muesli Dev A" in a development slot, so its tray icon is not mistaken for the main build.
+    private static string AppName => Muesli.Windows.Core.Profiles.MuesliDevSlot.AppDisplayName;
 
     private void Show(string destination) => _dispatcher.TryEnqueue(() => _show(destination));
 
