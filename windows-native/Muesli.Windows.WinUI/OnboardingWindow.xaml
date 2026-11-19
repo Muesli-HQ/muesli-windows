@@ -529,13 +529,60 @@
                             AutomationProperties.AutomationId="OnboardingSummaryProvider"
                             AutomationProperties.Name="Meeting summary provider" />
                         <TextBlock Text="{x:Bind ViewModel.SummaryDisclosure, Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" AutomationProperties.Name="Summary provider transcript disclosure" />
-                        <TextBlock Text="{x:Bind ViewModel.CloudKeyStatus, Mode=OneWay}" Style="{StaticResource MuesliMetadataStyle}" TextWrapping="Wrap" AutomationProperties.Name="Cloud provider key configuration status" />
+                        <TextBlock Text="{x:Bind ViewModel.CloudKeyStatus, Mode=OneWay}" Style="{StaticResource MuesliMetadataStyle}" TextWrapping="Wrap" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowSummarySettingsLink), Mode=OneWay}" AutomationProperties.Name="Cloud provider key configuration status" />
+                        <!-- What the chosen provider needs, shown here instead of sending people to Settings. -->
+                        <StackPanel Spacing="8" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowChatGptSetup), Mode=OneWay}">
+                            <TextBlock Text="{x:Bind ViewModel.ChatGptSetupStatus, Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="OnboardingChatGptStatus" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Sign in with ChatGPT"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Command="{x:Bind ViewModel.SignInChatGptCommand}"
+                                        Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsChatGptSignedOut), Mode=OneWay}"
+                                        AutomationProperties.AutomationId="OnboardingChatGptSignInButton" />
+                                <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsChatGptSigningIn, Mode=OneWay}"
+                                              Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsChatGptSigningIn), Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowOpenRouterSetup), Mode=OneWay}">
+                            <TextBlock Text="{x:Bind ViewModel.OpenRouterSetupStatus, Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="OnboardingOpenRouterStatus" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Connect OpenRouter"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Command="{x:Bind ViewModel.ConnectOpenRouterCommand}"
+                                        Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsOpenRouterDisconnected), Mode=OneWay}"
+                                        AutomationProperties.AutomationId="OnboardingOpenRouterConnectButton" />
+                                <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.IsOpenRouterConnecting, Mode=OneWay}"
+                                              Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.IsOpenRouterConnecting), Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Spacing="6" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowApiKeySetup), Mode=OneWay}">
+                            <PasswordBox Header="{x:Bind ViewModel.SetupApiKeyHeader, Mode=OneWay}"
+                                         PlaceholderText="{x:Bind ViewModel.SetupApiKeyPlaceholder, Mode=OneWay}"
+                                         Password="{x:Bind ViewModel.SetupApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         PasswordRevealMode="Hidden"
+                                         AutomationProperties.Name="Summary provider API key"
+                                         AutomationProperties.AutomationId="OnboardingSummaryApiKeyBox" />
+                            <TextBlock Text="{x:Bind ViewModel.SetupApiKeyHelp, Mode=OneWay}" Style="{StaticResource MuesliMetadataStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Spacing="8" Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowClaudeCodeSetup), Mode=OneWay}">
+                            <TextBlock Text="{x:Bind ViewModel.ClaudeCodeSetupStatus, Mode=OneWay}" Style="{StaticResource MuesliCaptionStyle}" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="OnboardingClaudeCodeStatus" />
+                            <Button Content="Check again"
+                                    Command="{x:Bind ViewModel.CheckClaudeCodeSetupCommand}"
+                                    AutomationProperties.AutomationId="OnboardingClaudeCodeCheckButton" />
+                        </StackPanel>
+                        <TextBlock Text="No API key needed. Install Ollama and pull a model; muesli uses http://localhost:11434 by default."
+                                   Style="{StaticResource MuesliCaptionStyle}" TextWrapping="Wrap"
+                                   Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowOllamaSetup), Mode=OneWay}" />
                         <HyperlinkButton
                             Padding="0"
                             FontSize="11"
                             Foreground="{ThemeResource MuesliAccentTextBrush}"
                             Command="{x:Bind ViewModel.OpenSummaryProviderSettingsCommand}"
-                            Content="Add an API key in Settings"
+                            Content="Set up this provider in Settings"
+                            Visibility="{x:Bind local:OnboardingWindow.ToVisibility(ViewModel.ShowSummarySettingsLink), Mode=OneWay}"
                             AutomationProperties.AutomationId="OnboardingOpenSummarySettings"
                             AutomationProperties.Name="Configure summary provider in Settings" />
                     </StackPanel>

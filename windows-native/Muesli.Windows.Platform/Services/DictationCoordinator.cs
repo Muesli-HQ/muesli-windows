@@ -25,6 +25,7 @@ public sealed class DictationCoordinator : IDisposable
     private Task<ModelOperationResult>? _modelWarmupTask;
     private CancellationTokenSource? _sessionCancellation;
     private DictationRollingTranscriber? _rollingTranscriber;
+    private IHostedDictationSession? _hostedSession;
     private string? _microphoneName;
     private volatile bool _prepareEnabled;
     private int _preloadScheduled;
@@ -200,7 +201,9 @@ public sealed class DictationCoordinator : IDisposable
             // speaks spreads the cost of paging it back in over the recording instead of leaving
             // it all for after release.
             var decodeReason = decodeDuringCapture ? "requested" : "default";
+            // A hosted provider transcribes its own dictation; nothing is decoded locally for it.
             if (!decodeDuringCapture && sessionKind == DictationSessionKind.Interactive &&
+                Volatile.Read(ref _hostedSession) is null &&
                 DictationMemoryPolicy.ShouldDecodeDuringCapture(availableMemory))
             {
                 decodeDuringCapture = true;
@@ -389,7 +392,9 @@ public sealed class DictationCoordinator : IDisposable
                 var warmupPending = _modelWarmupTask is { IsCompleted: false };
                 _log.Info($"Dictation recognition started. trace={traceId}; model={ModelId}; " +
                     $"warmupPending={warmupPending}");
-                transcriptionTask = rolling is null
+                transcriptionTask = DetachHostedSession() is { } hosted
+                    ? TranscribeHostedAsync(hosted, capturedAudio.TranscriptionPath)
+                    : rolling is null
                     ? _transcriptionClient.TranscribeFileAsync("Dictation", capturedAudio.TranscriptionPath)
                     : rolling.FinishAsync(capturedAudio.TranscriptionPath);
                 _activeTranscriptionTask = transcriptionTask;
@@ -539,6 +544,36 @@ public sealed class DictationCoordinator : IDisposable
         _modelWarmupTask = Task.Run(_transcriptionClient.InitializeAsync);
         _ = ObserveWarmupAsync(_modelWarmupTask);
     }
+
+    /// <summary>
+    /// Gives the next dictation to a hosted provider. Call before <see cref="StartAsync(string?)"/>;
+    /// the session hears the microphone while it records and is asked for the transcript at stop,
+    /// with the selected local model as the fallback. The caller owns and disposes the session.
+    /// </summary>
+    public void AttachHostedSession(IHostedDictationSession session)
+    {
+        DetachHostedSession();
+        _hostedSession = session;
+        if (session.AcceptsLiveAudio) _audioCaptureService.PcmSamplesAvailable += FeedHostedSession;
+    }
+
+    /// <summary>Stops feeding the hosted session and returns it, or null when none is attached.</summary>
+    public IHostedDictationSession? DetachHostedSession()
+    {
+        _audioCaptureService.PcmSamplesAvailable -= FeedHostedSession;
+        return Interlocked.Exchange(ref _hostedSession, null);
+    }
+
+    private void FeedHostedSession(object? sender, LivePcmSamplesEventArgs packet) =>
+        Volatile.Read(ref _hostedSession)?.Append(packet.Samples);
+
+    private Task<TranscriptionResult> TranscribeHostedAsync(IHostedDictationSession hosted, string wavPath) =>
+        HostedDictationTranscriber.TranscribeAsync(
+            hosted,
+            wavPath,
+            IsModelReady ? () => _transcriptionClient.TranscribeFileAsync("Dictation", wavPath) : null,
+            _log.Info,
+            _sessionCancellation?.Token ?? CancellationToken.None);
 
     private DictationRollingTranscriber? DetachRollingTranscriber()
     {

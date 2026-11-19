@@ -53,7 +53,11 @@ public sealed class ChatGptAuthManager
     /// method returns once the browser has come back to the loopback callback and the code has
     /// been exchanged, or throws <see cref="ChatGptAuthException"/> with a plain reason.
     /// </summary>
-    public async Task SignInAsync(Action<Uri> openBrowser, CancellationToken cancellationToken = default)
+    public Task SignInAsync(Action<Uri> openBrowser, CancellationToken cancellationToken = default) =>
+        SignInAsync(uri => { openBrowser(uri); return Task.FromResult(true); }, cancellationToken);
+
+    /// <param name="openBrowser">Opens the address in the browser and reports whether it could.</param>
+    public async Task SignInAsync(Func<Uri, Task<bool>> openBrowser, CancellationToken cancellationToken = default)
     {
         var (verifier, challenge) = CreatePkce();
         var state = RandomToken();
@@ -71,7 +75,9 @@ public sealed class ChatGptAuthManager
         string code;
         try
         {
-            openBrowser(BuildAuthorizeUri(state, challenge));
+            // Without a browser nothing will ever call back; say so now instead of after the timeout.
+            if (!await openBrowser(BuildAuthorizeUri(state, challenge)).ConfigureAwait(false))
+                throw new ChatGptAuthException("Could not open the browser for sign-in");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(CallbackTimeout);
             try

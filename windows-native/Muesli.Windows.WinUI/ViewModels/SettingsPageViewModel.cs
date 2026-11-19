@@ -62,6 +62,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _computerUse.Changed -= OnComputerUseChanged;
+        // Its local callback listener would otherwise outlive the page, and a late approval would
+        // save a key from a view model that is gone.
+        try { _openRouterSignIn?.Cancel(); }
+        catch (ObjectDisposedException) { }
         _debounce?.Cancel();
         FlushPendingEdits();
     }
@@ -338,6 +342,14 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             vm => vm.OpenRouterApiKey, (vm, value) => vm.OpenRouterApiKey = value,
             settings => settings.ResolvedOpenRouterApiKey, (settings, _) => settings,
             SecretKey: SettingsStore.OpenRouterSecretKey),
+        [nameof(AnthropicApiKey)] = new("Anthropic API key",
+            vm => vm.AnthropicApiKey, (vm, value) => vm.AnthropicApiKey = value,
+            settings => settings.ResolvedAnthropicApiKey, (settings, _) => settings,
+            SecretKey: SettingsStore.AnthropicSecretKey),
+        [nameof(OpenRouterDictationModel)] = new("OpenRouter dictation model",
+            vm => vm.OpenRouterDictationModel, (vm, value) => vm.OpenRouterDictationModel = value,
+            settings => settings.OpenRouterDictationModel,
+            (settings, value) => settings with { OpenRouterDictationModel = value }),
         [nameof(CustomLlmApiKey)] = new("Custom API key",
             vm => vm.CustomLlmApiKey, (vm, value) => vm.CustomLlmApiKey = value,
             settings => settings.ResolvedCustomLlmApiKey, (settings, _) => settings,
@@ -468,6 +480,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             settings with { LiveMeetingModelId = id },
         nameof(SelectedChatGptModel) when SelectedChatGptModel is { } model => settings with { ChatGptModel = model.Id },
         nameof(SelectedClaudeCodeModel) when SelectedClaudeCodeModel is { } model => settings with { ClaudeCodeModel = model.Id },
+        nameof(SelectedAnthropicModel) when SelectedAnthropicModel is { } model => settings with { AnthropicModel = model.Id },
+        nameof(SelectedDictationProvider) when SelectedDictationProvider is { } provider =>
+            settings with { DictationProvider = provider.Id },
+        nameof(SelectedOpenAIDictationModel) when SelectedOpenAIDictationModel is { } model =>
+            settings with { OpenAIDictationModel = model.Id },
         nameof(SelectedSummaryProvider) when SelectedSummaryProvider is { } provider =>
             settings with { MeetingSummaryProvider = provider.Id },
         nameof(ComputerUseEnabled) => settings with { ComputerUseEnabled = ComputerUseEnabled },
@@ -683,6 +700,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         SelectedChatGptModel = ChatGptModels.FirstOrDefault(choice => choice.Id.Equals(ChatGptResponsesClient.NormalizeModel(settings.ChatGptModel), StringComparison.OrdinalIgnoreCase)) ?? ChatGptModels[0];
         SelectedClaudeCodeModel = ClaudeCodeModels.FirstOrDefault(choice => choice.Id.Equals(settings.ClaudeCodeModel, StringComparison.OrdinalIgnoreCase)) ?? ClaudeCodeModels[0];
         ClaudeCodeExecutablePath = settings.ClaudeCodeExecutablePath;
+        SelectedAnthropicModel = AnthropicModels.FirstOrDefault(choice => choice.Id.Equals(AnthropicMessagesClient.NormalizeModel(settings.AnthropicModel), StringComparison.OrdinalIgnoreCase)) ?? AnthropicModels[0];
+        AnthropicApiKey = settings.ResolvedAnthropicApiKey;
+        SelectedDictationProvider = DictationProviderChoices.First(choice => choice.Id == DictationProviders.Normalize(settings.DictationProvider));
+        SelectedOpenAIDictationModel = OpenAIDictationModels.FirstOrDefault(choice => choice.Id.Equals(OpenAIRealtimeProtocol.NormalizeModel(settings.OpenAIDictationModel), StringComparison.OrdinalIgnoreCase)) ?? OpenAIDictationModels[0];
+        OpenRouterDictationModel = settings.OpenRouterDictationModel;
         RefreshChatGptAccount();
         OpenRouterModel = settings.OpenRouterModel;
         OpenAIApiKey = settings.ResolvedOpenAIApiKey;
@@ -788,12 +810,18 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             var meeting = SelectedMeetingModel;
             var template = MeetingSummaryService.NormalizeTemplateName(MeetingSummaryTemplate);
             var summary = SelectedSummaryProvider ?? SummaryProviderDisclosure.For("local");
+            var dictationProvider = SelectedDictationProvider;
+            var openAIDictationModel = SelectedOpenAIDictationModel;
+            var anthropicModel = SelectedAnthropicModel;
             SelectedLiveModel = "";
             SelectedMicrophone = "";
             SelectedDictationModel = "";
             SelectedMeetingModel = "";
             MeetingSummaryTemplate = "";
             SelectedSummaryProvider = null;
+            SelectedDictationProvider = null;
+            SelectedOpenAIDictationModel = null;
+            SelectedAnthropicModel = null;
             SelectedLiveModel = LiveModels.Contains(live) ? live : "Off";
             SelectedMicrophone = Microphones.Contains(microphone) ? microphone : "Automatic";
             if (!string.IsNullOrWhiteSpace(dictation)) SelectedDictationModel = dictation;
@@ -804,6 +832,13 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             SelectedSummaryProvider = SummaryProviders.Contains(summary)
                 ? summary
                 : SummaryProviderDisclosure.For(summary.Id);
+            // A cleared provider picker would show the local disclosure while a hosted provider is in use.
+            SelectedDictationProvider = DictationProviderChoices.FirstOrDefault(choice => choice.Id == dictationProvider?.Id)
+                ?? DictationProviderChoices[0];
+            SelectedOpenAIDictationModel = OpenAIDictationModels.FirstOrDefault(choice => choice.Id == openAIDictationModel?.Id)
+                ?? OpenAIDictationModels[0];
+            SelectedAnthropicModel = AnthropicModels.FirstOrDefault(choice => choice.Id == anthropicModel?.Id)
+                ?? AnthropicModels[0];
         }
         finally
         {
@@ -915,7 +950,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         string? error = null;
         try
         {
-            await auth.SignInAsync(uri => _ = global::Windows.System.Launcher.LaunchUriAsync(uri), _chatGptSignIn.Token);
+            await auth.SignInAsync(uri => global::Windows.System.Launcher.LaunchUriAsync(uri).AsTask(), _chatGptSignIn.Token);
             // As on macOS, a successful sign-in selects ChatGPT for notes; Save keeps the choice.
             SelectedSummaryProvider = SummaryProviders.FirstOrDefault(info => info.Id == SummaryProviderDisclosure.ChatGpt) ?? SelectedSummaryProvider;
         }
@@ -959,8 +994,129 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(ShowChatGptSettings));
         OnPropertyChanged(nameof(ShowClaudeCodeSettings));
+        OnPropertyChanged(nameof(ShowAnthropicSettings));
         if (value?.Id == SummaryProviderDisclosure.ClaudeCode) _ = CheckClaudeCodeAsync();
         if (value?.Id == SummaryProviderDisclosure.ChatGpt) RefreshChatGptAccount();
+    }
+    // ─── Anthropic API notes provider ────────────────────────────────────────────────────────
+
+    public bool ShowAnthropicSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.Anthropic;
+
+    public IReadOnlyList<SettingsChoice> AnthropicModels { get; } =
+        AnthropicMessagesClient.Models.Select(model => new SettingsChoice(model.Id, model.Label)).ToList();
+
+    [ObservableProperty] public partial SettingsChoice? SelectedAnthropicModel { get; set; }
+    [ObservableProperty] public partial string AnthropicApiKey { get; set; } = "";
+
+    // ─── Dictation provider (macOS Speech Recognition → Provider) ────────────────────────────
+    // Local is the default. Choosing OpenAI or OpenRouter is what sends dictation audio off this
+    // PC, so the disclosure under the picker changes with the choice.
+
+    public IReadOnlyList<SettingsChoice> DictationProviderChoices { get; } =
+    [
+        new(DictationProviders.Local, "Local (on this PC)"),
+        new(DictationProviders.OpenAI, "OpenAI"),
+        new(DictationProviders.OpenRouter, "OpenRouter"),
+    ];
+
+    public IReadOnlyList<SettingsChoice> OpenAIDictationModels { get; } =
+        OpenAIRealtimeProtocol.ModelPresets.Select(model => new SettingsChoice(model, model)).ToList();
+
+    [NotifyPropertyChangedFor(nameof(IsDictationHosted))]
+    [NotifyPropertyChangedFor(nameof(ShowOpenAIDictationSettings))]
+    [NotifyPropertyChangedFor(nameof(ShowOpenRouterDictationSettings))]
+    [NotifyPropertyChangedFor(nameof(DictationDisclosure))]
+    [NotifyPropertyChangedFor(nameof(DictationModelRowTitle))]
+    [NotifyPropertyChangedFor(nameof(DictationModelHelp))]
+    [ObservableProperty] public partial SettingsChoice? SelectedDictationProvider { get; set; }
+    [ObservableProperty] public partial SettingsChoice? SelectedOpenAIDictationModel { get; set; }
+    [ObservableProperty] public partial string OpenRouterDictationModel { get; set; } = "";
+
+    public bool IsDictationHosted => DictationProviders.IsHosted(SelectedDictationProvider?.Id);
+    public bool ShowOpenAIDictationSettings => SelectedDictationProvider?.Id == DictationProviders.OpenAI;
+    public bool ShowOpenRouterDictationSettings => SelectedDictationProvider?.Id == DictationProviders.OpenRouter;
+    public string DictationDisclosure =>
+        DictationProviders.Disclosure(SelectedDictationProvider?.Id, IsFallbackModelInstalled);
+    public string DictationModelRowTitle => IsDictationHosted ? "Fallback model" : "Dictation model";
+    public string DictationModelHelp => IsFallbackModelInstalled
+        ? $"Used on this PC if {DictationProviders.Label(SelectedDictationProvider?.Id)} transcription fails."
+        : "Not downloaded, so there is no fallback. Download it in Models.";
+
+    /// <summary>Whether the selected local model can take over when the hosted provider fails.</summary>
+    private bool IsFallbackModelInstalled =>
+        TranscriptionModelCatalog.Models.FirstOrDefault(model => model.DisplayName == SelectedDictationModel) is { } model &&
+        TranscriptionModelReadiness.IsVerified(model);
+
+    partial void OnSelectedDictationModelChanged(string value)
+    {
+        OnPropertyChanged(nameof(DictationDisclosure));
+        OnPropertyChanged(nameof(DictationModelHelp));
+    }
+    // ─── Connect OpenRouter (browser sign-in, as on macOS) ───────────────────────────────────
+    // Approving access in the browser gives muesli its own API key, stored where a pasted key
+    // goes, so meeting summaries and dictation both use it.
+
+    [NotifyPropertyChangedFor(nameof(IsOpenRouterDisconnected))]
+    [ObservableProperty] public partial bool IsOpenRouterConnected { get; private set; }
+    [ObservableProperty] public partial bool IsOpenRouterConnecting { get; private set; }
+    [ObservableProperty] public partial string OpenRouterAccountStatus { get; private set; } = "Not connected";
+
+    public bool IsOpenRouterDisconnected => !IsOpenRouterConnected;
+
+    private CancellationTokenSource? _openRouterSignIn;
+
+    partial void OnOpenRouterApiKeyChanged(string value) => RefreshOpenRouterAccount();
+
+    private void RefreshOpenRouterAccount(string? message = null)
+    {
+        IsOpenRouterConnected = !string.IsNullOrWhiteSpace(OpenRouterApiKey);
+        OpenRouterAccountStatus = message ?? (IsOpenRouterConnecting ? "Connecting… approve access in your browser."
+            : IsOpenRouterConnected ? "OpenRouter connected" : "Not connected");
+    }
+
+    [RelayCommand]
+    private async Task ConnectOpenRouterAsync()
+    {
+        if (IsOpenRouterConnecting) return;
+        _openRouterSignIn = new CancellationTokenSource();
+        IsOpenRouterConnecting = true;
+        RefreshOpenRouterAccount();
+        string? error = null;
+        try
+        {
+            var key = await new OpenRouterAuthFlow().SignInAsync(
+                uri => global::Windows.System.Launcher.LaunchUriAsync(uri).AsTask(), _openRouterSignIn.Token);
+            _pendingText.Remove(nameof(OpenRouterApiKey));
+            _settingsContext.SaveProviderKey(SettingsStore.OpenRouterSecretKey, key);
+            Untracked(() => OpenRouterApiKey = key);
+        }
+        catch (OperationCanceledException) { }
+        catch (OpenRouterAuthException exception) { error = exception.Message; }
+        catch (Exception exception) { error = $"OpenRouter sign-in failed: {exception.GetType().Name}"; }
+        finally
+        {
+            IsOpenRouterConnecting = false;
+            _openRouterSignIn = null;
+            RefreshOpenRouterAccount(error);
+        }
+    }
+
+    [RelayCommand]
+    private void DisconnectOpenRouter()
+    {
+        _openRouterSignIn?.Cancel();
+        try
+        {
+            _pendingText.Remove(nameof(OpenRouterApiKey));
+            _settingsContext.SaveProviderKey(SettingsStore.OpenRouterSecretKey, "");
+            Untracked(() => OpenRouterApiKey = "");
+            // As on macOS, only this PC's copy is removed.
+            RefreshOpenRouterAccount("Disconnected. The key stays active at OpenRouter until you delete it there.");
+        }
+        catch (Exception exception)
+        {
+            RefreshOpenRouterAccount($"Could not remove the OpenRouter key: {exception.Message}");
+        }
     }
 }
 

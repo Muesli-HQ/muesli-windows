@@ -23,7 +23,7 @@ public sealed class SettingsSnapshotTests
         File.WriteAllText(library.Profile.SettingsPath, "{ \"UserName\": \"edited outside the app\" }");
         for (var i = 0; i < 1000; i++) settings.Load();
 
-        Assert.Equal(3, readsAfterFirstLoad);
+        Assert.Equal(4, readsAfterFirstLoad);
         Assert.Equal(readsAfterFirstLoad, secrets.Reads);
         Assert.Same(first, settings.Load());
         Assert.NotEqual("edited outside the app", settings.Load().UserName);
@@ -106,7 +106,7 @@ public sealed class SettingsSnapshotTests
         var results = Task.WhenAll(readers).GetAwaiter().GetResult();
 
         Assert.All(results, result => Assert.Same(results[0], result));
-        Assert.Equal(3, secrets.Reads);
+        Assert.Equal(4, secrets.Reads);
     }
 
     [Fact]

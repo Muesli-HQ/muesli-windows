@@ -24,6 +24,7 @@ public static class SummaryProviderDisclosure
     public const string CustomLlm = "custom";
     public const string ChatGpt = "chatgpt";
     public const string ClaudeCode = "claude_code";
+    public const string Anthropic = "anthropic";
 
     private static readonly SummaryProviderInfo LocalInfo = new(
         Local,
@@ -67,6 +68,13 @@ public static class SummaryProviderDisclosure
         RequiresApiKey: true,
         "Uploads the full meeting transcript to OpenRouter over HTTPS, which routes it to the model you select.");
 
+    private static readonly SummaryProviderInfo AnthropicInfo = new(
+        Anthropic,
+        "Anthropic API",
+        SendsTranscriptOffMachine: true,
+        RequiresApiKey: true,
+        "Uploads the full meeting transcript and your notes to the Anthropic API over HTTPS.");
+
     private static readonly SummaryProviderInfo ChatGptInfo = new(
         ChatGpt,
         "ChatGPT",
@@ -83,7 +91,7 @@ public static class SummaryProviderDisclosure
 
     /// <summary>The macOS order for the account-backed providers, then the API and local ones.</summary>
     public static IReadOnlyList<SummaryProviderInfo> Available { get; } =
-        [LocalInfo, ChatGptInfo, ClaudeCodeInfo, OpenAIInfo, OpenRouterInfo, OllamaInfo, LmStudioInfo, CustomLlmInfo];
+        [LocalInfo, ChatGptInfo, ClaudeCodeInfo, OpenAIInfo, AnthropicInfo, OpenRouterInfo, OllamaInfo, LmStudioInfo, CustomLlmInfo];
 
     public static IReadOnlyList<string> AvailableIds { get; } = Available.Select(info => info.Id).ToList();
 

@@ -46,7 +46,8 @@ public sealed class WinUiSettingsContext
             {
                 ResolvedOpenAIApiKey = current.ResolvedOpenAIApiKey,
                 ResolvedOpenRouterApiKey = current.ResolvedOpenRouterApiKey,
-                ResolvedCustomLlmApiKey = current.ResolvedCustomLlmApiKey
+                ResolvedCustomLlmApiKey = current.ResolvedCustomLlmApiKey,
+                ResolvedAnthropicApiKey = current.ResolvedAnthropicApiKey
             };
             Publish(snapshot);
         }
@@ -110,6 +111,7 @@ public sealed class WinUiSettingsContext
                 SettingsStore.OpenAISecretKey => current with { ResolvedOpenAIApiKey = resolved },
                 SettingsStore.OpenRouterSecretKey => current with { ResolvedOpenRouterApiKey = resolved },
                 SettingsStore.CustomLlmSecretKey => current with { ResolvedCustomLlmApiKey = resolved },
+                SettingsStore.AnthropicSecretKey => current with { ResolvedAnthropicApiKey = resolved },
                 _ => throw new ArgumentOutOfRangeException(nameof(secretKey), secretKey, "Unknown provider key.")
             };
             if (resolved.Length == 0)
