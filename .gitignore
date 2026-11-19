@@ -129,3 +129,6 @@ tsconfig.json
 tsconfig.node.json
 package.json
 package-lock.json
+
+# Local experiments: scratch tools, recordings and write-ups kept beside the code, never committed
+/experiments/

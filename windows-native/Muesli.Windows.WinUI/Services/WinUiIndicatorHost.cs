@@ -235,7 +235,7 @@ public sealed class WinUiIndicatorHost : IDisposable
         {
             // A meeting names the step it is on after Stop, as the macOS pill does.
             FloatingIndicatorState.Transcribing => string.IsNullOrWhiteSpace(meetingStage) ? "Transcribing" : meetingStage,
-            FloatingIndicatorState.Success or FloatingIndicatorState.Error => status,
+            FloatingIndicatorState.Success or FloatingIndicatorState.Error or FloatingIndicatorState.Notice => status,
             _ => ""
         };
 
@@ -247,6 +247,7 @@ public sealed class WinUiIndicatorHost : IDisposable
             FloatingIndicatorState.Transcribing => "transcribing",
             FloatingIndicatorState.Success => "success",
             FloatingIndicatorState.Error => "error",
+            FloatingIndicatorState.Notice => "notice",
             _ => "idle"
         };
 

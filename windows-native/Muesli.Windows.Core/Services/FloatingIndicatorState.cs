@@ -11,7 +11,9 @@ public enum FloatingIndicatorState
     Recording,
     Transcribing,
     Success,
-    Error
+    Error,
+    /// <summary>A neutral line about a dictation that completed normally; neither success nor error styling.</summary>
+    Notice
 }
 
 /// <summary>
@@ -59,6 +61,12 @@ public static class FloatingIndicatorStateClassifier
             return FloatingIndicatorState.Idle;
         }
 
+        // The text was inserted normally; the pill only explains the wait.
+        if (string.Equals(status, DictationSlowNotice.LowMemoryMessage, StringComparison.Ordinal))
+        {
+            return FloatingIndicatorState.Notice;
+        }
+
         if (ContainsAny(status, ErrorMarkers))
         {
             return FloatingIndicatorState.Error;
@@ -101,7 +109,7 @@ public static class FloatingIndicatorStateClassifier
     /// outcomes are neutral.
     /// </summary>
     public static bool IsTransientOutcome(FloatingIndicatorState state) =>
-        state is FloatingIndicatorState.Success or FloatingIndicatorState.Error;
+        state is FloatingIndicatorState.Success or FloatingIndicatorState.Error or FloatingIndicatorState.Notice;
 
     /// <summary>
     /// True when an outcome pill has already had its moment on screen and must not be shown again.

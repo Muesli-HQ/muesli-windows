@@ -252,7 +252,7 @@ public static class FloatingIndicatorLayout
                 new DipSize(LiveWidth, LiveHeight, LiveRadius),
             FloatingIndicatorState.Transcribing =>
                 new DipSize(TranscribingWidthFor(message), TranscribingHeight, TranscribingRadius),
-            FloatingIndicatorState.Success or FloatingIndicatorState.Error =>
+            FloatingIndicatorState.Success or FloatingIndicatorState.Error or FloatingIndicatorState.Notice =>
                 new DipSize(StatusWidthFor(message), StatusHeight, StatusRadius),
             _ => new DipSize(CompactIdleWidth, CompactIdleHeight, CompactIdleRadius)
         };

@@ -294,6 +294,9 @@ internal sealed class FloatingIndicatorWindow : Window
             case FloatingIndicatorState.Error:
                 BuildStatus(true, brush);
                 break;
+            case FloatingIndicatorState.Notice:
+                BuildNotice(brush);
+                break;
             default:
                 BuildIdle();
                 break;
@@ -462,6 +465,20 @@ internal sealed class FloatingIndicatorWindow : Window
         });
         _content.Children.Add(stack);
     }
+
+    // A plain line on the ordinary glass pill: no glyph and no status colour, because the
+    // dictation it describes succeeded.
+    private void BuildNotice(Brush brush) =>
+        _content.Children.Add(new TextBlock
+        {
+            Text = _message,
+            FontSize = 11,
+            FontWeight = FontWeights.Medium,
+            Foreground = brush,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
 
     private StackPanel BrandMark(double size)
     {
@@ -855,6 +872,7 @@ internal sealed class FloatingIndicatorWindow : Window
             "transcribing" => FloatingIndicatorState.Transcribing,
             "success" => FloatingIndicatorState.Success,
             "error" => FloatingIndicatorState.Error,
+            "notice" => FloatingIndicatorState.Notice,
             _ => FloatingIndicatorState.Idle
         };
 

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Muesli.Windows.Core.Services;
 
 namespace Muesli.Windows.Services;
 
@@ -28,6 +29,9 @@ public sealed class DictationCoordinator : IDisposable
     private volatile bool _prepareEnabled;
     private int _preloadScheduled;
     private IDisposable? _performanceBoost;
+    // Available physical memory read when the current dictation started; null when the read failed.
+    private ulong? _startAvailableMemory;
+    private Task<ILiveVad>? _pauseDetectorTask;
 
     public bool IsRecording { get; private set; }
     public bool IsBusy { get; private set; }
@@ -91,6 +95,8 @@ public sealed class DictationCoordinator : IDisposable
                 BeginModelWarmup();
                 await _modelWarmupTask!.ConfigureAwait(false);
                 _log.Info($"Dictation model preloaded. model={ModelId}");
+                // So the first low-memory or hands-free dictation already cuts at pauses.
+                ReadyPauseDetector();
             }
             catch (Exception exception) when (Volatile.Read(ref _disposed) == 0)
             {
@@ -175,7 +181,10 @@ public sealed class DictationCoordinator : IDisposable
                 return;
             }
 
-            var freeMemory = AvailablePhysicalMemory();
+            var availableMemory = AvailablePhysicalMemory();
+            _startAvailableMemory = availableMemory;
+            // An unreadable value never triggers the fallback, as before.
+            var freeMemory = availableMemory ?? ulong.MaxValue;
             if (ShouldUseParakeetFallback(_transcriptionClient.SelectedModel.Kind,
                 TranscriptionLanguageSelection.Resolve(_transcriptionClient.SelectedModel), freeMemory,
                 TranscriptionModelReadiness.IsVerified(TranscriptionModelCatalog.GetRequired("parakeet-v3"))))
@@ -187,9 +196,21 @@ public sealed class DictationCoordinator : IDisposable
 
             // Held from capture start so the warm-up and any chunk decodes are boosted too.
             _performanceBoost ??= TranscriptionPerformance.Boost();
+            // With little memory free the idle model is likely paged out. Decoding while the user
+            // speaks spreads the cost of paging it back in over the recording instead of leaving
+            // it all for after release.
+            var decodeReason = decodeDuringCapture ? "requested" : "default";
+            if (!decodeDuringCapture && sessionKind == DictationSessionKind.Interactive &&
+                DictationMemoryPolicy.ShouldDecodeDuringCapture(availableMemory))
+            {
+                decodeDuringCapture = true;
+                decodeReason = "low-memory";
+            }
             if (decodeDuringCapture)
             {
-                _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient);
+                // Never waited for: a detector that is not ready yet means this dictation is
+                // cut only at the length limit, and the next one gets pause cuts.
+                _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient, ReadyPauseDetector());
                 _audioCaptureService.PcmSamplesAvailable += _rollingTranscriber.Feed;
             }
             var preCaptureMs = startTimer.ElapsedMilliseconds;
@@ -197,7 +218,11 @@ public sealed class DictationCoordinator : IDisposable
             {
                 await _audioCaptureService.StartAsync(microphoneName);
                 _log.Info($"Dictation capture opened. gateMs={gateMs}; preCaptureMs={preCaptureMs - gateMs}; " +
-                    $"captureOpenMs={startTimer.ElapsedMilliseconds - preCaptureMs}; {_audioCaptureService.LastStartTiming}");
+                    $"captureOpenMs={startTimer.ElapsedMilliseconds - preCaptureMs}; {_audioCaptureService.LastStartTiming}; " +
+                    $"availableMiB={DictationMemoryPolicy.Describe(availableMemory)}; " +
+                    $"lowMemory={DictationMemoryPolicy.IsLow(availableMemory)}; " +
+                    $"decode={(decodeDuringCapture ? "during-capture" : "batch")}; decodeReason={decodeReason}; " +
+                    $"cuts={(_rollingTranscriber is null ? "none" : _rollingTranscriber.CutsAtPauses ? "pauses" : "limit-only")}");
             }
             catch
             {
@@ -222,6 +247,34 @@ public sealed class DictationCoordinator : IDisposable
             IsBusy = false;
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// The speech detector that places chunk cuts at pauses, if it has finished loading. It is
+    /// the same Silero model the meeting preview uses, shared in the model cache; preparing it
+    /// downloads the file once if it is missing. A failed attempt is retried on a later dictation.
+    /// </summary>
+    private ILiveVad? ReadyPauseDetector()
+    {
+        var pending = _pauseDetectorTask;
+        if (pending is { IsCompletedSuccessfully: true }) return pending.Result;
+        if (pending is null || pending.IsCompleted)
+        {
+            _pauseDetectorTask = Task.Run(async () =>
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var path = await StreamingModelInstaller.PrepareMeetingVadAsync(timeout.Token).ConfigureAwait(false);
+                ILiveVad detector = new NativeSileroVad(path);
+                _log.Info("Dictation pause detector ready.");
+                return detector;
+            });
+            _ = _pauseDetectorTask.ContinueWith(
+                failed => _log.Info($"Dictation pause detector unavailable; chunks are cut at the length limit only. category={failed.Exception?.GetBaseException().GetType().Name}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+        return null;
     }
 
     private void EndPerformanceBoost()
@@ -333,8 +386,9 @@ public sealed class DictationCoordinator : IDisposable
 
                 var transcriptionStarted = Stopwatch.StartNew();
                 IsTranscribing = true;
+                var warmupPending = _modelWarmupTask is { IsCompleted: false };
                 _log.Info($"Dictation recognition started. trace={traceId}; model={ModelId}; " +
-                    $"warmupPending={_modelWarmupTask is { IsCompleted: false }}");
+                    $"warmupPending={warmupPending}");
                 transcriptionTask = rolling is null
                     ? _transcriptionClient.TranscribeFileAsync("Dictation", capturedAudio.TranscriptionPath)
                     : rolling.FinishAsync(capturedAudio.TranscriptionPath);
@@ -396,7 +450,9 @@ public sealed class DictationCoordinator : IDisposable
                         capturedAudio.PreparationMs,
                         capturedAudio.Preparation,
                         transcriptionStarted.ElapsedMilliseconds,
-                        coordinatorStarted.ElapsedMilliseconds));
+                        coordinatorStarted.ElapsedMilliseconds,
+                        warmupPending,
+                        _startAvailableMemory));
             }
             finally
             {
@@ -507,10 +563,11 @@ public sealed class DictationCoordinator : IDisposable
         }
     }
 
-    private static ulong AvailablePhysicalMemory()
+    /// <summary>Null when Windows would not report it; callers must not invent a value.</summary>
+    private static ulong? AvailablePhysicalMemory()
     {
         try { return new Microsoft.VisualBasic.Devices.ComputerInfo().AvailablePhysicalMemory; }
-        catch { return ulong.MaxValue; }
+        catch { return null; }
     }
 
     // ponytail: English Cohere only; qualify other languages/models before extending this fallback.
@@ -541,6 +598,7 @@ public sealed class DictationCoordinator : IDisposable
             // Shutdown still disposes the native recognizer after an in-flight failure.
         }
         _transcriptionClient.Dispose();
+        if (_pauseDetectorTask is { IsCompletedSuccessfully: true } detector) detector.Result.Dispose();
         _gate.Dispose();
     }
 
@@ -573,4 +631,8 @@ public sealed record DictationLatencyMetrics(
     long CapturePreparationMs,
     string CapturePreparation,
     long TranscriptionWallMs,
-    long CoordinatorTotalMs);
+    long CoordinatorTotalMs,
+    // True when recognition began while the model was still loading.
+    bool ModelWarmupPending = false,
+    // Available physical memory when the dictation started; null when it was not read.
+    ulong? StartAvailableMemoryBytes = null);
