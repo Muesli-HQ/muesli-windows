@@ -33,6 +33,11 @@ public sealed class DictationCoordinator : IDisposable
     // Available physical memory read when the current dictation started; null when the read failed.
     private ulong? _startAvailableMemory;
     private Task<ILiveVad>? _pauseDetectorTask;
+    private readonly object _pauseDetectorGate = new();
+    // Completes when the dictation that last used the pause detector has stopped touching it.
+    // A cancelled stop leaves its finish running after the gate is released, so the next
+    // dictation must not reset the detector underneath it.
+    private Task _pauseDetectorLease = Task.CompletedTask;
 
     public bool IsRecording { get; private set; }
     public bool IsBusy { get; private set; }
@@ -213,7 +218,10 @@ public sealed class DictationCoordinator : IDisposable
             {
                 // Never waited for: a detector that is not ready yet means this dictation is
                 // cut only at the length limit, and the next one gets pause cuts.
-                _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient, ReadyPauseDetector());
+                // Nor is it taken while an earlier dictation still holds it.
+                var detector = _pauseDetectorLease.IsCompleted ? ReadyPauseDetector() : null;
+                _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient, detector);
+                if (detector is not null) _pauseDetectorLease = _rollingTranscriber.DetectorReleased;
                 _audioCaptureService.PcmSamplesAvailable += _rollingTranscriber.Feed;
             }
             var preCaptureMs = startTimer.ElapsedMilliseconds;
@@ -229,13 +237,14 @@ public sealed class DictationCoordinator : IDisposable
             }
             catch
             {
-                DetachRollingTranscriber();
+                // Drained, not just detached, so the pause detector is handed back.
+                if (DetachRollingTranscriber() is { } unstarted) await unstarted.DrainAsync();
                 throw;
             }
             if (Volatile.Read(ref _cancelRequested) != 0 || _sessionCancellation.IsCancellationRequested)
             {
                 await _audioCaptureService.CancelAsync();
-                DetachRollingTranscriber();
+                if (DetachRollingTranscriber() is { } cancelledAtStart) await cancelledAtStart.DrainAsync();
                 return;
             }
 
@@ -258,6 +267,15 @@ public sealed class DictationCoordinator : IDisposable
     /// downloads the file once if it is missing. A failed attempt is retried on a later dictation.
     /// </summary>
     private ILiveVad? ReadyPauseDetector()
+    {
+        // The preload and the first dictation can both arrive here; only one load may start.
+        lock (_pauseDetectorGate)
+        {
+            return ReadyPauseDetectorLocked();
+        }
+    }
+
+    private ILiveVad? ReadyPauseDetectorLocked()
     {
         var pending = _pauseDetectorTask;
         if (pending is { IsCompletedSuccessfully: true }) return pending.Result;

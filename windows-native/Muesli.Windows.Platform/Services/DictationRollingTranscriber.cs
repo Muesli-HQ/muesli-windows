@@ -40,6 +40,7 @@ internal sealed class DictationRollingTranscriber
     // Stretches of speech the detector reported, as offsets from the first captured sample.
     private readonly List<(long Start, long End)> _speech = [];
     private bool _detectorFailed;
+    private readonly TaskCompletionSource _detectorReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<long> _chunkDecodeMs = [];
     private Task _work = Task.CompletedTask;
     private long _nextSample = -1;
@@ -66,9 +67,18 @@ internal sealed class DictationRollingTranscriber
         _fallback = fallback;
         _vad = vad;
         _vad?.Reset(LiveTranscriptChannel.Microphone);
+        if (_vad is null) _detectorReleased.TrySetResult();
     }
 
     public bool CutsAtPauses => _vad is not null;
+
+    /// <summary>
+    /// Completes once this session will not touch the speech detector again: after
+    /// <see cref="FinishAsync"/> has flushed it or <see cref="DrainAsync"/> has waited out the
+    /// last scan. A finish abandoned by a cancelled stop still runs, so the owner waits for
+    /// this, not for the stop, before lending the detector to another session.
+    /// </summary>
+    public Task DetectorReleased => _detectorReleased.Task;
 
     public void Feed(object? sender, LivePcmSamplesEventArgs packet)
     {
@@ -162,8 +172,15 @@ internal sealed class DictationRollingTranscriber
             _finished = true;
             scan = _scan;
         }
-        await scan.ConfigureAwait(false);
-        FlushDetector();
+        try
+        {
+            await scan.ConfigureAwait(false);
+            FlushDetector();
+        }
+        finally
+        {
+            _detectorReleased.TrySetResult();
+        }
         lock (_gate)
         {
             tail = _pending.ToArray();
@@ -275,7 +292,14 @@ internal sealed class DictationRollingTranscriber
             _finished = true;
             scan = _scan;
         }
-        await scan.ConfigureAwait(false);
+        try
+        {
+            await scan.ConfigureAwait(false);
+        }
+        finally
+        {
+            _detectorReleased.TrySetResult();
+        }
         lock (_gate) work = _work;
         try { await work.ConfigureAwait(false); }
         catch { /* A discarded capture has no transcript to recover. */ }

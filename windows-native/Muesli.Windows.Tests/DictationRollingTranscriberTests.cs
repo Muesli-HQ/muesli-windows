@@ -212,6 +212,43 @@ public sealed class DictationRollingTranscriberTests
     }
 
     [Fact]
+    public async Task TheDetectorIsReleasedBeforeAnAbandonedFinishCompletes()
+    {
+        // Escape during transcription leaves FinishAsync running while a new dictation may
+        // start. The detector must be free by then even though the decode has not returned.
+        var decodeGate = new TaskCompletionSource<TranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rolling = new DictationRollingTranscriber(
+            _ => Task.FromResult(new TranscriptionResult("partial")),
+            _ => decodeGate.Task,
+            new ScriptedVad());
+
+        FeedSeconds(rolling, 0, 2);
+        Assert.False(rolling.DetectorReleased.IsCompleted); // Still capturing.
+
+        var finish = rolling.FinishAsync("recording.wav");
+        await rolling.DetectorReleased.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(finish.IsCompleted); // The whole-recording decode is still running.
+
+        decodeGate.SetResult(new TranscriptionResult("complete"));
+        Assert.Equal("complete", (await finish).Text);
+    }
+
+    [Fact]
+    public async Task DrainingOrHavingNoDetectorReleasesIt()
+    {
+        var withoutDetector = new DictationRollingTranscriber(
+            _ => Task.FromResult(new TranscriptionResult("")), _ => Task.FromResult(new TranscriptionResult("")));
+        Assert.True(withoutDetector.DetectorReleased.IsCompleted);
+
+        var cancelled = new DictationRollingTranscriber(
+            _ => Task.FromResult(new TranscriptionResult("")), _ => Task.FromResult(new TranscriptionResult("")),
+            new ScriptedVad());
+        FeedSeconds(cancelled, 0, 1);
+        await cancelled.DrainAsync();
+        Assert.True(cancelled.DetectorReleased.IsCompleted);
+    }
+
+    [Fact]
     public async Task MissingCapturePacketUsesDurableRecording()
     {
         var rolling = new DictationRollingTranscriber(
