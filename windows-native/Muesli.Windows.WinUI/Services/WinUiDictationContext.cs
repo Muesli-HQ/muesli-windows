@@ -481,8 +481,9 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
     }
 
-    // Push-to-talk is transcribed in one pass after release. Only hands-free, which has no bound
-    // on its length, decodes while capture is still running.
+    // Push-to-talk is transcribed in one pass after release. Hands-free, which has no bound on its
+    // length, decodes while capture is still running; so does any dictation the coordinator
+    // starts with little memory free (DictationMemoryPolicy).
     private async Task StartAsync(bool shouldPasteToActiveApp, bool decodeDuringCapture = false)
     {
         if (IsRecording || IsBusy)
@@ -591,6 +592,7 @@ public sealed class WinUiDictationContext : IDisposable
         var deliveryClipboardMs = 0L;
         var persisted = false;
         var asrPath = "unavailable";
+        var audioDurationMs = 0L;
         // What the latency log records when the status shown to the user carries provider text.
         string? loggedOutcome = null;
         DictationLatencyMetrics? latency = null;
@@ -609,6 +611,7 @@ public sealed class WinUiDictationContext : IDisposable
                 _operationCancellation.Token);
             latency = stop.Latency;
             var result = stop.Transcription;
+            audioDurationMs = result.DurationMs;
             asrPath = result.Diagnostic?.Split('\n')[0].TrimEnd('\r') ?? "";
             if (!asrPath.StartsWith("ASR during capture:", StringComparison.Ordinal) &&
                 !asrPath.StartsWith("Rolling fallback:", StringComparison.Ordinal))
@@ -701,6 +704,17 @@ public sealed class WinUiDictationContext : IDisposable
         }
         finally
         {
+            // Only a dictation that was delivered normally gets the explanation; a failure or a
+            // cancellation keeps its own status. A hosted provider's wait is the network's, not
+            // this PC's memory, so it never gets one either.
+            var slowNotice = latency is not null && !asrPath.StartsWith("hosted", StringComparison.Ordinal) &&
+                Status is "Dictation inserted" or "Dictation saved"
+                ? DictationSlowNotice.For(
+                    audioDurationMs,
+                    latency.TranscriptionWallMs,
+                    latency.StartAvailableMemoryBytes,
+                    latency.ModelWarmupPending)
+                : null;
             _log.Info(
                 $"Dictation delivery latency. trace={latency?.TraceId ?? "unavailable"}; model={_coordinator.ModelId}; " +
                 $"captureStopMs={latency?.CaptureTotalMs ?? 0}; " +
@@ -711,7 +725,13 @@ public sealed class WinUiDictationContext : IDisposable
                 $"deliveryMs={deliveryMs}; deliveryFocusMs={deliveryFocusMs}; " +
                 $"deliveryInputMs={deliveryInputMs}; deliveryClipboardMs={deliveryClipboardMs}; " +
                 $"totalMs={totalStarted.ElapsedMilliseconds}; " +
+                $"availableMiBAtStart={DictationMemoryPolicy.Describe(latency?.StartAvailableMemoryBytes)}; " +
+                $"warmupPending={latency?.ModelWarmupPending ?? false}; " +
+                $"slowNotice={slowNotice is not null}; " +
                 $"outcome={loggedOutcome ?? Status}");
+            // After the log, so the recorded outcome stays the real one. The text has already
+            // been delivered; this only replaces the status the pill and dashboard show.
+            if (slowNotice is not null) Status = slowNotice;
             ReleaseHostedSession();
             _pasteTarget = IntPtr.Zero;
             _delivering = false;

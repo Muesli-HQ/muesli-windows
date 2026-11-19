@@ -71,6 +71,7 @@ public static class FloatingIndicatorProbe
             "transcribing" => FloatingIndicatorState.Transcribing,
             "success" => FloatingIndicatorState.Success,
             "error" => FloatingIndicatorState.Error,
+            "notice" => FloatingIndicatorState.Notice,
             _ => null
         };
 
@@ -86,6 +87,7 @@ public static class FloatingIndicatorProbe
             FloatingIndicatorState.Transcribing => "Transcribing locally…",
             FloatingIndicatorState.Success => SuccessMessage,
             FloatingIndicatorState.Error => ErrorMessage,
+            FloatingIndicatorState.Notice => DictationSlowNotice.LowMemoryMessage,
             _ => "Ready"
         };
 }
