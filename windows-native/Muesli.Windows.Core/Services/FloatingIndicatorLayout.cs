@@ -28,6 +28,15 @@ public static class FloatingIndicatorLayout
     public const double ExpandedIdleWidth = 220;
     public const double ExpandedIdleHeight = 36;
     public const double ExpandedIdleRadius = 18;
+    public const double ExpandedIdleWidthMax = 420;
+
+    /// <summary>
+    /// The hovered pill is as wide as its hint needs. "Hold F8 to dictate" fits the 220 minimum;
+    /// the hands-free hint and longer shortcut names do not, and were clipped at both ends.
+    /// <paramref name="contentWidth"/> is the measured mark and text, in DIPs.
+    /// </summary>
+    public static double ExpandedIdleWidthFor(double contentWidth, double horizontalChrome) =>
+        Math.Clamp(Math.Ceiling(contentWidth + horizontalChrome), ExpandedIdleWidth, ExpandedIdleWidthMax);
 
     /// <summary>
     /// Preparing shares the 76x22 live pill, per the current macOS <c>frameForState</c>, so the

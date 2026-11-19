@@ -316,4 +316,13 @@ public sealed class FloatingIndicatorLayoutTests
         Assert.Equal(FloatingIndicatorLayout.SuccessReturnMs, FloatingIndicatorLayout.ReturnMilliseconds(FloatingIndicatorState.Success));
         Assert.Equal(FloatingIndicatorLayout.SuccessReturnMs, FloatingIndicatorLayout.ReturnMilliseconds(FloatingIndicatorState.Idle));
     }
+
+    [Theory]
+    [InlineData(120, 26, 220)] // "Hold F8 to dictate" keeps the compact width.
+    [InlineData(301.2, 26, 328)] // The hands-free hint widens the pill to fit.
+    [InlineData(900, 26, 420)] // Never wider than a status pill.
+    public void TheHoveredPillIsAsWideAsItsHint(double contentWidth, double chrome, double expected)
+    {
+        Assert.Equal(expected, FloatingIndicatorLayout.ExpandedIdleWidthFor(contentWidth, chrome));
+    }
 }

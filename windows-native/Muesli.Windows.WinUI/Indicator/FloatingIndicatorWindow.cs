@@ -341,6 +341,15 @@ internal sealed class FloatingIndicatorWindow : Window
         _pill.Background = GlassBrush(_state, _hovered);
         _pill.BorderBrush = BorderBrushFor(_state, _hovered);
         BuildContent();
+        if (_state == FloatingIndicatorState.Idle && _hovered)
+        {
+            // The hint's length depends on the shortcut's name and on hands-free being on, so
+            // the pill is sized from the text as drawn, not from a fixed width.
+            _content.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            _widthDip = FloatingIndicatorLayout.ExpandedIdleWidthFor(
+                _content.DesiredSize.Width,
+                _pill.Padding.Left + _pill.Padding.Right + _pill.BorderThickness.Left + _pill.BorderThickness.Right);
+        }
         PositionPill();
     }
 
