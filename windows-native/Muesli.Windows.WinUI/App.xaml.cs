@@ -6,6 +6,7 @@ using Windows.UI;
 using Windows.UI.ViewManagement;
 using Muesli.Windows.Core.Profiles;
 using Muesli.Windows.Core.Contracts;
+using Muesli.Windows.Core.Services;
 using Muesli.Windows.WinUI.Services;
 using Microsoft.Windows.AppLifecycle;
 using Muesli.Windows.Services;
@@ -46,13 +47,39 @@ public partial class App : Application
 
     public static WinUiMeetingContext Meetings { get; private set; } = null!;
 
+    private static MeetingChatCoordinator? _meetingChat;
+
+    /// <summary>macOS AppState.meetingChatDocumentTarget: the cited passage the meeting document opens on.</summary>
+    public static MeetingChatDocumentTarget? MeetingChatDocumentTarget { get; set; }
+
+    /// <summary>
+    /// macOS MuesliController.meetingChatCoordinator: one shared Ask Meetings state for the app. Chat history
+    /// lives in the SQLite library, so a profile still on the JSON store gets null and the page fails closed.
+    /// </summary>
+    public static MeetingChatCoordinator? MeetingChat => _meetingChat ??= Library.History is Muesli.Windows.Services.Persistence.SqliteLibraryHistoryAdapter sqlite
+        ? new MeetingChatCoordinator(new MeetingChatStore(sqlite.Store.Database), () => new MeetingSummaryTextGenerator(Settings.Load()),
+            action => UiDispatcher.TryEnqueue(action))
+        : null;
+
     public static WinUiModelsContext Models { get; private set; } = null!;
+
+    /// <summary>macOS VisualMemoryController: meeting screen recording and its clip catalog.</summary>
+    public static MeetingScreenRecording ScreenRecording { get; private set; } = null!;
 
     public static WinUiSettingsContext Settings { get; private set; } = null!;
 
+    /// <summary>Null unless this build includes Cotypist and its text service is installed.</summary>
+    public static CotypistSetup? Cotypist { get; private set; }
+
+    /// <summary>Cotypist's suggestion history, for the Insights panel; null when Cotypist isn't running.</summary>
+    public static Muesli.Windows.Cotypist.CotypistHistoryStore? CotypistHistory { get; private set; }
+
     public static WinUiDictationContext Dictation { get; private set; } = null!;
 
+    public static WinUiDictionarySuggestionService DictionarySuggestions { get; private set; } = null!;
+
     public static WinUiComputerUseContext ComputerUse { get; private set; } = null!;
+    public static WinUiQuillContext Quill { get; private set; } = null!;
 
     public static WinUiMeetingDetectionService MeetingDetection { get; private set; } = null!;
 
@@ -75,6 +102,27 @@ public partial class App : Application
     private readonly HashSet<string> _repromptedMeetings = new(StringComparer.OrdinalIgnoreCase);
     private bool _exiting;
     private readonly AppLogService _log = new();
+    private CotypistPipeServer? _cotypistServer;
+
+    /// <summary>macOS CotypistService.start: only in a build that bundles the TSF helper. Untaken
+    /// suggestions are pruned at startup and daily.</summary>
+    private void StartCotypist()
+    {
+        if (!Muesli.Windows.Cotypist.CotypistAvailability.IsHelperBundled ||
+            (Library.History as Muesli.Windows.Services.Persistence.SqliteLibraryHistoryAdapter)?.Store.Database is not { } database) return;
+        var history = CotypistHistory = new Muesli.Windows.Cotypist.CotypistHistoryStore(database);
+        var service = new CotypistService(Settings.Load, history, _log.Info);
+        Cotypist = new CotypistSetup(service, Settings.Load, _log.Info);
+        var helper = Muesli.Windows.Cotypist.CotypistAvailability.HelperPath;
+        _cotypistServer = new CotypistPipeServer(service.HandleAsync, processId => CotypistPipeServer.HasHelperLoaded(processId, helper), _log.Info);
+        _ = Task.Run(async () =>
+        {
+            using var daily = new PeriodicTimer(TimeSpan.FromDays(1));
+            do { try { history.Prune(DateTimeOffset.UtcNow); } catch (Exception error) { _log.Info($"Cotypist prune failed. category={error.GetType().Name}"); } }
+            while (await daily.WaitForNextTickAsync());
+        });
+        _log.Info("Cotypist listening.");
+    }
     private UiExceptionPolicy _uiExceptionPolicy = null!;
     private OnboardingWindow? _onboarding;
     private ComputerUseConfirmationWindow? _computerUseConfirmation;
@@ -192,13 +240,34 @@ public partial class App : Application
         Settings.Changed += (_, settings) => DispatcherQueue.TryEnqueue(() => Themes.AccentPalette.Apply(settings.RecordingColorHex));
         _desktopInstance.StartListening(() => UiDispatcher.TryEnqueue(() => ((MainWindow)Window).ShowDashboard()));
         Meetings = new WinUiMeetingContext(Library, Settings, UiDispatcher);
+        ScreenRecording = new MeetingScreenRecording(
+            (Library.History as Muesli.Windows.Services.Persistence.SqliteLibraryHistoryAdapter)?.Store.Database, () => Meetings, _log);
+        Meetings.ScreenRecordingFinishing = discard => discard
+            ? ScreenRecording.DiscardSessionAsync(Meetings.CaptureSessionId)
+            : ScreenRecording.StopAsync();
+        Meetings.HasScreenMedia = ScreenRecording.HasMedia;
+        // Pausing the meeting pauses video; resuming it never overrides an explicit screen pause.
+        Meetings.Changed += (_, _) => UiDispatcher.TryEnqueue(() => ScreenRecording.SetMeetingPaused(Meetings.IsPaused));
+        Microsoft.Win32.SystemEvents.SessionSwitch += (_, args) =>
+        {
+            if (args.Reason is Microsoft.Win32.SessionSwitchReason.SessionLock or Microsoft.Win32.SessionSwitchReason.ConsoleDisconnect
+                or Microsoft.Win32.SessionSwitchReason.RemoteDisconnect)
+                UiDispatcher.TryEnqueue(ScreenRecording.SuspendForPrivacy);
+        };
+        StartCotypist();
         Models = new WinUiModelsContext(Library, Settings);
         Dictation = new WinUiDictationContext(Library, Settings, UiDispatcher);
-        ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation);
+        DictionarySuggestions = new WinUiDictionarySuggestionService(Library, Settings, UiDispatcher, Dictation);
+        ComputerUse = new WinUiComputerUseContext(Library, Settings, Dictation, UiDispatcher);
+        Quill = new WinUiQuillContext(Settings, Dictation, ComputerUse, UiDispatcher);
+        // macOS: ChatGPT meeting summaries use the same sign-in as Computer Use.
+        MeetingSummaryService.ChatGptCredentials = token => ComputerUse.ChatGpt.GetAccessTokenAsync(token);
         ComputerUse.ConfirmActionAsync = ConfirmComputerUseActionAsync;
+        ComputerUse.AskAsync = AskComputerUseQuestionAsync;
         ComputerUse.CaptureStarted = () => ((MainWindow)Window).HideDashboard();
-        // Computer Use is hidden for v1, so Ctrl+Shift+F8 is left free:
-        // ComputerUse.RegisterVoiceShortcut(UiDispatcher);
+        ComputerUse.RegisterVoiceShortcut();
+        RegisterMeetingShortcut();
+        Quill.RegisterShortcut();
         MeetingDetection = new WinUiMeetingDetectionService();
         _meetingNotifications = new WinUiMeetingNotificationService(
             UiDispatcher,
@@ -210,7 +279,7 @@ public partial class App : Application
         Clipboard = new WinUiClipboardService();
         FilePickers = new WinUiFilePickerService(() => WindowHandle);
         Share = new WinUiShareService(() => WindowHandle);
-        IndicatorHost = new WinUiIndicatorHost(Dictation, Meetings, ComputerUse, UiDispatcher);
+        IndicatorHost = new WinUiIndicatorHost(Dictation, Meetings, ComputerUse, Quill, UiDispatcher);
         IndicatorHost.Start();
         LiveTranscript = new MeetingLiveTranscriptWindow(Meetings, UiDispatcher, Clipboard);
         TrackTheme(LiveTranscript);
@@ -220,15 +289,7 @@ public partial class App : Application
             () => Dictation.IsRecording,
             () => Meetings.IsRecording,
             () => Dictation.IsRecording ? Dictation.StopFromDashboardAsync() : Dictation.StartFromDashboardAsync(),
-            async () =>
-            {
-                if (Meetings.IsRecording || Meetings.IsPaused) await Meetings.StopAndSaveAsync();
-                else
-                {
-                    await Meetings.StartQuickNoteAsync();
-                    mainWindow.ShowDashboard(MainPage.RecordingRoute);
-                }
-            },
+            ToggleMeetingRecordingAsync,
             mainWindow.ShowDashboard,
             () => _ = RequestExitAsync(),
             Path.Combine(AppContext.BaseDirectory, "Assets", "TrayIcon.ico"),
@@ -236,7 +297,7 @@ public partial class App : Application
             Meetings.PauseAsync,
             Meetings.ResumeAsync,
             () => ShowOnboarding(explicitResume: true),
-            ShowFeatureTour,
+            () => ShowFeatureTour(),
             Path.Combine(AppContext.BaseDirectory, "Assets", "TrayIconLightTaskbar.ico"));
         Dictation.Changed += (_, _) =>
         {
@@ -296,7 +357,10 @@ public partial class App : Application
             {
                 var status = Microsoft.Windows.System.Power.PowerManager.SystemSuspendStatus;
                 if (status == Microsoft.Windows.System.Power.SystemSuspendStatus.Entering)
+                {
+                    UiDispatcher.TryEnqueue(ScreenRecording.SuspendForPrivacy);
                     Meetings.SuspendForPowerAsync().Wait(TimeSpan.FromSeconds(5));
+                }
                 else if (status is Microsoft.Windows.System.Power.SystemSuspendStatus.AutoResume
                     or Microsoft.Windows.System.Power.SystemSuspendStatus.ManualResume)
                     UiDispatcher.TryEnqueue(async () =>
@@ -307,14 +371,19 @@ public partial class App : Application
             }
             catch (Exception exception) { _log.Error("Meeting sleep checkpoint failed; audio remains recoverable.", exception); }
         };
+        // Shutdown or sign-out (WM_ENDSESSION, raised on SystemEvents' own thread): checkpoint like sleep
+        // so the recording is recoverable on the next launch. Windows allows about five seconds.
+        Microsoft.Win32.SystemEvents.SessionEnded += (_, _) =>
+        {
+            try { Meetings.SuspendForPowerAsync().Wait(TimeSpan.FromSeconds(4)); }
+            catch (Exception exception) { _log.Error("Meeting shutdown checkpoint failed; audio remains recoverable.", exception); }
+        };
         Meetings.SourceWarningDismissed += (_, _) =>
         {
             _autoStop?.DismissWarning();
             _meetingNotifications?.Close();
         };
         ComputerUse.Changed += (_, _) => Tray.Refresh();
-        ComputerUse.ConfirmationRequested += (_, request) => UiDispatcher.TryEnqueue(() =>
-            ShowComputerUseConfirmation(request.Preview, request.Notice));
         MeetingDetection.MeetingDetected += (_, meeting) =>
             UiDispatcher.TryEnqueue(() => PresentDetectedMeeting(meeting));
         MeetingDetection.MeetingEnded += (_, key) =>
@@ -342,7 +411,10 @@ public partial class App : Application
                 LiveTranscript.Dispose();
                 MeetingDetection.Dispose();
                 ComputerUse.Dispose();
+                MeetingHotkey.Dispose();
+                Quill.Dispose();
                 Meetings.Dispose();
+                DictionarySuggestions.Dispose();
                 Dictation.Dispose();
                 Models.Dispose();
                 Library.Dispose();
@@ -353,9 +425,12 @@ public partial class App : Application
         Dictation.RegisterHotkey();
         ApplyMeetingDetection(Settings.Load().AutoMeetingDetectionEnabled);
         StartFirstRunFlows();
+        // macOS opens the dashboard at login too when "Open dashboard on launch" is on; a login
+        // launch that showed nothing looked like Launch at login had not worked.
+        var activation = currentInstance.GetActivatedEventArgs().Kind;
+        _log.Info($"Launch activation={activation}.");
         if (Settings.Load().OnboardingCompleted &&
-            (currentInstance.GetActivatedEventArgs().Kind == ExtendedActivationKind.StartupTask ||
-             Environment.GetCommandLineArgs().Contains("--background") ||
+            (Environment.GetCommandLineArgs().Contains("--background") ||
              !Settings.Load().OpenDashboardOnLaunch))
             mainWindow.HideDashboard();
 
@@ -403,6 +478,50 @@ public partial class App : Application
             }));
     }
 
+    private static readonly GlobalHotkeyService MeetingHotkey = new();
+
+    /// <summary>Tray item and meeting shortcut: stop the recording, or start one and show it.</summary>
+    private static async Task ToggleMeetingRecordingAsync()
+    {
+        if (Meetings.IsRecording || Meetings.IsPaused) await Meetings.StopAndSaveAsync();
+        else
+        {
+            await Meetings.StartQuickNoteAsync();
+            ((MainWindow)Window).ShowDashboard(MainPage.RecordingRoute);
+        }
+    }
+
+    /// <summary>
+    /// macOS meeting_shortcut. Off releases the key entirely; returns null when the hook is in the
+    /// state the settings ask for, otherwise why Windows refused it.
+    /// </summary>
+    public static string? RegisterMeetingShortcut()
+    {
+        var settings = Settings.Load();
+        if (!settings.MeetingRecordingShortcutEnabled)
+        {
+            MeetingHotkey.Dispose();
+            return null;
+        }
+        try
+        {
+            MeetingHotkey.Register(settings.MeetingRecordingHotkey,
+                () => UiDispatcher.TryEnqueue(() => _ = ToggleMeetingRecordingSafelyAsync()), () => { });
+            return null;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return exception.Message;
+        }
+    }
+
+    private static async Task ToggleMeetingRecordingSafelyAsync()
+    {
+        if (Meetings.IsBusy) return;
+        try { await ToggleMeetingRecordingAsync(); }
+        catch (Exception exception) { new AppLogService().Error("Meeting shortcut could not toggle recording.", exception); }
+    }
+
     private async Task RequestExitAsync()
     {
         if (_exiting) return;
@@ -411,12 +530,24 @@ public partial class App : Application
         {
             if (Meetings.IsBusy)
             {
-                ((MainWindow)Window).ShowDashboard("meetings");
+                ((MainWindow)Window).ShowDashboard(MainPage.RecordingRoute);
                 await Dialogs.ShowInfoAsync("Wait for the current meeting operation to finish before quitting.", "Meeting in progress");
                 return;
             }
-            if (Dictation.IsRecording || Dictation.IsBusy) await Dictation.CancelAsync();
-            await Meetings.PreserveForShutdownAsync();
+            // macOS 4a36479f: wait at most 8 s for shutdown, then quit anyway and log the step it was stuck on.
+            // Each step runs even if the one before it failed, so a dictation fault can't skip the meeting checkpoint.
+            var step = "starting";
+            var finished = await ShutdownDeadline.RunAsync(ShutdownDeadline.Default, async () =>
+            {
+                step = "cancelling dictation";
+                try { if (Dictation.IsRecording || Dictation.IsBusy) await Dictation.CancelAsync(); }
+                catch (Exception exception) { _log.Error("Dictation could not be cancelled during shutdown.", exception); }
+                step = "checkpointing the meeting";
+                await Meetings.PreserveForShutdownAsync();
+                step = "done";
+            });
+            if (!finished)
+                _log.Error($"Shutdown still waiting on step={step} after {ShutdownDeadline.Default.TotalSeconds:0} s; quitting anyway.");
             ((MainWindow)Window).CloseForExit();
         }
         catch (Exception exception)
@@ -447,9 +578,11 @@ public partial class App : Application
     {
         ArgumentNullException.ThrowIfNull(window);
 
+        var closed = false;
         void Apply(string? theme)
         {
-            if (window.Content is FrameworkElement root)
+            // A save just before Close (setup's Finish) queues this after the window is gone.
+            if (!closed && window.Content is FrameworkElement root)
             {
                 root.RequestedTheme = ResolveTheme(theme);
             }
@@ -460,7 +593,11 @@ public partial class App : Application
 
         Apply(Settings.Load().Theme);
         Settings.Changed += OnSettingsChanged;
-        window.Closed += (_, _) => Settings.Changed -= OnSettingsChanged;
+        window.Closed += (_, _) =>
+        {
+            closed = true;
+            Settings.Changed -= OnSettingsChanged;
+        };
     }
 
     /// <summary>
@@ -512,6 +649,7 @@ public partial class App : Application
         app.ShowOnboardingCore(explicitResume);
     }
 
+    /// <summary>"What's New in Muesli": replays the walkthrough; a new release offers it with an invitation first.</summary>
     public static void ShowFeatureTour()
     {
         if (Window is MainWindow mainWindow)
@@ -540,14 +678,13 @@ public partial class App : Application
         window.Activate();
     }
 
-    private async Task<bool> ConfirmComputerUseActionAsync(ComputerUseAction action, CancellationToken token)
+    private async Task<bool> ConfirmComputerUseActionAsync(string question, CancellationToken token)
     {
         var result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         await UiDispatcher.EnqueueAsync(() =>
         {
             _computerUseConfirmation?.Close();
-            var window = new ComputerUseConfirmationWindow(ComputerUseConfirmationPreview.Build(action),
-                "Only this action in the approved application will be allowed.", action.Risk);
+            var window = new ComputerUseConfirmationWindow(question, "Only this step is allowed. Muesli asks again before any other risky step.");
             TrackTheme(window);
             _computerUseConfirmation = window;
             window.Closed += (_, _) =>
@@ -558,6 +695,21 @@ public partial class App : Application
             window.Activate();
         }, token);
         using var registration = token.Register(() => UiDispatcher.TryEnqueue(() => _computerUseConfirmation?.Close()));
+        return await result.Task.WaitAsync(token);
+    }
+
+    private async Task<string?> AskComputerUseQuestionAsync(string question, IReadOnlyList<string> options, CancellationToken token)
+    {
+        var result = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ComputerUseQuestionWindow? window = null;
+        await UiDispatcher.EnqueueAsync(() =>
+        {
+            window = new ComputerUseQuestionWindow(question, options);
+            TrackTheme(window);
+            window.Closed += (_, _) => result.TrySetResult(window.Answer);
+            window.Activate();
+        }, token);
+        using var registration = token.Register(() => UiDispatcher.TryEnqueue(() => window?.Close()));
         return await result.Task.WaitAsync(token);
     }
 
@@ -616,7 +768,17 @@ public partial class App : Application
         {
             var finished = _onboarding?.Completed == true;
             _onboarding = null;
-            if (finished) ShowFeatureTour();
+            if (!finished)
+            {
+                // Closing setup defers it; the tray's "Resume setup" picks up at the saved step.
+                store.Save(store.Load() with { Deferred = true });
+                return;
+            }
+            // macOS skips the feature tour after a fresh setup and opens the workflow that was chosen.
+            var useCase = OnboardingFlow.Parse(Settings.Load().OnboardingUseCase);
+            // Open the dashboard once the setup window has finished closing.
+            UiDispatcher.TryEnqueue(() =>
+                (Window as MainWindow)?.ShowDashboard(useCase == OnboardingCapabilities.Meetings ? "meetings" : "dictations"));
         };
         _onboarding.Activate();
     }

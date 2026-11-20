@@ -180,6 +180,41 @@
                     </Grid>
                 </Border>
 
+                <!-- Support: macOS AboutView "Support Development" -->
+                <TextBlock Text="SUPPORT" Style="{StaticResource AboutSectionLabelStyle}" />
+                <Border Style="{StaticResource AboutCardStyle}"
+                        AutomationProperties.Name="Support">
+                    <StackPanel>
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Support Development" Style="{StaticResource AboutRowTitleStyle}" />
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource AboutPrimaryActionStyle}"
+                                    Click="Donate_Click"
+                                    AutomationProperties.Name="Donate"
+                                    AutomationProperties.AutomationId="DonateButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xEB52;" FontSize="11" />
+                                    <TextBlock Text="Donate" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                        <Border Style="{StaticResource AboutDividerStyle}" />
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Source Code" Style="{StaticResource AboutRowTitleStyle}" />
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource AboutActionStyle}"
+                                    Click="GitHub_Click"
+                                    AutomationProperties.Name="Open source code on GitHub"
+                                    AutomationProperties.AutomationId="GitHubButton">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE8A7;" FontSize="11" />
+                                    <TextBlock Text="GitHub" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
                 <!-- Setup and tour (Windows only; macOS keeps these in the menu bar) -->
                 <TextBlock Text="SETUP" Style="{StaticResource AboutSectionLabelStyle}" />
                 <Border Style="{StaticResource AboutCardStyle}"
@@ -323,13 +358,13 @@
                         <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
                             <StackPanel VerticalAlignment="Center" Spacing="2">
                                 <TextBlock Text="Report a problem" Style="{StaticResource AboutRowTitleStyle}" />
-                                <TextBlock Text="Preview a support bundle before saving it. Transcripts and secrets are never included."
+                                <TextBlock Text="Prepare an anonymized GitHub issue, or preview a support bundle. Transcripts and secrets are never included."
                                            Style="{StaticResource AboutCaptionStyle}" />
                             </StackPanel>
                             <Button x:Name="ExportSupportBundleButton"
                                     Grid.Column="1"
                                     Style="{StaticResource AboutActionStyle}"
-                                    Command="{x:Bind ViewModel.ExportSupportBundleCommand}"
+                                    Click="OpenReport_Click"
                                     IsEnabled="{x:Bind local:AboutPage.Not(ViewModel.IsBusy), Mode=OneWay}"
                                     AutomationProperties.Name="Preview and export a support bundle"
                                     AutomationProperties.AutomationId="ExportSupportBundleButton">
@@ -338,6 +373,17 @@
                                     <TextBlock Text="Open report" />
                                 </StackPanel>
                             </Button>
+                        </Grid>
+                        <Border Style="{StaticResource AboutDividerStyle}" />
+                        <Grid Style="{StaticResource AboutRowStyle}" ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Automatic issue reporting prompts" Style="{StaticResource AboutRowTitleStyle}" VerticalAlignment="Center" />
+                            <ToggleSwitch x:Name="AutoReportToggle"
+                                          Grid.Column="1"
+                                          OnContent="" OffContent="" MinWidth="0"
+                                          Toggled="AutoReportToggle_Toggled"
+                                          ToolTipService.ToolTip="Suggest an anonymized GitHub issue after an app error"
+                                          AutomationProperties.Name="Automatic issue reporting prompts"
+                                          AutomationProperties.AutomationId="AutoReportToggle" />
                         </Grid>
                         <Border Style="{StaticResource AboutDividerStyle}" />
                         <!-- The raw environment dump stays one disclosure away. -->

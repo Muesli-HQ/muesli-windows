@@ -27,7 +27,7 @@ public sealed class WinUiShellQualificationTests
         ("dictations", "NavDictations", "DictationRecordButton"),
         ("meetings", "NavMeetings", "QuickNoteButton"),
         ("dictionary", "NavDictionary", "DictionaryAddButton"),
-        ("models", "NavModels", "ModelsRefreshButton"),
+        ("models", "NavModels", "ModelsRolePicker"),
         ("shortcuts", "NavShortcuts", "ChangePushToTalkButton"),
         ("settings", "NavSettings", "SettingsSectionPicker"),
         // Prompt 7 moved the raw diagnostics dump into a collapsed Expander ("keep technical
@@ -102,8 +102,8 @@ public sealed class WinUiShellQualificationTests
             session.CaptureReference("winui-populated-dictations", "dictations", "DictationHistoryList");
             session.NavigateTo("meetings", "NavMeetings", "MeetingHistoryList");
             session.CaptureReference("winui-populated-meetings", "meetings", "MeetingHistoryList");
-            session.NavigateTo("models", "NavModels", "ModelsRefreshButton");
-            session.CaptureReference("winui-populated-models", "models", "ModelsRefreshButton");
+            session.NavigateTo("models", "NavModels", "ModelsRolePicker");
+            session.CaptureReference("winui-populated-models", "models", "ModelsRolePicker");
             session.NavigateTo("shortcuts", "NavShortcuts", "ChangePushToTalkButton");
             session.CaptureReference("winui-populated-shortcuts", "shortcuts", "ChangePushToTalkButton");
             session.NavigateTo("dictionary", "NavDictionary", "DictionaryEntryList");
@@ -178,8 +178,8 @@ public sealed class WinUiShellQualificationTests
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-dictations", "dictations", "DictationHistoryList");
         session.NavigateTo("meetings", "NavMeetings", "MeetingHistoryList");
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-meetings", "meetings", "MeetingHistoryList");
-        session.NavigateTo("models", "NavModels", "ModelsRefreshButton");
-        session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-models", "models", "ModelsRefreshButton");
+        session.NavigateTo("models", "NavModels", "ModelsRolePicker");
+        session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-models", "models", "ModelsRolePicker");
         session.NavigateTo("shortcuts", "NavShortcuts", "ChangePushToTalkButton");
         session.CaptureReference($"winui-populated-{theme.ToLowerInvariant()}-shortcuts", "shortcuts", "ChangePushToTalkButton");
         session.NavigateTo("dictionary", "NavDictionary", "DictionaryEntryList");
@@ -217,25 +217,18 @@ public sealed class WinUiShellQualificationTests
                      {
                          "ImportAudioButton",
                          "ManageMeetingTemplatesButton",
-                         "MeetingsRefreshButton",
-                         "MeetingsSearchBox",
                          "MeetingsSort",
-                         "MeetingFoldersExpander"
+                         "MeetingsTimeRange"
                      })
             {
                 session.RequireAutomationId(automationId);
             }
 
-            // P3-02: the folder editor ships collapsed so the meeting list stays above the fold at
-            // 720x720, and a collapsed Expander keeps its content out of the UIA tree. Qualify that
-            // it starts closed, then open it and hold the editor to the same requirement as before
-            // — the controls must still be there, one click away, not quietly dropped.
+            // macOS manages folders from the sidebar (create, rename, nest, delete), not from an
+            // editor on the meetings page.
             session.RequireAbsentAutomationId(
                 "MeetingFolderList",
-                "the folder editor is collapsed until the user opens it.");
-            session.ExpandAutomationId("MeetingFoldersExpander");
-            session.RequireAutomationId("MeetingFolderList");
-            session.RequireAutomationId("MeetingFolderName");
+                "folders are managed from the sidebar, as on macOS.");
 
             // An empty profile has no active capture and nothing recoverable. Both panels must
             // stay collapsed rather than showing controls that would act on a session that does
@@ -297,37 +290,6 @@ public sealed class WinUiShellQualificationTests
     });
 
     /// <summary>
-    /// The raw runtime diagnostics are secondary but must stay reachable: the About page opens
-    /// with the dump collapsed, and opening the disclosure must realize real text rather than an
-    /// empty placeholder.
-    /// </summary>
-    [WinUiAutomationFact]
-    public void About_diagnostics_detail_is_reachable_behind_its_disclosure() => StaRunner.Run(() =>
-    {
-        using var session = MuesliWinUiSession.Launch();
-        session.Run(() =>
-        {
-            session.NavigateTo("about", "NavAbout", "RefreshDiagnosticsButton");
-
-            // Secondary: a collapsed Expander keeps its content out of the UIA tree entirely.
-            session.RequireAbsentAutomationId(
-                "RuntimeDiagnosticsText",
-                "the diagnostics dump starts collapsed.");
-
-            // Accessible: one disclosure, and the real summary is there.
-            session.ExpandAutomationId("RuntimeDiagnosticsExpander");
-            var summary = session.RequireAutomationId("RuntimeDiagnosticsText", mustBeOnscreen: true);
-            Assert.False(
-                string.IsNullOrWhiteSpace(summary.Current.Name),
-                "The expanded runtime diagnostics must publish the collected summary.");
-            Assert.DoesNotContain(
-                "Loading diagnostics",
-                summary.Current.Name,
-                StringComparison.Ordinal);
-        });
-    });
-
-    /// <summary>
     /// DIAG-01: the support-bundle export is a first-class About action, not a hidden artifact.
     /// The button must be realized and enabled so a user can preview and save a redacted bundle.
     /// </summary>
@@ -337,7 +299,7 @@ public sealed class WinUiShellQualificationTests
         using var session = MuesliWinUiSession.Launch();
         session.Run(() =>
         {
-            session.NavigateTo("about", "NavAbout", "RefreshDiagnosticsButton");
+            session.NavigateTo("about", "NavAbout", "ExportSupportBundleButton");
             var button = session.RequireAutomationId("ExportSupportBundleButton", mustBeOnscreen: true);
             Assert.True(button.Current.IsEnabled, "The support-bundle export action must be enabled.");
         });

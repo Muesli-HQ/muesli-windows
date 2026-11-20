@@ -16,9 +16,7 @@ internal static class ModelSetupArtifactCleaner
         foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.TopDirectoryOnly))
         {
             var name = Path.GetFileName(file);
-            if (name.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) &&
-                (name.EndsWith(".partial", StringComparison.OrdinalIgnoreCase) ||
-                 name.EndsWith(".download", StringComparison.OrdinalIgnoreCase)))
+            if (Owns(name, expectedPrefix, ".partial") || Owns(name, expectedPrefix, ".download"))
             {
                 TryDelete(file);
             }
@@ -27,8 +25,7 @@ internal static class ModelSetupArtifactCleaner
         foreach (var directory in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
         {
             var name = Path.GetFileName(directory);
-            if (!name.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) ||
-                !name.EndsWith(".staging", StringComparison.OrdinalIgnoreCase))
+            if (!Owns(name, expectedPrefix, ".staging"))
             {
                 continue;
             }
@@ -44,6 +41,16 @@ internal static class ModelSetupArtifactCleaner
             }
         }
     }
+
+    /// <summary>
+    /// ".{prefix}.{token}{suffix}" with a dot-free token. Without that, cleaning
+    /// "sherpa-onnx-whisper-tiny" would delete the in-flight ".sherpa-onnx-whisper-tiny.en.{guid}.download".
+    /// </summary>
+    internal static bool Owns(string name, string expectedPrefix, string suffix) =>
+        name.Length > expectedPrefix.Length + suffix.Length &&
+        name.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) &&
+        name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) &&
+        !name.AsSpan(expectedPrefix.Length, name.Length - expectedPrefix.Length - suffix.Length).Contains('.');
 
     private static void TryDelete(string path)
     {

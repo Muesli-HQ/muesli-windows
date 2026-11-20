@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Muesli.Windows.WinUI.Services;
 using Muesli.Windows.WinUI.ViewModels;
 using Windows.System;
@@ -12,7 +13,7 @@ public sealed partial class ShortcutsPage : Page
     private bool _ready;
     private readonly HotkeyRecorder _recorder = new();
 
-    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey);
+    public ShortcutsPageViewModel ViewModel { get; } = new(App.Settings, ReapplyDictationHotkey, App.ComputerUse.RegisterVoiceShortcut, App.RegisterMeetingShortcut, App.Quill.RegisterShortcut);
 
     /// <summary>
     /// Re-installs the global push-to-talk hook from the saved gesture. Returns null when the hook
@@ -66,6 +67,13 @@ public sealed partial class ShortcutsPage : Page
     /// <summary>macOS hotkeyBadge prints the whole chord in one badge: "Ctrl + Shift + F8".</summary>
     public static string Keys(IReadOnlyList<string> parts) => string.Join(" + ", parts);
 
+    private void ChangeComputerUseShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.BeginCapture("computer-use");
+        ApplyCaptureChrome();
+        Focus(FocusState.Programmatic);
+    }
+
     private void ChangeShortcut_Click(object sender, RoutedEventArgs e)
     {
         _recorder.Reset();
@@ -79,6 +87,14 @@ public sealed partial class ShortcutsPage : Page
         if (!_ready) return;
         ViewModel.SetHandsFreeEnabled(HandsFreeToggle.IsOn);
     }
+
+    private void PushToTalk_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || PushToTalkToggle.IsOn == ViewModel.PushToTalkEnabled) return;
+        ViewModel.SetPushToTalkEnabled(PushToTalkToggle.IsOn);
+    }
+
+    private void ResetDefaults_Click(object sender, RoutedEventArgs e) => ViewModel.ResetToDefaults();
 
     /// <summary>Persists Computer Use enablement from this page once the user toggles it.</summary>
     private void ComputerUse_Toggled(object sender, RoutedEventArgs e)
@@ -94,11 +110,38 @@ public sealed partial class ShortcutsPage : Page
         Frame?.Navigate(typeof(SettingsPage), "computer-use");
     }
 
-    /// <summary>Meeting recording has no global shortcut yet; open the page that starts it.</summary>
-    private void OpenMeetings_Click(object sender, RoutedEventArgs e)
+    private void Quill_Toggled(object sender, RoutedEventArgs e)
     {
-        (App.Window as MainWindow)?.ShellPage?.SyncRailSelection("meetings");
-        Frame?.Navigate(typeof(MeetingsPage));
+        if (!_ready || QuillToggle.IsOn == ViewModel.QuillEnabled) return;
+        ViewModel.SetQuillEnabled(QuillToggle.IsOn);
+        // Refused (not signed in): put the switch back, since the OneWay binding saw no change.
+        QuillToggle.IsOn = ViewModel.QuillEnabled;
+    }
+
+    private void QuillBackend_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || QuillBackendPicker.SelectedIndex < 0) return;
+        ViewModel.SetQuillBackend(QuillBackendPicker.SelectedIndex);
+    }
+
+    private void ChangeQuillShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.BeginCapture("quill");
+        ApplyCaptureChrome();
+        Focus(FocusState.Programmatic);
+    }
+
+    private void MeetingShortcut_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || MeetingShortcutToggle.IsOn == ViewModel.MeetingShortcutEnabled) return;
+        ViewModel.SetMeetingShortcutEnabled(MeetingShortcutToggle.IsOn);
+    }
+
+    private void ChangeMeetingShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.BeginCapture("meeting");
+        ApplyCaptureChrome();
+        Focus(FocusState.Programmatic);
     }
 
     protected override void OnKeyDown(KeyRoutedEventArgs e)
@@ -110,10 +153,14 @@ public sealed partial class ShortcutsPage : Page
         }
 
         e.Handled = true;
+        var button = ViewModel.IsCapturingComputerUse ? ChangeComputerUseButton
+            : ViewModel.IsCapturingMeeting ? ChangeMeetingButton
+            : ViewModel.IsCapturingQuill ? ChangeQuillButton : ChangePushToTalkButton;
         if (e.Key == VirtualKey.Escape)
         {
             ViewModel.CancelCapture();
-            ChangePushToTalkButton.Focus(FocusState.Programmatic);
+            ApplyCaptureChrome();
+            button.Focus(FocusState.Programmatic);
             return;
         }
         Apply(_recorder.KeyDown(e));
@@ -134,8 +181,12 @@ public sealed partial class ShortcutsPage : Page
     private void Apply(string? gesture)
     {
         if (gesture is null) return;
+        var button = ViewModel.IsCapturingComputerUse ? ChangeComputerUseButton
+            : ViewModel.IsCapturingMeeting ? ChangeMeetingButton
+            : ViewModel.IsCapturingQuill ? ChangeQuillButton : ChangePushToTalkButton;
         ViewModel.ApplyCapturedGesture(gesture);
-        ChangePushToTalkButton.Focus(FocusState.Programmatic);
+        ApplyCaptureChrome();
+        button.Focus(FocusState.Programmatic);
     }
 
     private void HoldThreshold_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
@@ -145,4 +196,23 @@ public sealed partial class ShortcutsPage : Page
 
     private void ApplyResponsiveLayout(double width) =>
         ContentRoot.Padding = MuesliPageMetrics.ContentPadding(width);
+
+    /// <summary>While capturing, the badge takes the accent tint so it reads as listening.</summary>
+    private void ApplyCaptureChrome()
+    {
+        var computerUse = ViewModel.IsCapturingComputerUse;
+        var meeting = ViewModel.IsCapturingMeeting;
+        var quill = ViewModel.IsCapturingQuill;
+        QuillKeycapWell.BorderBrush = ThemeBrush(quill ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        QuillKeycapWell.Background = ThemeBrush(quill ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+        MeetingKeycapWell.BorderBrush = ThemeBrush(meeting ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        MeetingKeycapWell.Background = ThemeBrush(meeting ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+        ComputerUseKeycapWell.BorderBrush = ThemeBrush(computerUse ? "MuesliAccentBrush" : "MuesliBorderSoftBrush");
+        ComputerUseKeycapWell.Background = ThemeBrush(computerUse ? "MuesliAccentMutedBrush" : "MuesliSurfaceRaisedBrush");
+    }
+
+    private static Brush ThemeBrush(string key) =>
+        Application.Current.Resources[key] is Brush brush
+            ? brush
+            : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 }

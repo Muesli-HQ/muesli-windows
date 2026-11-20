@@ -12,7 +12,13 @@ public enum CleanupPromptContract
     Configurable,
 
     /// <summary>S1-mini's fixed control line; the model was trained on this exact shape.</summary>
-    S1Mini
+    S1Mini,
+
+    /// <summary>macOS MuesliCleanupV2Prompt: the v12 fine-tunes' fixed ChatML contract (Qwen 3.5 builds).</summary>
+    TrainedV12Qwen,
+
+    /// <summary>The same contract for the LFM 2.5 build, which starts from its BOS token and has no think block.</summary>
+    TrainedV12Lfm
 }
 
 /// <summary>
@@ -30,7 +36,8 @@ public sealed record CleanupModelDefinition(
     string License,
     string LanguageSupport,
     string Summary,
-    string SourceRevision);
+    string SourceRevision,
+    CleanupPromptContract Contract = CleanupPromptContract.Configurable);
 
 /// <summary>
 /// Local cleanup models. These mirror the macOS cleanup catalog exactly; the Windows runtime is
@@ -38,10 +45,21 @@ public sealed record CleanupModelDefinition(
 /// </summary>
 public static class CleanupModelCatalog
 {
-    public const string MuesliCleanupId = "muesli-cleanup-qwen35-postproc-v3";
+    /// <summary>macOS finetunedV4 "Muesli Cleanup Lite": the v12 Qwen 3.5 0.8B fine-tune.</summary>
+    public const string MuesliCleanupId = "qwen35-postproc-v4";
+    public const string ProLfmId = "lfm25-cleanup-v12";
+    public const string ProQwenId = "qwen35-2b-cleanup-v12";
     public const string S1MiniId = "superwhisper-s1-mini";
     public const string QwenBasicId = "qwen35-0.8b";
     public const string DefaultModelId = MuesliCleanupId;
+
+    /// <summary>
+    /// macOS retires older Lite choices by resolving them to the current Cleanup Lite. The retired v3 file stays
+    /// on disk until the user deletes it; it is never used again.
+    /// </summary>
+    public const string RetiredV3Id = "muesli-cleanup-qwen35-postproc-v3";
+
+    private static readonly string[] RetiredLiteIds = [RetiredV3Id, "qwen35-postproc-v3", "qwen3-postproc-v2"];
 
     public static string ModelCacheDirectory =>
         Environment.GetEnvironmentVariable("MUESLI_NATIVE_CLEANUP_CACHE") ??
@@ -49,18 +67,46 @@ public static class CleanupModelCatalog
 
     public static IReadOnlyList<CleanupModelDefinition> Models { get; } =
     [
+        // macOS ManagedCleanupModel (MAC-25): the v12 fine-tunes, pinned to the commits macOS ships.
         new CleanupModelDefinition(
             MuesliCleanupId,
-            "Muesli Cleanup",
-            "phequals/qwen35-postproc-v3-gguf",
-            "qwen35-postproc-v3-Q4_K_M.gguf",
-            "https://huggingface.co/phequals/qwen35-postproc-v3-gguf/resolve/main/qwen35-postproc-v3-Q4_K_M.gguf",
-            529_296_768,
-            "DD44D9F850B9BE16565456523535ADDDE907148922F7CD3578651B09AA230703",
-            "First-party Muesli cleanup model (no separate license file published by the host)",
-            "English-first; configurable cleanup instructions",
-            "The default Muesli cleanup model. Removes filler words, resolves \"scratch that\", fixes punctuation, and formats lists.",
-            "phequals/qwen35-postproc-v3-gguf@main"),
+            "Muesli Cleanup Lite",
+            "Muesli-HQ/qwen35-0.8b-muesli-cleanup-v12-gguf",
+            "qwen35-0.8b-muesli-v12-Q4_K_M.gguf",
+            "https://huggingface.co/Muesli-HQ/qwen35-0.8b-muesli-cleanup-v12-gguf/resolve/0e6b7446a64b170881bfe1af4b3ba892d18ecf3a/qwen35-0.8b-muesli-v12-Q4_K_M.gguf?download=1",
+            529_296_832,
+            "3E3EABC91542E66F672230B7361917F5FA3A1E06ACE61E8157C7A34D121ABF8A",
+            "First-party Muesli cleanup model",
+            "English-first",
+            "Fine-tuned from Qwen3.5-0.8B with extended training. Small and fast for everyday cleanup, with improved app and screen context.",
+            "Muesli-HQ/qwen35-0.8b-muesli-cleanup-v12-gguf@0e6b7446a64b170881bfe1af4b3ba892d18ecf3a",
+            CleanupPromptContract.TrainedV12Qwen),
+        new CleanupModelDefinition(
+            ProLfmId,
+            "Muesli Pro Cleanup — LFM 2.5",
+            "Muesli-HQ/lfm25-1.2b-muesli-cleanup-v12-gguf",
+            "lfm25-muesli-v12-Q4_K_M.gguf",
+            "https://huggingface.co/Muesli-HQ/lfm25-1.2b-muesli-cleanup-v12-gguf/resolve/9f8b4e25/lfm25-muesli-v12-Q4_K_M.gguf?download=1",
+            730_898_432,
+            "DA13D32708D27D29446C895314E50AA7FB700B76460057FED2AD773E9FA9C258",
+            "LFM Open License v1.0 (published with the model on Hugging Face)",
+            "English-first",
+            "Fine-tuned from LFM2.5-1.2B. More capable cleanup with app and screen context. LFM Open License v1.0.",
+            "Muesli-HQ/lfm25-1.2b-muesli-cleanup-v12-gguf@9f8b4e25",
+            CleanupPromptContract.TrainedV12Lfm),
+        new CleanupModelDefinition(
+            ProQwenId,
+            "Muesli Pro Cleanup — Qwen 3.5",
+            "Muesli-HQ/qwen35-2b-muesli-cleanup-v12-gguf",
+            "qwen35-2b-muesli-v12-Q4_K_M.gguf",
+            "https://huggingface.co/Muesli-HQ/qwen35-2b-muesli-cleanup-v12-gguf/resolve/e35af097/qwen35-2b-muesli-v12-Q4_K_M.gguf?download=1",
+            1_274_396_096,
+            "2D59D2118170E0170FA294D71EBA0A701C4F26063F284F68A8BED880322C4143",
+            "First-party Muesli cleanup model",
+            "English-first",
+            "Fine-tuned from Qwen3.5-2B. More capable cleanup with app and screen context.",
+            "Muesli-HQ/qwen35-2b-muesli-cleanup-v12-gguf@e35af097",
+            CleanupPromptContract.TrainedV12Qwen),
         new CleanupModelDefinition(
             S1MiniId,
             "S1-mini by Superwhisper",
@@ -72,7 +118,8 @@ public static class CleanupModelCatalog
             "Apache-2.0 (derivative of Qwen3-0.6B)",
             "English only",
             "Superwhisper's punctuation, truecasing, and inverse-text-normalization model. Uses its own fixed control line, so Muesli's configurable instructions do not apply.",
-            "superwhisper/s1-mini-GGUF@main"),
+            "superwhisper/s1-mini-GGUF@main",
+            CleanupPromptContract.S1Mini),
         new CleanupModelDefinition(
             QwenBasicId,
             "Qwen Basic Cleanup",
@@ -100,7 +147,8 @@ public static class CleanupModelCatalog
     public static CleanupModelDefinition? Get(string? id) => TryGet(id, out var model) ? model : null;
 
     /// <summary>Coerces a persisted id to a known model, or "" when unset. Never invents a model.</summary>
-    public static string Normalize(string? id) => Get(id)?.Id ?? "";
+    public static string Normalize(string? id) =>
+        RetiredLiteIds.Contains(id?.Trim(), StringComparer.OrdinalIgnoreCase) ? MuesliCleanupId : Get(id)?.Id ?? "";
 
     /// <summary>
     /// The model the cleanup stage should use. An explicit selection is honoured exactly: when that
@@ -113,10 +161,31 @@ public static class CleanupModelCatalog
         if (TryGet(selectedId, out var selected))
         {
             var selectedPath = PathFor(selected);
-            return File.Exists(selectedPath) ? selectedPath : null;
+            return HasGgufHeader(selectedPath) ? selectedPath : null;
         }
 
         return LegacyModelPath();
+    }
+
+    /// <summary>
+    /// macOS rejects an interrupted GGUF by its header. Catalog downloads are already atomic and hashed; this
+    /// also covers a file someone placed in the cache that was cut short or isn't a GGUF.
+    /// </summary>
+    public static bool HasGgufHeader(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            Span<byte> magic = stackalloc byte[8];
+            // "GGUF" then a little-endian version; a file shorter than the fixed header is incomplete.
+            return stream.Length > 24 && stream.ReadAtLeast(magic, 8, throwOnEndOfStream: false) == 8 &&
+                   magic[0] == (byte)'G' && magic[1] == (byte)'G' && magic[2] == (byte)'U' && magic[3] == (byte)'F' &&
+                   BitConverter.ToUInt32(magic[4..]) is >= 1 and <= 3;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     public static string? LegacyModelPath()
@@ -127,8 +196,10 @@ public static class CleanupModelCatalog
         }
 
         var known = Models.Select(PathFor).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var retired = Path.Combine(ModelCacheDirectory, RetiredV3Id) + Path.DirectorySeparatorChar;
         return Directory.EnumerateFiles(ModelCacheDirectory, "*.gguf", SearchOption.AllDirectories)
-            .Where(path => !known.Contains(path))
+            .Where(path => !known.Contains(path) && !path.StartsWith(retired, StringComparison.OrdinalIgnoreCase))
+            .Where(HasGgufHeader)
             .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
     }
@@ -159,9 +230,16 @@ public sealed class CleanupModelInstaller
     private readonly CleanupModelDefinition _model;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public CleanupModelInstaller(CleanupModelDefinition model) => _model = model;
+    private readonly string? _path;
 
-    public string ModelPath => CleanupModelCatalog.PathFor(_model);
+    /// <param name="path">Where the file goes when it isn't a cleanup model (Cotypist's typeahead models).</param>
+    public CleanupModelInstaller(CleanupModelDefinition model, string? path = null)
+    {
+        _model = model;
+        _path = path;
+    }
+
+    public string ModelPath => _path ?? CleanupModelCatalog.PathFor(_model);
     private string VerificationStampPath => Path.Combine(Path.GetDirectoryName(ModelPath)!, ".muesli-verified.json");
     public string DisplayName => _model.DisplayName;
     public string Id => _model.Id;
@@ -219,7 +297,7 @@ public sealed class CleanupModelInstaller
             var directory = Path.GetDirectoryName(ModelPath)!;
             Directory.CreateDirectory(directory);
             processLock = await CrossProcessFileLock.AcquireAsync(
-                Path.Combine(CleanupModelCatalog.ModelCacheDirectory, $".muesli-cleanup-{_model.Id}.lock"),
+                Path.Combine(_path is null ? CleanupModelCatalog.ModelCacheDirectory : directory, $".muesli-cleanup-{_model.Id}.lock"),
                 TimeSpan.FromMinutes(30),
                 cancellationToken);
 

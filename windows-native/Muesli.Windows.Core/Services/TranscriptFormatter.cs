@@ -8,36 +8,31 @@ public static class TranscriptFormatter
         List<TranscriptSegment> micSegments,
         List<TranscriptSegment> systemSegments,
         List<DiarizedSegment> diarizationSegments,
-        DateTime meetingStart)
+        DateTime meetingStart,
+        IReadOnlyList<DiarizedSegment>? micDiarizationSegments = null)
     {
-        if (diarizationSegments is null || diarizationSegments.Count == 0)
+        // macOS: a single mic voice is almost always the device owner; split the mic channel only
+        // when the room had several significant voices.
+        var localDiarization = SpeakerAttribution.LocalDiarization(micDiarizationSegments);
+        if ((diarizationSegments is null || diarizationSegments.Count == 0) && localDiarization is null)
         {
             // Fallback to legacy merge when diarization is unavailable
             return LegacyMerge(micSegments, systemSegments);
         }
 
-        // 1. Map raw diarization speaker IDs → "Speaker 1", "Speaker 2" in first-appearance order
-        var speakerLabelMap = new Dictionary<string, string>(StringComparer.Ordinal);
-        int nextSpeakerNumber = 1;
-        foreach (var seg in diarizationSegments.OrderBy(s => s.StartMs))
-        {
-            if (!speakerLabelMap.ContainsKey(seg.SpeakerId))
-            {
-                speakerLabelMap[seg.SpeakerId] = $"Speaker {nextSpeakerNumber++}";
-            }
-        }
-
-        // 2. Assign speaker labels to system transcript segments by time overlap
+        // 1–2. Remote speakers: "Speaker N" in first-appearance order, by total time overlap.
+        diarizationSegments ??= [];
+        var speakerLabelMap = LabelMap(diarizationSegments, "Speaker");
         var taggedSystem = systemSegments
-            .Select(seg => new TaggedSegment(
-                seg,
-                FindSpeakerByOverlap(seg, diarizationSegments, speakerLabelMap) ?? "Others"))
+            .Select(seg => new TaggedSegment(seg, diarizationSegments.Count == 0 ? "Others" : FindSpeaker(seg, diarizationSegments, speakerLabelMap, "Others")))
             .ToList();
 
-        // 3. Tag mic segments as "You"
-        var taggedMic = micSegments
-            .Select(seg => new TaggedSegment(seg, "You"))
-            .ToList();
+        // 3. Mic: "You", or per sentence "Local speaker N", numbered separately from remote speakers.
+        var taggedMic = localDiarization is null
+            ? micSegments.Select(seg => new TaggedSegment(seg, "You")).ToList()
+            : SpeakerAttribution.SentenceSegments(micSegments)
+                .Select(seg => new TaggedSegment(seg, FindSpeaker(seg, localDiarization, LabelMap(localDiarization, "Local speaker"), "Local speaker")))
+                .ToList();
 
         // 4. Sort chronologically
         var all = taggedMic.Concat(taggedSystem)
@@ -80,43 +75,19 @@ public static class TranscriptFormatter
         return string.Join(Environment.NewLine + Environment.NewLine, parts);
     }
 
-    private static string? FindSpeakerByOverlap(
-        TranscriptSegment transcriptSegment,
-        List<DiarizedSegment> diarizationSegments,
-        Dictionary<string, string> speakerLabelMap)
+    /// <summary>Raw diarizer ID → "&lt;prefix&gt; 1", "&lt;prefix&gt; 2", … in first-appearance order.</summary>
+    private static Dictionary<string, string> LabelMap(IEnumerable<DiarizedSegment> diarization, string prefix)
     {
-        // Find diarization segment with maximum time overlap
-        DiarizedSegment? bestMatch = null;
-        double bestOverlap = 0;
-
-        foreach (var diarSeg in diarizationSegments)
-        {
-            var overlap = CalculateOverlap(
-                transcriptSegment.StartMs, transcriptSegment.EndMs,
-                diarSeg.StartMs, diarSeg.EndMs);
-
-            if (overlap > bestOverlap)
-            {
-                bestOverlap = overlap;
-                bestMatch = diarSeg;
-            }
-        }
-
-        if (bestMatch is null || bestOverlap <= 0)
-        {
-            return null;
-        }
-
-        return speakerLabelMap.TryGetValue(bestMatch.SpeakerId, out var label)
-            ? label
-            : "Others";
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var segment in diarization.OrderBy(segment => segment.StartMs))
+            map.TryAdd(segment.SpeakerId, $"{prefix} {map.Count + 1}");
+        return map;
     }
 
-    private static double CalculateOverlap(int startA, int endA, int startB, int endB)
+    private static string FindSpeaker(TranscriptSegment segment, IReadOnlyList<DiarizedSegment> diarization, Dictionary<string, string> labels, string fallback)
     {
-        var overlapStart = Math.Max(startA, startB);
-        var overlapEnd = Math.Min(endA, endB);
-        return Math.Max(0, overlapEnd - overlapStart);
+        if (labels.Count == 1) return labels.Values.First();
+        return SpeakerAttribution.SpeakerId(segment, diarization) is { } id && labels.TryGetValue(id, out var label) ? label : fallback;
     }
 
     private static List<TaggedSegment> Consolidate(List<TaggedSegment> segments, int gapThresholdMs)

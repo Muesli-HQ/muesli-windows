@@ -494,8 +494,12 @@ public sealed class CleanupModelCatalogTests
     [Fact]
     public void CatalogMatchesTheMacOsCleanupCatalogWithRealPinnedArtifacts()
     {
-        Assert.Equal(3, CleanupModelCatalog.Models.Count);
+        // MAC-25: macOS 2f10b23d ships Lite (v12 0.8B), Pro LFM 2.5, Pro Qwen 3.5, S1-mini and Qwen Basic.
+        Assert.Equal(5, CleanupModelCatalog.Models.Count);
+        Assert.Equal(CleanupModelCatalog.MuesliCleanupId, CleanupModelCatalog.DefaultModelId);
         Assert.Contains(CleanupModelCatalog.Models, model => model.Id == CleanupModelCatalog.MuesliCleanupId);
+        Assert.Contains(CleanupModelCatalog.Models, model => model.Id == CleanupModelCatalog.ProLfmId);
+        Assert.Contains(CleanupModelCatalog.Models, model => model.Id == CleanupModelCatalog.ProQwenId);
         Assert.Contains(CleanupModelCatalog.Models, model => model.Id == CleanupModelCatalog.S1MiniId);
         Assert.Contains(CleanupModelCatalog.Models, model => model.Id == CleanupModelCatalog.QwenBasicId);
 
@@ -521,7 +525,11 @@ public sealed class CleanupModelCatalogTests
             CleanupModelCatalog.Get(CleanupModelCatalog.MuesliCleanupId)!);
 
         Assert.Equal(CleanupPromptContract.S1Mini, NativeTextCleanupService.PromptContractFor(s1MiniPath));
-        Assert.Equal(CleanupPromptContract.Configurable, NativeTextCleanupService.PromptContractFor(muesliPath));
+        Assert.Equal(CleanupPromptContract.TrainedV12Qwen, NativeTextCleanupService.PromptContractFor(muesliPath));
+        Assert.Equal(CleanupPromptContract.TrainedV12Lfm, NativeTextCleanupService.PromptContractFor(
+            CleanupModelCatalog.PathFor(CleanupModelCatalog.Get(CleanupModelCatalog.ProLfmId)!)));
+        Assert.Equal(CleanupPromptContract.Configurable, NativeTextCleanupService.PromptContractFor(
+            CleanupModelCatalog.PathFor(CleanupModelCatalog.Get(CleanupModelCatalog.QwenBasicId)!)));
         Assert.Equal(
             CleanupPromptContract.Configurable,
             NativeTextCleanupService.PromptContractFor(Path.Combine(Path.GetTempPath(), "unmanaged.gguf")));
@@ -561,8 +569,14 @@ public sealed class CleanupModelCatalogTests
         try
         {
             Environment.SetEnvironmentVariable("MUESLI_NATIVE_CLEANUP_CACHE", directory.Path);
+            // A cut-short or non-GGUF file is never used (MAC-25 header check).
+            File.WriteAllText(Path.Combine(directory.Path, "a-broken.gguf"), "not a real model");
+            Assert.Null(CleanupModelCatalog.ResolveInstalledModelPath(null));
             var legacy = Path.Combine(directory.Path, "legacy-cleanup.gguf");
-            File.WriteAllText(legacy, "not a real model");
+            File.WriteAllBytes(legacy, [.. "GGUF"u8, 3, 0, 0, 0, .. new byte[32]]);
+            // The retired v3 Lite file is never picked up as a placed model.
+            Directory.CreateDirectory(Path.Combine(directory.Path, CleanupModelCatalog.RetiredV3Id));
+            File.WriteAllBytes(Path.Combine(directory.Path, CleanupModelCatalog.RetiredV3Id, "0-old.gguf"), [.. "GGUF"u8, 3, 0, 0, 0, .. new byte[32]]);
 
             Assert.Equal(legacy, CleanupModelCatalog.ResolveInstalledModelPath(null));
             Assert.Null(CleanupModelCatalog.ResolveInstalledModelPath(CleanupModelCatalog.S1MiniId));
@@ -585,7 +599,7 @@ public sealed class CleanupModelCatalogTests
             var service = new CleanupModelLifecycleService(CleanupModelCatalog.S1MiniId);
             var snapshots = service.Snapshots();
 
-            Assert.Equal(3, snapshots.Count);
+            Assert.Equal(5, snapshots.Count);
             Assert.All(snapshots, snapshot => Assert.False(snapshot.IsInstalled));
             var selected = snapshots.Single(snapshot => snapshot.Model.Id == CleanupModelCatalog.S1MiniId);
             Assert.True(selected.IsSelected);

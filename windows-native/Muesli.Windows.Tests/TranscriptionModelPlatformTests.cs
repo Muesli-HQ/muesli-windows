@@ -5,7 +5,7 @@ public sealed class TranscriptionModelPlatformTests
     [Fact]
     public void CatalogPinsArchiveAndEveryRequiredFileAndRejectsUnknownRuntimeIds()
     {
-        Assert.Equal(12, TranscriptionModelCatalog.Models.Count);
+        Assert.Equal(16, TranscriptionModelCatalog.Models.Count);
         Assert.All(TranscriptionModelCatalog.Models, model =>
         {
             Assert.Matches("^[A-F0-9]{64}$", model.ArchiveSha256);
@@ -271,6 +271,28 @@ public sealed class TranscriptionModelPlatformTests
         operations.Prepare = (_, _) => Task.CompletedTask;
         await lifecycle.RetryAsync("sensevoice-small-int8");
         Assert.Equal(TranscriptionModelStatus.Ready, lifecycle.Snapshot("sensevoice-small-int8").Status);
+    }
+
+    [Fact]
+    public async Task SecondPrepareJoinsTheRunningOneAndItsCancellationOnlyStopsItsWait()
+    {
+        var block = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var operations = new FakeModelOperations { Prepare = async (_, _) => await block.Task };
+        using var lifecycle = new TranscriptionModelLifecycleService(operations);
+        var first = lifecycle.PrepareAsync("whisper-tiny-en");
+        await operations.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        using var leave = new CancellationTokenSource();
+        var joined = lifecycle.PrepareAsync("whisper-tiny-en");
+        var leaving = lifecycle.PrepareAsync("whisper-tiny-en", null, leave.Token);
+        leave.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => leaving);
+        Assert.False(first.IsCompleted);
+
+        block.SetResult();
+        await first;
+        await joined;
+        Assert.Equal(["whisper-tiny-en"], operations.Prepared);
+        Assert.Equal(TranscriptionModelStatus.Ready, lifecycle.Snapshot("whisper-tiny-en").Status);
     }
 
     [Fact]

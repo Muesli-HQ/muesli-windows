@@ -11,6 +11,8 @@ public sealed class WinUiDictationContext : IDisposable
     private readonly WinUiSettingsContext _settings;
     private readonly IUiDispatcher _dispatcher;
     private readonly AppLogService _log = new();
+    private readonly DictationMediaControl _media;
+    private Task<string?>? _appContext;
     private readonly NativeTranscriptionClient _transcription;
     private readonly DictationCoordinator _coordinator;
     private readonly TranscriptionPipelineService _pipeline;
@@ -21,6 +23,9 @@ public sealed class WinUiDictationContext : IDisposable
     private CancellationTokenSource? _timerCancellation;
     private CancellationTokenSource? _operationCancellation;
     private IntPtr _pasteTarget;
+    /// <summary>MAC-15: per-app formatting rules, snapshotted at recording start for the whole session.</summary>
+    private IReadOnlyList<DictationAppFormattingRule> _formattingRules = [];
+    private WinUiLiveDictation? _live;
     private string? _captureTraceId;
     private volatile bool _auxiliarySession;
     private volatile bool _delivering;
@@ -35,6 +40,12 @@ public sealed class WinUiDictationContext : IDisposable
     // completes before the next begins, with no async void and no unobserved task.
     private readonly object _hotkeyChainGate = new();
     private Task _hotkeyChain = Task.CompletedTask;
+
+    /// <summary>Raised after a dictation was pasted into another app (macOS starts its correction monitor here).</summary>
+    public event Action<DictationPaste>? Pasted;
+
+    /// <summary>Raised as a dictation starts listening (macOS beginDictationOutput cancels the correction monitor).</summary>
+    public event Action? Starting;
 
     public WinUiDictationContext(
         WinUiLibraryContext library,
@@ -53,7 +64,8 @@ public sealed class WinUiDictationContext : IDisposable
         _paste = new ActiveAppPasteService(
             new Win32ClipboardAdapter(),
             new NativeWindowActivationAdapter(),
-            new NativeKeyboardInputAdapter());
+            new NativeKeyboardInputAdapter(() => _settings.Load().PasteShortcut));
+        _media = new DictationMediaControl(_log);
         Status = "Ready";
     }
 
@@ -66,6 +78,23 @@ public sealed class WinUiDictationContext : IDisposable
     public event EventHandler<float>? RecordingLevelChanged;
 
     public bool IsRecording => _coordinator.IsRecording && !_delivering;
+
+    /// <summary>
+    /// macOS DictationContextCapture.capture: Accessibility text, plus OCR of the target window when
+    /// on. macOS skips OCR while a meeting records, and so does this.
+    /// </summary>
+    private Task<string?> ReadAppContextAsync(IntPtr window, bool includeOcr) => Task.Run(async () =>
+    {
+        string? context = null;
+        try { context = FocusedTextSelection.ReadAppContext(window); } catch (Exception) { }
+        if (!includeOcr) return context;
+        try { return ScreenOcr.Append(context, await ScreenOcr.ReadWindowAsync(window)); }
+        catch (Exception exception)
+        {
+            _log.Error("Dictation screen OCR failed; continuing without it.", exception);
+            return context;
+        }
+    });
     public bool IsBusy => _coordinator.IsBusy || _coordinator.IsTranscribing;
     // From key release until the text is delivered. The coordinator only reports recognition
     // itself and raises no event when it starts, which left the pill idle while the user waited.
@@ -76,6 +105,16 @@ public sealed class WinUiDictationContext : IDisposable
     public void RegisterHotkey()
     {
         ThrowIfDisposed();
+        if (!_settings.Load().PushToTalkEnabled)
+        {
+            // Off means the key belongs to other apps again, so the hook is removed, not muted.
+            _hotkey.Dispose();
+            IsHotkeyRegistered = false;
+            Status = "Push to Talk is turned off.";
+            _log.Info("Dictation shortcut disabled.");
+            RaiseChanged();
+            return;
+        }
         try
         {
             _hotkey.Register(
@@ -140,6 +179,8 @@ public sealed class WinUiDictationContext : IDisposable
             PrepareMicrophone();
             Status = $"Ready · {_settings.Load().Hotkey}";
             _log.Info($"Dictation shortcut registered. gesture={_settings.Load().Hotkey}");
+            if (_settings.Load().EnableBufferedLiveDictation && WhisperCppPreviewDecoder.Supports(_transcription.SelectedModel))
+                WhisperCppPreviewDecoder.WarmUp(message => _log.Info($"Live dictation {message}."));
         }
         catch (Exception exception)
         {
@@ -190,7 +231,10 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
     }
 
-    public async Task<string> StopWithoutPersistingAsync(CancellationToken cancellationToken = default)
+    /// <param name="reportResult">False when the caller reports the outcome itself (Computer Use):
+    /// a leftover "Local test captured" would otherwise read as a dictation result on the pill
+    /// and hide the run's own message.</param>
+    public async Task<string> StopWithoutPersistingAsync(CancellationToken cancellationToken = default, bool reportResult = true)
     {
         ThrowIfDisposed();
         if (!_coordinator.IsRecording) return "";
@@ -200,7 +244,7 @@ public sealed class WinUiDictationContext : IDisposable
         {
             var result = await _coordinator.StopForOnboardingTestAsync(cancellationToken);
             var text = result.Text?.Trim() ?? "";
-            Status = string.IsNullOrWhiteSpace(text) ? "No speech detected" : "Local test captured";
+            Status = !reportResult ? "Ready" : string.IsNullOrWhiteSpace(text) ? "No speech detected" : "Local test captured";
             RaiseChanged();
             return text;
         }
@@ -300,7 +344,9 @@ public sealed class WinUiDictationContext : IDisposable
         RequestCancellation();
         ReleaseHostedSession();
         await _coordinator.CancelAsync();
+        await _media.RestoreAsync();
         _hotkeyState.Reset();
+        Interlocked.Exchange(ref _live, null)?.Cancel();
         _pasteTarget = IntPtr.Zero;
         Status = "Dictation cancelled";
         _log.Info($"Dictation cancelled. trace={_captureTraceId ?? "not-started"}");
@@ -327,6 +373,7 @@ public sealed class WinUiDictationContext : IDisposable
         // Closes the provider's socket or request first; the coordinator waits for an in-flight
         // transcription when it is disposed, and would otherwise wait out the provider's timeout.
         ReleaseHostedSession();
+        Task.Run(_media.RestoreAsync).Wait(TimeSpan.FromSeconds(2));
         _hotkey.Dispose();
         _coordinator.LevelChanged -= OnRecordingLevelChanged;
         _coordinator.Dispose();
@@ -398,6 +445,7 @@ public sealed class WinUiDictationContext : IDisposable
         {
             Status = $"Dictation failed: {exception.Message}";
             _log.Error("WinUI dictation hotkey action failed.", exception);
+            DiagnosticIncidentPrompts.Record(DiagnosticIncident.DictationTranscriptionFailed, "standard_dictation_transcribe", _coordinator.ModelId, exception);
             ResetHotkeyDictationState();
             RaiseChanged();
         }
@@ -446,7 +494,7 @@ public sealed class WinUiDictationContext : IDisposable
                 StopTimers();
                 Status = "Hands-free dictation active";
                 RaiseChanged();
-                await StartAsync(shouldPasteToActiveApp: true, decodeDuringCapture: true);
+                await StartAsync(shouldPasteToActiveApp: true, handsFree: true);
                 if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
                 break;
 
@@ -475,6 +523,7 @@ public sealed class WinUiDictationContext : IDisposable
     private void ReleaseAfterFailedStart()
     {
         ResetHotkeyDictationState();
+        Interlocked.Exchange(ref _live, null)?.Cancel();
         _pasteTarget = IntPtr.Zero;
         _operationCancellation?.Dispose();
         _operationCancellation = null;
@@ -482,9 +531,9 @@ public sealed class WinUiDictationContext : IDisposable
     }
 
     // Push-to-talk is transcribed in one pass after release. Hands-free, which has no bound on its
-    // length, decodes while capture is still running; so does any dictation the coordinator
-    // starts with little memory free (DictationMemoryPolicy).
-    private async Task StartAsync(bool shouldPasteToActiveApp, bool decodeDuringCapture = false)
+    // length, decodes while capture is still running (or streams live into the target app); so does
+    // any dictation the coordinator starts with little memory free (DictationMemoryPolicy).
+    private async Task StartAsync(bool shouldPasteToActiveApp, bool handsFree = false)
     {
         if (IsRecording || IsBusy)
         {
@@ -524,14 +573,38 @@ public sealed class WinUiDictationContext : IDisposable
 
         // Capture the paste target before any indicator work: the floating pill must never become
         // the foreground window that the transcript is pasted into.
-        _pasteTarget = shouldPasteToActiveApp ? _paste.CaptureForegroundWindow() : IntPtr.Zero;
+        // A setup test and macOS voice notes keep the text in Muesli instead of pasting it.
+        _pasteTarget = shouldPasteToActiveApp && !OnboardingFlow.IsVoiceNotesOnly(current.OnboardingUseCase)
+            ? _paste.CaptureForegroundWindow()
+            : IntPtr.Zero;
+        // Read while the target app still has focus; only hosted cleanup with app context uses it.
+        _appContext = _pasteTarget != IntPtr.Zero && current.EnableLocalCleanup && current.EnableAppContext &&
+            MeetingSummaryService.IsHostedProvider(current.CleanupSource)
+            ? ReadAppContextAsync(_pasteTarget, current.EnableDictationOcrContext && App.Meetings?.IsRecording != true)
+            : null;
+        _formattingRules = DictationAppFormattingRule.ActiveRules(current.DictationAppFormattingRules);
+        // MAC-25 (macOS): warm local cleanup while the user speaks, so the first result isn't delayed by model load.
+        if (current.EnableLocalCleanup && !MeetingSummaryService.IsHostedProvider(current.CleanupSource)) _cleanup.WarmInBackground();
+        // macOS shouldBufferStreaming: live insertion can't be reformatted later, so an app with a rule waits for the stop.
+        var formatsStartApp = _pasteTarget != IntPtr.Zero && _formattingRules.Count > 0 &&
+            DictationAppFormattingRule.ShouldBufferStreaming(DictationTargetApps.Capture(_pasteTarget)?.AppId, _formattingRules);
         _coordinator.SoundFeedback.Enabled = current.SoundEnabled;
+        Starting?.Invoke();
         Status = "Listening";
         RaiseChanged();
+        // macOS beginBufferedDictationIfNeeded: only hands-free local dictation into another app opts in.
+        var trace = _captureTraceId;
+        var live = handsFree && provider == DictationProviders.Local && current.EnableBufferedLiveDictation && _pasteTarget != IntPtr.Zero && !formatsStartApp &&
+            BufferedLiveDictationSupport.Supports(_transcription.SelectedModel.Kind)
+            ? new WinUiLiveDictation(
+                status => { Status = status; RaiseChanged(); },
+                message => _log.Info($"Live dictation {message}. trace={trace}"))
+            : null;
+        _live = live;
         try
         {
             ReleaseHostedSession();
-            if (HostedDictationSessions.Create(current) is { } hosted)
+            if (live is null && HostedDictationSessions.Create(current) is { } hosted)
             {
                 _hostedSession = hosted;
                 _coordinator.AttachHostedSession(hosted);
@@ -541,7 +614,8 @@ public sealed class WinUiDictationContext : IDisposable
                 current.MicrophoneName ?? _coordinator.PickPreferredMicrophone(),
                 DictationSessionKind.Interactive,
                 // A hosted provider transcribes this dictation, so nothing is decoded locally meanwhile.
-                decodeDuringCapture && _hostedSession is null);
+                handsFree && _hostedSession is null,
+                live is null ? null : live.Audio.Append);
         }
         catch (Exception exception)
         {
@@ -558,8 +632,10 @@ public sealed class WinUiDictationContext : IDisposable
             else
             {
                 _log.Error("Could not start dictation microphone.", exception);
+                DiagnosticIncidentPrompts.Record(DiagnosticIncident.DictationAudioFailed, "dictation_audio_session", _coordinator.ModelId, exception);
             }
             ReleaseHostedSession();
+            Interlocked.Exchange(ref _live, null)?.Cancel();
             _pasteTarget = IntPtr.Zero;
             RaiseChanged();
             return;
@@ -567,16 +643,26 @@ public sealed class WinUiDictationContext : IDisposable
 
         _log.Info($"Dictation capture start result. trace={_captureTraceId}; recording={_coordinator.IsRecording}; model={_coordinator.ModelId}; provider={provider}");
         if (!_coordinator.IsRecording) ReleaseHostedSession();
+        else _media.Apply(current.PauseMediaDuringDictation, current.MuteAudioDuringDictation);
         Status = !_coordinator.IsRecording ? "Ready" :
             _hostedSession is not null ? $"Listening · audio goes to {DictationProviders.Label(provider)}" :
             _coordinator.ModelId == current.DictationModelId ? "Listening" : "Listening with Parakeet (low memory)";
         RaiseChanged();
+        if (live is not null && _coordinator.IsRecording) live.BeginCapture(_pasteTarget, _transcription, _coordinator.BeginRollingTranscription);
+        else if (live is not null) Interlocked.Exchange(ref _live, null)?.Cancel();
     }
 
     private async Task StopAsync()
     {
         _log.Info($"Dictation stop requested. trace={_captureTraceId ?? "not-started"}; recording={IsRecording}; busy={IsBusy}");
-        if (!_coordinator.IsRecording) return;
+        // Restoring is a no-op when nothing was paused or muted, so it runs before every early exit.
+        await _media.RestoreAsync();
+        var live = Interlocked.Exchange(ref _live, null);
+        if (!_coordinator.IsRecording)
+        {
+            live?.Cancel();
+            return;
+        }
         if (_auxiliarySession)
         {
             // A setup test or Computer Use command is stopped by its owner, never saved or pasted.
@@ -597,6 +683,14 @@ public sealed class WinUiDictationContext : IDisposable
         string? loggedOutcome = null;
         DictationLatencyMetrics? latency = null;
         _hotkeyState.Reset();
+        var liveActive = live?.Stop() == true;
+        // Paste where the user is now (macOS behavior): a text box clicked after the hotkey wins.
+        // A live dictation stays bound to the field it captured.
+        if (!liveActive && _pasteTarget != IntPtr.Zero && _paste.ResolvePasteTarget(_pasteTarget) is var target && target != _pasteTarget)
+        {
+            _pasteTarget = target;
+            _appContext = null; // read from the old window; wrong names are worse than none
+        }
         _operationCancellation?.Dispose();
         _operationCancellation = new CancellationTokenSource();
         _delivering = true;
@@ -606,9 +700,12 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
         try
         {
+            var stopToken = _operationCancellation.Token;
+            var recoveryDirectory = Path.Combine(_library.Profile.RootDirectory, BufferedDictationRecovery.DirectoryName);
             var stop = await _coordinator.StopAsync(
                 _captureTraceId ?? Guid.NewGuid().ToString("N")[..12],
-                _operationCancellation.Token);
+                stopToken,
+                liveActive ? path => live!.TranscribeAsync(path, recoveryDirectory, stopToken) : null);
             latency = stop.Latency;
             var result = stop.Transcription;
             audioDurationMs = result.DurationMs;
@@ -627,40 +724,95 @@ public sealed class WinUiDictationContext : IDisposable
             var recognized = TranscriptionEngineArtifactsFilter.Apply(result.Text ?? "");
             if (string.IsNullOrWhiteSpace(recognized))
             {
+                // Empty final recognition is not permission to erase visible provisional text.
                 Status = result.DurationMs < HotkeyTriggerTiming.ShortDiscardMilliseconds
                     ? "Ready"
+                    : live?.Target?.HasAttemptedWrite == true ? "No final transcript; provisional text remains"
                     : "No speech detected";
                 return;
             }
 
             var settings = _settings.Load();
             var stageStarted = Stopwatch.StartNew();
+            var hostedCleanup = !hostedText && settings.EnableLocalCleanup && MeetingSummaryService.IsHostedProvider(settings.CleanupSource);
+            if (hostedCleanup)
+            {
+                Status = "Cleaning up…";
+                RaiseChanged();
+                var appContext = _appContext is { } pending ? await pending : null;
+                recognized = await HostedTranscriptCleanup.CleanAsync(recognized, appContext,
+                    (system, user, token) => MeetingSummaryService.CompleteAsync(settings.CleanupSource, system, user, settings, null, token),
+                    (message, exception) => _log.Error(message, exception),
+                    _operationCancellation.Token,
+                    CleanupPrompts.Resolve(settings.ActiveCleanupPromptId, settings.CustomCleanupPrompts).Prompt);
+            }
             var text = hostedText
                 ? recognized.Trim()
                 : await _pipeline.PrepareDictationTextAsync(
                     recognized,
-                    settings.EnableLocalCleanup,
+                    settings.EnableLocalCleanup && !hostedCleanup,
                     settings.RemoveFillerWords,
                     _library.LoadDictionary());
             pipelineMs = stageStarted.ElapsedMilliseconds;
             _operationCancellation.Token.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(text))
             {
-                Status = "No text remained after cleanup";
+                Status = live?.Target?.HasAttemptedWrite == true
+                    ? "No final transcript; provisional text remains"
+                    : "No text remained after cleanup";
                 return;
             }
 
-            stageStarted.Restart();
-            _library.History.AppendDictation(new PersistedDictation(
-                $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}",
-                DateTime.Now,
-                text,
-                result.DurationMs,
-                hostedText ? HostedDictationTranscriber.ModelLabel(result) : _coordinator.ModelId));
-            persisted = true;
-            persistenceMs = stageStarted.ElapsedMilliseconds;
+            // The receiving app's rule (macOS prepareTextForTarget). Live text already typed is never rewritten.
+            var pasteTarget = _pasteTarget;
+            var targetApp = DictationTargetApps.Capture(pasteTarget);
+            if (!liveActive && pasteTarget != IntPtr.Zero)
+                text = DictationAppFormattingRule.Apply(text, targetApp?.AppId, _formattingRules);
 
-            if (_pasteTarget != IntPtr.Zero)
+            stageStarted.Restart();
+            var dictationId = $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}";
+            try
+            {
+                _library.History.AppendDictation(new PersistedDictation(
+                    dictationId,
+                    DateTime.Now,
+                    text,
+                    result.DurationMs,
+                    hostedText ? HostedDictationTranscriber.ModelLabel(result) : _coordinator.ModelId));
+                persisted = true;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // macOS still delivers the dictation; the outcome then says History couldn't be saved.
+                _log.Error("The dictation could not be saved to History.", exception);
+            }
+            persistenceMs = stageStarted.ElapsedMilliseconds;
+            // macOS records the destination app on each dictation (the row's app icon and filter).
+            if (targetApp is not null && persisted)
+            {
+                try { DictationTargetApps.Record(_library.Profile.RootDirectory, dictationId, targetApp); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    _log.Error("The dictation's destination app could not be saved.", exception);
+                }
+            }
+
+            if (liveActive)
+            {
+                // No normal paste fallback: a failed live write may have partially changed the field.
+                _operationCancellation.Token.ThrowIfCancellationRequested();
+                stageStarted.Restart();
+                var delivered = await live!.Target!.FinishAsync(text + DictationPasteSpacing.TrailingSeparator(text));
+                deliveryMs = stageStarted.ElapsedMilliseconds;
+                _log.Info($"Live dictation buffered_final delivered={delivered} attempted={live.Target.HasAttemptedWrite} " +
+                    $"inserted={live.Target.HasInsertedText}. trace={_captureTraceId}");
+                _operationCancellation.Token.ThrowIfCancellationRequested();
+                if (!delivered && !persisted) await _paste.CopyTextAsync(text, CancellationToken.None);
+                Status = DictationPersistenceOutcome.Status(persisted, delivered)
+                    ?? (delivered ? "Dictation inserted" : "Live insertion stopped; dictation saved in history");
+                if (delivered) Pasted?.Invoke(new DictationPaste(text, targetApp, pasteTarget));
+            }
+            else if (_pasteTarget != IntPtr.Zero)
             {
                 try
                 {
@@ -672,23 +824,37 @@ public sealed class WinUiDictationContext : IDisposable
                     deliveryFocusMs = paste.FocusWaitMs;
                     deliveryInputMs = paste.InputMs;
                     deliveryClipboardMs = paste.ClipboardMs;
-                    Status = fellBack ? "Dictation inserted (transcribed on this PC)" : "Dictation inserted";
+                    Status = DictationPersistenceOutcome.Status(persisted, pasted: true) ?? (fellBack ? "Dictation inserted (transcribed on this PC)" : "Dictation inserted");
+                    Pasted?.Invoke(new DictationPaste(text, targetApp, pasteTarget));
                 }
                 catch (OperationCanceledException) when (_operationCancellation.IsCancellationRequested)
                 {
                     throw;
                 }
+                catch (ClipboardOwnershipLostException ownershipLost)
+                {
+                    // macOS 784e1a47: never overwrite the clipboard another app just wrote.
+                    deliveryMs = stageStarted.ElapsedMilliseconds;
+                    Status = DictationPersistenceOutcome.Status(persisted, pasted: false) is { } unsaved
+                        ? unsaved
+                        : "Another app changed the clipboard; dictation saved in history";
+                    _log.Error("WinUI active-app paste lost clipboard ownership before dispatch.", ownershipLost);
+                }
                 catch (Exception pasteException)
                 {
                     await _paste.CopyTextAsync(text, CancellationToken.None);
                     deliveryMs = stageStarted.ElapsedMilliseconds;
-                    Status = "Paste failed; transcript saved and copied";
+                    Status = DictationPersistenceOutcome.Status(persisted, pasted: false) ??
+                        (pasteException is PasteBlockedByElevationException
+                            ? "Can't type into an administrator app; transcript copied"
+                            : "Paste failed; transcript saved and copied");
                     _log.Error("WinUI active-app paste failed after dictation persistence.", pasteException);
                 }
             }
             else
             {
-                Status = "Dictation saved";
+                if (!persisted) await _paste.CopyTextAsync(text, CancellationToken.None);
+                Status = DictationPersistenceOutcome.Status(persisted, pasted: false) ?? "Dictation saved";
             }
         }
         catch (OperationCanceledException)
@@ -702,8 +868,15 @@ public sealed class WinUiDictationContext : IDisposable
             Status = $"Dictation failed: {exception.Message}";
             loggedOutcome = $"Dictation failed: hosted provider error ({exception.Category})";
         }
+        catch (LiveDictationRecoveryException recovery)
+        {
+            Status = "Live transcription could not finish";
+            _log.Error($"Live dictation could not finish; recording preserved at {recovery.Outcome.ShowPath}.", recovery.InnerException);
+            WinUiLiveDictation.ShowRecovery(recovery.Outcome);
+        }
         finally
         {
+            live?.Cancel();
             // Only a dictation that was delivered normally gets the explanation; a failure or a
             // cancellation keeps its own status. A hosted provider's wait is the network's, not
             // this PC's memory, so it never gets one either.
@@ -820,3 +993,4 @@ public sealed record DictationTestRoute(
     Action Listening,
     Action<string> Captured,
     Action<string> Failed);
+public sealed record DictationPaste(string Text, DictationTargetApp? App, IntPtr Window);

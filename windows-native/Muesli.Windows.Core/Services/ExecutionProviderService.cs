@@ -1046,6 +1046,9 @@ public sealed class ProviderWarmUp
 
     public bool IsProbing => _session is not null;
 
+    /// <summary>The ONNX Runtime profile prefix, for callers that build their own session options.</summary>
+    public string? ProfilePrefix => _session?.Prefix;
+
     /// <summary>
     /// Reads the ONNX Runtime profile produced by the probe recognizer. The caller has already run
     /// the warm-up inference and released the probe session, which is what flushes the profile.

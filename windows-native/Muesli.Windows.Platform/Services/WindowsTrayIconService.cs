@@ -120,7 +120,7 @@ public sealed class WindowsTrayIconService : IDisposable
         }
         if (_featureTour is not null)
         {
-            menu.Items.Add("Replay feature tour", null, (_, _) => _dispatcher.TryEnqueue(_featureTour));
+            menu.Items.Add("What's New in Muesli", null, (_, _) => _dispatcher.TryEnqueue(_featureTour));
         }
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => _dispatcher.TryEnqueue(_quit));

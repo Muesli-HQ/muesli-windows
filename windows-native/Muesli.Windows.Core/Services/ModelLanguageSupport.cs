@@ -22,22 +22,111 @@ public static class ModelLanguageSupport
         new(AutomaticCode, "Automatic (multilingual)")
     ];
 
-    // Whisper multilingual (sherpa-onnx consumes Whisper.Language).
+    // Whisper multilingual (sherpa-onnx consumes Whisper.Language): all 100 language tokens, as macOS
+    // WhisperKitLanguage (4f97a3d1, 09c3203b, ede5701f). Cantonese exists only in large-v3 vocabularies.
     private static readonly IReadOnlyList<ModelLanguageOption> WhisperMultilingual =
     [
         new(AutomaticCode, "Automatic"),
-        new("en", "English"),
-        new("hi", "Hindi"),
-        new("es", "Spanish"),
-        new("fr", "French"),
-        new("de", "German"),
-        new("it", "Italian"),
-        new("pt", "Portuguese"),
+        new("af", "Afrikaans"),
+        new("sq", "Albanian"),
+        new("am", "Amharic"),
+        new("ar", "Arabic"),
+        new("hy", "Armenian"),
+        new("as", "Assamese"),
+        new("az", "Azerbaijani"),
+        new("ba", "Bashkir"),
+        new("eu", "Basque"),
+        new("be", "Belarusian"),
+        new("bn", "Bengali"),
+        new("bs", "Bosnian"),
+        new("br", "Breton"),
+        new("bg", "Bulgarian"),
+        new("my", "Burmese"),
+        new("yue", "Cantonese"),
+        new("ca", "Catalan"),
         new("zh", "Chinese"),
+        new("hr", "Croatian"),
+        new("cs", "Czech"),
+        new("da", "Danish"),
+        new("nl", "Dutch"),
+        new("en", "English"),
+        new("et", "Estonian"),
+        new("fo", "Faroese"),
+        new("fi", "Finnish"),
+        new("fr", "French"),
+        new("gl", "Galician"),
+        new("ka", "Georgian"),
+        new("de", "German"),
+        new("el", "Greek"),
+        new("gu", "Gujarati"),
+        new("ht", "Haitian Creole"),
+        new("ha", "Hausa"),
+        new("haw", "Hawaiian"),
+        new("he", "Hebrew"),
+        new("hi", "Hindi"),
+        new("hu", "Hungarian"),
+        new("is", "Icelandic"),
+        new("id", "Indonesian"),
+        new("it", "Italian"),
         new("ja", "Japanese"),
+        new("jw", "Javanese"),
+        new("kn", "Kannada"),
+        new("kk", "Kazakh"),
+        new("km", "Khmer"),
         new("ko", "Korean"),
+        new("lo", "Lao"),
+        new("la", "Latin"),
+        new("lv", "Latvian"),
+        new("ln", "Lingala"),
+        new("lt", "Lithuanian"),
+        new("lb", "Luxembourgish"),
+        new("mk", "Macedonian"),
+        new("mg", "Malagasy"),
+        new("ms", "Malay"),
+        new("ml", "Malayalam"),
+        new("mt", "Maltese"),
+        new("mi", "Maori"),
+        new("mr", "Marathi"),
+        new("mn", "Mongolian"),
+        new("ne", "Nepali"),
+        new("no", "Norwegian"),
+        new("nn", "Norwegian Nynorsk"),
+        new("oc", "Occitan"),
+        new("ps", "Pashto"),
+        new("fa", "Persian"),
+        new("pl", "Polish"),
+        new("pt", "Portuguese"),
+        new("pa", "Punjabi"),
+        new("ro", "Romanian"),
         new("ru", "Russian"),
-        new("ar", "Arabic")
+        new("sa", "Sanskrit"),
+        new("sr", "Serbian"),
+        new("sn", "Shona"),
+        new("sd", "Sindhi"),
+        new("si", "Sinhala"),
+        new("sk", "Slovak"),
+        new("sl", "Slovenian"),
+        new("so", "Somali"),
+        new("es", "Spanish"),
+        new("su", "Sundanese"),
+        new("sw", "Swahili"),
+        new("sv", "Swedish"),
+        new("tl", "Tagalog"),
+        new("tg", "Tajik"),
+        new("ta", "Tamil"),
+        new("tt", "Tatar"),
+        new("te", "Telugu"),
+        new("th", "Thai"),
+        new("bo", "Tibetan"),
+        new("tr", "Turkish"),
+        new("tk", "Turkmen"),
+        new("uk", "Ukrainian"),
+        new("ur", "Urdu"),
+        new("uz", "Uzbek"),
+        new("vi", "Vietnamese"),
+        new("cy", "Welsh"),
+        new("yi", "Yiddish"),
+        new("yo", "Yoruba")
     ];
 
     // Cohere Transcribe prompt-token languages (sherpa-onnx consumes CohereTranscribe.Language).
@@ -62,8 +151,11 @@ public static class ModelLanguageSupport
     /// <summary>The selectable options for a model, in menu order.</summary>
     public static IReadOnlyList<ModelLanguageOption> OptionsFor(TranscriptionModelDefinition model) => model.Kind switch
     {
-        NativeAsrModelKind.Whisper => IsEnglishOnly(model) ? EnglishOnly : WhisperMultilingual,
+        NativeAsrModelKind.Whisper => IsEnglishOnly(model) ? EnglishOnly
+            : HasCantoneseToken(model) ? WhisperMultilingual
+            : WhisperMultilingual.Where(option => option.Code != "yue").ToList(),
         NativeAsrModelKind.CohereTranscribe => CohereLanguages,
+        NativeAsrModelKind.Bodhan => BodhanModels.Languages(model),
         NativeAsrModelKind.SenseVoice => AutomaticMultilingual,
         NativeAsrModelKind.Parakeet or NativeAsrModelKind.ParakeetTransducer =>
             IsEnglishOnly(model) ? EnglishOnly : AutomaticMultilingual,
@@ -94,8 +186,14 @@ public static class ModelLanguageSupport
         return DefaultCodeFor(model);
     }
 
+    public static bool IsSupported(TranscriptionModelDefinition model, string? code) =>
+        !string.IsNullOrWhiteSpace(code) &&
+        OptionsFor(model).Any(option => string.Equals(option.Code, code.Trim(), StringComparison.OrdinalIgnoreCase));
+
     public static string LabelFor(TranscriptionModelDefinition model, string? code)
     {
+        if (!string.IsNullOrWhiteSpace(code) && !IsSupported(model, code))
+            return $"{code.Trim()} (not supported by this model; using {OptionsFor(model)[0].Label})";
         var normalized = Normalize(model, code);
         foreach (var option in OptionsFor(model))
         {
@@ -107,6 +205,10 @@ public static class ModelLanguageSupport
 
         return normalized;
     }
+
+    /// <summary>The Cantonese token was added in large-v3; the catalog's only large Whisper is large-v3-turbo.</summary>
+    private static bool HasCantoneseToken(TranscriptionModelDefinition model) =>
+        model.Id.Contains("large", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Whisper `.en` variants and every other English-only model report Language "en".</summary>
     private static bool IsEnglishOnly(TranscriptionModelDefinition model) =>

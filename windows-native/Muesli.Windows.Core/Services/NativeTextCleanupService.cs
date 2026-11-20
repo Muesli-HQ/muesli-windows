@@ -64,7 +64,26 @@ public sealed class NativeTextCleanupService : IDisposable
             return "Needs model";
         }
 
-        return CanOpenModelVocabulary(modelPath) ? "Ready" : "Runtime unavailable";
+        return CanOpenModelVocabularyCached(modelPath) ? "Ready" : "Runtime unavailable";
+    }
+
+    // macOS uses cached availability while preparing a recording. Opening the vocabulary reads the GGUF, so the
+    // answer is remembered per file (path, size, write time) instead of being recomputed on every dictation.
+    private static (string Key, bool Ok)? _vocabularyProbe;
+
+    private static bool CanOpenModelVocabularyCached(string modelPath)
+    {
+        string key;
+        try
+        {
+            var info = new FileInfo(modelPath);
+            key = $"{info.FullName}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return false; }
+        if (_vocabularyProbe is { } cached && cached.Key == key) return cached.Ok;
+        var ok = CanOpenModelVocabulary(modelPath);
+        _vocabularyProbe = (key, ok);
+        return ok;
     }
 
     public Task<ModelOperationResult> EnsureModelAsync(CancellationToken cancellationToken = default)
@@ -280,11 +299,16 @@ public sealed class NativeTextCleanupService : IDisposable
 
         using var context = _model.CreateContext(_modelParams);
         var executor = new InteractiveExecutor(context);
-        var prompt = BuildPrompt(text, preserveStructure, PromptContractFor(modelPath));
+        var contract = PromptContractFor(modelPath);
+        var trained = contract is CleanupPromptContract.TrainedV12Qwen or CleanupPromptContract.TrainedV12Lfm;
+        var prompt = trained
+            ? MuesliCleanupV2Prompt.GgufRequest(text, contract, addsBos: _model.Vocab.ShouldAddBOS)
+            : BuildPrompt(text, preserveStructure, contract);
+        var maxTokens = trained ? 1024 : Math.Min(1024, Math.Max(96, text.Length / 2 + 64));
         var inferenceParams = new InferenceParams
         {
-            MaxTokens = Math.Min(1024, Math.Max(96, text.Length / 2 + 64)),
-            AntiPrompts = ["<|end|>", "RAW TRANSCRIPT:", "Instructions:"],
+            MaxTokens = maxTokens,
+            AntiPrompts = trained ? [MuesliCleanupV2Prompt.EndOfTurn] : ["<|end|>", "RAW TRANSCRIPT:", "Instructions:"],
             SamplingPipeline = new DefaultSamplingPipeline
             {
                 Temperature = 0.1f,
@@ -293,13 +317,74 @@ public sealed class NativeTextCleanupService : IDisposable
         };
 
         var builder = new StringBuilder();
+        var generated = 0;
         await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken))
         {
             builder.Append(token);
+            generated++;
         }
 
-        return ExtractCleanedText(builder.ToString());
+        if (!trained) return ExtractCleanedText(builder.ToString());
+        // A turn that ends without its end-of-turn marker ran out of budget: keep the dictation, never its prefix.
+        var raw = builder.ToString();
+        var completed = raw.Contains(MuesliCleanupV2Prompt.EndOfTurn, StringComparison.Ordinal) || generated < maxTokens;
+        var guarded = MuesliCleanupV2Prompt.Guard(raw, text, completed);
+        // Privacy: timings and outcomes only, never prompt or output content.
+        if (guarded.DidFallback) _logService.Info($"Cleanup output rejected; kept the transcript. tokens={generated} completed={completed}");
+        return guarded.Text;
     }
+
+    /// <summary>
+    /// macOS Qwen3PostProcessor.generate for Quill: one ChatML turn on a general Qwen model with thinking suppressed and
+    /// a 4,096-token context (Qwen3PostProcessorConfig.quilMaxContextTokens). Local only; nothing leaves the PC.
+    /// </summary>
+    internal static string QuillPrompt(string systemPrompt, string userPrompt) =>
+        $"<|im_start|>system\n{systemPrompt}<|im_end|>\n<|im_start|>user\n{userPrompt}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+
+    public async Task<string> GenerateAsync(string modelPath, string systemPrompt, string userPrompt, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            EnsureModelLoaded(modelPath);
+            if (_model is null || _modelParams is null) throw new InvalidOperationException("The local model could not be loaded.");
+            using var context = _model.CreateContext(_modelParams);
+            var executor = new InteractiveExecutor(context);
+            var prompt = QuillPrompt(systemPrompt, userPrompt);
+            var inferenceParams = new InferenceParams
+            {
+                MaxTokens = 2048,
+                AntiPrompts = [MuesliCleanupV2Prompt.EndOfTurn],
+                SamplingPipeline = new DefaultSamplingPipeline { Temperature = 0.2f, TopP = 0.9f }
+            };
+            var builder = new StringBuilder();
+            await foreach (var token in executor.InferAsync(prompt, inferenceParams, cancellationToken)) builder.Append(token);
+            return builder.ToString().Replace(MuesliCleanupV2Prompt.EndOfTurn, "").Trim();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Loads the selected model off the UI thread without blocking dictation. Failures are tolerated: cleanup
+    /// still fails safe to the raw transcript when it runs. Skipped when the gate is busy (already loading or cleaning).
+    /// </summary>
+    public void WarmInBackground() => _ = Task.Run(async () =>
+    {
+        try { if (!await _gate.WaitAsync(0)) return; }
+        catch (ObjectDisposedException) { return; }
+        try
+        {
+            if (FindModelPath() is { } path && RuntimeAvailable() && CanOpenModelVocabularyCached(path)) EnsureModelLoaded(path);
+        }
+        catch (Exception exception)
+        {
+            _logService.Info($"Cleanup warm-up skipped: {exception.GetType().Name}.");
+        }
+        finally { try { _gate.Release(); } catch (ObjectDisposedException) { } }
+    });
 
     private void EnsureModelLoaded(string modelPath)
     {
@@ -324,9 +409,7 @@ public sealed class NativeTextCleanupService : IDisposable
     /// switches prompt shape for it exactly as the macOS cleanup stage does.
     /// </summary>
     internal static CleanupPromptContract PromptContractFor(string modelPath) =>
-        CleanupModelCatalog.DefinitionForPath(modelPath)?.Id == CleanupModelCatalog.S1MiniId
-            ? CleanupPromptContract.S1Mini
-            : CleanupPromptContract.Configurable;
+        CleanupModelCatalog.DefinitionForPath(modelPath)?.Contract ?? CleanupPromptContract.Configurable;
 
     internal static string BuildPrompt(string text, bool preserveStructure, CleanupPromptContract contract)
     {

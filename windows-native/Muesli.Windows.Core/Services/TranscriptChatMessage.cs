@@ -18,7 +18,7 @@ public sealed record TranscriptChatMessage(string Text, string? Speaker, string?
             {
                 var label = line[..colon].Trim();
                 if (label.Length <= 32 && (new[] { "You", "Others", "Multiple speakers", "Unknown speaker" }
-                    .Contains(label, StringComparer.OrdinalIgnoreCase) || Regex.IsMatch(label, @"^Speaker\s+\d+$", RegexOptions.IgnoreCase)))
+                    .Contains(label, StringComparer.OrdinalIgnoreCase) || Regex.IsMatch(label, @"^(Speaker\s+\d+|Local speaker(\s+\d+)?)$", RegexOptions.IgnoreCase)))
                 { speaker = label; var body = line[(colon + 1)..].Trim(); if (body.Length > 0) line = body; }
             }
             return new TranscriptChatMessage(line, speaker, string.IsNullOrEmpty(timestamp) ? null : timestamp);

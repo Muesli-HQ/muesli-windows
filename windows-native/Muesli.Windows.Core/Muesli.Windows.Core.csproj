@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- macOS MUESLI_INCLUDE_COTYPIST: dev builds opt in with -p:MuesliIncludeCotypist=true. -->
+  <PropertyGroup Condition="'$(MuesliIncludeCotypist)' == 'true'">
+    <DefineConstants>$(DefineConstants);MUESLI_INCLUDE_COTYPIST</DefineConstants>
+  </PropertyGroup>
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -22,10 +26,16 @@
     </AssemblyAttribute>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- Managed API only: it binds to the onnxruntime.dll sherpa-onnx already ships (CPU or CUDA pack). -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.24.4" />
     <PackageReference Include="LLamaSharp" Version="0.27.0" />
     <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
     <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.4" />
     <PackageReference Include="SharpCompress" Version="0.48.1" />
+    <!-- Live Whisper previews only (WhisperCppPreviewDecoder): DTW word timings sherpa lacks. Vulkan needs
+         no CUDA toolkit; its natives are suffixed "-whisper" so they never collide with LLamaSharp's ggml. -->
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
   </ItemGroup>
   <!--
     LLamaSharp.Backend.Cpu's props are imported before this deliberately RID-neutral library has

@@ -186,7 +186,8 @@ public sealed class Phase5FinalizationTests(Xunit.Abstractions.ITestOutputHelper
         var merged = TranscriptFormatter.Merge(
             [],
             [Seg(50000, 52000, "unattributed", "System")],
-            [new DiarizedSegment("spk-a", 0, 2000)],
+            // macOS: a lone diarized speaker owns every remote line, so the fallback needs two.
+            [new DiarizedSegment("spk-a", 0, 2000), new DiarizedSegment("spk-b", 2000, 4000)],
             Start);
 
         Assert.Contains("Others: unattributed", merged);

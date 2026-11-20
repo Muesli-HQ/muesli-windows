@@ -68,6 +68,9 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     public event EventHandler<Exception>? LiveTranscriptionFailed;
     public event EventHandler<MeetingProcessingStage>? ProcessingStageChanged;
 
+    /// <summary>Read at finalization: opt-in in-room speaker identification on the mic track.</summary>
+    public bool DiarizeMicrophoneAudio { get; set; }
+
     public MeetingSessionState State => _stateMachine.State;
     public bool IsRecording => State is MeetingSessionState.Recording or MeetingSessionState.DegradedRecording;
     public bool IsBusy => State is MeetingSessionState.Preparing or MeetingSessionState.Stopping or MeetingSessionState.Finalizing;
@@ -75,6 +78,10 @@ public sealed class MeetingRecordingCoordinator : IDisposable
 
     /// <summary>Live capture levels; silent whenever nothing is being captured.</summary>
     public MeetingLevelMeter Levels => _capture.Levels;
+    /// <summary>Routes the meeting audio feed into the active screen-recording clip, or null to detach.</summary>
+    public Action<float[], long, bool>? ScreenAudioSink { get => _capture.ScreenAudioSink; set => _capture.ScreenAudioSink = value; }
+
+    public long ElapsedMeetingSamples => _capture.ElapsedMeetingSamples;
 
     public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverableSessions() =>
         _recovery.Discover(_journal?.SessionId);
@@ -116,6 +123,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             {
                 throw new InvalidOperationException("A meeting session is already active.");
             }
+            CaptureStorageService.EnsureRoomToRecord();
             ResetTerminalStateIfNeeded();
             Transition(MeetingSessionTrigger.Prepare, "meeting capture requested");
 
@@ -579,7 +587,8 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             _startedAt,
             CurrentHealthWarnings(),
             _capture.LiveResult,
-            cancellationToken)).ConfigureAwait(false);
+            cancellationToken,
+            DiarizeMicrophoneAudio)).ConfigureAwait(false);
         _journal = outcome.Journal;
         if (outcome.TerminalState == MeetingSessionState.Failed &&
             _stateMachine.CanApply(MeetingSessionTrigger.Fail))

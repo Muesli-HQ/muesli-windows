@@ -40,6 +40,7 @@ internal static class NativeSherpaRuntime
     private static bool _checked;
     private static bool _isAvailable;
     private static IntPtr _sherpaHandle;
+    private static IntPtr _onnxRuntimeHandle;
     private static bool _resolverRegistered;
     private static string _selectedRuntime = "not initialized";
     private static string _diagnostic = "Sherpa native runtime selection has not run.";
@@ -185,7 +186,7 @@ internal static class NativeSherpaRuntime
 
         foreach (var directory in CpuRuntimeDirectories())
         {
-            TryLoadDependency(Path.Combine(directory, "onnxruntime.dll"));
+            TryLoadPath(Path.Combine(directory, "onnxruntime.dll"), out _onnxRuntimeHandle);
             if (TryLoadPath(Path.Combine(directory, "sherpa-onnx-c-api.dll"), out var cpuHandle))
             {
                 _sherpaHandle = cpuHandle;
@@ -251,7 +252,7 @@ internal static class NativeSherpaRuntime
         // of them dynamically and owns their initialization order. Making every
         // dependency directory visible before loading the CUDA execution provider
         // matches ONNX Runtime's supported Windows loading path.
-        if (!TryLoadPath(Path.Combine(directory, "onnxruntime.dll"), out _) ||
+        if (!TryLoadPath(Path.Combine(directory, "onnxruntime.dll"), out _onnxRuntimeHandle) ||
             !TryLoadPath(Path.Combine(directory, "onnxruntime_providers_shared.dll"), out _) ||
             !TryLoadPath(Path.Combine(directory, "sherpa-onnx-c-api.dll"), out var sherpaHandle))
         {
@@ -522,6 +523,25 @@ internal static class NativeSherpaRuntime
             // still wins normal Windows basename resolution.
             _resolverRegistered = true;
         }
+
+        // Bodhan runs its own graphs through the ONNX Runtime managed API. Bind it to the same
+        // onnxruntime.dll sherpa loaded, so one native runtime (and the CUDA pack) serves both.
+        try
+        {
+            // ONNX Runtime otherwise installs its own resolver on first use, which would load the
+            // CPU-only copy beside the app instead of the CUDA pack's.
+            Microsoft.ML.OnnxRuntime.OrtEnv.DisableDllImportResolver = true;
+            NativeLibrary.SetDllImportResolver(
+                typeof(Microsoft.ML.OnnxRuntime.InferenceSession).Assembly,
+                (libraryName, _, _) => libraryName.Equals("onnxruntime", StringComparison.OrdinalIgnoreCase)
+                    ? _onnxRuntimeHandle
+                    : IntPtr.Zero);
+        }
+        catch (InvalidOperationException)
+        {
+            // A resolver is already registered for ONNX Runtime: the binding is fixed for this
+            // process. Bodhan checks the native runtime before its first ONNX Runtime call.
+        }
     }
 
     private static IntPtr ResolveSherpaImport(
@@ -532,14 +552,6 @@ internal static class NativeSherpaRuntime
         return libraryName.Contains("sherpa-onnx-c-api", StringComparison.OrdinalIgnoreCase)
             ? _sherpaHandle
             : IntPtr.Zero;
-    }
-
-    private static void TryLoadDependency(string path)
-    {
-        if (File.Exists(path))
-        {
-            TryLoadPath(path, out _);
-        }
     }
 
     private static bool TryLoadPath(string path, out IntPtr handle)

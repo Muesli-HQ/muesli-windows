@@ -17,7 +17,7 @@ public sealed class ModelAndSingleInstanceTests
     public void TranscriptionCatalogHasUniqueSafeModelDefinitions()
     {
         var models = TranscriptionModelCatalog.Models;
-        Assert.Equal(12, models.Count);
+        Assert.Equal(16, models.Count);
         Assert.Equal(models.Count, models.Select(model => model.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.All(models, model =>
         {
@@ -89,6 +89,21 @@ public sealed class ModelAndSingleInstanceTests
         Assert.False(File.Exists(partial));
         Assert.False(File.Exists(download));
         Assert.False(Directory.Exists(staging));
+    }
+
+    [Fact]
+    public void CleanupLeavesASiblingModelsInFlightArtifacts()
+    {
+        using var directory = new TestDirectory();
+        var own = directory.File(".sherpa-onnx-whisper-tiny.0123abcd.download");
+        var sibling = directory.File(".sherpa-onnx-whisper-tiny.en.0123abcd.download");
+        File.WriteAllText(own, "partial");
+        File.WriteAllText(sibling, "in flight");
+
+        ModelSetupArtifactCleaner.Cleanup(directory.Path, "sherpa-onnx-whisper-tiny");
+
+        Assert.False(File.Exists(own));
+        Assert.True(File.Exists(sibling));
     }
 
     [Fact]

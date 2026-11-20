@@ -9,7 +9,8 @@ internal sealed record MeetingFinalizationRequest(
     DateTime StartedAt,
     IReadOnlyList<string> HealthWarnings,
     MeetingLiveTranscriptionResult? LiveResult,
-    CancellationToken CancellationToken);
+    CancellationToken CancellationToken,
+    bool DiarizeMicrophone = false);
 
 internal sealed record MeetingFinalizationOutcome(
     RecordedMeetingResult Result,
@@ -50,6 +51,26 @@ internal sealed class MeetingFinalizationPipeline
     }
 
     public void DisposeDiarization() => _diarizationClient.Dispose();
+
+    /// <summary>macOS in-room speakers: the opt-in diarizer pass over the retained mic track. Any
+    /// failure keeps the mic as "You"; the meeting still saves.</summary>
+    private async Task<List<DiarizedSegment>?> DiarizeMicrophoneAsync(MeetingFinalizationRequest request, string? micPath, TranscriptionResult micTranscript)
+    {
+        if (!request.DiarizeMicrophone || micPath is null || (micTranscript.Segments?.Count ?? 0) == 0) return null;
+        StageChanged?.Invoke(MeetingProcessingStage.IdentifyingSpeakers);
+        try
+        {
+            var result = await _diarizationClient.DiarizeFileAsync(micPath).ConfigureAwait(false);
+            var segments = result.Segments ?? [];
+            _logService?.Info($"Local speaker diarization completed. speakers={SpeakerAttribution.SignificantSpeakerIds(segments).Count}; segments={segments.Count}; processingMs={result.ProcessingMs}");
+            return segments;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logService?.Info($"Local speaker diarization failed. category={exception.GetType().Name}");
+            return null;
+        }
+    }
 
     public async Task<MeetingFinalizationOutcome> FinalizeAsync(MeetingFinalizationRequest request)
     {
@@ -107,6 +128,8 @@ internal sealed class MeetingFinalizationPipeline
                     ? await _transcriptionClient.TranscribeFileAsync("Meeting system audio", tracks.SystemPath).ConfigureAwait(false)
                     : new TranscriptionResult("");
             }
+            micTranscript = TranscriptionEngineArtifactsFilter.Apply(micTranscript);
+            systemTranscript = TranscriptionEngineArtifactsFilter.Apply(systemTranscript);
             LogTranscriptionDiagnostic("meeting-mic", micTranscript);
             if (tracks.MicrophonePath is not null && (micTranscript.Segments?.Count ?? 0) == 0)
             {
@@ -152,13 +175,15 @@ internal sealed class MeetingFinalizationPipeline
                 }
             }
 
+            var micDiarization = await DiarizeMicrophoneAsync(request, tracks.MicrophonePath, micTranscript).ConfigureAwait(false);
             var micTimeline = _persistence.BuildTrackTimeline(journal, MeetingAudioChannel.Microphone);
             var systemTimeline = _persistence.BuildTrackTimeline(journal, MeetingAudioChannel.System);
             var merged = TranscriptFormatter.Merge(
                 MeetingTranscriptTimeline.Normalize(micTranscript.Segments, micTimeline),
                 MeetingTranscriptTimeline.Normalize(systemTranscript.Segments, systemTimeline),
                 MeetingTranscriptTimeline.Normalize(diarizationSegments, systemTimeline),
-                request.StartedAt);
+                request.StartedAt,
+                micDiarization is null ? null : MeetingTranscriptTimeline.Normalize(micDiarization, micTimeline));
             var durationMs = MeasureRecordedDurationMs(tracks);
             var cleanedWarnings = CleanupHealthWarnings(
                 healthWarnings,

@@ -10,6 +10,10 @@ namespace Muesli.Windows.Tests;
 /// </summary>
 public sealed class Phase7NotesTests
 {
+    /// <summary>Retry backoff is real seconds in the app; tests exercise the retries, not the waiting.</summary>
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void SkipRetryDelays() => MeetingSummaryService.RetryDelay = (_, _) => Task.CompletedTask;
+
     private const string Transcript = "[09:00:00] You: we agreed to ship on Friday and Priya will own the release notes.";
 
     private static MuesliSettings Settings(string provider, string? endpoint = null, string? model = null) => new()
@@ -427,16 +431,37 @@ public sealed class Phase7NotesTests
     }
 
     [Fact]
-    public async Task AnEmptyTranscriptProducesNoNotesAndNeverCallsAProvider()
+    public async Task AnEmptyRecordingIsMarkedEmptyAndNeverCallsAProvider()
     {
         var handler = new StubHandler(HttpStatusCode.OK, "{\"message\":{\"content\":\"x\"}}");
         using var client = new HttpClient(handler);
 
-        var result = await MeetingSummaryService.CreateSummaryResultAsync(
-            "   ", "t", Settings("ollama"), CancellationToken.None, client);
-
-        Assert.Equal("", result.Summary);
+        // MAC-06 (macOS 6bb10e8e, 32790f6c): an earlier empty-recording result is not meeting content.
+        foreach (var previous in new string?[] { null, "", "  " + MeetingSummaryService.EmptyRecordingNotes + Environment.NewLine })
+        {
+            var result = await MeetingSummaryService.CreateSummaryResultAsync(
+                "   ", "t", Settings("ollama"), CancellationToken.None, client, manualNotes: " ", previousMeetingNotes: previous);
+            Assert.Equal(MeetingSummaryService.EmptyRecordingNotes, result.Summary);
+            Assert.False(result.UsedLocalFallback);
+        }
+        var meeting = new PersistedMeeting { Title = "Kept title", Transcript = " ", ManualNotes = "" };
+        Assert.Equal("Kept title", await MeetingSummaryService.CreateTitleAsync(meeting, Settings("ollama"), CancellationToken.None, client));
         Assert.Null(handler.LastRequestUri);
+    }
+
+    [Theory]
+    [InlineData("", "Typed notes", null)]
+    [InlineData("", "", "Last week: ship the beta.")]
+    [InlineData("We shipped it.", "", null)]
+    public async Task AnyRealContentStillReachesTheProvider(string transcript, string manual, string? previous)
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"message\":{\"content\":\"## Summary - done.\"}}");
+        using var client = new HttpClient(handler);
+        Assert.False(MeetingSummaryService.HasNothingToSummarize(transcript, manual, previous));
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(
+            transcript, "t", Settings("ollama"), CancellationToken.None, client, manualNotes: manual, previousMeetingNotes: previous);
+        Assert.NotNull(handler.LastRequestUri);
+        Assert.NotEqual(MeetingSummaryService.EmptyRecordingNotes, result.Summary);
     }
 
     // ---- persistence -------------------------------------------------------------
@@ -684,7 +709,42 @@ public sealed class Phase7NotesTests
         Assert.Equal("## Summary\n- old", loaded.Summary);
     }
 
+    [Fact]
+    public async Task TransientSummaryFailuresRetryButSetupFailuresDoNot()
+    {
+        Assert.True(MeetingSummaryRetryPolicy.IsTransient(new SummaryProviderException("http-503")));
+        Assert.True(MeetingSummaryRetryPolicy.IsTransient(new SummaryProviderException("http-429")));
+        Assert.False(MeetingSummaryRetryPolicy.IsTransient(new SummaryProviderException("http-401")));
+        Assert.False(MeetingSummaryRetryPolicy.IsTransient(new SummaryProviderException("not-signed-in")));
+        Assert.Equal(3, MeetingSummaryRetryPolicy.EffectiveRetries(3, "chatgpt", new SummaryProviderException("empty-response")));
+        Assert.Equal(1, MeetingSummaryRetryPolicy.EffectiveRetries(3, "ollama", new SummaryProviderException("http-500")));
+        Assert.Equal(0, MeetingSummaryRetryPolicy.EffectiveRetries(0, "chatgpt", new SummaryProviderException("http-500")));
+        Assert.Equal([1d, 2d, 4d, 8d, 8d], Enumerable.Range(1, 5).Select(a => MeetingSummaryRetryPolicy.Delay(a).TotalSeconds));
+
+        var recovering = new SequenceHandler(HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK);
+        using var client = new HttpClient(recovering);
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(Transcript, "Sync", Settings("ollama"), httpClient: client);
+        Assert.False(result.UsedLocalFallback);
+        Assert.Equal(2, recovering.Calls);
+
+        var missing = new SequenceHandler(HttpStatusCode.NotFound, HttpStatusCode.OK);
+        using var missingClient = new HttpClient(missing);
+        Assert.True((await MeetingSummaryService.CreateSummaryResultAsync(Transcript, "Sync", Settings("ollama"), httpClient: missingClient)).UsedLocalFallback);
+        Assert.Equal(1, missing.Calls);
+    }
+
     // ---- fakes -------------------------------------------------------------------
+
+    private sealed class SequenceHandler(params HttpStatusCode[] statuses) : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var status = statuses[Math.Min(Calls++, statuses.Length - 1)];
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent("{\"message\":{\"content\":\"## Summary\\nok\"}}") });
+        }
+    }
 
     private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
     {

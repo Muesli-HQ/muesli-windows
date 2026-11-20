@@ -29,6 +29,9 @@ public sealed class WinUiSettingsContext
 
     public event EventHandler<MuesliSettings>? Changed;
 
+    /// <summary>The profile's protected credential store.</summary>
+    public ISecretStore Secrets => _secrets;
+
     /// <summary>The current settings snapshot. No I/O after the first call.</summary>
     public MuesliSettings Load() => Volatile.Read(ref _snapshot) ?? LoadFromDisk();
 
@@ -177,6 +180,7 @@ public sealed class WinUiSettingsContext
     {
         // Keep the native recognizer language selection in step with the saved choices.
         TranscriptionLanguageSelection.Apply(snapshot.ModelLanguages);
+        BodhanModels.OutputModeSetting = snapshot.BodhanOutputMode;
         Volatile.Write(ref _snapshot, snapshot);
     }
 }

@@ -127,6 +127,7 @@ public sealed partial class MeetingNotificationWindow : Window
         DismissButton.PointerExited += OnHoverExit;
 
         SingleActionButton.Click += (_, _) => PerformAction(_request.SingleAction);
+        SecondaryActionButton.Click += (_, _) => PerformAction(MeetingNotificationAction.Ignore);
         PrimaryJoinButton.Click += (_, _) => PerformAction(ResolvedArmedAction());
         ChevronButton.Click += (_, _) => { /* Flyout opens automatically */ };
         DismissButton.Click += (_, _) => BeginClose(MeetingNotificationOutcome.Dismissed, invokeDismiss: true, invokeAutoDismiss: false);
@@ -284,11 +285,23 @@ public sealed partial class MeetingNotificationWindow : Window
             SplitHost.Visibility = Visibility.Collapsed;
             SingleActionButton.Visibility = Visibility.Visible;
             SingleActionText.Text = _request.ActionLabel;
+            if (_request.HasSecondaryAction)
+            {
+                // Two half-width buttons share the single action's slot: secondary, then primary.
+                var half = (MeetingNotificationLayout.SplitButtonWidth - 6) / 2;
+                SingleActionButton.Width = half;
+                SecondaryActionButton.Width = half;
+                SecondaryActionButton.Visibility = Visibility.Visible;
+                SecondaryActionText.Text = _request.SecondaryActionLabel;
+            }
         }
 
         Canvas.SetLeft(TitleText, textX);
         Canvas.SetLeft(SubtitleText, textX);
-        Canvas.SetLeft(SingleActionButton, MeetingNotificationLayout.SingleActionButtonX(_cardWidth));
+        var actionX = MeetingNotificationLayout.SingleActionButtonX(_cardWidth);
+        Canvas.SetLeft(SecondaryActionButton, actionX);
+        Canvas.SetLeft(SingleActionButton, _request.HasSecondaryAction ? actionX + SecondaryActionButton.Width + 6 : actionX);
+        Canvas.SetTop(SecondaryActionButton, MeetingNotificationLayout.ActionTop);
         Canvas.SetLeft(SplitHost, MeetingNotificationLayout.SplitButtonX(_cardWidth));
         Canvas.SetTop(SingleActionButton, MeetingNotificationLayout.ActionTop);
         Canvas.SetTop(SplitHost, MeetingNotificationLayout.ActionTop);
@@ -338,7 +351,11 @@ public sealed partial class MeetingNotificationWindow : Window
     private void ApplyAccessibility()
     {
         AutomationProperties.SetAutomationId(Root, "MeetingNotificationWindow");
-        AutomationProperties.SetName(Root, $"Meeting detected. {_request.Title}. {_request.Subtitle}");
+        AutomationProperties.SetName(Root, _request.Kind == MeetingNotificationKind.DictionarySuggestion
+            ? $"{_request.Title} {_request.Subtitle}"
+            : $"Meeting detected. {_request.Title}. {_request.Subtitle}");
+        AutomationProperties.SetAutomationId(SecondaryActionButton, "MeetingNotificationSecondaryAction");
+        AutomationProperties.SetName(SecondaryActionButton, _request.SecondaryActionLabel ?? "");
         AutomationProperties.SetAutomationId(TitleText, "MeetingNotificationTitle");
         AutomationProperties.SetName(TitleText, _request.Title);
         AutomationProperties.SetAutomationId(SubtitleText, "MeetingNotificationSubtitle");
@@ -374,6 +391,9 @@ public sealed partial class MeetingNotificationWindow : Window
         PrimaryJoinButton.Background = highlight;
         ChevronButton.Background = highlight;
         SingleActionText.Foreground = highlightText;
+        SecondaryActionButton.Background = window;
+        SecondaryActionButton.BorderBrush = text;
+        SecondaryActionText.Foreground = text;
         PrimaryJoinText.Foreground = highlightText;
         ChevronGlyph.Foreground = highlightText;
         PlatformBadge.Background = highlight;
@@ -472,7 +492,9 @@ public sealed partial class MeetingNotificationWindow : Window
             var right = (int)Math.Round((MeetingNotificationLayout.CardLeftInset + _cardWidth) * scale);
             var bottom = (int)Math.Round(MeetingNotificationLayout.CardHeight * scale);
             var diameter = (int)Math.Round(MeetingNotificationLayout.CardCornerRadius * 2 * scale);
-            var card = CreateRoundRectRgn(0, 0, right + 1, bottom + 1, diameter, diameter);
+            // The card starts at its left inset; a region from x = 0 painted that strip black.
+            var left = (int)Math.Round(MeetingNotificationLayout.CardLeftInset * scale);
+            var card = CreateRoundRectRgn(left, 0, right + 1, bottom + 1, diameter, diameter);
 
             var centreX = (int)Math.Round((1 + (CloseVisualSize / 2)) * scale);
             var centreY = (int)Math.Round((CloseVisualSize / 2) * scale);

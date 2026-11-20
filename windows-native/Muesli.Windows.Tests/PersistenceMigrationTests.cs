@@ -235,6 +235,20 @@ public sealed class JsonToSqliteMigrationTests
     }
 
     [Fact]
+    public void SettingsWrittenBeforePushToTalkSwitchKeepDictationOn()
+    {
+        using var directory = new TestDirectory();
+        var path = Path.Combine(directory.Path, "windows-settings.json");
+        File.WriteAllText(path, """{"schemaVersion":1,"data":{"hotkey":"F9"}}""");
+
+        var store = new SettingsStore(path, new InMemorySecretStore());
+        Assert.True(store.Load().PushToTalkEnabled);
+
+        store.Save(store.Load() with { PushToTalkEnabled = false });
+        Assert.False(new SettingsStore(path, new InMemorySecretStore()).Load().PushToTalkEnabled);
+    }
+
+    [Fact]
     public void SettingsAndSessionJournalsAreLeftAsAtomicJson()
     {
         using var directory = new TestDirectory();
@@ -268,7 +282,8 @@ public sealed class JsonToSqliteMigrationTests
             return names;
         });
         Assert.DoesNotContain(tables, name => name.Contains("setting", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(tables, name => name.Contains("session", StringComparison.OrdinalIgnoreCase));
+        // cotypist_sessions is typeahead history (macOS schema), not a meeting session journal.
+        Assert.DoesNotContain(tables, name => name.Contains("session", StringComparison.OrdinalIgnoreCase) && !name.StartsWith("cotypist_", StringComparison.Ordinal));
     }
 
     [Fact]
