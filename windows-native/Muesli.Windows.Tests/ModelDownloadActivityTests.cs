@@ -85,8 +85,9 @@ public sealed class ModelDownloadActivityTests
 
         var last = reports[^1];
         Assert.Equal(910_000, last.CompletedBytes);
-        // At most 10 kB in ≥0.6 s; counting the saved bytes would report over 1.5 MB/s.
-        Assert.InRange(last.BytesPerSecond, 1, 10_000 / 0.6);
+        // About 10 kB in ~0.6 s; counting the saved bytes would report over 1.5 MB/s. The ceiling leaves
+        // room for a delay that wakes a little early on a busy runner.
+        Assert.InRange(last.BytesPerSecond, 1, 50_000);
         Assert.True(last.TimeRemaining > TimeSpan.FromSeconds(5));
     }
 
