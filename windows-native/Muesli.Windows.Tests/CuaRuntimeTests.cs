@@ -284,7 +284,7 @@ public sealed class CuaRuntimeTests
         var settings = new CuaMuesliSettings(() => saved, value => saved = value);
         Assert.False(settings.Execute(Call("set_muesli_setting", new { setting = "openai_api_key", value = "x" })).Succeeded);
         Assert.False(settings.Execute(Call("set_muesli_setting", new { setting = "theme", value = "purple" })).Succeeded);
-        var missing = TranscriptionModelCatalog.Models.FirstOrDefault(model => !model.IsCached);
+        var missing = TranscriptionModelCatalog.Models.FirstOrDefault(model => !model.IsCached && model.Id != saved.DictationModelId);
         if (missing is not null)
         {
             var result = settings.Execute(Call("set_muesli_setting", new { setting = "dictation_model", value = missing.Id }));
