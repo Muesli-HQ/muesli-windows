@@ -22,7 +22,8 @@ public sealed record MeetingPresenceSnapshot(
     bool CandidateMicrophoneInUse = false,
     bool IsForeground = false,
     bool RequiresDuplexAudio = false,
-    bool CandidateOutputInUse = false);
+    bool CandidateOutputInUse = false,
+    bool MediaProbeSucceeded = true);
 
 public enum MeetingCandidateAction
 {

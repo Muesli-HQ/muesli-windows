@@ -61,6 +61,7 @@ public sealed class MeetingAutoStopTracker
 {
     private readonly MeetingRecordingStartOrigin _origin;
     private readonly string? _sourceKey;
+    private readonly string? _sourcePlatform;
     private readonly TimeSpan _gracePeriod;
     private readonly int _minimumMissingObservations;
     private bool _observedDuringRecording;
@@ -69,33 +70,53 @@ public sealed class MeetingAutoStopTracker
     private DateTimeOffset? _lastTranscriptActivity;
     private bool _warningSuppressed;
     private bool _dismissed;
+    private DateTimeOffset? _lastObservation;
+    private bool _sourceMissing;
 
     public MeetingAutoStopTracker(
         MeetingRecordingStartOrigin origin,
         string? sourceKey,
         TimeSpan? gracePeriod = null,
-        int minimumMissingObservations = 3)
+        int minimumMissingObservations = 3,
+        string? sourcePlatform = null)
     {
         _origin = origin;
         _sourceKey = string.IsNullOrWhiteSpace(sourceKey) ? null : sourceKey;
-        _gracePeriod = gracePeriod ?? TimeSpan.FromSeconds(20);
+        _sourcePlatform = string.IsNullOrWhiteSpace(sourcePlatform) ? null : sourcePlatform;
+        _gracePeriod = gracePeriod ?? TimeSpan.FromSeconds(60);
         _minimumMissingObservations = Math.Max(1, minimumMissingObservations);
     }
 
     public bool IsArmed => _origin == MeetingRecordingStartOrigin.DetectedMeeting && _sourceKey is not null;
+    public string? SourceKey => _sourceKey;
 
     public void NoteTranscriptActivity(DateTimeOffset now) => _lastTranscriptActivity = now;
     public void SuppressWarning() => _warningSuppressed = true;
     public void DismissWarning() => _dismissed = true;
 
-    public bool Observe(string? visibleSourceKey, DateTimeOffset now)
+    public bool Observe(string? visibleSourceKey, DateTimeOffset now, string? visiblePlatform = null,
+        bool observationReliable = true)
     {
+        _lastObservation = now;
+        _sourceMissing = false;
+        if (!observationReliable)
+        {
+            // A failed probe is unknown, never proof that the call ended.
+            _missingSince = null;
+            _missingObservations = 0;
+            return false;
+        }
         if (!IsArmed)
         {
             return false;
         }
 
-        if (string.Equals(visibleSourceKey, _sourceKey, StringComparison.OrdinalIgnoreCase))
+        // A join link in a browser and the native meeting window have different keys even
+        // though they belong to the same live meeting. Detection only supplies a platform
+        // after it has independently confirmed meeting evidence for the current window.
+        if (string.Equals(visibleSourceKey, _sourceKey, StringComparison.OrdinalIgnoreCase) ||
+            (_sourcePlatform is not null && visiblePlatform is not null &&
+             string.Equals(visiblePlatform, _sourcePlatform, StringComparison.OrdinalIgnoreCase)))
         {
             _observedDuringRecording = true;
             _missingSince = null;
@@ -111,11 +132,17 @@ public sealed class MeetingAutoStopTracker
 
         _missingSince ??= now;
         _missingObservations++;
-        // Losing the source is a warning, never authorization to stop capture. Match macOS's
-        // 45-second speech quiet period and dismissal for the rest of this recording.
-        return !_dismissed && !_warningSuppressed &&
+        // Like the macOS controller, source loss arms a warning before stopping. Retain the
+        // longer Windows grace period and quiet guard to tolerate audio-device reconnections.
+        _sourceMissing = true;
+        return CanStopAfterWarning(now);
+    }
+
+    /// <summary>Recheck at warning expiry; stale scans and explicit dismissal cannot stop capture.</summary>
+    public bool CanStopAfterWarning(DateTimeOffset now) =>
+               IsArmed && _sourceMissing && !_dismissed && !_warningSuppressed &&
+               _lastObservation is { } observed && now - observed <= TimeSpan.FromSeconds(10) &&
                (_lastTranscriptActivity is null || now - _lastTranscriptActivity >= TimeSpan.FromSeconds(45)) &&
                _missingObservations >= _minimumMissingObservations &&
-               now - _missingSince >= _gracePeriod;
-    }
+               _missingSince is { } missing && now - missing >= _gracePeriod;
 }

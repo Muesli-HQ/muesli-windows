@@ -186,7 +186,7 @@
                          Message="{x:Bind ViewModel.Notice, Mode=OneWay}"
                          AutomationProperties.AutomationId="MeetingRecordingNotice" />
                 <InfoBar IsOpen="{x:Bind ViewModel.IsSourceMissing, Mode=OneWay}" IsClosable="False" Severity="Warning"
-                         Title="Meeting signal lost" Message="Recording continues. Stop if the meeting ended."
+                         Title="Recording will stop soon" Message="Dismiss the warning or choose Keep recording to continue."
                          AutomationProperties.AutomationId="MeetingSignalLostNotice">
                     <InfoBar.ActionButton>
                         <Button Content="Keep recording" Command="{x:Bind ViewModel.KeepRecordingCommand}"

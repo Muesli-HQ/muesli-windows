@@ -388,17 +388,12 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            // Last honest cancellation point: once sherpa-onnx owns the samples the decode is a
-            // single native call that cannot be interrupted.
+            // A native decode cannot be interrupted; long audio checks cancellation between pieces.
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(TranscriptionProgress.TranscribingUnmeasured());
             return await Task.Run(() => TranscribeSamplesCore(
-                title,
-                samples,
-                sampleRate,
-                audioDurationMs,
-                preprocessingStatus,
-                preprocessingMs), cancellationToken);
+                title, samples, sampleRate, audioDurationMs, preprocessingStatus, preprocessingMs,
+                cancellationToken, progress), cancellationToken);
         }
         finally
         {
@@ -452,7 +447,9 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         int sampleRate,
         int audioDurationMs,
         string preprocessingStatus,
-        long preprocessingMs)
+        long preprocessingMs,
+        CancellationToken cancellationToken,
+        IProgress<TranscriptionProgress>? progress)
     {
         ThrowIfDisposed();
         var modelWasReused = _recognizer is not null;
@@ -463,8 +460,10 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         var chunks = LongAudioChunker.Split(samples, sampleRate);
         if (chunks.Count > 1)
         {
-            return TranscribeChunked(title, samples, sampleRate, audioDurationMs, chunks, startedAt, preprocessingMs + modelLoadStarted.ElapsedMilliseconds);
+            return TranscribeChunked(title, samples, sampleRate, audioDurationMs, chunks, startedAt,
+                preprocessingMs + modelLoadStarted.ElapsedMilliseconds, cancellationToken, progress);
         }
+        cancellationToken.ThrowIfCancellationRequested();
         var result = Decode(samples, sampleRate);
         startedAt.Stop();
 
@@ -520,15 +519,20 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         int audioDurationMs,
         IReadOnlyList<LongAudioChunker.Chunk> chunks,
         Stopwatch startedAt,
-        long priorMs)
+        long priorMs,
+        CancellationToken cancellationToken,
+        IProgress<TranscriptionProgress>? progress)
     {
         var text = new StringBuilder();
         var segments = new List<TranscriptSegment>();
-        foreach (var chunk in chunks)
+        for (var index = 0; index < chunks.Count; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            var chunk = chunks[index];
             var piece = new float[chunk.Length];
             Array.Copy(samples, chunk.Start, piece, 0, chunk.Length);
             var result = Decode(piece, sampleRate);
+            progress?.Report(TranscriptionProgress.Transcribing((index + 1.0) / chunks.Count));
             var pieceText = result.Text?.Trim() ?? "";
             if (pieceText.Length == 0) continue;
             if (text.Length > 0) text.Append(' ');

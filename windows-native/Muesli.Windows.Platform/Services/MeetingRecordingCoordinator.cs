@@ -72,6 +72,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     public bool IsRecording => State is MeetingSessionState.Recording or MeetingSessionState.DegradedRecording;
     public bool IsBusy => State is MeetingSessionState.Preparing or MeetingSessionState.Stopping or MeetingSessionState.Finalizing;
     public PersistedMeeting? ResumedMeeting => _journal?.ResumedMeeting;
+    public MeetingEndSuggestionTracker EndSuggestions => _capture.EndSuggestions;
 
     /// <summary>Live capture levels; silent whenever nothing is being captured.</summary>
     public MeetingLevelMeter Levels => _capture.Levels;

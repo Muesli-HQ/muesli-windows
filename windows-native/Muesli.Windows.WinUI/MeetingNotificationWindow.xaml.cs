@@ -50,6 +50,7 @@ public sealed partial class MeetingNotificationWindow : Window
     private readonly Action _onClose;
     private readonly bool _reduceMotion;
     private readonly MeetingNotificationCountdown _countdown = new();
+    private readonly System.Diagnostics.Stopwatch _countdownClock = new();
     private readonly DispatcherTimer _timer;
     private readonly IntPtr _hwnd;
     private double _cardWidth;
@@ -116,6 +117,7 @@ public sealed partial class MeetingNotificationWindow : Window
         ApplyRoundedRegion();
         AppWindow.Show(false);
         _countdown.Start(_request.DismissAfterSeconds);
+        _countdownClock.Restart();
         _timer.Start();
     }
 
@@ -142,29 +144,48 @@ public sealed partial class MeetingNotificationWindow : Window
 
     private void OnHoverEnter(object sender, PointerRoutedEventArgs e)
     {
+        // A parked pointer is not an explicit Keep recording decision. Automatic-stop warnings
+        // keep their deadline; ordinary meeting invitations still pause on hover.
+        if (_request.StopsRecordingOnTimeout) return;
         _hoverCount++;
         if (_hoverCount == 1)
         {
             _countdown.Pause();
+            _countdownClock.Stop();
             _timer.Stop();
         }
     }
 
     private void OnHoverExit(object sender, PointerRoutedEventArgs e)
     {
+        if (_request.StopsRecordingOnTimeout) return;
         if (_hoverCount == 0) return;
         _hoverCount--;
         if (_hoverCount == 0)
         {
             _countdown.Resume();
+            _countdownClock.Restart();
             if (!_closing) _timer.Start();
         }
     }
 
     private void OnTimerTick(object? sender, object e)
     {
-        var expired = _countdown.Advance(TimeSpan.FromMilliseconds(50));
+        // Dispatcher ticks can be delayed by model loading or rendering. Count real elapsed
+        // time so a 30-second stop warning cannot stretch indefinitely while the UI is busy.
+        var elapsed = _countdownClock.Elapsed;
+        _countdownClock.Restart();
+        var expired = _countdown.Advance(elapsed);
         CountdownScale.ScaleX = _countdown.Progress;
+        if (_request.StopsRecordingOnTimeout)
+        {
+            var subtitle = $"Stops in {Math.Ceiling(_countdown.RemainingSeconds):0}s unless dismissed";
+            if (SubtitleText.Text != subtitle)
+            {
+                SubtitleText.Text = subtitle;
+                AutomationProperties.SetName(SubtitleText, subtitle);
+            }
+        }
         if (expired)
         {
             BeginClose(MeetingNotificationOutcome.AutoDismissed, invokeDismiss: false, invokeAutoDismiss: true);
@@ -178,6 +199,7 @@ public sealed partial class MeetingNotificationWindow : Window
         _timer.Stop();
         FadeOutThen(() =>
         {
+            if (_suppressCallbacks) return;
             Close();
             _onAction?.Invoke(action);
         });
@@ -190,6 +212,7 @@ public sealed partial class MeetingNotificationWindow : Window
         _timer.Stop();
         FadeOutThen(() =>
         {
+            if (_suppressCallbacks) return;
             var wasPaused = _countdown.IsPaused;
             var fireAutoDismiss = invokeAutoDismiss &&
                                   MeetingNotificationAutoDismissPolicy.FiresAutoDismissAfterFade(wasPaused);
@@ -232,6 +255,7 @@ public sealed partial class MeetingNotificationWindow : Window
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _timer.Stop();
+        _countdownClock.Stop();
         _countdown.Stop();
         if (!_suppressCallbacks) _onClose?.Invoke();
     }
@@ -338,13 +362,15 @@ public sealed partial class MeetingNotificationWindow : Window
     private void ApplyAccessibility()
     {
         AutomationProperties.SetAutomationId(Root, "MeetingNotificationWindow");
-        AutomationProperties.SetName(Root, $"Meeting detected. {_request.Title}. {_request.Subtitle}");
+        AutomationProperties.SetName(Root, $"{_request.Title}. {_request.Subtitle}");
         AutomationProperties.SetAutomationId(TitleText, "MeetingNotificationTitle");
         AutomationProperties.SetName(TitleText, _request.Title);
         AutomationProperties.SetAutomationId(SubtitleText, "MeetingNotificationSubtitle");
         AutomationProperties.SetName(SubtitleText, _request.Subtitle);
         AutomationProperties.SetAutomationId(CountdownBar, "MeetingNotificationCountdown");
-        AutomationProperties.SetName(CountdownBar, "Time before this notification closes");
+        AutomationProperties.SetName(CountdownBar, _request.StopsRecordingOnTimeout
+            ? "Time before recording stops and saves" : "Time before this notification closes");
+        if (_request.IsEndSuggestion && !_request.StopsRecordingOnTimeout) CountdownBar.Visibility = Visibility.Collapsed;
         AutomationProperties.SetAutomationId(PlatformBadge, "MeetingNotificationPlatformBadge");
         AutomationProperties.SetName(PlatformBadge, $"Meeting platform: {_request.Platform}");
         AutomationProperties.SetAutomationId(SingleActionButton, "MeetingNotificationPrimaryAction");
@@ -353,8 +379,9 @@ public sealed partial class MeetingNotificationWindow : Window
         AutomationProperties.SetName(PrimaryJoinButton, _request.DefaultAction.Label());
         AutomationProperties.SetAutomationId(ChevronButton, "MeetingNotificationChevron");
         AutomationProperties.SetAutomationId(DismissButton, "MeetingNotificationDismiss");
-        AutomationProperties.SetName(DismissButton, "Dismiss");
-        ToolTipService.SetToolTip(DismissButton, "Dismiss");
+        var dismissLabel = _request.IsEndSuggestion ? "Keep recording" : "Dismiss";
+        AutomationProperties.SetName(DismissButton, dismissLabel);
+        ToolTipService.SetToolTip(DismissButton, dismissLabel);
     }
 
     private void ApplyHighContrastIfNeeded()

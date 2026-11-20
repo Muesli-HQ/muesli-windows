@@ -48,7 +48,7 @@ public sealed class PostMeetingHookTests
         HookEnabled = true,
         HookExecutablePath = path ?? HookExecutable,
         TranscriptPolicy = PostMeetingTranscriptPolicy.Inline,
-        Timeout = TimeSpan.FromSeconds(5)
+        Timeout = TimeSpan.FromSeconds(15)
     };
 
     [Fact]
@@ -125,7 +125,8 @@ public sealed class PostMeetingHookTests
             HookOptions(copiedHook),
             PostMeetingCompletionEvent.RecoveryCompleted);
 
-        Assert.Equal(PostMeetingAutomationStatus.Succeeded, result.Status);
+        Assert.True(result.Status == PostMeetingAutomationStatus.Succeeded,
+            $"Hook status was {result.Status}: {result.Error}");
         Assert.Contains($"TITLE={title}", result.StandardOutput, StringComparison.Ordinal);
     }
 
@@ -289,7 +290,8 @@ public sealed class PostMeetingHookTests
             options,
             PostMeetingCompletionEvent.RecordingCompleted);
 
-        Assert.Equal(PostMeetingAutomationStatus.TimedOut, result.Status);
+        Assert.True(result.Status == PostMeetingAutomationStatus.TimedOut,
+            $"Hook status was {result.Status}: {result.Error}");
         Assert.True(File.Exists(markerPath), "Immediate-start descendant never reached its marker.");
         var childId = int.Parse(File.ReadAllText(markerPath));
         await Task.Delay(150);

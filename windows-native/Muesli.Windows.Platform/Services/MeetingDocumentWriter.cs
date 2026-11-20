@@ -16,7 +16,7 @@ public static class MeetingDocumentWriter
 
     /// <summary>Save formats the export picker may offer, in order.</summary>
     public static string[] ApprovedExportExtensions =>
-        PdfExportApproved ? [".md", ".pdf"] : [".md"];
+        PdfExportApproved ? [".pdf", ".md"] : [".md"];
 
     /// <summary>Writes the chosen save format. PDF when the picker selected .pdf, Markdown otherwise.</summary>
     public static void Write(string markdown, string path)

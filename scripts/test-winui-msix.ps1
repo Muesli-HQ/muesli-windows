@@ -181,6 +181,7 @@ try {
         $priDumpPath = Join-Path $root 'artifacts\store-pri-dump.xml'
         try {
             if (-not (Test-Path -LiteralPath $priPath)) { throw 'Store package is missing resources.pri.' }
+            New-Item -ItemType Directory -Path (Split-Path -Parent $priDumpPath) -Force | Out-Null
             $makePri = Get-MuesliMakePriPath
             & $makePri dump /if $priPath /of $priDumpPath /dt Schema /o | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "MakePri dump failed with exit code $LASTEXITCODE." }

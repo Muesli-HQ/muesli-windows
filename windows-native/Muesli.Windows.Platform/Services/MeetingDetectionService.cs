@@ -31,6 +31,7 @@ public sealed class MeetingDetectionService : IDisposable
     private Task? _loopTask;
     private int _scanCount;
     private int _disposed;
+    private DetectedMeeting? _recordingTarget;
 
     public event EventHandler<DetectedMeeting>? MeetingDetected;
     public event EventHandler<MeetingDetectionScan>? ScanCompleted;
@@ -94,6 +95,8 @@ public sealed class MeetingDetectionService : IDisposable
     /// <summary>Suppresses further prompts for this meeting until it ends and starts again.</summary>
     public void DismissCandidate(string? key) => _resolver.Dismiss(key);
 
+    public void TrackRecording(DetectedMeeting? meeting) => Volatile.Write(ref _recordingTarget, meeting);
+
     /// <summary>Offers a still-running meeting once more after its prompt timed out unanswered.</summary>
     public void RepromptCandidate(string? key) => _resolver.Reprompt(key);
 
@@ -141,6 +144,17 @@ public sealed class MeetingDetectionService : IDisposable
         var stopwatch = Stopwatch.StartNew();
         var candidates = 0;
 
+        // A recording follows its own window before whatever happens to be in the foreground.
+        // Minimized meeting windows still own audio sessions; do not walk their UIA subtrees.
+        if (Volatile.Read(ref _recordingTarget) is { } target)
+        {
+            // Recording liveness follows media ownership, never a still-open join URL. Falling
+            // through to general discovery here used to resurrect ended browser meetings.
+            var presence = _signals.Capture(MeetingEvidenceStrength.Strong, target.Key, target.ProcessId,
+                isForeground: false, requiresMediaActivity: true, requiresDuplexAudio: !IsBrowserProcess(target.ProcessName));
+            return CompleteScan(MeetingDetectionScan.ForRecordingSource(target, presence), stopwatch, 1);
+        }
+
         var foreground = GetForegroundWindow();
         if (foreground != IntPtr.Zero &&
             ObserveWindow(foreground) is { } foregroundObservation &&
@@ -168,7 +182,7 @@ public sealed class MeetingDetectionService : IDisposable
         var visibleWindowCount = 0;
         EnumWindows((handle, _) =>
         {
-            if (!IsWindowVisible(handle) || IsIconic(handle) || IsWindowCloaked(handle) || handle == IntPtr.Zero)
+            if (!IsWindowVisible(handle) || IsWindowCloaked(handle) || handle == IntPtr.Zero)
             {
                 return true;
             }
@@ -176,6 +190,9 @@ public sealed class MeetingDetectionService : IDisposable
             visibleWindowCount++;
             if (ObserveWindow(handle) is { } observation)
             {
+                // Dedicated clients can be corroborated from their audio sessions when minimized.
+                // Unknown minimized browser windows are not candidates for expensive UIA walks.
+                if (IsIconic(handle) && !MeetingPresenceSignals.IsDedicatedMeetingProcess(observation.ProcessName)) return true;
                 observations.Add(observation);
             }
 
@@ -640,6 +657,18 @@ public sealed record MeetingDetectionScan(
 {
     public long ElapsedMs { get; init; }
     public int CandidateCount { get; init; }
+    public bool IsReliable { get; init; } = true;
+    public string? TrackedSourceKey { get; init; }
+    public DateTimeOffset ObservedAt { get; init; } = DateTimeOffset.UtcNow;
+
+    public static MeetingDetectionScan ForRecordingSource(DetectedMeeting target, MeetingPresenceSnapshot presence)
+    {
+        var scan = presence.MediaProbeSucceeded && MeetingCandidateResolver.QualifiesAsMeeting(presence)
+            ? Detected(target with { Presence = presence }, "recording source")
+            : NotFound(presence.MediaProbeSucceeded ? "Recording source media is no longer active"
+                : "Recording source media could not be checked", 0);
+        return scan with { IsReliable = presence.MediaProbeSucceeded, TrackedSourceKey = target.Key };
+    }
 
     public static MeetingDetectionScan Detected(DetectedMeeting meeting, string source)
     {

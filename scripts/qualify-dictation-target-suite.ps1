@@ -5,7 +5,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$reports = @($ReportPaths | ForEach-Object {
+# powershell.exe -File receives a comma-joined argument as one string, while callers that
+# dot-source this script can pass a real string array. Accept both without splitting a
+# valid report filename that itself contains a comma.
+$resolvedInputs = @($ReportPaths | ForEach-Object {
+    if (Test-Path -LiteralPath $_ -PathType Leaf) { $_ }
+    else { $_ -split ',' }
+})
+$reports = @($resolvedInputs | ForEach-Object {
     $path = (Resolve-Path -LiteralPath $_).Path
     $report = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     if ($report.schemaVersion -ne 2 -or -not $report.passed -or -not $report.textVerified) {
