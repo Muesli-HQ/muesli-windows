@@ -86,8 +86,6 @@ public sealed class AudioCaptureService : IDisposable
     // ponytail: reflection into NAudio 2.2.1; on a missing member we fall back to opening on demand.
     private static readonly MethodInfo? InitializeCaptureDevice =
         typeof(WasapiCapture).GetMethod("InitializeCaptureDevice", BindingFlags.NonPublic | BindingFlags.Instance);
-    private const int HeadsetFormFactor = 5;
-    private const int HandsetFormFactor = 6;
 
     /// <summary>
     /// Initializes, but does not start, the shared-mode client for the next capture. No audio is
@@ -106,7 +104,8 @@ public sealed class AudioCaptureService : IDisposable
             DisposePrepared();
             var device = PickDevice(key);
             var formFactor = DefaultRenderRouteInspector.ReadFormFactor(device);
-            if (formFactor is HeadsetFormFactor or HandsetFormFactor) return;
+            if (formFactor is AudioOutputRouteClassifier.FormFactorHeadset or AudioOutputRouteClassifier.FormFactorHandset ||
+                DefaultCaptureEndpointPolicy.IsHandsFree(device.FriendlyName)) return;
             var capture = new WasapiCapture(device) { ShareMode = AudioClientShareMode.Shared };
             try
             {

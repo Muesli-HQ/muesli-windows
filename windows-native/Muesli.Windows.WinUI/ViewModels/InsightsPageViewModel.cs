@@ -53,6 +53,14 @@ public partial class InsightsPageViewModel(
     [ObservableProperty] public partial IReadOnlyList<InsightsWeekdayItem> WeekdayLabels { get; private set; } = [];
     [ObservableProperty] public partial IReadOnlyList<InsightsWordItem> DictationWords { get; private set; } = [];
     [ObservableProperty] public partial IReadOnlyList<InsightsWordItem> MeetingWords { get; private set; } = [];
+    // macOS attributionPanel "Your dictation habits": the top five models and apps, the rest behind a disclosure.
+    [ObservableProperty] public partial IReadOnlyList<InsightsUsageItem> TopModels { get; private set; } = [];
+    [ObservableProperty] public partial IReadOnlyList<InsightsUsageItem> MoreModels { get; private set; } = [];
+    [ObservableProperty] public partial IReadOnlyList<InsightsUsageItem> TopApps { get; private set; } = [];
+    [ObservableProperty] public partial IReadOnlyList<InsightsUsageItem> MoreApps { get; private set; } = [];
+    [ObservableProperty] public partial string MoreModelsLabel { get; private set; } = "";
+    [ObservableProperty] public partial string MoreAppsLabel { get; private set; } = "";
+    [ObservableProperty] public partial string UsageNote { get; private set; } = "";
     [ObservableProperty] public partial Uri? PreviewUri { get; private set; }
     [ObservableProperty] public partial bool HasPreview { get; private set; }
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
@@ -230,6 +238,7 @@ public partial class InsightsPageViewModel(
             new InsightsWeekdayItem("")];
         DictationWords = BuildWords(snapshot.DictationWords);
         MeetingWords = BuildWords(snapshot.MeetingWords);
+        BuildUsage(source, range);
         var rangeLabel = RangeIndex switch { 0 => "30 days", 1 => "90 days", 2 => "12 months", _ => "All time" };
         _shareData = new InsightsShareCardData(
             rangeLabel,
@@ -385,6 +394,52 @@ public partial class InsightsPageViewModel(
         return path;
     }
 
+    private void BuildUsage(WinUiLibrarySnapshot source, InsightsRange range)
+    {
+        var now = DateTime.Now;
+        var apps = DictationTargetApps.LoadAll(library.Profile.RootDirectory);
+        // Keyed by display name: older builds stored several ids for the same model.
+        var models = InsightsWordAnalyzer.Usage(source.Dictations.Select(item =>
+        {
+            var name = string.IsNullOrWhiteSpace(item.ModelProfile) ? null : TranscriptionModelCatalog.DisplayNameFor(item.ModelProfile);
+            return (item.Timestamp, item.Text, name, name);
+        }), range, now);
+        var appUsage = InsightsWordAnalyzer.Usage(source.Dictations.Select(item =>
+        {
+            var app = apps.TryGetValue(item.Id, out var found) ? found : null;
+            return (item.Timestamp, item.Text, app?.AppId, app?.Name);
+        }), range, now);
+        (TopModels, MoreModels, MoreModelsLabel) = Rank(models.Where(row => row.Id != "unknown").ToList(), "models", _ => null);
+        (TopApps, MoreApps, MoreAppsLabel) = Rank(appUsage.Where(row => row.Id != "unknown").ToList(), "apps",
+            row => apps.Values.FirstOrDefault(app => string.Equals(app.AppId, row.Id, StringComparison.OrdinalIgnoreCase)));
+        OnPropertyChanged(nameof(HasModels));
+        OnPropertyChanged(nameof(HasApps));
+        OnPropertyChanged(nameof(HasMoreModels));
+        OnPropertyChanged(nameof(HasMoreApps));
+        var unrecordedModels = models.FirstOrDefault(row => row.Id == "unknown")?.Sessions ?? 0;
+        var unrecordedApps = appUsage.FirstOrDefault(row => row.Id == "unknown")?.Sessions ?? 0;
+        UsageNote = string.Join(" ", new[]
+        {
+            unrecordedModels > 0 ? $"Model not recorded for {unrecordedModels:N0} earlier sessions." : "",
+            unrecordedApps > 0 ? $"The app was not recorded for {unrecordedApps:N0} earlier sessions; new dictations on this PC appear by app." : ""
+        }.Where(text => text.Length > 0));
+    }
+
+    private static (IReadOnlyList<InsightsUsageItem> Top, IReadOnlyList<InsightsUsageItem> More, string MoreLabel) Rank(
+        IReadOnlyList<InsightsUsage> rows, string noun, Func<InsightsUsage, DictationTargetApp?> app)
+    {
+        var peak = Math.Max(1, rows.FirstOrDefault()?.Sessions ?? 1);
+        var items = rows.Select(row => new InsightsUsageItem(row.Name,
+            $"{Count(row.Sessions, "session", "sessions")} · {Count(row.Words, "word", "words")}",
+            row.Sessions / (double)peak, app(row))).ToList();
+        return (items.Take(5).ToList(), items.Skip(5).ToList(), items.Count > 5 ? $"All {items.Count} {noun}" : "");
+    }
+
+    public bool HasModels => TopModels.Count > 0;
+    public bool HasApps => TopApps.Count > 0;
+    public bool HasMoreModels => MoreModels.Count > 0;
+    public bool HasMoreApps => MoreApps.Count > 0;
+
     private void ShowStatus(string message, bool error = false)
     {
         StatusMessage = message;
@@ -413,5 +468,12 @@ public sealed record InsightsWordItem(string Word, int Count, double DisplaySize
 }
 
 public sealed record InsightsMonthItem(string Label, double Width);
+
+/// <summary>A ranking row: name, "N sessions · N words", the bar's share of the leader, and the app for its icon.</summary>
+public sealed record InsightsUsageItem(string Name, string Detail, double Fraction, DictationTargetApp? App)
+{
+    public bool IsApp => App is not null;
+    public double Percent => Fraction * 100;
+}
 
 public sealed record InsightsWeekdayItem(string Label);

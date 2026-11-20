@@ -116,6 +116,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             {
                 throw new InvalidOperationException("A meeting session is already active.");
             }
+            CaptureStorageService.EnsureRoomToRecord();
             ResetTerminalStateIfNeeded();
             Transition(MeetingSessionTrigger.Prepare, "meeting capture requested");
 

@@ -1327,3 +1327,20 @@ internal static class LibraryDayHeading
         return $"{date.ToString("ddd", culture)}, {date.ToString(monthDay, culture)}".ToUpper(culture);
     }
 }
+public partial class MeetingsPageViewModel
+{
+    /// <summary>macOS currentFolderName breadcrumb: "Grandparent / Parent / Folder".</summary>
+    public static string? FolderPath(IReadOnlyList<PersistedMeetingFolder> folders, string? folderId)
+    {
+        var byId = folders.GroupBy(folder => folder.Id).ToDictionary(group => group.Key, group => group.First());
+        if (string.IsNullOrWhiteSpace(folderId) || !byId.TryGetValue(folderId, out var folder)) return null;
+        var parts = new List<string> { folder.Name };
+        var seen = new HashSet<string> { folder.Id };
+        while (folder.ParentId is { } parentId && byId.TryGetValue(parentId, out var parent) && seen.Add(parentId))
+        {
+            parts.Insert(0, parent.Name);
+            folder = parent;
+        }
+        return string.Join(" / ", parts);
+    }
+}

@@ -18,6 +18,8 @@ public sealed class WinUiIndicatorHost : IDisposable
     private readonly WinUiDictationContext _dictation;
     private readonly WinUiMeetingContext _meetings;
     private readonly WinUiComputerUseContext _computerUse;
+    private readonly WinUiQuillContext _quill;
+    private ComputerUseOutcome? _retiredQuillOutcome;
     private readonly IUiDispatcher _dispatcher;
     private readonly AppLogService _log = new();
 
@@ -27,6 +29,8 @@ public sealed class WinUiIndicatorHost : IDisposable
     private int _disposed;
 
     private FloatingIndicatorState _state = FloatingIndicatorState.Idle;
+    private string _status = "";
+    private ComputerUseOutcome? _retiredOutcome; // Already flashed; never shown again.
     private string _owner = IndicatorOwnerKind.None;
     private bool _meetingPaused;
     private long _sessionId;
@@ -43,8 +47,11 @@ public sealed class WinUiIndicatorHost : IDisposable
         WinUiDictationContext dictation,
         WinUiMeetingContext meetings,
         WinUiComputerUseContext computerUse,
+        WinUiQuillContext quill,
         IUiDispatcher dispatcher)
     {
+        _quill = quill;
+        _quill.Changed += OnStateSourceChanged;
         _dictation = dictation;
         _meetings = meetings;
         _computerUse = computerUse;
@@ -123,6 +130,25 @@ public sealed class WinUiIndicatorHost : IDisposable
         {
             owner = IndicatorOwnerKind.ComputerUse;
             state = FloatingIndicatorState.Transcribing;
+            status = _computerUse.PillText;
+        }
+        else if (_quill.IsRunning)
+        {
+            // Quill listens through the dictation capture; afterwards the pill shows its own progress.
+            state = FloatingIndicatorState.Transcribing;
+            status = _quill.Status;
+        }
+        else if (state == FloatingIndicatorState.Idle && _quill.Outcome is { } quillOutcome && !ReferenceEquals(quillOutcome, _retiredQuillOutcome))
+        {
+            state = quillOutcome.Succeeded ? FloatingIndicatorState.Success : FloatingIndicatorState.Error;
+            status = quillOutcome.Message;
+        }
+        else if (state == FloatingIndicatorState.Idle && _computerUse.Outcome is { } outcome && !ReferenceEquals(outcome, _retiredOutcome))
+        {
+            // macOS flashes the run's result like a dictation notice, then returns to idle.
+            owner = IndicatorOwnerKind.ComputerUse;
+            state = outcome.Succeeded ? FloatingIndicatorState.Success : FloatingIndicatorState.Error;
+            status = outcome.Message;
         }
 
         if (_probeState is { } probed)
@@ -143,6 +169,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
         _state = state;
         _owner = owner;
+        _status = status;
         _meetingPaused = meetingPaused;
 
         UpdateReturnDwell(state, status);
@@ -191,6 +218,8 @@ public sealed class WinUiIndicatorHost : IDisposable
                     await Task.Delay(TimeSpan.FromMilliseconds(duration), token);
                     if (token.IsCancellationRequested) return;
                     _dismissedOutcomeStatus = _pendingOutcomeStatus;
+                    if (_owner == IndicatorOwnerKind.ComputerUse) _retiredOutcome = _computerUse.Outcome;
+                    else _retiredQuillOutcome = _quill.Outcome;
                     _pendingOutcomeStatus = null;
                     _probeState = null;
                     _dispatcher.TryEnqueue(UpdateState);
@@ -217,7 +246,9 @@ public sealed class WinUiIndicatorHost : IDisposable
             Owner = _owner,
             Visible = _state != FloatingIndicatorState.Idle || settings.ShowFloatingIndicator,
             HotkeyLabel = string.IsNullOrWhiteSpace(settings.Hotkey) ? "shortcut" : settings.Hotkey,
-            Message = ComposeMessage(_state, _dictation.Status ?? "", _owner == IndicatorOwnerKind.Meeting ? _meetings.ProcessingStage : null),
+            Message = _owner == IndicatorOwnerKind.ComputerUse && _state == FloatingIndicatorState.Transcribing
+                ? _status
+                : ComposeMessage(_state, _dictation.Status ?? "", _owner == IndicatorOwnerKind.Meeting ? _meetings.ProcessingStage : null),
             RecordingColorHex = settings.RecordingColorHex,
             IndicatorStyle = settings.IndicatorStyle,
             MeetingPaused = _meetingPaused,
@@ -400,6 +431,7 @@ public sealed class WinUiIndicatorHost : IDisposable
         _dictation.RecordingLevelChanged -= OnRecordingLevel;
         _meetings.Changed -= OnStateSourceChanged;
         _computerUse.Changed -= OnStateSourceChanged;
+        _quill.Changed -= OnStateSourceChanged;
         App.Settings.Changed -= OnSettingsChanged;
 
         _probeWatcher?.Dispose();

@@ -20,6 +20,9 @@ public sealed record InsightsTotals(
     public int TotalWords => DictationWords + MeetingWords;
 }
 
+/// <summary>One row of the macOS "Your dictation habits" ranking; <c>Id</c> "unknown" collects sessions with nothing recorded.</summary>
+public sealed record InsightsUsage(string Id, string Name, int Sessions, int Words);
+
 public sealed record InsightsDailyActivity(DateTime Date, int Words, int Meetings, double Intensity);
 
 public sealed record InsightsSnapshot(
@@ -76,6 +79,29 @@ public static class InsightsWordAnalyzer
                 .Count(),
             Rank(Accumulate(selectedDictations.Select(item => item.Text)), 24),
             Rank(Accumulate(selectedMeetings.Select(item => CleanMeetingTranscript(item.Transcript))), 24));
+    }
+
+    /// <summary>
+    /// Dictation sessions and words in the range grouped by <c>Key</c> (a model or an app), most
+    /// sessions first. A missing key counts toward the "unknown" row.
+    /// </summary>
+    public static IReadOnlyList<InsightsUsage> Usage(
+        IEnumerable<(DateTime Timestamp, string Text, string? Key, string? Name)> dictations,
+        InsightsRange range,
+        DateTime now)
+    {
+        var start = StartDate(range, now.Date);
+        return dictations
+            .Where(item => start is null || item.Timestamp.Date >= start)
+            .GroupBy(item => string.IsNullOrWhiteSpace(item.Key) ? "unknown" : item.Key!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new InsightsUsage(
+                group.Key,
+                group.Select(item => item.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)) ?? group.Key,
+                group.Count(),
+                group.Sum(item => CountWords(item.Text))))
+            .OrderByDescending(usage => usage.Sessions)
+            .ThenByDescending(usage => usage.Words)
+            .ToList();
     }
 
     public static string RangeLabel(InsightsRange range) => range switch

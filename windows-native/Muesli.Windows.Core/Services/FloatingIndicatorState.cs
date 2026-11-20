@@ -39,6 +39,9 @@ public static class FloatingIndicatorStateClassifier
     /// </summary>
     private static readonly string[] SuccessMarkers = ["saved", "captured", "pasted", "copied"];
 
+    // Text work after the microphone stops (local or hosted cleanup) is still visible progress.
+    private static readonly string[] TranscribingMarkers = ["transcribing", "cleaning up"];
+
     private static readonly string[] PreparingMarkers = ["preparing", "hold to dictate", "listening", "arming", "shortcut"];
 
     /// <summary>Cancellation is a user-requested return to idle, never an error toast.</summary>
@@ -75,6 +78,11 @@ public static class FloatingIndicatorStateClassifier
         if (ContainsAny(status, SuccessMarkers))
         {
             return FloatingIndicatorState.Success;
+        }
+
+        if (ContainsAny(status, TranscribingMarkers))
+        {
+            return FloatingIndicatorState.Transcribing;
         }
 
         if (ContainsAny(status, PreparingMarkers))

@@ -10,16 +10,18 @@ public partial class DictionaryPageViewModel(
     WinUiLibraryContext library,
     WinUiSettingsContext settings,
     IFilePickerService filePickers,
-    IAppDialogService dialogs) : ObservableObject
+    IAppDialogService dialogs,
+    WinUiDictionarySuggestionService suggestionService) : ObservableObject
 {
-    private const int PageSize = 25;
+    /// <summary>macOS DictionaryRowMetrics.suggestionPageSize.</summary>
+    private const int SuggestionPageSize = 10;
     private readonly DictionaryExchangeService _exchange = new();
-    private IReadOnlyList<DictionaryListItem> _allItems = [];
+    private IReadOnlyList<DictionarySuggestion> _allSuggestions = [];
+    private bool _loading;
 
     [ObservableProperty] public partial IReadOnlyList<DictionaryListItem> Items { get; private set; } = [];
     [ObservableProperty] public partial IReadOnlyList<DictionarySuggestion> Suggestions { get; private set; } = [];
-    [ObservableProperty] public partial bool SuggestionsEnabled { get; set; } = true;
-    [ObservableProperty] public partial string SearchText { get; set; } = "";
+    [ObservableProperty] public partial bool SuggestionsEnabled { get; set; }
     [ObservableProperty] public partial string EditingId { get; private set; } = "";
     [ObservableProperty] public partial string Phrase { get; set; } = "";
     [ObservableProperty] public partial string Replacement { get; set; } = "";
@@ -27,46 +29,30 @@ public partial class DictionaryPageViewModel(
     [ObservableProperty] public partial string ValidationMessage { get; private set; } = "";
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
     [ObservableProperty] public partial bool IsStatusOpen { get; set; }
-    [ObservableProperty] public partial bool IsStatusError { get; private set; }
-    [ObservableProperty] public partial int PageIndex { get; private set; }
-    [ObservableProperty] public partial string PageLabel { get; private set; } = "Page 1 of 1";
+    [ObservableProperty] public partial int SuggestionPage { get; private set; }
+    [ObservableProperty] public partial string SuggestionRangeText { get; private set; } = "";
     [ObservableProperty] public partial bool HasPreviousPage { get; private set; }
     [ObservableProperty] public partial bool HasNextPage { get; private set; }
 
     public bool HasItems => Items.Count > 0;
-    /// <summary>Search only earns its place once the dictionary spans more than one page.</summary>
-    public bool IsSearchUseful => _allItems.Count > PageSize;
     /// <summary>
     /// Whether the editor should show its inline validation line. The page-level InfoBar still
     /// announces the same text, but at 720 DIP the editor sits below the list and off-screen from
     /// that bar, so a rejected Save had no visible cause next to the field that caused it.
     /// </summary>
     public bool HasValidationMessage => ValidationMessage.Length > 0;
-    public bool HasSuggestions => SuggestionsEnabled && Suggestions.Count > 0;
-    public bool IsEditing => !string.IsNullOrWhiteSpace(EditingId);
-    public bool ShowEmptyAddAction => !HasItems && string.IsNullOrWhiteSpace(SearchText);
-    public string EditorTitle => IsEditing ? "Edit dictionary entry" : "Add dictionary entry";
-    public string ThresholdLabel => $"{MatchingThreshold:P0} match";
+    public bool HasSuggestions => _allSuggestions.Count > 0;
+    public bool HasSuggestionPages => _allSuggestions.Count > SuggestionPageSize;
 
     // P7-04. The slider's bounds are the matcher's own clamp, not a presentation choice:
-    // DictionaryCorrectionService.ClampThreshold pins every stored value into this range, so the
-    // scale is read from there rather than restated in XAML. Showing the two endpoints is what
-    // makes the default (the minimum) legible instead of looking like a thumb stuck at the left.
+    // DictionaryCorrectionService.ClampThreshold pins every stored value into this range.
     public double ThresholdMinimum => DictionaryCorrectionService.MinimumThreshold;
     public double ThresholdMaximum => DictionaryCorrectionService.MaximumThreshold;
-    public string ThresholdMinimumLabel => $"{ThresholdMinimum:P0} · broadest";
-    public string ThresholdMaximumLabel => $"{ThresholdMaximum:P0} · strictest";
     public string ThresholdHelp =>
         $"How close a spoken word must score against this phrase before Muesli replaces it. " +
         $"Muesli matches between {ThresholdMinimum:P0} and {ThresholdMaximum:P0}; words of six " +
         "characters or fewer are held to a stricter score than this setting, and words of three " +
         "characters or fewer must match exactly.";
-    public string EmptyStateTitle => string.IsNullOrWhiteSpace(SearchText)
-        ? "No custom dictionary entries yet"
-        : "No dictionary entries match your search";
-    public string EmptyStateInstruction => string.IsNullOrWhiteSpace(SearchText)
-        ? "Add a word or import a versioned JSON dictionary."
-        : "Try a different phrase or clear the search box.";
 
     public void Load() => Reload();
 
@@ -79,27 +65,15 @@ public partial class DictionaryPageViewModel(
         MatchingThreshold = item.MatchingThreshold;
     }
 
-    partial void OnSearchTextChanged(string value)
+    /// <summary>macOS saves the switch at once; turning it off stops any watch in progress.</summary>
+    partial void OnSuggestionsEnabledChanged(bool value)
     {
-        PageIndex = 0;
-        ApplyFilter();
-        NotifyEmptyState();
+        if (!_loading) suggestionService.SetEnabled(value);
     }
-    partial void OnSuggestionsEnabledChanged(bool value) => OnPropertyChanged(nameof(HasSuggestions));
-    partial void OnItemsChanged(IReadOnlyList<DictionaryListItem> value)
-    {
-        OnPropertyChanged(nameof(HasItems));
-        NotifyEmptyState();
-    }
-    partial void OnMatchingThresholdChanged(double value) => OnPropertyChanged(nameof(ThresholdLabel));
+    partial void OnItemsChanged(IReadOnlyList<DictionaryListItem> value) => OnPropertyChanged(nameof(HasItems));
     partial void OnValidationMessageChanged(string value) => OnPropertyChanged(nameof(HasValidationMessage));
     partial void OnPhraseChanged(string value) => ValidationMessage = "";
-    partial void OnEditingIdChanged(string value)
-    {
-        OnPropertyChanged(nameof(EditorTitle));
-        OnPropertyChanged(nameof(IsEditing));
-        DeleteEntryCommand.NotifyCanExecuteChanged();
-    }
+    partial void OnEditingIdChanged(string value) => DeleteEntryCommand.NotifyCanExecuteChanged();
 
     [RelayCommand]
     private void NewEntry()
@@ -115,47 +89,32 @@ public partial class DictionaryPageViewModel(
     private void PreviousPage()
     {
         if (!HasPreviousPage) return;
-        PageIndex--;
-        ApplyFilter();
+        SuggestionPage--;
+        ApplySuggestionPage();
     }
 
     [RelayCommand]
     private void NextPage()
     {
         if (!HasNextPage) return;
-        PageIndex++;
-        ApplyFilter();
+        SuggestionPage++;
+        ApplySuggestionPage();
     }
 
     [RelayCommand]
     private void AcceptSuggestion(DictionarySuggestion? suggestion)
     {
         if (suggestion is null) return;
-        var entries = library.LoadDictionary().ToList();
-        if (!entries.Any(entry =>
-                string.Equals(entry.Phrase, suggestion.Observed, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(entry.Replacement, suggestion.Replacement, StringComparison.OrdinalIgnoreCase)))
-        {
-            entries.Add(new DictionaryEntryRecord
-            {
-                Id = $"dict_{Guid.NewGuid():N}",
-                Phrase = suggestion.Observed,
-                Replacement = suggestion.Replacement,
-                MatchingThreshold = .90
-            });
-            library.SaveDictionary(entries);
-        }
-        RemoveSuggestion(suggestion);
+        suggestionService.Accept(suggestion);
         Reload();
-        ShowStatus("Suggested correction added to the dictionary.");
     }
 
     [RelayCommand]
     private void DismissSuggestion(DictionarySuggestion? suggestion)
     {
         if (suggestion is null) return;
-        RemoveSuggestion(suggestion);
-        ShowStatus("Suggestion dismissed.");
+        suggestionService.Ignore(suggestion);
+        Reload();
     }
 
     [RelayCommand]
@@ -177,6 +136,7 @@ public partial class DictionaryPageViewModel(
         }
 
         ValidationMessage = "";
+        IsStatusOpen = false;
 
         var record = new DictionaryEntryRecord
         {
@@ -192,141 +152,115 @@ public partial class DictionaryPageViewModel(
         EditingId = record.Id;
         Reload();
         Select(DictionaryListItem.From(record));
-        ShowStatus("Dictionary entry saved.");
     }
 
+    /// <summary>macOS removes the word straight away, without a confirmation.</summary>
     [RelayCommand(CanExecute = nameof(CanDeleteEntry))]
-    private async Task DeleteEntryAsync(CancellationToken cancellationToken)
+    private void DeleteEntry()
     {
         if (!CanDeleteEntry()) return;
-        var choice = await dialogs.ConfirmAsync(
-            $"Delete '{Phrase.Trim()}' from the dictionary?",
-            "Delete dictionary entry",
-            cancellationToken);
-        if (choice != AppDialogChoice.Primary) return;
-        var entries = library.LoadDictionary()
+        library.SaveDictionary(library.LoadDictionary()
             .Where(entry => !string.Equals(entry.Id, EditingId, StringComparison.Ordinal))
-            .ToList();
-        library.SaveDictionary(entries);
+            .ToList());
         NewEntry();
         Reload();
-        ShowStatus("Dictionary entry deleted.");
     }
 
     [RelayCommand]
     private async Task ExportAsync(CancellationToken cancellationToken)
     {
+        string message;
         try
         {
             var picked = await filePickers.PickSaveFileAsync(
-                new FilePickerRequest("Export dictionary", [".json"], "muesli-dictionary.json"),
+                new FilePickerRequest("Export Muesli Dictionary", [".json"], "muesli-dictionary.json"),
                 cancellationToken);
             if (picked is null) return;
-            _exchange.Export(picked.Path, library.LoadDictionary());
-            ShowStatus($"Dictionary exported to {picked.DisplayName}.");
+            var entries = library.LoadDictionary();
+            _exchange.Export(picked.Path, entries);
+            message = $"Exported {entries.Count} dictionary entries.";
         }
         catch (OperationCanceledException)
         {
+            return;
         }
         catch (Exception exception)
         {
-            ShowStatus($"Could not export the dictionary: {exception.Message}", isError: true);
+            message = $"Could not export the dictionary. {exception.Message}";
         }
+        await dialogs.ShowInfoAsync(message, "Dictionary", CancellationToken.None);
     }
 
+    /// <summary>macOS merges the file straight in (new words added, matching words updated) and reports the counts.</summary>
     [RelayCommand]
     private async Task ImportAsync(CancellationToken cancellationToken)
     {
+        string message;
         try
         {
             var picked = await filePickers.PickOpenFileAsync(
-                new FilePickerRequest("Import dictionary", [".json"]),
+                new FilePickerRequest("Import Muesli Dictionary", [".json"]),
                 cancellationToken);
             if (picked is null) return;
             var existing = library.LoadDictionary();
             var preview = _exchange.PreviewImport(picked.Path, existing);
             if (!preview.IsValid)
             {
-                ShowStatus(string.Join(" ", preview.Errors), isError: true);
-                return;
+                message = "Could not import the dictionary. " + string.Join(" ", preview.Errors);
             }
-
-            var message = $"Import {preview.Additions.Count:N0} new entries" +
-                          (preview.Conflicts.Count == 0
-                              ? "?"
-                              : $" and replace {preview.Conflicts.Count:N0} conflicting entries?");
-            var choice = await dialogs.ConfirmAsync(message, "Import dictionary preview", cancellationToken);
-            if (choice != AppDialogChoice.Primary) return;
-            var merged = DictionaryExchangeService.Merge(existing, preview, replaceConflicts: true);
-            library.SaveDictionary(merged);
-            NewEntry();
-            Reload();
-            ShowStatus($"Imported {preview.Additions.Count + preview.Conflicts.Count:N0} dictionary entries.");
+            else if (preview.Additions.Count + preview.Conflicts.Count == 0)
+            {
+                message = "All dictionary entries were already present.";
+            }
+            else
+            {
+                library.SaveDictionary(DictionaryExchangeService.Merge(existing, preview, replaceConflicts: true));
+                NewEntry();
+                Reload();
+                message = $"Imported {preview.Additions.Count} new, updated {preview.Conflicts.Count} dictionary entries.";
+            }
         }
         catch (OperationCanceledException)
         {
+            return;
         }
         catch (Exception exception)
         {
-            ShowStatus($"Could not import the dictionary: {exception.Message}", isError: true);
+            message = $"Could not import the dictionary. {exception.Message}";
         }
+        await dialogs.ShowInfoAsync(message, "Dictionary", CancellationToken.None);
     }
 
-    private void Reload()
+    /// <summary>Re-reads entries and suggestions, for example after a prompt added one elsewhere.</summary>
+    public void Reload()
     {
-        _allItems = library.LoadDictionary()
-            .OrderBy(entry => entry.Phrase, StringComparer.CurrentCultureIgnoreCase)
-            .Select(DictionaryListItem.From)
-            .ToList();
-        // A settings file that carries an explicit "dictionarySuggestions": null defeats the
-        // record initialiser on MuesliSettings.DictionarySuggestions (SettingsStore.cs:326), so
-        // this used to throw ArgumentNullException out of Load() and take the whole shell down
-        // with an unhandled exception the moment Dictionary was opened. Reproduced on a profile
-        // whose settings file had that key nulled.
-        Suggestions = settings.Load().DictionarySuggestions?.Take(50).ToList() ?? [];
+        // macOS lists every word, in the order they were added.
+        Items = library.LoadDictionary().Select(DictionaryListItem.From).ToList();
+        var current = settings.Load();
+        _loading = true;
+        SuggestionsEnabled = current.EnableDictionaryCorrectionPrompts;
+        _loading = false;
+        _allSuggestions = current.DictionarySuggestions ?? [];
         OnPropertyChanged(nameof(HasSuggestions));
-        ApplyFilter();
+        OnPropertyChanged(nameof(HasSuggestionPages));
+        ApplySuggestionPage();
     }
 
-    private void ApplyFilter()
+    private void ApplySuggestionPage()
     {
-        var search = SearchText.Trim();
-        var filtered = search.Length == 0
-            ? _allItems
-            : _allItems.Where(item =>
-                    item.Phrase.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
-                    item.Replacement.Contains(search, StringComparison.CurrentCultureIgnoreCase))
-                .ToList();
-        var pageCount = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)PageSize));
-        PageIndex = Math.Clamp(PageIndex, 0, pageCount - 1);
-        Items = filtered.Skip(PageIndex * PageSize).Take(PageSize).ToList();
-        PageLabel = $"Page {PageIndex + 1:N0} of {pageCount:N0} · {filtered.Count:N0} entries";
-        HasPreviousPage = PageIndex > 0;
-        HasNextPage = PageIndex + 1 < pageCount;
-        OnPropertyChanged(nameof(IsSearchUseful));
+        var count = _allSuggestions.Count;
+        var pages = Math.Max(1, (count + SuggestionPageSize - 1) / SuggestionPageSize);
+        SuggestionPage = Math.Clamp(SuggestionPage, 0, pages - 1);
+        var start = SuggestionPage * SuggestionPageSize;
+        Suggestions = _allSuggestions.Skip(start).Take(SuggestionPageSize).ToList();
+        SuggestionRangeText = count == 0 ? "" : $"{start + 1}-{Math.Min(start + SuggestionPageSize, count)} of {count}";
+        HasPreviousPage = SuggestionPage > 0;
+        HasNextPage = SuggestionPage + 1 < pages;
         PreviousPageCommand.NotifyCanExecuteChanged();
         NextPageCommand.NotifyCanExecuteChanged();
     }
 
-    private void RemoveSuggestion(DictionarySuggestion suggestion)
-    {
-        var current = settings.Load();
-        var remaining = (current.DictionarySuggestions ?? []).Where(item =>
-            !(string.Equals(item.Observed, suggestion.Observed, StringComparison.OrdinalIgnoreCase) &&
-              string.Equals(item.Replacement, suggestion.Replacement, StringComparison.OrdinalIgnoreCase))).ToList();
-        settings.Save(current with { DictionarySuggestions = remaining });
-        Suggestions = remaining;
-        OnPropertyChanged(nameof(HasSuggestions));
-    }
-
     private bool CanDeleteEntry() => !string.IsNullOrWhiteSpace(EditingId);
-
-    private void NotifyEmptyState()
-    {
-        OnPropertyChanged(nameof(EmptyStateTitle));
-        OnPropertyChanged(nameof(EmptyStateInstruction));
-        OnPropertyChanged(nameof(ShowEmptyAddAction));
-    }
 
     /// <summary>
     /// Refuses a save: the same text is shown inline beside the field and announced on the page's
@@ -335,13 +269,7 @@ public partial class DictionaryPageViewModel(
     private void Reject(string message)
     {
         ValidationMessage = message;
-        ShowStatus(message, isError: true);
-    }
-
-    private void ShowStatus(string message, bool isError = false)
-    {
         StatusMessage = message;
-        IsStatusError = isError;
         IsStatusOpen = true;
     }
 }
@@ -352,9 +280,7 @@ public sealed record DictionaryListItem(
     string Replacement,
     double MatchingThreshold)
 {
-    public string ReplacementLabel => string.IsNullOrWhiteSpace(Replacement)
-        ? "Recognize as spoken"
-        : $"Replace with {Replacement}";
+    public string ReplacementLabel => string.IsNullOrWhiteSpace(Replacement) ? "Recognize as spoken" : $"Replace with {Replacement}";
     public string ThresholdLabel => $"{MatchingThreshold:P0} match";
 
     public static DictionaryListItem From(DictionaryEntryRecord entry) => new(

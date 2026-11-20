@@ -185,7 +185,7 @@ internal sealed class MuesliCleanProfile : IDisposable
             {
               "schemaVersion": 8,
               "onboardingCompleted": true,
-              "lastCompletedFeatureTourVersion": 2,
+              "featureTourLastPresentedVersion": "9999.0.0",
               "openDashboardOnLaunch": true,
               "startAtLogin": false,
               "showFloatingIndicator": {{(ShowFloatingIndicator ? "true" : "false")}},
@@ -264,7 +264,7 @@ internal sealed class MuesliCleanProfile : IDisposable
             liveTranscriptOwnership = "preview-only",
             showLiveWaveformOnHover = true,
             onboardingCompleted = true,
-            lastCompletedFeatureTourVersion = 2,
+            featureTourLastPresentedVersion = "9999.0.0",
             enableDoubleTapDictation = false,
             hotkeyTriggerThresholdMs = 250,
             recordingColorHex = "1e1e2e",

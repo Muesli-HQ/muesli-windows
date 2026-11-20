@@ -29,6 +29,18 @@ public sealed partial class ModelsPage : Page
         value ? Visibility.Collapsed : Visibility.Visible;
 
     /// <summary>Persists a per-model language choice when the user changes the picker.</summary>
+    private void ModelOutput_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { DataContext: ModelFamilyCardItem card, SelectedItem: ModelLanguageOption option } combo ||
+            !combo.IsLoaded ||
+            string.Equals(card.SelectedVariant?.SelectedOutputCode, option.Code, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        ViewModel.SetBodhanOutput(card.SelectedVariant, option.Code);
+    }
+
     private void ModelLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is not ComboBox { DataContext: ModelFamilyCardItem card, SelectedItem: ModelLanguageOption option } combo)

@@ -38,6 +38,9 @@ public sealed class DictationCoordinator : IDisposable
     // A cancelled stop leaves its finish running after the gate is released, so the next
     // dictation must not reset the detector underneath it.
     private Task _pauseDetectorLease = Task.CompletedTask;
+    // A prepared client that went stale fails on NAudio's thread; without this the user hears the
+    // start cue, speaks into nothing and is told "No speech detected".
+    private volatile Exception? _captureFault;
 
     public bool IsRecording { get; private set; }
     public bool IsBusy { get; private set; }
@@ -64,6 +67,11 @@ public sealed class DictationCoordinator : IDisposable
         _audioCaptureService.DeviceListChanged += OnDeviceListChanged;
         _audioCaptureService.RouteChanged += OnRouteChanged;
         _audioCaptureService.LevelChanged += OnLevelChanged;
+        _audioCaptureService.CaptureFaulted += (_, args) =>
+        {
+            _captureFault = args.Exception;
+            _log.Error("Dictation microphone stopped while recording.", args.Exception);
+        };
     }
 
     public event EventHandler? DeviceListChanged;
@@ -227,6 +235,7 @@ public sealed class DictationCoordinator : IDisposable
             var preCaptureMs = startTimer.ElapsedMilliseconds;
             try
             {
+                _captureFault = null;
                 await _audioCaptureService.StartAsync(microphoneName);
                 _log.Info($"Dictation capture opened. gateMs={gateMs}; preCaptureMs={preCaptureMs - gateMs}; " +
                     $"captureOpenMs={startTimer.ElapsedMilliseconds - preCaptureMs}; {_audioCaptureService.LastStartTiming}; " +
@@ -388,6 +397,9 @@ public sealed class DictationCoordinator : IDisposable
                 if (DictationAudioQualityPolicy.IsNoSpeech(capturedAudio))
                 {
                     if (rolling is not null) await rolling.DrainAsync();
+                    if (_captureFault is not null)
+                        throw new InvalidOperationException(
+                            "the microphone stopped while recording. Check it is connected and try again.", _captureFault);
                     coordinatorStarted.Stop();
                     return new DictationStopResult(
                         new TranscriptionResult(

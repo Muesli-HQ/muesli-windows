@@ -461,6 +461,97 @@
                                               AutomationProperties.Name="Local transcript cleanup"
                                               AutomationProperties.AutomationId="LocalCleanupToggle" />
                             </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Cleanup source" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.CleanupSourceHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.CleanupSourceNames, Mode=OneWay}"
+                                          SelectedIndex="{x:Bind ViewModel.CleanupSourceIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Cleanup source"
+                                          AutomationProperties.AutomationId="CleanupSourcePicker" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind ViewModel.ShowCleanupPreset, Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind ViewModel.ShowCleanupPreset, Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Cleanup style" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="The instructions sent with each dictation to a cloud source." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.CleanupPresetNames, Mode=OneWay}"
+                                          SelectedIndex="{x:Bind ViewModel.CleanupPresetIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Cleanup style"
+                                          AutomationProperties.AutomationId="CleanupPresetPicker" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="App context" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Send the focused app name and nearby text with cloud cleanup so names and terms come out right." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.EnableAppContext, Mode=TwoWay}"
+                                              AutomationProperties.Name="App context"
+                                              AutomationProperties.AutomationId="AppContextToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Screen text context" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.OcrContextHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.EnableDictationOcrContext, Mode=TwoWay}"
+                                              IsEnabled="{x:Bind ViewModel.EnableAppContext, Mode=OneWay}"
+                                              AutomationProperties.Name="Screen text context"
+                                              AutomationProperties.AutomationId="OcrContextToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Paste shortcut" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="The keys Muesli presses to paste a dictation into the app you are using." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.PasteShortcutIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Paste shortcut"
+                                          AutomationProperties.AutomationId="PasteShortcutPicker">
+                                    <ComboBoxItem Content="Ctrl+V" />
+                                    <ComboBoxItem Content="Ctrl+Shift+V" />
+                                    <ComboBoxItem Content="Shift+Insert" />
+                                </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Pause media while dictating" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Pause music and videos while you dictate, then resume them." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.PauseMediaDuringDictation, Mode=TwoWay}"
+                                              AutomationProperties.Name="Pause media while dictating"
+                                              AutomationProperties.AutomationId="PauseMediaToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Mute audio while dictating" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Silence other sound while you dictate." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.MuteAudioDuringDictation, Mode=TwoWay}"
+                                              AutomationProperties.Name="Mute audio while dictating"
+                                              AutomationProperties.AutomationId="MuteAudioToggle" />
+                            </Grid>
                         </StackPanel>
                     </Border>
 
@@ -517,196 +608,54 @@
                                               AutomationProperties.AutomationId="ComputerUseToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
-                            <!-- P5-07: every row in this card pairs its label with a one-line
-                                 description, so the left column carries content instead of leaving
-                                 ~530 px of empty space between the label and its control. -->
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Planner provider" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="None keeps Computer Use off. OpenAI sends the command and observed window text to OpenAI." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="ChatGPT account" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Computer Use plans each step with your ChatGPT subscription." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        Content="{x:Bind ViewModel.ComputerUseSignInLabel, Mode=OneWay}"
+                                        Command="{x:Bind ViewModel.ToggleChatGptSignInCommand}"
+                                        AutomationProperties.AutomationId="ComputerUseSignInButton" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Model" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="The ChatGPT model that plans each step." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ComboBox Grid.Column="1"
                                           Style="{StaticResource PickerStyle}"
-                                          SelectedIndex="{x:Bind ViewModel.ComputerUseProviderIndex, Mode=TwoWay}"
-                                          AutomationProperties.Name="Planner provider"
-                                          AutomationProperties.AutomationId="ComputerUseProviderPicker">
-                                    <ComboBoxItem Content="None" />
-                                    <ComboBoxItem Content="OpenAI" />
-                                </ComboBox>
+                                          ItemsSource="{x:Bind ViewModel.ComputerUseModels, Mode=OneWay}"
+                                          SelectedIndex="{x:Bind ViewModel.ComputerUseModelIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Computer Use model"
+                                          AutomationProperties.AutomationId="ComputerUseModelPicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Planner model ID" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="The provider's model identifier used to plan each command." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <TextBox Grid.Column="1"
-                                         Style="{StaticResource ValueBoxStyle}"
-                                         Text="{x:Bind ViewModel.ComputerUsePlannerModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Planner model ID"
-                                         AutomationProperties.AutomationId="ComputerUsePlannerModel" />
-                            </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid Padding="16,10">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Execution limits" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="A run stops when any limit is reached." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <StackPanel x:Name="ComputerUseLimitsHost" Grid.Row="1" Orientation="Horizontal" Spacing="10" Margin="0,10,0,0">
-                                    <NumberBox Header="Planner sec" Value="{x:Bind ViewModel.ComputerUsePlannerTimeoutSeconds, Mode=TwoWay}" Minimum="5" Maximum="120" MinWidth="110" AutomationProperties.Name="Planner timeout in seconds" />
-                                    <NumberBox Header="Action sec" Value="{x:Bind ViewModel.ComputerUsePerActionTimeoutSeconds, Mode=TwoWay}" Minimum="1" Maximum="30" MinWidth="110" AutomationProperties.Name="Per-action timeout in seconds" />
-                                    <NumberBox Header="Max actions" Value="{x:Bind ViewModel.ComputerUseMaximumActionCount, Mode=TwoWay}" Minimum="1" Maximum="20" MinWidth="110" AutomationProperties.Name="Maximum action count" />
-                                </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Text="ALLOWLISTS AND OBSERVATION" Style="{StaticResource SettingsSectionLabelStyle}" />
-                    <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Allowed applications" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Separate application names with semicolons." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <TextBox Grid.Column="1"
-                                         Style="{StaticResource ValueBoxStyle}"
-                                         PlaceholderText="notepad; explorer"
-                                         Text="{x:Bind ViewModel.ComputerUseAllowedApplications, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Allowed applications"
-                                         AutomationProperties.AutomationId="ComputerUseAllowedApps" />
-                            </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Include UI control text" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Unavailable until scoped masking is qualified." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ToggleSwitch Grid.Column="1"
-                                              Style="{StaticResource SettingsToggleStyle}"
-                                              IsEnabled="False"
-                                              AutomationProperties.Name="Include UI control text"
-                                              AutomationProperties.HelpText="Unavailable until scoped masking is qualified."
-                                              ToolTipService.ToolTip="Unavailable until scoped masking is qualified." />
-                            </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Include browser page text" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Unavailable until scoped masking is qualified." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ToggleSwitch Grid.Column="1"
-                                              Style="{StaticResource SettingsToggleStyle}"
-                                              IsEnabled="False"
-                                              AutomationProperties.Name="Include browser page text"
-                                              AutomationProperties.HelpText="Unavailable until scoped masking is qualified."
-                                              ToolTipService.ToolTip="Unavailable until scoped masking is qualified." />
-                            </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Include scoped screenshots" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Unavailable until scoped masking is qualified." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <ToggleSwitch Grid.Column="1"
-                                              Style="{StaticResource SettingsToggleStyle}"
-                                              IsEnabled="False"
-                                              AutomationProperties.Name="Include scoped screenshots"
-                                              AutomationProperties.HelpText="Unavailable until scoped masking is qualified."
-                                              ToolTipService.ToolTip="Unavailable until scoped masking is qualified." />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Text="BROWSER INTERFACE" Style="{StaticResource SettingsSectionLabelStyle}" />
-                    <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Browser automation" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Loopback DevTools drives a browser you already started with remote debugging enabled." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Thinking" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="More thinking is slower and handles harder tasks." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ComboBox Grid.Column="1"
                                           Style="{StaticResource PickerStyle}"
-                                          SelectedIndex="{x:Bind ViewModel.ComputerUseBrowserInterfaceIndex, Mode=TwoWay}"
-                                          AutomationProperties.Name="Browser automation"
-                                          AutomationProperties.AutomationId="ComputerUseBrowserInterface">
-                                    <ComboBoxItem Content="Disabled" />
-                                    <ComboBoxItem Content="Loopback DevTools" />
-                                </ComboBox>
+                                          ItemsSource="{x:Bind ViewModel.ComputerUseEfforts, Mode=OneWay}"
+                                          SelectedIndex="{x:Bind ViewModel.ComputerUseEffortIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Computer Use thinking"
+                                          AutomationProperties.AutomationId="ComputerUseEffortPicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Loopback DevTools endpoint" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Must stay on this machine's loopback address." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Time limit (seconds)" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="A run stops after this long." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <TextBox Grid.Column="1"
-                                         Style="{StaticResource ValueBoxStyle}"
-                                         Text="{x:Bind ViewModel.ComputerUseBrowserEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Loopback DevTools endpoint"
-                                         AutomationProperties.AutomationId="ComputerUseBrowserEndpoint" />
+                                <NumberBox Grid.Column="1"
+                                           Value="{x:Bind ViewModel.ComputerUseTimeoutSeconds, Mode=TwoWay}"
+                                           Minimum="1" Maximum="600" SpinButtonPlacementMode="Compact"
+                                           AutomationProperties.Name="Computer Use time limit"
+                                           AutomationProperties.AutomationId="ComputerUseTimeoutBox" />
                             </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Allowed HTTPS origins" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Separate host names with semicolons. Everything else is refused." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <TextBox Grid.Column="1"
-                                         Style="{StaticResource ValueBoxStyle}"
-                                         PlaceholderText="example.com"
-                                         Text="{x:Bind ViewModel.ComputerUseAllowedBrowserDomains, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Allowed HTTPS origins"
-                                         AutomationProperties.AutomationId="ComputerUseAllowedDomains" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Text="EXPLICIT VOICE SESSION" Style="{StaticResource SettingsSectionLabelStyle}" />
-                    <Border Style="{StaticResource SettingsCardStyle}">
-                        <StackPanel Spacing="12" Padding="16">
-                            <TextBlock Text="Press Ctrl + Shift + F8 anywhere in Windows to start or finish a spoken command. The shortcut is registered while Muesli runs and is not configurable."
-                                       Style="{StaticResource RowHelpStyle}"
-                                       Margin="0"
-                                       AutomationProperties.AutomationId="ComputerUseShortcutNotice" />
-                            <StackPanel x:Name="ComputerUseActions" Orientation="Horizontal" Spacing="8">
-                                <Button Command="{x:Bind ViewModel.SpeakComputerUseCommand}"
-                                        Content="{x:Bind ViewModel.ComputerUseVoiceLabel, Mode=OneWay}"
-                                        Style="{StaticResource MuesliPrimaryButtonStyle}"
-                                        AutomationProperties.AutomationId="ComputerUseSpeakButton" />
-                                <Button Command="{x:Bind ViewModel.StopComputerUseCommand}"
-                                        Content="Stop"
-                                        IsEnabled="{x:Bind ViewModel.ComputerUseStopEnabled, Mode=OneWay}"
-                                        AutomationProperties.AutomationId="ComputerUseStopButton" />
-                                <Button Command="{x:Bind ViewModel.OpenComputerUseDiagnosticsCommand}"
-                                        Content="Open trace diagnostics"
-                                        AutomationProperties.AutomationId="ComputerUseDiagnosticsButton" />
-                                <Button Command="{x:Bind ViewModel.PreviewComputerUseConfirmationCommand}"
-                                        Content="Preview confirmation"
-                                        AutomationProperties.AutomationId="ComputerUsePreviewConfirmationButton" />
-                            </StackPanel>
-                            <TextBlock Text="{x:Bind ViewModel.ComputerUseStatus, Mode=OneWay}"
-                                       Style="{StaticResource RowHelpStyle}"
-                                       AutomationProperties.LiveSetting="Polite"
-                                       AutomationProperties.AutomationId="ComputerUseStatusText" />
-                            <!-- Redacted trace text; technical by nature, so it is kept inside an
-                                 explicitly opened expander rather than in the normal flow (P5-06). -->
-                            <Expander HorizontalAlignment="Stretch"
-                                      HorizontalContentAlignment="Stretch"
-                                      Header="Redacted run trace"
-                                      AutomationProperties.AutomationId="ComputerUseDiagnosticsExpander">
-                                <TextBlock Text="{x:Bind ViewModel.ComputerUseDiagnostics, Mode=OneWay}"
-                                           FontFamily="Consolas"
-                                           FontSize="12"
-                                           TextWrapping="Wrap"
-                                           IsTextSelectionEnabled="True"
-                                           AutomationProperties.AutomationId="ComputerUseDiagnosticsText" />
-                            </Expander>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -1031,6 +980,18 @@
                                              AutomationProperties.AutomationId="OpenRouterApiKeyBox" />
                                 <TextBlock Text="Stored in Windows Credential Manager. Clear the field to remove the key." Style="{StaticResource RowHelpStyle}" />
                             </StackPanel>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Summary retries" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="How many more times to try a cloud summary before keeping the raw transcript." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <NumberBox Grid.Column="1"
+                                           Value="{x:Bind ViewModel.MeetingSummaryRetryCount, Mode=TwoWay}"
+                                           Minimum="0" Maximum="5" SpinButtonPlacementMode="Compact"
+                                           AutomationProperties.Name="Summary retries"
+                                           AutomationProperties.AutomationId="SummaryRetryCountBox" />
+                            </Grid>
                         </StackPanel>
                     </Border>
 
@@ -1064,6 +1025,21 @@
                                               IsOn="{x:Bind ViewModel.SaveMeetingRecordings, Mode=TwoWay}"
                                               AutomationProperties.Name="Save meeting recordings"
                                               AutomationProperties.AutomationId="SaveMeetingRecordingsToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Recording format" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="WAV keeps full quality. M4A takes far less space." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.RecordingFormatIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Recording format"
+                                          AutomationProperties.AutomationId="RecordingFormatPicker">
+                                    <ComboBoxItem Content="WAV" />
+                                    <ComboBoxItem Content="M4A" />
+                                </ComboBox>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -1116,6 +1092,22 @@
                                               IsEnabled="{x:Bind ViewModel.PdfAutoExportAvailable, Mode=OneWay}"
                                               AutomationProperties.Name="Also export PDF"
                                               AutomationProperties.AutomationId="AutoExportPdfToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Export content" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="What each exported meeting file contains." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.AutoExportContentIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Export content"
+                                          AutomationProperties.AutomationId="AutoExportContentPicker">
+                                    <ComboBoxItem Content="Notes" />
+                                    <ComboBoxItem Content="Transcript" />
+                                    <ComboBoxItem Content="Full meeting" />
+                                </ComboBox>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -1215,6 +1207,19 @@
                                     <ComboBoxItem Content="Classic" />
                                     <ComboBoxItem Content="Minimal" />
                                 </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Indicator position" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Where the floating indicator sits. Dragging it sets a custom spot." Style="{StaticResource RowHelpStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.IndicatorPositions, Mode=OneWay}"
+                                          SelectedIndex="{x:Bind ViewModel.IndicatorPositionIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Indicator position"
+                                          AutomationProperties.AutomationId="IndicatorPositionPicker" />
                             </Grid>
                         </StackPanel>
                     </Border>

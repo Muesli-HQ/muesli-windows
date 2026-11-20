@@ -64,7 +64,7 @@
                     VerticalAlignment="Center"
                     Style="{StaticResource MuesliBodyStyle}"
                     FontSize="13"
-                    Text="Risk: None. Review the exact action below. This preview stays local and is not saved." />
+                    Text="" />
             </Grid>
 
             <StackPanel Grid.Row="2" Spacing="8">
