@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- macOS DashboardRootView .meetingChat tab: the standalone MeetingChatView. -->
+<Page
+    x:Class="Muesli.Windows.WinUI.Pages.AskMeetingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Muesli.Windows.WinUI.Controls"
+    Background="{ThemeResource MuesliBackgroundBrush}">
+    <controls:MeetingChatView />
+</Page>

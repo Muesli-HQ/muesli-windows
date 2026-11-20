@@ -89,15 +89,47 @@ public sealed class ModelLanguageSupportTests
             ModelLanguages = new Dictionary<string, string>
             {
                 ["whisper-tiny-multilingual"] = "de",
-                ["whisper-tiny-en"] = "fr",        // invalid -> default en
+                ["whisper-tiny-en"] = "fr",        // unsupported -> kept as saved (MAC-24), resolved to en at runtime
                 ["does-not-exist"] = "en"          // unknown -> dropped
             }
         };
 
         var normalized = SettingsStore.NormalizeAfterDeserialization(settings);
         Assert.Equal("de", normalized.ModelLanguages["whisper-tiny-multilingual"]);
-        Assert.Equal("en", normalized.ModelLanguages["whisper-tiny-en"]);
+        Assert.Equal("fr", normalized.ModelLanguages["whisper-tiny-en"]);
         Assert.DoesNotContain("does-not-exist", normalized.ModelLanguages.Keys);
+        var english = Model("whisper-tiny-en");
+        Assert.Equal("en", ModelLanguageSupport.Normalize(english, "fr"));
+        Assert.Contains("not supported", ModelLanguageSupport.LabelFor(english, "fr"));
+    }
+
+    [Fact]
+    public void Whisper_offers_every_language_token_and_cantonese_only_on_large_v3()
+    {
+        var small = ModelLanguageSupport.OptionsFor(Model("whisper-tiny-multilingual"));
+        var turbo = ModelLanguageSupport.OptionsFor(Model("whisper-large-turbo-multilingual"));
+        Assert.Equal(101, turbo.Count); // auto + 100 tokens
+        Assert.Equal(100, small.Count);
+        Assert.Contains(turbo, option => option.Code == "yue");
+        Assert.DoesNotContain(small, option => option.Code == "yue");
+        Assert.Contains(small, option => option.Code == "uk" && option.Label == "Ukrainian");
+        Assert.Contains(small, option => option.Code == "no" && option.Label == "Norwegian");
+        Assert.Equal(["en"], ModelLanguageSupport.OptionsFor(Model("whisper-tiny-en")).Select(option => option.Code));
+    }
+
+    [Fact]
+    public void Norwegian_er_survives_filler_removal_and_meeting_segments_lose_control_tokens()
+    {
+        Assert.Equal("Det er bra", FillerWordFilter.Apply("Det er bra"));
+        Assert.DoesNotContain("err", FillerWordFilter.Apply("so err we ship"));
+        var cleaned = TranscriptionEngineArtifactsFilter.Apply(new TranscriptionResult(
+            "<|no|> Hei der <|nocaptions|>", Segments:
+            [
+                new TranscriptSegment("1", "S1", 0, 1000, "<|no|>"),
+                new TranscriptSegment("2", "S1", 1000, 2000, "Hei der <|nocaptions|>"),
+            ]));
+        Assert.Equal("Hei der", cleaned.Text);
+        Assert.Equal("Hei der", Assert.Single(cleaned.Segments!).Text);
     }
 
     [Fact]

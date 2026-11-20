@@ -28,6 +28,31 @@ public sealed class Phase6DetectionTests
         if (code is not null) Assert.Equal(code, match.MeetingCode);
     }
 
+    [Theory]
+    [InlineData("https://teams.microsoft.com/meet/2468013579?p=AbCdEfGh", "2468013579")]
+    [InlineData("https://teams.live.com/meet/9876543210?p=Xy", "9876543210")]
+    [InlineData("https://TEAMS.LIVE.COM/meet/9876543210", "9876543210")]
+    public void TeamsShortFormLinksAreRecognized(string url, string id)
+    {
+        var match = MeetingUrlParser.TryParse(url);
+        Assert.Equal(MeetingUrlParser.MicrosoftTeams, match?.Platform);
+        Assert.Equal(id, match!.MeetingCode);
+        Assert.Equal(url.Split('#')[0], match.JoinUrl, ignoreCase: true);
+    }
+
+    [Theory]
+    [InlineData("https://teams.live.com/meet/")]
+    [InlineData("https://teams.live.com/meet/?p=Stale")]
+    [InlineData("https://teams.live.com/meet/#fragment")]
+    [InlineData("https://teams.live.com/meet//?p=Stale")]
+    [InlineData("https://teams.microsoft.com/meet/?p=Stale")]
+    [InlineData("https://teams.microsoft.com/meet//x")]
+    [InlineData("https://teams.live.com/v2/")]
+    [InlineData("https://evil.teams.live.com/meet/9876543210")]
+    [InlineData("https://teams.live.com.evil.example/meet/9876543210")]
+    [InlineData("https://teams.microsoft.com/l/message/19:abc")]
+    public void TeamsLinksWithoutAMeetingIdAreRejected(string url) => Assert.Null(MeetingUrlParser.TryParse(url));
+
     [Fact]
     public void TeamsMeetupJoinLinksAreRecognized()
     {

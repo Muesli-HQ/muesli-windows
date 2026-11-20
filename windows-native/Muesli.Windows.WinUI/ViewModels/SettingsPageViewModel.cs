@@ -76,6 +76,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string StartupAvailabilityNotice { get; private set; } = "";
     [ObservableProperty] public partial bool AutoMeetingDetectionEnabled { get; set; }
     [ObservableProperty] public partial bool SaveMeetingRecordings { get; set; }
+    [ObservableProperty] public partial bool DiarizeMicrophoneAudio { get; set; }
     [ObservableProperty] public partial bool AutoExportMarkdownEnabled { get; set; }
     [ObservableProperty] public partial string AutoExportMarkdownDirectory { get; set; } = "";
     [ObservableProperty] public partial bool AutoExportPdfEnabled { get; set; }
@@ -133,6 +134,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial int RecordingFormatIndex { get; set; }
     private static readonly string[] PasteShortcuts = ["ctrl-v", "ctrl-shift-v", "shift-insert"];
     [ObservableProperty] public partial int MeetingSummaryRetryCount { get; set; } = MeetingSummaryRetryPolicy.DefaultRetryCount;
+    /// <summary>macOS summary_output_limit: 0 is "No added limit", then the presets plus any saved custom value.</summary>
+    [ObservableProperty] public partial int SummaryOutputLimitIndex { get; set; }
+    [ObservableProperty] public partial IReadOnlyList<string> SummaryOutputLimits { get; private set; } = [];
+    private int[] _summaryOutputLimitValues = [0];
 
     /// <summary>macOS indicator_position choices; "Custom" appears only after a drag.</summary>
     public static readonly string[] IndicatorAnchors =
@@ -168,7 +173,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial IReadOnlyList<string> Microphones { get; private set; } = [];
     [ObservableProperty] public partial string? SelectedMicrophone { get; set; }
     [ObservableProperty] public partial IReadOnlyList<string> DictationModels { get; private set; } = [];
+    [NotifyPropertyChangedFor(nameof(ShowBufferedLiveDictation))]
     [ObservableProperty] public partial string SelectedDictationModel { get; set; } = "";
+    [ObservableProperty] public partial bool EnableBufferedLiveDictation { get; set; }
+    /// <summary>macOS shows the toggle only for a local backend that supports buffered live transcription.</summary>
+    public bool ShowBufferedLiveDictation => TranscriptionModelCatalog.Models.FirstOrDefault(model =>
+        model.DisplayName == SelectedDictationModel) is { } model && BufferedLiveDictationSupport.Supports(model.Kind);
     [ObservableProperty] public partial IReadOnlyList<string> MeetingModels { get; private set; } = [];
     [ObservableProperty] public partial string SelectedMeetingModel { get; set; } = "";
     [ObservableProperty] public partial IReadOnlyList<string> LiveModels { get; private set; } = [];
@@ -179,6 +189,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowLmStudioSettings))]
     [NotifyPropertyChangedFor(nameof(ShowCustomHttpSettings))]
     [NotifyPropertyChangedFor(nameof(SummaryDisclosure))]
+    [NotifyPropertyChangedFor(nameof(ShowSummaryOutputLimit))]
     [ObservableProperty] public partial SummaryProviderInfo? SelectedSummaryProvider { get; set; } = SummaryProviderDisclosure.For("local");
     [NotifyPropertyChangedFor(nameof(SummaryDisclosure))]
     [ObservableProperty] public partial string OllamaEndpoint { get; set; } = "http://localhost:11434";
@@ -200,6 +211,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<SummaryProviderInfo> SummaryProviders { get; } = SummaryProviderDisclosure.Available;
 
+    /// <summary>API backends only: ChatGPT manages its own output limit and local notes have none.</summary>
+    public bool ShowSummaryOutputLimit => SelectedSummaryProvider?.Id is { } id &&
+        id != SummaryProviderDisclosure.ChatGpt && MeetingSummaryService.IsHostedProvider(id);
     public bool ShowOllamaSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.Ollama;
     public bool ShowOpenAISettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenAI;
     public bool ShowOpenRouterSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenRouter;
@@ -465,6 +479,13 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(StartAtLogin) => settings with { StartAtLogin = StartAtLogin },
         nameof(AutoMeetingDetectionEnabled) => settings with { AutoMeetingDetectionEnabled = AutoMeetingDetectionEnabled },
         nameof(SaveMeetingRecordings) => settings with { SaveMeetingRecordings = SaveMeetingRecordings },
+        nameof(DiarizeMicrophoneAudio) => settings with { DiarizeMicrophoneAudio = DiarizeMicrophoneAudio },
+        nameof(EnableBufferedLiveDictation) => settings with { EnableBufferedLiveDictation = EnableBufferedLiveDictation },
+        nameof(SummaryOutputLimitIndex) => settings with
+        {
+            MeetingSummaryMaxOutputTokens = MeetingSummaryOutputPolicy.NormalizedLimit(
+                _summaryOutputLimitValues.ElementAtOrDefault(Math.Max(0, SummaryOutputLimitIndex)))
+        },
         nameof(AutoExportMarkdownEnabled) => settings with { AutoExportMarkdownEnabled = AutoExportMarkdownEnabled },
         nameof(AutoExportPdfEnabled) => settings with { AutoExportPdfEnabled = AutoExportPdfEnabled },
         nameof(PostMeetingHookEnabled) => settings with { PostMeetingHookEnabled = PostMeetingHookEnabled },
@@ -560,7 +581,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     {
         var model = SelectedPlannerModel;
         var effort = ComputerUseConfiguration.Effort(model, _computerUseEffort);
-        ComputerUseEfforts = model.Efforts.Select(ComputerUseConfiguration.EffortLabel).ToList();
+        ComputerUseEfforts = BoundLists.Same(ComputerUseEfforts, model.Efforts.Select(ComputerUseConfiguration.EffortLabel).ToList());
         ComputerUseEffortIndex = model.Efforts.ToList().IndexOf(effort);
     }
 
@@ -694,6 +715,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OpenDashboardOnLaunch = settings.OpenDashboardOnLaunch;
         AutoMeetingDetectionEnabled = settings.AutoMeetingDetectionEnabled;
         SaveMeetingRecordings = settings.SaveMeetingRecordings;
+        DiarizeMicrophoneAudio = settings.DiarizeMicrophoneAudio;
+        EnableBufferedLiveDictation = settings.EnableBufferedLiveDictation;
+        var savedLimit = MeetingSummaryOutputPolicy.NormalizedLimit(settings.MeetingSummaryMaxOutputTokens);
+        _summaryOutputLimitValues = [0, .. MeetingSummaryOutputPolicy.Presets.Append(savedLimit ?? 0).Where(v => v > 0).Distinct().Order()];
+        SummaryOutputLimits = BoundLists.Same(SummaryOutputLimits, [.. _summaryOutputLimitValues.Select(v => v == 0 ? "No added limit (default)" : $"{v:N0} tokens")]);
+        SummaryOutputLimitIndex = Math.Max(0, Array.IndexOf(_summaryOutputLimitValues, savedLimit ?? 0));
         AutoExportMarkdownEnabled = settings.AutoExportMarkdownEnabled;
         AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory;
         AutoExportPdfEnabled = settings.AutoExportPdfEnabled;
@@ -911,13 +938,13 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
     private void AssignPermissions(IReadOnlyList<WindowsPermissionRow> rows)
     {
-        Permissions = rows.Select((row, index) => new SettingsPermissionItem(
+        Permissions = BoundLists.Same(Permissions, rows.Select((row, index) => new SettingsPermissionItem(
             row.Name,
             row.Status,
             row.Granted,
             row.Help,
             CanOpenSystemSettings: string.Equals(row.Name, "Microphone", StringComparison.OrdinalIgnoreCase),
-            IsLast: index == rows.Count - 1)).ToList();
+            IsLast: index == rows.Count - 1)).ToList());
     }
 
     private void NotifySections()

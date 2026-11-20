@@ -96,9 +96,28 @@ public partial class ShortcutsPageViewModel(
     /// P5-02. No Windows global shortcut exists for Quill; say that in Windows terms rather than
     /// describing it as "this macOS command".
     /// </summary>
-    public string QuillState => !App.ComputerUse.ChatGpt.IsSignedIn
-        ? "Sign in to ChatGPT in Settings first. Quill rewrites with your ChatGPT account."
-        : QuillEnabled ? "Hold, speak, release. Your instruction is transcribed on this PC." : "Turn it on to use the shortcut.";
+    public string QuillState => QuillUnavailable() is { } unavailable
+        ? unavailable
+        : !QuillEnabled ? "Turn it on to use the shortcut."
+        : QuillBackendIndex == 0 ? "Hold, speak, release. Everything runs on this PC."
+        : "Hold, speak, release. Your instruction is transcribed on this PC; ChatGPT writes the rewrite.";
+
+    private string? QuillUnavailable() => WinUiQuillContext.Unavailable(_settings, App.ComputerUse.ChatGpt.IsSignedIn);
+
+    /// <summary>macOS Quill writing model: 0 = on this PC (Qwen Basic), 1 = ChatGPT.</summary>
+    [ObservableProperty] public partial int QuillBackendIndex { get; private set; }
+
+    public void SetQuillBackend(int index)
+    {
+        var backend = index == 1 ? QuillBackends.ChatGpt : QuillBackends.Local;
+        if (QuillBackends.Normalize(_settings.QuillBackend) == backend) return;
+        _settings = _settings with { QuillBackend = backend };
+        settingsContext.Save(_settings);
+        QuillBackendIndex = index == 1 ? 1 : 0;
+        OnPropertyChanged(nameof(QuillState));
+        ShowStatus(QuillUnavailable() ?? (backend == QuillBackends.Local ? "Quill now writes on this PC." : "Quill now writes with ChatGPT."),
+            isError: QuillUnavailable() is not null);
+    }
 
     public void Load()
     {
@@ -111,6 +130,7 @@ public partial class ShortcutsPageViewModel(
         PushToTalkEnabled = _settings.PushToTalkEnabled;
         MeetingShortcutEnabled = _settings.MeetingRecordingShortcutEnabled;
         QuillEnabled = _settings.QuillEnabled;
+        QuillBackendIndex = QuillBackends.Normalize(_settings.QuillBackend) == QuillBackends.ChatGpt ? 1 : 0;
         QuillHotkeyParts = SplitHotkey(HotkeyGestureParser.Parse(_settings.QuillHotkey).DisplayName);
         OnPropertyChanged(nameof(QuillState));
         MeetingHotkeyParts = SplitHotkey(HotkeyGestureParser.Parse(_settings.MeetingRecordingHotkey).DisplayName);
@@ -129,13 +149,13 @@ public partial class ShortcutsPageViewModel(
         else ShowStatus(failure is null ? $"Push to Talk is on: {Hotkey}." : $"Push to Talk could not start: {failure}", failure is not null);
     }
 
-    /// <summary>Turns Quill on or off. It needs ChatGPT, so it stays off until the user signs in.</summary>
+    /// <summary>Turns Quill on or off. Like macOS, it stays off until its selected writing model is set up.</summary>
     public void SetQuillEnabled(bool enabled)
     {
-        if (enabled && !App.ComputerUse.ChatGpt.IsSignedIn)
+        if (enabled && QuillUnavailable() is { } unavailable)
         {
             QuillEnabled = false;
-            ShowStatus("Sign in to ChatGPT in Settings first. Quill rewrites with your ChatGPT account.", isError: true);
+            ShowStatus(unavailable, isError: true);
             return;
         }
         _settings = _settings with { QuillEnabled = enabled };

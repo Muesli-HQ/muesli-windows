@@ -307,8 +307,8 @@ public sealed class SystemAudioCaptureService : IDisposable
             }
 
             var previousName = current.DeviceName;
+            _session = null; // MAC-19: invalidated before teardown
             await current.StopAndDisposeAsync().ConfigureAwait(false);
-            _session = null;
             await WaitForFileFlushAsync(current.Path).ConfigureAwait(false);
             try
             {
@@ -476,7 +476,7 @@ public sealed class SystemAudioCaptureService : IDisposable
         public Task StopAsync()
         {
             _capture.StopRecording();
-            return Task.CompletedTask;
+            return AudioCaptureService.WaitForCaptureThreadAsync(_capture);
         }
 
         public void Dispose()
@@ -524,7 +524,9 @@ public sealed class SystemAudioCaptureService : IDisposable
         private readonly ISystemCaptureSource _source;
         private readonly Action<byte[], int, WaveFormat> _observe;
         private readonly Action<Exception> _captureFaulted;
+        private readonly CaptureBufferPump _pump;
         private WaveFileWriter? _writer;
+        private bool _writerClosed;
         private int _stopping;
 
         public CaptureSession(
@@ -541,6 +543,8 @@ public sealed class SystemAudioCaptureService : IDisposable
             DeviceId = deviceId;
             _observe = observe;
             _captureFaulted = captureFaulted;
+            // MAC-35: the capture callback only copies; the file, levels and live PCM happen on the pump's worker.
+            _pump = new CaptureBufferPump(Consume, captureFaulted);
             source.DataAvailable += OnDataAvailable;
             source.RecordingStopped += OnRecordingStopped;
         }
@@ -548,54 +552,61 @@ public sealed class SystemAudioCaptureService : IDisposable
         public string Path { get; }
         public string DeviceName { get; }
         public string DeviceId { get; }
+        public long DroppedBuffers => _pump.Dropped;
 
+        /// <summary>Stop the source (its last buffers are still accepted), consume every accepted buffer, then close the file.</summary>
         public async Task StopAndDisposeAsync()
         {
             if (Interlocked.Exchange(ref _stopping, 1) != 0)
             {
+                await _pump.DrainAsync().ConfigureAwait(false);
                 return;
             }
-            try
-            {
-                await _source.StopAsync().ConfigureAwait(false);
-            }
-            finally
-            {
-                _source.DataAvailable -= OnDataAvailable;
-                _source.RecordingStopped -= OnRecordingStopped;
-                lock (_writerGate)
-                {
-                    if (_writer is null && !File.Exists(Path))
-                    {
-                        _writer = new WaveFileWriter(Path, _source.WaveFormat);
-                    }
-                    _writer?.Dispose();
-                    _writer = null;
-                }
-                _source.Dispose();
-            }
+            // MAC-19: native stop/dispose faults are contained so the file still closes and a replacement can start.
+            await AudioCaptureService.ContainEngineCallAsync(_source.StopAsync).ConfigureAwait(false);
+            _source.DataAvailable -= OnDataAvailable;
+            _source.RecordingStopped -= OnRecordingStopped;
+            await _pump.DrainAsync().ConfigureAwait(false);
+            CloseWriter(createIfMissing: true);
+            await AudioCaptureService.ContainEngineCallAsync(() => { _source.Dispose(); return Task.CompletedTask; }).ConfigureAwait(false);
         }
 
-        private void OnDataAvailable(object? sender, WaveInEventArgs args)
+        private void OnDataAvailable(object? sender, WaveInEventArgs args) => _pump.Offer(args.Buffer, args.BytesRecorded);
+
+        private void Consume(byte[] buffer, int count)
         {
             lock (_writerGate)
             {
+                if (_writerClosed) return;
                 _writer ??= new WaveFileWriter(Path, _source.WaveFormat);
-                _writer.Write(args.Buffer, 0, args.BytesRecorded);
+                _writer.Write(buffer, 0, count);
             }
-            _observe(args.Buffer, args.BytesRecorded, _source.WaveFormat);
+            _observe(buffer, count, _source.WaveFormat);
         }
 
         private void OnRecordingStopped(object? sender, StoppedEventArgs args)
         {
+            if (Volatile.Read(ref _stopping) != 0) return;
+            var exception = args.Exception ?? new InvalidOperationException("System-audio capture stopped unexpectedly.");
+            _ = Task.Run(async () =>
+            {
+                await _pump.DrainAsync().ConfigureAwait(false);
+                CloseWriter(createIfMissing: false);
+                _captureFaulted(exception);
+            });
+        }
+
+        private void CloseWriter(bool createIfMissing)
+        {
             lock (_writerGate)
             {
+                if (_writer is null && createIfMissing && !_writerClosed && !File.Exists(Path))
+                {
+                    _writer = new WaveFileWriter(Path, _source.WaveFormat);
+                }
                 _writer?.Dispose();
                 _writer = null;
-            }
-            if (Volatile.Read(ref _stopping) == 0)
-            {
-                _captureFaulted(args.Exception ?? new InvalidOperationException("System-audio capture stopped unexpectedly."));
+                _writerClosed = true;
             }
         }
     }

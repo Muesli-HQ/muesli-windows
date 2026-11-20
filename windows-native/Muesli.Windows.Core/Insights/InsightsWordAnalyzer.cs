@@ -120,7 +120,7 @@ public static class InsightsWordAnalyzer
         _ => InsightsRange.AllTime
     };
 
-    private static DateTime? StartDate(InsightsRange range, DateTime today) => range switch
+    public static DateTime? StartDate(InsightsRange range, DateTime today) => range switch
     {
         InsightsRange.ThirtyDays => today.AddDays(-29),
         InsightsRange.NinetyDays => today.AddDays(-89),

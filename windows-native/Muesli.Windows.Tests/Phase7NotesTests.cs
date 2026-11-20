@@ -431,16 +431,37 @@ public sealed class Phase7NotesTests
     }
 
     [Fact]
-    public async Task AnEmptyTranscriptProducesNoNotesAndNeverCallsAProvider()
+    public async Task AnEmptyRecordingIsMarkedEmptyAndNeverCallsAProvider()
     {
         var handler = new StubHandler(HttpStatusCode.OK, "{\"message\":{\"content\":\"x\"}}");
         using var client = new HttpClient(handler);
 
-        var result = await MeetingSummaryService.CreateSummaryResultAsync(
-            "   ", "t", Settings("ollama"), CancellationToken.None, client);
-
-        Assert.Equal("", result.Summary);
+        // MAC-06 (macOS 6bb10e8e, 32790f6c): an earlier empty-recording result is not meeting content.
+        foreach (var previous in new string?[] { null, "", "  " + MeetingSummaryService.EmptyRecordingNotes + Environment.NewLine })
+        {
+            var result = await MeetingSummaryService.CreateSummaryResultAsync(
+                "   ", "t", Settings("ollama"), CancellationToken.None, client, manualNotes: " ", previousMeetingNotes: previous);
+            Assert.Equal(MeetingSummaryService.EmptyRecordingNotes, result.Summary);
+            Assert.False(result.UsedLocalFallback);
+        }
+        var meeting = new PersistedMeeting { Title = "Kept title", Transcript = " ", ManualNotes = "" };
+        Assert.Equal("Kept title", await MeetingSummaryService.CreateTitleAsync(meeting, Settings("ollama"), CancellationToken.None, client));
         Assert.Null(handler.LastRequestUri);
+    }
+
+    [Theory]
+    [InlineData("", "Typed notes", null)]
+    [InlineData("", "", "Last week: ship the beta.")]
+    [InlineData("We shipped it.", "", null)]
+    public async Task AnyRealContentStillReachesTheProvider(string transcript, string manual, string? previous)
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"message\":{\"content\":\"## Summary - done.\"}}");
+        using var client = new HttpClient(handler);
+        Assert.False(MeetingSummaryService.HasNothingToSummarize(transcript, manual, previous));
+        var result = await MeetingSummaryService.CreateSummaryResultAsync(
+            transcript, "t", Settings("ollama"), CancellationToken.None, client, manualNotes: manual, previousMeetingNotes: previous);
+        Assert.NotNull(handler.LastRequestUri);
+        Assert.NotEqual(MeetingSummaryService.EmptyRecordingNotes, result.Summary);
     }
 
     // ---- persistence -------------------------------------------------------------

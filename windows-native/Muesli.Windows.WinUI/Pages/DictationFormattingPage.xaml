@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Muesli.Windows.WinUI.Pages.DictationFormattingPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- macOS DictationFormattingSettingsView (MAC-15). App cards are built in code-behind. -->
+    <Grid Background="{ThemeResource MuesliBackgroundBrush}">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="ContentRoot" Padding="{StaticResource MuesliPageContentPadding}" Spacing="16"
+                        MaxWidth="{StaticResource MuesliPageContentMaxWidth}" HorizontalAlignment="Left">
+                <StackPanel Spacing="4">
+                    <Button Click="Back_Click" Style="{StaticResource MuesliGhostButtonStyle}"
+                            HorizontalAlignment="Left" Padding="8,4" Margin="-8,0,0,8"
+                            AutomationProperties.Name="Back to settings"
+                            AutomationProperties.AutomationId="DictationFormattingBackButton">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <FontIcon Glyph="&#xE72B;" FontSize="12" />
+                            <TextBlock Text="Back to Settings" FontSize="13" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+                    <TextBlock Text="App Formatting" Style="{StaticResource MuesliPageTitleStyle}" />
+                    <TextBlock Text="Choose a writing template for each app. Start with a built-in style, or customize one and save it to reuse."
+                               FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel x:Name="RulesPanel" Spacing="10" AutomationProperties.AutomationId="DictationFormattingApps" />
+
+                <StackPanel x:Name="SuggestionsPanel" Spacing="8" Visibility="Collapsed">
+                    <TextBlock Text="Your most-used apps" FontSize="14" FontWeight="SemiBold" />
+                    <TextBlock Text="Based on dictations from the last 30 days, stored on this PC. Pick an app to customize; nothing is applied automatically."
+                               FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" />
+                    <StackPanel x:Name="SuggestionsList" Spacing="8" AutomationProperties.AutomationId="DictationFormattingSuggestions" />
+                </StackPanel>
+                <TextBlock x:Name="EmptyText" Visibility="Collapsed" FontSize="13" TextWrapping="Wrap"
+                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+
+                <Button HorizontalAlignment="Left" Style="{StaticResource MuesliSecondaryButtonStyle}" Click="AddApp_Click"
+                        AutomationProperties.Name="Add app" AutomationProperties.AutomationId="DictationFormattingAddApp">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE710;" FontSize="11" /><TextBlock Text="Add App…" /></StackPanel>
+                </Button>
+
+                <Expander x:Name="TemplatesExpander" Visibility="Collapsed" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="DictationFormattingMyTemplates">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Choose these templates from any app's Template menu. Removing a template keeps the formatting already applied to apps."
+                                   FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" />
+                        <StackPanel x:Name="TemplatesList" Spacing="8" />
+                    </StackPanel>
+                </Expander>
+
+                <TextBlock Text="Templates format your words after transcription and optional cleanup. They do not rewrite your wording or tone. Browser rules apply to every website in that browser."
+                           FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap" />
+                <TextBlock x:Name="LiveCaption" Visibility="Collapsed" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" TextWrapping="Wrap"
+                           Text="Live dictation waits until you stop only when recording starts in an app with a formatting rule. Buffered text uses the receiving app's rule. Sessions started in other apps stay live and keep their original formatting, even if you switch apps." />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

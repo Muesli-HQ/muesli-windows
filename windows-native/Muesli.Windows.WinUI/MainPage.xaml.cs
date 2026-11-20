@@ -337,6 +337,9 @@ public sealed partial class MainPage : Page
         if (sender is Button button && button.Tag is string tag)
         {
             DismissSearchQuery();
+            App.MeetingChatDocumentTarget = null;
+            // macOS SidebarView: the Ask Meetings row is showMeetingChatIndex.
+            if (tag == "askmeetings") App.MeetingChat?.ShowIndex();
             _selectedTag = tag;
             RefreshNavigationVisuals();
             Navigate(tag);
@@ -367,6 +370,7 @@ public sealed partial class MainPage : Page
         {
             "timeline" => typeof(Pages.TimelinePage),
             "dictations" => typeof(Pages.DictationsPage),
+            "askmeetings" => typeof(Pages.AskMeetingsPage),
             "dictionary" => typeof(Pages.DictionaryPage),
             "models" => typeof(Pages.ModelsPage),
             "settings" => typeof(Pages.SettingsPage),
@@ -387,6 +391,8 @@ public sealed partial class MainPage : Page
     public void NavigateTo(string tag)
     {
         DismissSearchQuery();
+        // macOS showMeetingsHome / returnToMeetingChat: leaving a cited meeting drops its passage target.
+        App.MeetingChatDocumentTarget = null;
 
         // A folder tag is created dynamically from the local profile. Selecting it is still a
         // normal button invocation, so automation and feature-tour navigation behave identically.
@@ -404,6 +410,31 @@ public sealed partial class MainPage : Page
         _selectedTag = string.Equals(tag, RecordingRoute, StringComparison.OrdinalIgnoreCase) ? "meetings" : tag;
         RefreshNavigationVisuals();
         Navigate(tag);
+    }
+
+    /// <summary>
+    /// macOS MuesliController.showMeetingChatSource: open the cited meeting document on its passage. Back
+    /// returns to the chat while the target is set.
+    /// </summary>
+    public void ShowMeetingDocument(string meetingId, MeetingChatDocumentTarget target)
+    {
+        DismissSearchQuery();
+        _selectedTag = "meetings";
+        RefreshNavigationVisuals();
+        App.MeetingChatDocumentTarget = target;
+        ContentFrame.Navigate(typeof(Pages.MeetingDetailPage), meetingId);
+    }
+
+    /// <summary>
+    /// macOS openInsights(section:): a stat card opens Insights at its section, and the back
+    /// link returns to the page the card was on.
+    /// </summary>
+    public void OpenInsights(string section, string from)
+    {
+        DismissSearchQuery();
+        _selectedTag = "insights";
+        RefreshNavigationVisuals();
+        ContentFrame.Navigate(typeof(Pages.InsightsPage), $"{section}|{from}");
     }
 
     /// <summary>
@@ -882,7 +913,7 @@ public sealed partial class MainPage : Page
             yield return child;
         }
 
-        // Insights is not a sidebar destination on macOS; the Timeline stat cards open it.
+        yield return AskMeetingsNav;
         yield return DictionaryNav;
         yield return ModelsNav;
         yield return ShortcutsNav;

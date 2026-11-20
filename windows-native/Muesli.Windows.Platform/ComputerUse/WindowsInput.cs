@@ -107,19 +107,26 @@ public static class WindowsInput
         Thread.Sleep(pauseMs);
     }
 
-    /// <summary>Pastes text through the clipboard and then restores the user's clipboard text or image.</summary>
+    /// <summary>
+    /// Pastes text through the clipboard and then restores the user's clipboard text or image. macOS f5d21107 and
+    /// 784e1a47: Muesli owns the clipboard from its write (the sequence number right after it) until the restore.
+    /// Losing it first (another app wrote) is reported as <see cref="ClipboardOwnershipLostException"/>, separately
+    /// from a failed shortcut, and nothing is pasted or restored over the other app's data.
+    /// </summary>
     public static void PasteText(string text)
     {
-        var saved = Sta.Run(() =>
+        var (saved, owned) = Sta.Run(() =>
         {
             var previous = Retry(() => System.Windows.Forms.Clipboard.ContainsText() ? (object?)System.Windows.Forms.Clipboard.GetText()
                 : System.Windows.Forms.Clipboard.ContainsImage() ? System.Windows.Forms.Clipboard.GetImage() : null);
             SetClipboardText(text);
-            return previous;
+            return (previous, FocusedTextSelection.ClipboardSequence);
         });
+        if (FocusedTextSelection.ClipboardSequence != owned) throw new ClipboardOwnershipLostException();
         var target = GetForegroundWindow();
         PressChord([VkControl, (ushort)'V']);
         WaitForApp(target, 400);
+        if (FocusedTextSelection.ClipboardSequence != owned) return; // a newer owner keeps its clipboard
         Sta.Run(() => Retry(() =>
         {
             switch (saved)

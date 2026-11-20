@@ -41,6 +41,7 @@ public sealed class WinUiMeetingContext : IDisposable
             CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
             RaiseChanged();
         };
+        _coordinator.ProcessingStageChanged += (_, _) => RaiseChanged();
         _coordinator.LiveTranscriptChanged += (_, snapshot) =>
         {
             LatestLiveSnapshot = snapshot;
@@ -95,6 +96,25 @@ public sealed class WinUiMeetingContext : IDisposable
     public float CurrentLevel => _coordinator.Levels.Current;
 
     public string? ActiveMeetingId { get; private set; }
+
+    /// <summary>macOS screenRecordingSessionID: identifies this capture session's screen clips, so a
+    /// discard (including of a resumed meeting) removes only the clips it added.</summary>
+    public Guid CaptureSessionId { get; private set; } = Guid.NewGuid();
+
+
+    /// <summary>Routes the meeting audio feed into the active screen clip; null detaches it.</summary>
+    public Action<float[], long, bool>? ScreenAudioSink { get => _coordinator.ScreenAudioSink; set => _coordinator.ScreenAudioSink = value; }
+
+    public long ElapsedMeetingSamples => _coordinator.ElapsedMeetingSamples;
+
+    /// <summary>Finishes screen recording before the meeting stops (false) or is discarded (true).</summary>
+    public Func<bool, Task>? ScreenRecordingFinishing { get; set; }
+
+    /// <summary>True when screen clips (saved or journaled) belong to the meeting; a read error answers true.</summary>
+    public Func<string, bool>? HasScreenMedia { get; set; }
+
+    /// <summary>Clips reference the meeting row, so screen recording saves the in-progress draft first.</summary>
+    public void EnsureDraftSaved() => SaveManualNotesCore();
     public string ActiveTitle => _title;
     public string ManualNotes { get; private set; } = "";
     public bool AreNotesSaved { get; private set; } = true;
@@ -137,15 +157,60 @@ public sealed class WinUiMeetingContext : IDisposable
         AreNotesSaved = false;
     }
 
+    private PersistedMeeting DraftMeeting(string id) => _library.FindMeeting(id) ?? new PersistedMeeting
+    {
+        SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+        Id = id, Title = _title, CreatedAt = _startedAt,
+        ModelProfile = _settings.FinalMeetingModelId, SessionState = State
+    };
+
+    // macOS lastRecordingTemplateSelection: the last saved choice, kept in case the library can't be read at Stop.
+    private string? _recordingTemplate;
+
+    public IReadOnlyList<string> TemplateNames => MeetingSummaryService.BuiltInTemplateNames
+        .Concat(_library.LoadMeetingTemplates().Select(template => template.Name))
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary>The template the live meeting will be summarized with.</summary>
+    public string RecordingTemplate => _recordingTemplate ?? MeetingSummaryService.NormalizeTemplateName(_settings.MeetingSummaryTemplate);
+
+    /// <summary>
+    /// macOS selectRecordingTemplate (14617391): saves a per-meeting choice while recording, without generating
+    /// notes or changing the default. Locked once Stop begins.
+    /// </summary>
+    public void SelectRecordingTemplate(string name)
+    {
+        ThrowIfDisposed();
+        if (ActiveMeetingId is not { } id || (!IsRecording && !IsPaused) || IsBusy)
+            throw new InvalidOperationException("The template is locked once recording stops.");
+        var normalized = MeetingSummaryService.NormalizeTemplateName(name);
+        normalized = TemplateNames.FirstOrDefault(template => string.Equals(template, normalized, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("That template no longer exists. Choose another template and try again.");
+        SaveMeeting(DraftMeeting(id) with { TemplateName = normalized });
+        _recordingTemplate = normalized;
+        RaiseChanged();
+    }
+
+    /// <summary>macOS lockMeetingTemplateForProcessing (23c3fe69): the saved choice, else the last one saved this session.</summary>
+    private string LockRecordingTemplate(string id)
+    {
+        var template = _recordingTemplate;
+        try
+        {
+            if (_library.FindMeeting(id)?.TemplateName is { Length: > 0 } saved) template = saved;
+        }
+        catch (Exception exception)
+        {
+            _log.Error("Meeting template could not be read at Stop; keeping the saved selection.", exception);
+        }
+        _recordingTemplate = null;
+        return template ?? MeetingSummaryService.NormalizeTemplateName(_settings.MeetingSummaryTemplate);
+    }
+
     private void SaveManualNotesCore()
     {
         if (ActiveMeetingId is null) return;
-        var meeting = _library.FindMeeting(ActiveMeetingId) ?? new PersistedMeeting
-        {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
-            Id = ActiveMeetingId, Title = _title, CreatedAt = _startedAt,
-            ModelProfile = _settings.FinalMeetingModelId, SessionState = State
-        };
+        var meeting = DraftMeeting(ActiveMeetingId);
         try { SaveMeeting(MeetingNotesComposer.ApplyManualNotes(meeting, ManualNotes)); }
         catch (Exception exception)
         {
@@ -183,8 +248,17 @@ public sealed class WinUiMeetingContext : IDisposable
     /// <summary>macOS starts a Quick Note as "Meeting"; the real title is generated when it is saved.</summary>
     public const string QuickNoteTitle = "Meeting";
 
-    public Task StartQuickNoteAsync(CancellationToken cancellationToken = default) =>
-        StartMeetingAsync(QuickNoteTitle, null, cancellationToken);
+    /// <summary>macOS 7c3abb66: a Quick Note started inside a folder is filed there.</summary>
+    public async Task StartQuickNoteAsync(CancellationToken cancellationToken = default, string? folderId = null)
+    {
+        await StartMeetingAsync(QuickNoteTitle, null, cancellationToken);
+        if (ExistingFolder(folderId) is { } folder && ActiveMeetingId is { } id)
+            SaveMeeting(DraftMeeting(id) with { FolderId = folder });
+    }
+
+    /// <summary>The folder, unless it was deleted meanwhile (macOS inserts with <c>SELECT id FROM meeting_folders</c>).</summary>
+    private string? ExistingFolder(string? folderId) =>
+        !string.IsNullOrWhiteSpace(folderId) && _library.History.LoadMeetingFolders().Any(folder => folder.Id == folderId) ? folderId : null;
 
     public Task StartMeetingAsync(string title, int? processId, CancellationToken cancellationToken = default) =>
         RunOperationAsync(async () =>
@@ -242,11 +316,13 @@ public sealed class WinUiMeetingContext : IDisposable
     {
         ThrowIfDisposed();
         _suspendedForPower = false;
+        CaptureSessionId = Guid.NewGuid();
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         ManualNotes = "";
         AreNotesSaved = true;
         ActiveMeetingId = null;
+        _recordingTemplate = null;
         IsSourceMissing = false;
         _startedAt = DateTime.Now;
         LiveTranscriptionConfiguration? liveConfiguration = null;
@@ -281,6 +357,9 @@ public sealed class WinUiMeetingContext : IDisposable
         ThrowIfDisposed();
         // Retry a failed autosave before stopping capture. A storage error must not lose writing.
         if (!AreNotesSaved) SaveManualNotesCore();
+        if (ScreenRecordingFinishing is { } finishScreen) await finishScreen(false);
+        _coordinator.DiarizeMicrophoneAudio = _settings.DiarizeMicrophoneAudio;
+        var template = ActiveMeetingId is { } activeId ? LockRecordingTemplate(activeId) : null;
         RecordedMeetingResult result;
         try
         {
@@ -302,7 +381,7 @@ public sealed class WinUiMeetingContext : IDisposable
         _coordinator.AcknowledgePersisted(result.MeetingId);
         ActiveMeetingId = null;
         IsSourceMissing = false;
-        var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
+        var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken, template);
         meeting = await CompressSavedTracksAsync(meeting);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
@@ -338,6 +417,7 @@ public sealed class WinUiMeetingContext : IDisposable
         if (IsBusy) throw new InvalidOperationException("Wait for the current meeting operation to finish.");
         if (keepNotes) SaveManualNotesCore();
         var resumed = IsResumingFinishedMeeting;
+        if (ScreenRecordingFinishing is { } finishScreen) await finishScreen(true);
         await _coordinator.CancelAsync();
         FinalizationFailed = false;
         if (ActiveMeetingId is { } id)
@@ -434,7 +514,8 @@ public sealed class WinUiMeetingContext : IDisposable
         _recoverable = null;
         if (recovery.Journal.ResumedMeeting is null && _library.FindMeeting(id) is { } draft && string.IsNullOrWhiteSpace(draft.Transcript))
         {
-            if (string.IsNullOrWhiteSpace(draft.ManualNotes)) _library.DeleteMeeting(id);
+            // macOS resolveLiveMeetingAfterStopFailure: a draft that owns screen video is kept.
+            if (string.IsNullOrWhiteSpace(draft.ManualNotes) && HasScreenMedia?.Invoke(id) != true) _library.DeleteMeeting(id);
             else SaveMeeting(draft with { SessionState = MeetingSessionState.NoteOnly });
         }
         RaiseChanged();
@@ -444,17 +525,19 @@ public sealed class WinUiMeetingContext : IDisposable
     public Task<PersistedMeeting> ImportAsync(
         string sourcePath,
         IProgress<TranscriptionProgress>? progress = null,
-        CancellationToken cancellationToken = default) => RunOperationAsync(async () =>
+        CancellationToken cancellationToken = default,
+        string? folderId = null) => RunOperationAsync(async () =>
         {
             if (IsRecording || IsPaused) throw new InvalidOperationException("Finish the active meeting before importing media.");
             await RefreshSettingsAsync(cancellationToken);
-            return await ImportCoreAsync(sourcePath, progress, cancellationToken);
+            return await ImportCoreAsync(sourcePath, progress, cancellationToken, folderId);
         });
 
     private async Task<PersistedMeeting> ImportCoreAsync(
         string sourcePath,
         IProgress<TranscriptionProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? folderId = null)
     {
         ThrowIfDisposed();
         if (!MediaImportFormats.IsSupported(sourcePath))
@@ -484,7 +567,9 @@ public sealed class WinUiMeetingContext : IDisposable
             WordCount = CountWords(transcript),
             SessionState = MeetingSessionState.Completed,
             SystemCaptureMode = "imported-media",
-            FinalTranscriptOwnerModelId = _transcription.ModelId
+            FinalTranscriptOwnerModelId = _transcription.ModelId,
+            // Checked after transcription: the folder may have been deleted while the import ran.
+            FolderId = ExistingFolder(folderId)
         };
         SaveMeeting(meeting);
         meeting = await FinalizeMeetingAsync(meeting, cancellationToken);
@@ -559,8 +644,12 @@ public sealed class WinUiMeetingContext : IDisposable
 
     private async Task<PersistedMeeting> FinalizeMeetingAsync(
         PersistedMeeting meeting,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? lockedTemplate = null)
     {
+        // The template locked at Stop, else one the meeting already carries (recovery), else the default.
+        var templateName = MeetingSummaryService.NormalizeTemplateName(lockedTemplate
+            ?? (string.IsNullOrWhiteSpace(meeting.TemplateName) ? _settings.MeetingSummaryTemplate : meeting.TemplateName));
         if (string.IsNullOrWhiteSpace(meeting.Transcript))
         {
             SaveMeeting(meeting);
@@ -579,9 +668,9 @@ public sealed class WinUiMeetingContext : IDisposable
             removeFillerWords: _settings.RemoveFillerWords);
         meeting = meeting with { Transcript = transcript, WordCount = CountWords(transcript) };
         SaveMeeting(meeting);
-        var summarySettings = _settings;
+        var summarySettings = _settings with { MeetingSummaryTemplate = templateName };
         var template = _library.LoadMeetingTemplates().FirstOrDefault(item =>
-            string.Equals(item.Name, summarySettings.MeetingSummaryTemplate, StringComparison.OrdinalIgnoreCase));
+            string.Equals(item.Name, templateName, StringComparison.OrdinalIgnoreCase));
         if (template is not null) summarySettings = summarySettings with { MeetingSummaryPromptOverride = template.Prompt };
 
         SetStage(MeetingProcessingStage.Titling);
@@ -604,7 +693,7 @@ public sealed class WinUiMeetingContext : IDisposable
         var finalized = MeetingNotesComposer.ApplyResummarization(
             latest,
             notes,
-            _settings.MeetingSummaryTemplate,
+            templateName,
             generatedTitle);
         SaveMeeting(finalized);
         if (finalized.SessionState == MeetingSessionState.Completed &&

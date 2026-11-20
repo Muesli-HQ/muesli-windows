@@ -16,7 +16,8 @@ public static partial class FillerWordFilter
 
     private static readonly string[] WordFillers =
     [
-        "uh", "um", "uhh", "umm", "er", "err", "ah", "ahh", "hmm", "hm", "mm", "mmm"
+        // "er" is deliberately absent: it is the Norwegian/Danish verb "is" (macOS f1c723f0). "err" stays.
+        "uh", "um", "uhh", "umm", "err", "ah", "ahh", "hmm", "hm", "mm", "mmm"
     ];
 
     public static string Apply(string text)

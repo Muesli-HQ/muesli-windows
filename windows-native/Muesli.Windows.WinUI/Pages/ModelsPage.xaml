@@ -616,6 +616,20 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
+
+                <!-- macOS cotypistSection (ModelsView.swift:716); its tab and cards come from
+                     ModelsPage.Cotypist.cs, only when Cotypist is installed. -->
+                <StackPanel x:Name="CotypistPanel"
+                            Spacing="12"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="Cotypist models">
+                    <StackPanel Spacing="4" Margin="2,0,0,0">
+                        <TextBlock Text="COTYPIST" Style="{StaticResource MuesliSectionLabelStyle}" FontSize="11" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+                        <TextBlock Text="The model that suggests your next words as you type. All run on this PC; smaller ones answer faster."
+                                   Style="{StaticResource ModelCaptionStyle}" />
+                    </StackPanel>
+                    <StackPanel x:Name="CotypistCards" Spacing="12" AutomationProperties.AutomationId="CotypistModelList" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>

@@ -23,6 +23,8 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        InitializeCotypist();
+        InitializeStorage();
         Unloaded += (_, _) => ViewModel.Dispose();
         ViewModel.PropertyChanged += (_, args) =>
         {
@@ -67,6 +69,8 @@ public sealed partial class SettingsPage : Page
     /// "Configure in Settings" action for Computer Use).
     /// </summary>
     private void ManageCleanupPresets_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(CleanupPresetsPage));
+
+    private void ManageAppFormatting_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(DictationFormattingPage));
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {

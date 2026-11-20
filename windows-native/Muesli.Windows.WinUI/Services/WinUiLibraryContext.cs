@@ -110,6 +110,47 @@ public sealed class WinUiLibraryContext : IDisposable
         History.SaveMeetings(meetings);
     }
 
+    /// <summary>
+    /// macOS importGranola: new meetings go into the top-level "Granola" folder, created only when a meeting is
+    /// new. Existing ids are skipped and never overwritten. The meetings are written in one transaction (SQLite)
+    /// or one document write (JSON); a folder created for them is removed again if that write fails.
+    /// </summary>
+    public GranolaImportReport ImportGranola(IReadOnlyList<GranolaImportRecord> records)
+    {
+        var existing = History.LoadMeetings();
+        var folders = History.LoadMeetingFolders();
+        var (meetings, newFolder, report) = GranolaImport.Plan(records, existing.Select(item => item.Id).ToHashSet(StringComparer.Ordinal), folders);
+        if (meetings.Count == 0) return report;
+        if (newFolder is not null) History.SaveMeetingFolders([.. folders, newFolder]);
+        try
+        {
+            if (History is SqliteLibraryHistoryAdapter sqlite) sqlite.SaveMeetings(meetings);
+            else History.SaveMeetings([.. existing, .. meetings]);
+        }
+        catch
+        {
+            if (newFolder is not null)
+            {
+                try { DeleteMeetingFolder(newFolder.Id); }
+                catch (Exception cleanup) { new AppLogService().Error("The empty Granola folder could not be removed after a failed import.", cleanup); }
+            }
+            throw;
+        }
+        var importedAt = DateTimeOffset.UtcNow;
+        var imported = meetings.Select(meeting => meeting.Id).ToHashSet(StringComparer.Ordinal);
+        try
+        {
+            MeetingImports.Record(Profile.RootDirectory, records.Where(record => imported.Contains(record.SyncIdentity))
+                .Select(record => (record.SyncIdentity, new MeetingImportProvenance("granola", record.Id, record.Workspace, record.OwnerEmail, importedAt))));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The meetings are saved and their ids still mark them as imported; only workspace/email are lost.
+            new AppLogService().Error("Granola import provenance could not be saved.", exception);
+        }
+        return report;
+    }
+
     public bool DeleteMeeting(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
@@ -122,6 +163,7 @@ public sealed class WinUiLibraryContext : IDisposable
         meetings.Remove(meeting);
         History.SaveMeetings(meetings, afterExplicitDeletion: true);
         MeetingParticipants.RemoveMeeting(Profile.RootDirectory, id);
+        MeetingImports.RemoveMeeting(Profile.RootDirectory, id);
         // macOS deletes the saved recording with the meeting. Only Muesli-owned capture files under
         // recordings/<id> are touched; imported originals are never deleted.
         var cleanup = new CaptureStorageService(Profile.CaptureDirectory).DeleteOwnedMeetingAudio(

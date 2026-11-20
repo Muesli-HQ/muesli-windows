@@ -19,6 +19,32 @@ public sealed partial class MeetingDetailPage : Page
         App.Dialogs,
         App.UiDispatcher);
 
+    private MeetingChatDocumentTarget? _citationTarget;
+
+    /// <summary>
+    /// macOS MeetingDetailView with appState.meetingChatDocumentTarget: the "Referenced passage" banner,
+    /// "Back to Chat", and the cited transcript message highlighted.
+    /// </summary>
+    private void ShowCitationTarget()
+    {
+        BackLabel.Text = _citationTarget is null ? "Back to Meetings" : "Back to Chat";
+        AutomationProperties.SetName(BackButton, _citationTarget is null ? "Back to meetings" : "Back to chat");
+        CitationBanner.Visibility = _citationTarget is null ? Visibility.Collapsed : Visibility.Visible;
+        if (_citationTarget is not { } target) return;
+        var citation = target.Citation;
+        CitationBannerTitle.Text = "Referenced passage · " + citation.Kind.Label();
+        CitationBannerExcerpt.Text = citation.Excerpt;
+        var text = citation.Kind switch
+        {
+            MeetingChatSourceKind.Transcript => ViewModel.Transcript,
+            MeetingChatSourceKind.ManualNotes => ViewModel.ManualNotes,
+            _ => ViewModel.Summary
+        };
+        var range = target.Locate(text);
+        CitationBannerChanged.Visibility = range is null ? Visibility.Visible : Visibility.Collapsed;
+        if (range is not null && target.ShowsTranscript)
+            SavedTranscriptFeed.Highlight(MeetingChatDocumentTarget.TranscriptMessageIndex(text, range));
+    }
     public MeetingDetailPage()
     {
         InitializeComponent();
@@ -34,6 +60,7 @@ public sealed partial class MeetingDetailPage : Page
             }
 
             if (args.PropertyName == nameof(ViewModel.Transcript)) SavedTranscriptFeed.Update(null, ViewModel.Transcript);
+            if (args.PropertyName == nameof(ViewModel.HasRecording)) RenderVideo();
 
             if (args.PropertyName == nameof(ViewModel.IsPlaying))
             {
@@ -55,8 +82,10 @@ public sealed partial class MeetingDetailPage : Page
         // toggle. Put focus on the one action the page still offers instead.
         ViewModel.MeetingRemoved += OnMeetingRemoved;
         ViewModel.RecordingStarted += OnRecordingStarted;
+        App.ScreenRecording.Changed += OnScreenRecordingChanged;
         Loaded += (_, _) =>
         {
+            RenderVideo();
             ApplyResponsiveLayout(ActualWidth);
             SyncTabBar();
             UpdateStatusSeverity();
@@ -68,6 +97,8 @@ public sealed partial class MeetingDetailPage : Page
             ViewModel.LibraryChanged -= OnLibraryChanged;
             ViewModel.MeetingRemoved -= OnMeetingRemoved;
             ViewModel.RecordingStarted -= OnRecordingStarted;
+            App.ScreenRecording.Changed -= OnScreenRecordingChanged;
+            StopVideo();
             ViewModel.Dispose();
         };
     }
@@ -95,12 +126,20 @@ public sealed partial class MeetingDetailPage : Page
         _meetingId = e.Parameter as string ?? "";
         ViewModel.Load(_meetingId);
         ShowPeople(MeetingParticipants.Load(App.Library.Profile.RootDirectory, _meetingId));
+        MeetingChat.EmbeddedMeetingId = _meetingId;
+        MeetingChat.Visibility = ViewModel.HasMeeting && App.MeetingChat is not null ? Visibility.Visible : Visibility.Collapsed;
+        _citationTarget = App.MeetingChatDocumentTarget is { } target && target.Citation.MeetingId == _meetingId ? target : null;
+        if (_citationTarget is not null) ViewModel.ShowNotesTab = !_citationTarget.ShowsTranscript;
+        ShowCitationTarget();
+        RenderVideo();
         SyncTabBar();
         UpdateStatusSeverity();
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)
     {
+        // macOS returnToMeetingChat: a cited document returns to the conversation it came from.
+        if (_citationTarget is not null) { (App.Window as MainWindow)?.ShellPage?.NavigateTo("askmeetings"); return; }
         if (Frame.CanGoBack) Frame.GoBack();
     }
 
@@ -328,5 +367,71 @@ public sealed partial class MeetingDetailPage : Page
             PeopleFlyout.Hide();
             await App.Dialogs.ShowWarningAsync(exception.Message, "Couldn't Update People");
         }
+    }
+
+    private void OnScreenRecordingChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(RenderVideo);
+
+
+    private string _videoMode = "Video";
+    private string? _selectedClipId;
+    private string _renderedVideo = "";
+    private MediaPlayerElement? _videoPlayer;
+
+    /// <summary>Port of macOS MeetingMediaView: a clip picker ("Part n · time"), one player, and a
+    /// Video/Audio switch when the meeting also kept a separate audio recording.</summary>
+    private void RenderVideo()
+    {
+        var clips = _meetingId.Length > 0 ? App.ScreenRecording.Clips(_meetingId) : [];
+        var hasAudio = ViewModel.HasRecording;
+        var selected = clips.FirstOrDefault(clip => clip.Id == _selectedClipId) ?? clips.FirstOrDefault();
+        var showVideo = selected is not null && (_videoMode == "Video" || !hasAudio);
+        var key = $"{string.Join(',', clips.Select(clip => clip.Id))}|{hasAudio}|{_videoMode}|{selected?.Id}";
+        AudioHost.Visibility = showVideo ? Visibility.Collapsed : Visibility.Visible;
+        if (key == _renderedVideo) return;
+        _renderedVideo = key;
+        StopVideo();
+        VideoPanel.Children.Clear();
+        VideoPanel.Visibility = clips.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (clips.Count == 0) return;
+        if (hasAudio)
+        {
+            var media = new Microsoft.UI.Xaml.Controls.SelectorBar();
+            foreach (var mode in new[] { "Video", "Audio" })
+                media.Items.Add(new SelectorBarItem { Text = mode, IsSelected = mode == _videoMode });
+            media.SelectionChanged += (bar, _) => { _videoMode = bar.SelectedItem?.Text ?? "Video"; RenderVideo(); };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(media, "Media");
+            VideoPanel.Children.Add(media);
+        }
+        if (!showVideo || selected is null) return;
+        if (clips.Count > 1)
+        {
+            var parts = new ComboBox { MinWidth = 200 };
+            for (var index = 0; index < clips.Count; index++)
+                parts.Items.Add(new ComboBoxItem { Content = $"Part {index + 1} · {clips[index].CapturedAt.ToLocalTime():t}", Tag = clips[index].Id });
+            parts.SelectedIndex = clips.ToList().FindIndex(clip => clip.Id == selected.Id);
+            parts.SelectionChanged += (_, _) => { _selectedClipId = (parts.SelectedItem as ComboBoxItem)?.Tag as string; RenderVideo(); };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(parts, "Recording");
+            VideoPanel.Children.Add(parts);
+        }
+        if (App.ScreenRecording.MediaPath(selected) is not { } path)
+        {
+            VideoPanel.Children.Add(new TextBlock { Text = "Screen recording unavailable", Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MuesliTextSecondaryBrush"] });
+            return;
+        }
+        _videoPlayer = new MediaPlayerElement
+        {
+            AreTransportControlsEnabled = true, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform, MinHeight = 220, MaxHeight = 400,
+            Source = global::Windows.Media.Core.MediaSource.CreateFromUri(new Uri(path))
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_videoPlayer, "MeetingVideoPlayer");
+        VideoPanel.Children.Add(_videoPlayer);
+    }
+
+    private void StopVideo()
+    {
+        if (_videoPlayer is null) return;
+        _videoPlayer.MediaPlayer?.Pause();
+        _videoPlayer.Source = null;
+        _videoPlayer = null;
     }
 }

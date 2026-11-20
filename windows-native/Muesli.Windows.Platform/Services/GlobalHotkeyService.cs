@@ -170,6 +170,13 @@ public sealed class GlobalHotkeyService : IDisposable
     /// cancel the run or trigger dictation.</summary>
     public static readonly IntPtr SyntheticInputTag = unchecked((IntPtr)0x4D75657331);
 
+    /// <summary>
+    /// Escape belongs to this shortcut only while it can cancel (or its cancelling press is still down). A
+    /// registration without a cancel predicate, like the meeting shortcut (macOS fd1b68f0), never sees or
+    /// swallows Escape, so a meeting keeps recording and the key reaches the focused app.
+    /// </summary>
+    internal static bool OwnsEscape(bool escapeDown, Func<bool>? canCancel) => escapeDown || (canCancel?.Invoke() ?? false);
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && !_paused && Marshal.ReadIntPtr(lParam, 16) != SyntheticInputTag)
@@ -179,8 +186,7 @@ public sealed class GlobalHotkeyService : IDisposable
             var isKeyDownMessage = message is WmKeydown or WmSyskeydown;
             var isKeyUpMessage = message is WmKeyup or WmSyskeyup;
 
-            if (HotkeyGestureParser.IsEscape(virtualKey) &&
-                (_escapeDown || (_canCancel?.Invoke() ?? false)))
+            if (HotkeyGestureParser.IsEscape(virtualKey) && OwnsEscape(_escapeDown, _canCancel))
             {
                 if (isKeyDownMessage && !_escapeDown)
                 {

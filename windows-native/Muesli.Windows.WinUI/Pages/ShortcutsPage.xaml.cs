@@ -118,6 +118,12 @@ public sealed partial class ShortcutsPage : Page
         QuillToggle.IsOn = ViewModel.QuillEnabled;
     }
 
+    private void QuillBackend_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || QuillBackendPicker.SelectedIndex < 0) return;
+        ViewModel.SetQuillBackend(QuillBackendPicker.SelectedIndex);
+    }
+
     private void ChangeQuillShortcut_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.BeginCapture("quill");

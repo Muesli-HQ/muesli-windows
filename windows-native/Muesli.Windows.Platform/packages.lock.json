@@ -278,6 +278,19 @@
         "resolved": "10.0.5",
         "contentHash": "2Njj2ree91ur3lWNyQrjlVgxtOz8hV7f92ezTdQc//2S1TEQiNJ6DR9/gxM91Sca0Khk28QjYiCy7C2fPgqcCw=="
       },
+      "Whisper.net": {
+        "type": "Transitive",
+        "resolved": "1.9.1",
+        "contentHash": "82WAKyyMun44cAXE80sP7vIra1oYhbVp2WrnqJm0CISTfMAvint1k/umt0SvsQH+IkDyekZ3BgMdS3Rag9SZ5A==",
+        "dependencies": {
+          "Microsoft.Extensions.AI.Abstractions": "10.2.0"
+        }
+      },
+      "Whisper.net.Runtime.Vulkan": {
+        "type": "Transitive",
+        "resolved": "1.9.1",
+        "contentHash": "2kynHvbAczuEYHKRIR9NYg8xiXaGZHW3hb1Ts+N2dNcmVpA87xJWxA07yDiFnf5+vXz428wK57YWNvxqTJdkKw=="
+      },
       "muesli.windows.core": {
         "type": "Project",
         "dependencies": {
@@ -287,6 +300,8 @@
           "Microsoft.ML.OnnxRuntime.Managed": "[1.24.4, )",
           "NAudio": "[2.2.1, )",
           "SharpCompress": "[0.48.1, )",
+          "Whisper.net": "[1.9.1, )",
+          "Whisper.net.Runtime.Vulkan": "[1.9.1, )",
           "org.k2fsa.sherpa.onnx": "[1.13.4, )"
         }
       }

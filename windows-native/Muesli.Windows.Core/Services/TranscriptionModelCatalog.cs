@@ -296,7 +296,7 @@ public static class TranscriptionModelCatalog
         // muesli-bodhan tools; FP16 at the repo root runs on CUDA, the 8-bit variant on the CPU.
         new(
             "bodhan-core-int8",
-            "Bodhan Core INT8",
+            "Bodhan Core Lite",
             "Runs on the CPU on any PC.",
             "25 Indian languages · automatic",
             "1.7 GB download · ~1.7 GB installed",
@@ -315,7 +315,7 @@ public static class TranscriptionModelCatalog
             "hi"),
         new(
             "bodhan-core-fp16",
-            "Bodhan Core FP16",
+            "Bodhan Core Pro",
             "Faster; needs an NVIDIA GPU with the CUDA pack.",
             "25 Indian languages · automatic",
             "2.5 GB download · ~2.5 GB installed",
@@ -334,7 +334,7 @@ public static class TranscriptionModelCatalog
             "hi"),
         new(
             "bodhan-flex-int8",
-            "Bodhan Flex INT8",
+            "Bodhan Flex Lite",
             "Runs on the CPU on any PC.",
             "27 Indian languages · automatic",
             "1.7 GB download · ~1.7 GB installed",
@@ -353,7 +353,7 @@ public static class TranscriptionModelCatalog
             "hi"),
         new(
             "bodhan-flex-fp16",
-            "Bodhan Flex FP16",
+            "Bodhan Flex Pro",
             "Faster; needs an NVIDIA GPU with the CUDA pack.",
             "27 Indian languages · automatic",
             "2.5 GB download · ~2.5 GB installed",
@@ -388,6 +388,17 @@ public static class TranscriptionModelCatalog
             candidate.Id.Equals(modelId, StringComparison.OrdinalIgnoreCase))!;
         return model is not null;
     }
+
+    /// <summary>
+    /// MAC-36: on Windows a model's support depends on the hardware, not the OS version. Bodhan Pro
+    /// (FP16) runs only on CUDA, so it can't be activated when the provider policy offers no GPU.
+    /// </summary>
+    public static bool IsSupportedOnThisPc(TranscriptionModelDefinition model) =>
+        model.Kind != NativeAsrModelKind.Bodhan || !BodhanModels.NeedsGpu(model) ||
+        ExecutionProviderService.PreferredProviders(ExecutionProviderRole.OfflineTranscription, model.Kind).Any(request => request.IsGpu);
+
+    public const string UnsupportedOnThisPcMessage =
+        "needs an NVIDIA GPU with the CUDA acceleration pack and GPU acceleration allowed in Settings. The Lite variant runs on any PC.";
 
     public static TranscriptionModelDefinition GetRequired(string? modelId)
     {

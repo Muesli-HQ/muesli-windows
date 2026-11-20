@@ -269,6 +269,19 @@
                                     AutomationProperties.Name="Meeting folders"
                                     AutomationProperties.AutomationId="MeetingFolderRail" />
 
+                        <!-- macOS: Ask Meetings follows Meetings and opens the chat index. -->
+                        <Button x:Name="AskMeetingsNav"
+                                Style="{StaticResource MuesliSidebarButtonStyle}"
+                                Tag="askmeetings"
+                                Click="NavButton_Click"
+                                AutomationProperties.AutomationId="NavAskMeetings"
+                                AutomationProperties.Name="Navigate to Ask Meetings">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon x:Name="AskMeetingsIcon" Glyph="&#xE8BD;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                                <TextBlock Grid.Column="1" Text="Ask Meetings" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
                         <Button x:Name="DictionaryNav"
                                 Style="{StaticResource MuesliSidebarButtonStyle}"
                                 Tag="dictionary"

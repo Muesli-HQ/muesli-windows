@@ -20,9 +20,11 @@
             <Setter Property="BorderBrush" Value="{ThemeResource ControlFillColorTransparentBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0,2" />
-            <Setter Property="MinHeight" Value="36" />
+            <!-- MAC-12 (macOS a5ef96d9, 2dd3d4b3): one line at a fixed height. A long title scrolls inside
+                 the box instead of growing the header; the * column keeps it from widening the page. -->
+            <Setter Property="Height" Value="40" />
             <Setter Property="MaxLength" Value="200" />
-            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="AcceptsReturn" Value="False" />
             <Setter Property="UseSystemFocusVisuals" Value="True" />
         </Style>
@@ -53,6 +55,10 @@
     </Page.Resources>
 
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="16" HorizontalAlignment="Stretch">
 
@@ -68,7 +74,7 @@
                         AutomationProperties.AutomationId="MeetingDetailBackButton">
                     <StackPanel Orientation="Horizontal" Spacing="7">
                         <FontIcon Glyph="&#xE76B;" FontSize="12" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                        <TextBlock Text="Back to Meetings" />
+                        <TextBlock x:Name="BackLabel" Text="Back to Meetings" />
                     </StackPanel>
                 </Button>
 
@@ -403,6 +409,9 @@
                     the waveform as the seek bar, and a monospaced time readout. Windows keeps its
                     You/Others track picker beside the section label.
                 -->
+                <!-- MeetingMediaView.swift: screen clips play one at a time; Video/Audio when both exist. -->
+                <StackPanel x:Name="VideoPanel" Spacing="8" Visibility="Collapsed" AutomationProperties.AutomationId="MeetingVideoPanel" />
+                <Grid x:Name="AudioHost">
                 <StackPanel Spacing="8"
                             Visibility="{x:Bind BoolToVisibility(ViewModel.HasRecording), Mode=OneWay}"
                             AutomationProperties.Name="Meeting recording"
@@ -466,6 +475,7 @@
                                TextWrapping="Wrap"
                                AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
+                </Grid>
 
                 <!-- Capture health notes (a silent channel, a missing track) stay with the saved
                      meeting for diagnostics; macOS does not show them on the meeting, so neither
@@ -527,6 +537,17 @@
                     </StackPanel>
                 </Border>
 
+                <!-- macOS MeetingDetailView: the passage an Ask Meetings citation opened this document on. -->
+                <Border x:Name="CitationBanner" Visibility="Collapsed" Padding="16" CornerRadius="8"
+                        Background="{ThemeResource MuesliSelectedBrush}" AutomationProperties.AutomationId="MeetingChatCitationBanner">
+                    <StackPanel Spacing="6">
+                        <TextBlock x:Name="CitationBannerTitle" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                        <TextBlock x:Name="CitationBannerExcerpt" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                        <TextBlock x:Name="CitationBannerChanged" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource MuesliWarningBrush}"
+                                   Text="The exact passage has changed. This is the original excerpt from the answer." />
+                    </StackPanel>
+                </Border>
                 <StackPanel x:Name="NotesPanel"
                             Spacing="12"
                             Visibility="{x:Bind BoolToVisibility(ViewModel.ShowNotesContent), Mode=OneWay}">
@@ -771,5 +792,7 @@
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
+        <!-- macOS safeAreaInset(edge: .bottom): the meeting's Ask Meetings panel, hidden while recording. -->
+        <controls:MeetingChatView x:Name="MeetingChat" Grid.Row="1" />
     </Grid>
 </Page>

@@ -39,20 +39,24 @@ public sealed class PasteTargetResolutionTests
     }
 
     [Fact]
-    public void PastesWhereTheUserClickedButNeverIntoMuesli()
+    public void PastesWhereTheUserClickedIncludingMuesliButNeverIntoThePill()
     {
         var windows = new FakeWindows();
         var input = new NoInput();
         var service = new ActiveAppPasteService(input, windows, input);
-        IntPtr claude = 1, notepad = 2, pill = 3, closed = 4;
+        IntPtr claude = 1, notepad = 2, pill = 3, closed = 4, muesli = 5;
         windows.Windows[claude] = new("claude", 100);
         windows.Windows[notepad] = new("notepad", 200);
         windows.Windows[pill] = new("Muesli.Windows.Indicator.Wpf", 300);
+        windows.Windows[muesli] = new("Muesli.Windows.WinUI", (uint)Environment.ProcessId);
 
         windows.ForegroundWindow = notepad;
         Assert.Equal(notepad, service.ResolvePasteTarget(claude));
         windows.ForegroundWindow = pill;
         Assert.Equal(claude, service.ResolvePasteTarget(claude));
+        // MAC-20: Muesli's own editors (notes, Ask Meetings) take dictation like any app.
+        windows.ForegroundWindow = muesli;
+        Assert.Equal(muesli, service.ResolvePasteTarget(claude));
         windows.ForegroundWindow = closed;
         Assert.Equal(claude, service.ResolvePasteTarget(claude));
         windows.ForegroundWindow = IntPtr.Zero;

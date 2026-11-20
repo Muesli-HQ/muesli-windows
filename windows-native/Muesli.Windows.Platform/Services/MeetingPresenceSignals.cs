@@ -88,8 +88,17 @@ public sealed class MeetingPresenceSignals : IDisposable
         var active = ActiveInputProcessIds();
         return new(evidence, active.Count > 0, IsCameraInUse(), candidateKey, requiresMediaActivity,
             active.Any(processId => RefersToSameApp(processId, candidateProcessId)), isForeground, requiresDuplexAudio,
-            requiresDuplexAudio && ActiveAudioProcessIds(DataFlow.Render).Any(processId => RefersToSameApp(processId, candidateProcessId)));
+            requiresDuplexAudio && HasSameProcessDuplex(active, ActiveAudioProcessIds(DataFlow.Render),
+                processId => RefersToSameApp(processId, candidateProcessId)));
     }
+
+    /// <summary>
+    /// MAC-14 (macOS 37386261): duplex evidence is per process. One of the app's processes (Slack's
+    /// audio-service child, for example) must capture and render at once; input on one helper and
+    /// output on another is not a call.
+    /// </summary>
+    public static bool HasSameProcessDuplex(IEnumerable<int> inputProcessIds, IEnumerable<int> renderProcessIds, Func<int, bool> belongsToApp) =>
+        inputProcessIds.Intersect(renderProcessIds).Any(belongsToApp);
 
     private static bool RefersToSameApp(int inputProcessId, int candidateProcessId)
     {

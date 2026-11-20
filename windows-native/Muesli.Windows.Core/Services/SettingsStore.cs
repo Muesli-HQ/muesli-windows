@@ -212,7 +212,13 @@ public sealed class SettingsStore
             PasteShortcut = settings.PasteShortcut is "ctrl-shift-v" or "shift-insert" ? settings.PasteShortcut : "ctrl-v",
             MeetingRecordingHotkey = DefaultIfBlank(settings.MeetingRecordingHotkey, "Ctrl+Alt+R").Trim(),
             MeetingRecordingFormat = settings.MeetingRecordingFormat == "m4a" ? "m4a" : "wav",
+            CotypistSuggestionLength = Muesli.Windows.Cotypist.CotypistOptions.Normalize(settings.CotypistSuggestionLength, ["word", "phrase", "sentence"], "sentence"),
+            CotypistFrequency = Muesli.Windows.Cotypist.CotypistOptions.Normalize(settings.CotypistFrequency, ["fewer", "balanced", "more"], "balanced"),
+            CotypistWordPause = Muesli.Windows.Cotypist.CotypistOptions.Normalize(settings.CotypistWordPause, ["fast", "normal", "relaxed"], "normal"),
+            CotypistDisabledApps = (settings.CotypistDisabledApps ?? []).Where(app => !string.IsNullOrWhiteSpace(app)).Select(app => app.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            CotypistModel = Muesli.Windows.Cotypist.CotypistModels.Get(settings.CotypistModel).Id,
             QuillHotkey = DefaultIfBlank(settings.QuillHotkey, "F9").Trim(),
+            QuillBackend = QuillBackends.Normalize(settings.QuillBackend),
             CleanupSource = MeetingSummaryService.IsHostedProvider(settings.CleanupSource ?? "") ? settings.CleanupSource! : "local",
             CustomCleanupPrompts = NormalizeCleanupPrompts(settings.CustomCleanupPrompts),
             ActiveCleanupPromptId = CleanupPrompts.Resolve(settings.ActiveCleanupPromptId, NormalizeCleanupPrompts(settings.CustomCleanupPrompts)).Id,
@@ -257,6 +263,11 @@ public sealed class SettingsStore
             OpenAIDictationModel = (settings.OpenAIDictationModel ?? "").Trim(),
             OpenRouterDictationModel = (settings.OpenRouterDictationModel ?? "").Trim(),
             ClaudeCodeExecutablePath = (settings.ClaudeCodeExecutablePath ?? "").Trim(),
+            ChatGptSummaryModel = settings.ChatGptSummaryModel?.Trim() ?? "",
+            MeetingSummaryReasoningEffort = settings.MeetingSummaryReasoningEffort?.Trim().ToLowerInvariant() ?? "",
+            MeetingSummaryMaxOutputTokens = MeetingSummaryOutputPolicy.NormalizedLimit(settings.MeetingSummaryMaxOutputTokens),
+            DictationAppFormattingRules = DictationAppFormattingRule.Normalize(settings.DictationAppFormattingRules),
+            DictationFormattingTemplates = DictationFormattingTemplate.Normalize(settings.DictationFormattingTemplates),
             OpenRouterModel = DefaultIfBlank(settings.OpenRouterModel, "stepfun/step-3.5-flash:free").Trim(),
             OllamaEndpoint = NormalizeOllamaEndpoint(settings.OllamaEndpoint),
             OllamaModel = DefaultIfBlank(settings.OllamaModel, "llama3.1:8b").Trim(),
@@ -360,7 +371,10 @@ public sealed class SettingsStore
         {
             if (string.IsNullOrWhiteSpace(pair.Key)) continue;
             if (!TranscriptionModelCatalog.TryGet(pair.Key, out var model)) continue;
-            result[model.Id] = ModelLanguageSupport.Normalize(model, pair.Value);
+            if (string.IsNullOrWhiteSpace(pair.Value)) continue;
+            // MAC-24: an unsupported saved code is kept (a newer build or another model may support it); it is
+            // never rewritten to auto-detect. Runtime resolution falls back to the model default.
+            result[model.Id] = ModelLanguageSupport.IsSupported(model, pair.Value) ? ModelLanguageSupport.Normalize(model, pair.Value) : pair.Value.Trim();
         }
 
         return result;
@@ -517,12 +531,19 @@ public sealed record MuesliSettings
     /// <summary>macOS push_to_talk: off releases the dictation shortcut entirely.</summary>
     public bool PushToTalkEnabled { get; init; } = true;
     public bool EnableDoubleTapDictation { get; init; }
+    /// <summary>
+    /// macOS enable_buffered_live_dictation: hands-free local dictation types committed text into the
+    /// focused field while you speak, then applies enabled cleanup when you stop. Off by default.
+    /// </summary>
+    public bool EnableBufferedLiveDictation { get; init; }
     /// <summary>macOS meeting_shortcut: off by default, so no key is taken until the user opts in.</summary>
     public bool MeetingRecordingShortcutEnabled { get; init; }
     public string MeetingRecordingHotkey { get; init; } = "Ctrl+Alt+R";
-    /// <summary>macOS Quill: off by default; the rewrite needs a ChatGPT sign-in.</summary>
+    /// <summary>macOS Quill: off by default.</summary>
     public bool QuillEnabled { get; init; }
     public string QuillHotkey { get; init; } = "F9";
+    /// <summary>macOS quil_backend: "local" (the default, Qwen Basic on this PC) or "chatgpt" (the signed-in account).</summary>
+    public string QuillBackend { get; init; } = QuillBackends.Local;
     public bool PauseMediaDuringDictation { get; init; }
     public bool MuteAudioDuringDictation { get; init; }
     /// <summary>Keys sent to paste dictated text: "ctrl-v", "ctrl-shift-v" or "shift-insert".</summary>
@@ -553,9 +574,27 @@ public sealed record MuesliSettings
     public string MeetingSummaryProvider { get; init; } = "local";
     public string MeetingSummaryTemplate { get; init; } = "standard";
     public int MeetingSummaryRetryCount { get; init; } = MeetingSummaryRetryPolicy.DefaultRetryCount;
+    /// <summary>macOS meeting_summary_max_output_tokens: null lets the provider decide (the default).</summary>
+    public int? MeetingSummaryMaxOutputTokens { get; init; }
+    /// <summary>macOS dictation_app_formatting_rules (MAC-15): output-only formatting per paste target app.</summary>
+    public IReadOnlyList<DictationAppFormattingRule> DictationAppFormattingRules { get; init; } = [];
+    public IReadOnlyList<DictationFormattingTemplate> DictationFormattingTemplates { get; init; } = [];
+    public bool DictationFormattingSetupDismissed { get; init; }
     public string MeetingSummaryPromptOverride { get; init; } = "";
     public bool OpenDashboardOnLaunch { get; init; } = true;
     public bool SaveMeetingRecordings { get; init; } = true;
+    /// <summary>macOS diarize_microphone_audio: opt-in split of the mic track into "Local speaker N".</summary>
+    public bool DiarizeMicrophoneAudio { get; init; }
+    // macOS cotypist_* settings (2f10b23d), with the same raw values. Used only when the Cotypist
+    // helper is bundled (Muesli.Windows.Cotypist.CotypistAvailability).
+    public string CotypistSuggestionLength { get; init; } = "sentence";
+    public string CotypistFrequency { get; init; } = "balanced";
+    public bool CotypistCompleteWords { get; init; } = true;
+    public string CotypistWordPause { get; init; } = "normal";
+    /// <summary>Process names of apps where Cotypist stays quiet.</summary>
+    public IReadOnlyList<string> CotypistDisabledApps { get; init; } = [];
+    public bool CotypistUseScreenContext { get; init; } = true;
+    public string CotypistModel { get; init; } = "qwen3.5-0.8b-base";
     /// <summary>"wav" keeps lossless tracks; "m4a" compresses them once the transcript is final.</summary>
     public string MeetingRecordingFormat { get; init; } = "wav";
     public bool PostMeetingHookEnabled { get; init; }
@@ -627,6 +666,10 @@ public sealed record MuesliSettings
     public string AnthropicModel { get; init; } = "";
     [JsonIgnore]
     public string ResolvedAnthropicApiKey { get; init; } = "";
+    /// <summary>macOS chatGPTModel: the ChatGPT-account summary and Ask Meetings model; empty means the first preset.</summary>
+    public string ChatGptSummaryModel { get; init; } = "";
+    /// <summary>macOS meetingSummaryReasoningEffort, shared by summaries and Ask Meetings; empty means the model default.</summary>
+    public string MeetingSummaryReasoningEffort { get; init; } = "";
     [JsonPropertyName("OpenRouterApiKey")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string? PlaintextOpenRouterApiKeyForMigration { get; init; }

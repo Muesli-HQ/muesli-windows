@@ -74,7 +74,8 @@ public static class IndicatorProtocol
         previous.SavedLeft != current.SavedLeft ||
         previous.SavedTop != current.SavedTop ||
         !string.Equals(previous.Theme, current.Theme, StringComparison.Ordinal) ||
-        previous.HighContrast != current.HighContrast;
+        previous.HighContrast != current.HighContrast ||
+        !string.Equals(previous.RecordingNotice, current.RecordingNotice, StringComparison.Ordinal);
 
     public static string SerializeSnapshot(IndicatorSnapshot snapshot) =>
         JsonSerializer.Serialize(snapshot, Json);
@@ -158,6 +159,12 @@ public sealed record IndicatorSnapshot
     public bool Visible { get; init; }
     public string HotkeyLabel { get; init; } = "";
     public string Message { get; init; } = "";
+
+    /// <summary>
+    /// While dictation records: why live text stopped (macOS 4481c15a "Cursor updates stopped · Still
+    /// recording"). The pill replaces its waveform with this; <see cref="Message"/> carries the detail.
+    /// </summary>
+    public string? RecordingNotice { get; init; }
 
     /// <summary>Recording accent in <c>RRGGBB</c> form (the user-configurable recording colour).</summary>
     public string RecordingColorHex { get; init; } = "1e1e2e";

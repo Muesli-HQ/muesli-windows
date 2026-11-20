@@ -35,17 +35,18 @@ public sealed class ActiveAppPasteService
 
     /// <summary>
     /// macOS pastes into whatever is frontmost when the transcript is ready, so clicking into a text
-    /// box after starting to speak sends the words there. Muesli's own windows (the app, the pill)
-    /// are never a target; then, or when nothing is focused, the window from the start is kept.
+    /// box after starting to speak sends the words there. MAC-20 (macOS c7eed1a4): Muesli's own app
+    /// window is a real target, like any editor. Only its helper processes (the indicator pill) are
+    /// not; then, or when nothing is focused, the window from the start is kept.
     /// </summary>
     public IntPtr ResolvePasteTarget(IntPtr startTarget)
     {
         var current = _windows.ForegroundWindow;
         if (current == IntPtr.Zero || current == startTarget || !_windows.Exists(current)) return startTarget;
         var info = DescribeWindow(current);
-        var isMuesli = info.ProcessId == (uint)Environment.ProcessId ||
+        var isMuesliHelper = info.ProcessId != (uint)Environment.ProcessId &&
             info.ProcessName.StartsWith("Muesli.Windows", StringComparison.OrdinalIgnoreCase);
-        return isMuesli ? startTarget : current;
+        return isMuesliHelper ? startTarget : current;
     }
 
     public PasteTargetInfo DescribeWindow(IntPtr targetWindow) =>
@@ -109,8 +110,9 @@ public sealed class ActiveAppPasteService
                 focusStarted.ElapsedMilliseconds,
                 cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (Exception exception) when (exception is OperationCanceledException or ClipboardOwnershipLostException)
         {
+            // Another app owns the clipboard now (macOS 784e1a47): report it rather than type over it.
             throw;
         }
         catch (Exception)
@@ -138,9 +140,6 @@ public sealed class ActiveAppPasteService
             : "Windows did not accept the transcript input. The transcript was saved in Muesli history and the clipboard was left unchanged.");
     }
 
-    public static bool ShouldRestoreClipboard(string expectedMuesliText, string? currentText) =>
-        string.Equals(expectedMuesliText, currentText, StringComparison.Ordinal);
-
     private async Task<bool> WaitForTargetForegroundAsync(IntPtr targetWindow, CancellationToken cancellationToken)
     {
         if (!_windows.Exists(targetWindow))
@@ -166,6 +165,21 @@ public sealed class ActiveAppPasteService
         return _windows.ForegroundWindow == targetWindow;
     }
 
+    /// <summary>
+    /// macOS PasteController transaction (f5d21107): one clipboard owner per paste. Ownership is the clipboard
+    /// generation read right after Muesli's own write, never a text comparison. A newer transaction inherits the
+    /// user's original snapshot only while the older one still owns the clipboard, so overlapping pastes can't
+    /// "restore" Muesli's own text. Only the current owner may dispatch or restore.
+    /// </summary>
+    private sealed class Transaction(ClipboardSnapshot original, uint generation)
+    {
+        public ClipboardSnapshot Original { get; } = original;
+        public uint Generation { get; } = generation;
+    }
+
+    private readonly object _transactionGate = new();
+    private Transaction? _current;
+
     private async Task<PasteOperationResult> PasteThroughClipboardAsync(
         string text,
         Stopwatch totalStarted,
@@ -173,17 +187,22 @@ public sealed class ActiveAppPasteService
         CancellationToken cancellationToken)
     {
         var clipboardStarted = Stopwatch.StartNew();
-        ClipboardSnapshot? previousClipboard = null;
-        var clipboardWasSet = false;
+        Transaction? previous;
+        lock (_transactionGate) previous = _current;
+        var original = previous is not null && previous.Generation == _clipboard.Generation
+            ? previous.Original
+            : await _clipboard.CaptureAsync(cancellationToken);
+        Transaction? transaction = null;
+        var beforeWrite = _clipboard.Generation;
         try
         {
-            previousClipboard = await _clipboard.CaptureAsync(cancellationToken);
-            // Treat the clipboard as potentially modified for the whole SetText call. An
-            // adapter can fail after handing the data to the OS, so always try to restore.
-            clipboardWasSet = true;
             await _clipboard.SetTextAsync(text, cancellationToken);
+            transaction = new Transaction(original, _clipboard.Generation);
+            lock (_transactionGate) _current = transaction;
             clipboardStarted.Stop();
 
+            // Dispatch only while Muesli still owns what it staged; otherwise Ctrl+V would paste another app's data.
+            if (_clipboard.Generation != transaction.Generation) throw new ClipboardOwnershipLostException();
             var inputStarted = Stopwatch.StartNew();
             var sent = _keyboard.SendPasteShortcut();
             inputStarted.Stop();
@@ -193,7 +212,7 @@ public sealed class ActiveAppPasteService
                     "Windows did not accept the paste input. The transcript was saved in Muesli history and the clipboard was left unchanged.");
             }
 
-            _ = RestoreClipboardSafelyAsync(previousClipboard, text, TimeSpan.FromMilliseconds(450));
+            _ = RestoreClipboardSafelyAsync(transaction, TimeSpan.FromMilliseconds(450));
 
             totalStarted.Stop();
             return new PasteOperationResult(
@@ -205,19 +224,16 @@ public sealed class ActiveAppPasteService
         }
         catch
         {
-            if (clipboardWasSet && previousClipboard is not null)
-            {
-                await RestoreClipboardSafelyAsync(previousClipboard, text, TimeSpan.Zero);
-            }
-
+            if (transaction is not null) await RestoreClipboardSafelyAsync(transaction, TimeSpan.Zero);
+            // A failed write may still have emptied the clipboard; put the original back only if it changed.
+            else if (_clipboard.Generation != beforeWrite)
+                await RestoreFailedWriteAsync(original);
             throw;
         }
     }
 
-    private async Task RestoreClipboardSafelyAsync(
-        ClipboardSnapshot previousClipboard,
-        string placedText,
-        TimeSpan delay)
+    /// <summary>Restores only for the current transaction while it still owns the clipboard, then releases it.</summary>
+    private async Task RestoreClipboardSafelyAsync(Transaction transaction, TimeSpan delay)
     {
         try
         {
@@ -226,10 +242,14 @@ public sealed class ActiveAppPasteService
                 await _delay.DelayAsync(delay, CancellationToken.None);
             }
 
-            var currentText = await _clipboard.ReadTextAsync(CancellationToken.None);
-            if (ShouldRestoreClipboard(placedText, currentText))
+            lock (_transactionGate)
             {
-                await _clipboard.RestoreAsync(previousClipboard, CancellationToken.None);
+                if (!ReferenceEquals(_current, transaction)) return; // superseded: the newer transaction owns restoration
+                _current = null;
+            }
+            if (_clipboard.Generation == transaction.Generation)
+            {
+                await _clipboard.RestoreAsync(transaction.Original, CancellationToken.None);
             }
         }
         catch
@@ -237,10 +257,18 @@ public sealed class ActiveAppPasteService
             // Clipboard restoration is best-effort and never surfaces as an unobserved error.
         }
     }
+
+    private async Task RestoreFailedWriteAsync(ClipboardSnapshot original)
+    {
+        try { await _clipboard.RestoreAsync(original, CancellationToken.None); }
+        catch { /* best-effort, as above */ }
+    }
 }
 
 public interface IClipboardAdapter
 {
+    /// <summary>The system clipboard generation (GetClipboardSequenceNumber); every write changes it.</summary>
+    uint Generation => 0;
     Task<ClipboardSnapshot> CaptureAsync(CancellationToken cancellationToken);
     Task SetTextAsync(string text, CancellationToken cancellationToken);
     Task<string?> ReadTextAsync(CancellationToken cancellationToken);
@@ -294,6 +322,10 @@ public sealed record PasteTargetInfo(string ProcessName, uint ProcessId, bool Ru
 {
     public static PasteTargetInfo Unknown { get; } = new("unknown", 0);
 }
+
+/// <summary>macOS 784e1a47: another app wrote the clipboard between Muesli's write and the paste shortcut.</summary>
+public sealed class ClipboardOwnershipLostException() : InvalidOperationException(
+    "Another app changed the clipboard before Muesli could paste. The transcript was saved in Muesli history.");
 
 public sealed class PasteBlockedByElevationException() : InvalidOperationException(
     "The app runs as administrator, so Windows blocks Muesli from typing into it.");

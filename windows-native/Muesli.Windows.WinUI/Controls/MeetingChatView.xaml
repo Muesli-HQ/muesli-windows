@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- macOS MeetingChatView (2f10b23d). Standalone: index (welcome, composer, quick prompts, recent chats) or a
+     conversation (turns above a pinned composer). Embedded in a meeting: a resting composer that expands into a
+     framed panel. Turns are built in code-behind. -->
+<UserControl
+    x:Class="Muesli.Windows.WinUI.Controls.MeetingChatView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+>
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+        <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
+        <Style x:Key="ChatPlainButtonStyle" TargetType="Button" BasedOn="{StaticResource MuesliGhostButtonStyle}">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border x:Name="Surface" BorderBrush="{ThemeResource MuesliBorderBrush}" Background="{ThemeResource MuesliBackgroundBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition x:Name="ConversationRow" Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel x:Name="Header">
+        <Grid Padding="24,14" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel x:Name="BackGroup" Orientation="Horizontal" Spacing="12" Visibility="Collapsed">
+                <Button Style="{StaticResource ChatPlainButtonStyle}" Click="Back_Click"
+                        ToolTipService.ToolTip="Back to all chats"
+                        AutomationProperties.Name="Back to Ask Meetings">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE72B;" FontSize="13" />
+                        <TextBlock Text="Ask Meetings" />
+                    </StackPanel>
+                </Button>
+                <Border Width="1" Height="16" Background="{ThemeResource MuesliBorderBrush}" />
+            </StackPanel>
+            <Button x:Name="HistoryButton" Grid.Column="1" Width="32" Height="32" Padding="0"
+                    Style="{StaticResource ChatPlainButtonStyle}"
+                    ToolTipService.ToolTip="Recent chats" AutomationProperties.Name="Recent chats">
+                <FontIcon Glyph="&#xE81C;" FontSize="14" />
+                <Button.Flyout>
+                    <Flyout x:Name="HistoryFlyout" Placement="BottomEdgeAlignedLeft" Opening="HistoryFlyout_Opening">
+                        <StackPanel Width="280" MaxHeight="340" Spacing="10">
+                            <TextBlock Text="Conversations" FontSize="11" FontWeight="Medium"
+                                       Foreground="{ThemeResource MuesliTextSecondaryBrush}" Margin="8,4,0,0" />
+                            <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="HistoryList" Spacing="3" />
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+            <TextBlock x:Name="TitleText" Grid.Column="2" Text="Ask Meetings" FontSize="13" FontWeight="Medium"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+            <StackPanel x:Name="EmbeddedTitle" Grid.Column="2" Spacing="3" VerticalAlignment="Center" Visibility="Collapsed">
+                <TextBlock Text="Ask Meetings" FontSize="13" FontWeight="SemiBold" />
+                <TextBlock x:Name="EmbeddedSubtitle" FontSize="12" MaxLines="1" TextTrimming="CharacterEllipsis"
+                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+            </StackPanel>
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4">
+            <Button x:Name="OpenFullButton" Width="32" Height="32" Padding="0" Style="{StaticResource ChatPlainButtonStyle}"
+                    Click="OpenFull_Click" Visibility="Collapsed"
+                    ToolTipService.ToolTip="Open Ask Meetings" AutomationProperties.Name="Open Ask Meetings">
+                <FontIcon Glyph="&#xE8A7;" FontSize="13" />
+            </Button>
+            <Button x:Name="CollapseButton" Width="32" Height="32" Padding="0" Style="{StaticResource ChatPlainButtonStyle}"
+                    Click="Collapse_Click" Visibility="Collapsed"
+                    ToolTipService.ToolTip="Collapse chat" AutomationProperties.Name="Collapse chat">
+                <FontIcon Glyph="&#xE70D;" FontSize="13" />
+            </Button>
+            <Button x:Name="NewChatButton" Height="32" Style="{StaticResource ChatPlainButtonStyle}"
+                    Click="NewChat_Click" ToolTipService.ToolTip="Start a new conversation"
+                    AutomationProperties.Name="New chat">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE70F;" FontSize="13" />
+                    <TextBlock Text="New chat" />
+                </StackPanel>
+            </Button>
+            </StackPanel>
+        </Grid>
+        <Border x:Name="HeaderDivider" Height="1" Background="{ThemeResource MuesliBorderBrush}" Visibility="Collapsed" />
+        </StackPanel>
+
+        <!-- Index -->
+        <ScrollViewer x:Name="IndexView" Grid.Row="1" Grid.RowSpan="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="IndexContent" HorizontalAlignment="Center" Padding="0,40,0,24" Spacing="12">
+                <StackPanel Padding="24,0" Spacing="8">
+                    <TextBlock Text="What’s on your mind?" FontSize="24" FontWeight="Medium" CharacterSpacing="-20" />
+                    <TextBlock Text="Ask your meetings." FontSize="14" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                </StackPanel>
+                <!-- Composer: moved between this slot and BottomComposerSlot. -->
+                <Border x:Name="IndexComposerSlot">
+                <StackPanel x:Name="Composer" MaxWidth="704" Margin="24,8,24,12" Spacing="6">
+                    <TextBlock x:Name="ErrorText" Foreground="{ThemeResource MuesliWarningBrush}" FontSize="13"
+                               TextWrapping="Wrap" IsTextSelectionEnabled="True" Visibility="Collapsed" />
+                    <Border x:Name="MentionPanel" Visibility="Collapsed" CornerRadius="12" BorderThickness="1"
+                            BorderBrush="{ThemeResource MuesliBorderBrush}" Background="{ThemeResource MuesliBackgroundBrush}"
+                            AutomationProperties.AutomationId="meeting-chat-mention-suggestions">
+                        <StackPanel>
+                            <Grid Padding="12">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="@" FontSize="12" FontWeight="SemiBold" />
+                                    <TextBlock Text="Attach a meeting" FontSize="12" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <TextBlock Text="↑↓ Choose · ↵ Attach · Esc Close" FontSize="10" HorizontalAlignment="Right"
+                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </Grid>
+                            <Border Height="1" Background="{ThemeResource MuesliBorderBrush}" />
+                            <TextBlock x:Name="MentionEmpty" FontSize="13" Padding="14" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            <ScrollViewer x:Name="MentionScroll" MaxHeight="159" VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="MentionList" />
+                            </ScrollViewer>
+                            <StackPanel x:Name="MentionNote">
+                                <Border Height="1" Background="{ThemeResource MuesliBorderBrush}" />
+                                <TextBlock Text="Attaching a meeting narrows this chat to attached meetings and clears date filters."
+                                           FontSize="10" Padding="10" TextWrapping="Wrap"
+                                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="SavingText" FontSize="13" Margin="4,0,0,3" Visibility="Collapsed"
+                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                    <Border CornerRadius="16" BorderThickness="1" Padding="10,8"
+                            BorderBrush="{ThemeResource MuesliBorderBrush}" Background="{ThemeResource MuesliBackgroundRaisedBrush}">
+                        <StackPanel Spacing="6">
+                            <ScrollViewer x:Name="AttachmentScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                                          HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled" Height="30" Visibility="Collapsed">
+                                <StackPanel x:Name="AttachmentList" Orientation="Horizontal" Spacing="6" />
+                            </ScrollViewer>
+                            <TextBox x:Name="ComposerBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="34" MaxHeight="144"
+                                     FontSize="14" BorderThickness="0" Background="Transparent"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     AutomationProperties.Name="Question about saved meetings. Type @ to attach a meeting."
+                                     TextChanged="ComposerBox_TextChanged" SelectionChanged="ComposerBox_SelectionChanged"
+                                     PreviewKeyDown="ComposerBox_PreviewKeyDown" GotFocus="ComposerBox_GotFocus">
+                                <!-- AIPromptInput draws the field chrome; the editor itself stays bare in every state. -->
+                                <TextBox.Resources>
+                                    <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                                    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                </TextBox.Resources>
+                            </TextBox>
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="MentionButton" Style="{StaticResource ChatPlainButtonStyle}" Click="Mention_Click"
+                                        ToolTipService.ToolTip="Attach a meeting with @" AutomationProperties.Name="Attach a meeting">
+                                    <TextBlock Text="@" FontSize="14" />
+                                </Button>
+                                <Button x:Name="ScopeButton" Grid.Column="1" Style="{StaticResource ChatPlainButtonStyle}" Click="Scope_Click"
+                                        AutomationProperties.Name="Choose meeting context"
+                                        AutomationProperties.AutomationId="meeting-chat-scope">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <FontIcon Glyph="&#xE9E9;" FontSize="12" />
+                                        <TextBlock x:Name="ScopeText" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="220" />
+                                        <TextBlock x:Name="DateText" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="ModelButton" Grid.Column="3" Style="{StaticResource ChatPlainButtonStyle}"
+                                        Foreground="{ThemeResource MuesliTextSecondaryBrush}" Click="Model_Click"
+                                        ToolTipService.ToolTip="Choose the model and thinking level shared by meeting chats and summaries"
+                                        AutomationProperties.Name="Meeting AI model and thinking level">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <TextBlock x:Name="ModelText" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="200" />
+                                        <FontIcon Glyph="&#xE70D;" FontSize="10" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="PrepareButton" Grid.Column="4" Style="{StaticResource ChatPlainButtonStyle}"
+                                        ToolTipService.ToolTip="Prepare a question" AutomationProperties.Name="Prepare a question">
+                                    <FontIcon Glyph="&#xE710;" FontSize="13" />
+                                    <Button.Flyout>
+                                        <MenuFlyout x:Name="PrepareMenu" Placement="Top" />
+                                    </Button.Flyout>
+                                </Button>
+                                <Grid Grid.Column="5">
+                                    <Button x:Name="StopButton" Style="{StaticResource ChatPlainButtonStyle}" Click="Stop_Click"
+                                            Visibility="Collapsed" ToolTipService.ToolTip="Stop answer" AutomationProperties.Name="Stop answer">
+                                        <FontIcon Glyph="&#xE71A;" FontSize="13" />
+                                    </Button>
+                                    <Button x:Name="SendButton" Width="32" Height="32" Padding="0" CornerRadius="16" MinWidth="0" MinHeight="0"
+                                            Background="{ThemeResource MuesliAccentBrush}" BorderThickness="0" Click="Send_Click"
+                                            ToolTipService.ToolTip="Send question" AutomationProperties.Name="Send question"
+                                            AutomationProperties.AutomationId="meeting-chat-send">
+                                        <FontIcon Glyph="&#xE74A;" FontSize="14" Foreground="White" />
+                                    </Button>
+                                </Grid>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Text="↵ Send · ⇧↵ New line" FontSize="10" HorizontalAlignment="Right"
+                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                </StackPanel>
+                </Border>
+                <StackPanel Padding="24,0" Spacing="16">
+                    <StackPanel x:Name="SuggestionsPanel" Orientation="Horizontal" />
+                    <TextBlock x:Name="RecentHeader" Text="Recent chats" FontSize="12" Margin="0,16,0,0"
+                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                    <StackPanel x:Name="RecentList" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Conversation -->
+        <ScrollViewer x:Name="ConversationView" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+            <StackPanel x:Name="TurnsHost" HorizontalAlignment="Center" Padding="24" Spacing="28" />
+        </ScrollViewer>
+        <Border x:Name="BottomComposerSlot" Grid.Row="2" />
+
+        <!-- macOS restingComposer: the collapsed embedded chat. -->
+        <Button x:Name="RestingComposer" Grid.Row="2" Visibility="Collapsed" Click="Expand_Click"
+                MaxWidth="704" Margin="24,12" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                Padding="20,16" CornerRadius="26" BorderThickness="1"
+                BorderBrush="{ThemeResource MuesliBorderBrush}" Background="{ThemeResource MuesliBackgroundRaisedBrush}"
+                AutomationProperties.AutomationId="meeting-chat-expand">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="RestingText" MaxLines="1" TextTrimming="CharacterEllipsis"
+                           Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                <FontIcon Grid.Column="1" Glyph="&#xE70E;" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+            </Grid>
+        </Button>
+
+    </Grid>
+    </Border>
+</UserControl>

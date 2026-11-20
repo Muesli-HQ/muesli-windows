@@ -143,7 +143,15 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
     private void SetActive(ModelVariantItem? item)
     {
         if (item is null || !item.IsReady) return;
-        _models.SetActive(item.Id, forMeetings: RoleIndex == 1);
+        try
+        {
+            _models.SetActive(item.Id, forMeetings: RoleIndex == 1);
+        }
+        catch (InvalidOperationException exception)
+        {
+            ShowStatus(exception.Message, ModelStatusTone.Error);
+            return;
+        }
         Reload();
         ShowStatus($"{item.DisplayName} is now active for {RoleLabel}.");
     }
@@ -763,7 +771,7 @@ public sealed partial class ModelVariantItem : ObservableObject
         CanPause = snapshot.CanCancel && snapshot.Status == TranscriptionModelStatus.Downloading;
         CanDelete = snapshot.CanDelete && !(isSelectedForDictation || isSelectedForMeetings);
         IsReady = snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
-        CanSetActive = !isActive && IsReady;
+        CanSetActive = !isActive && IsReady && TranscriptionModelCatalog.IsSupportedOnThisPc(snapshot.Model);
         OnPropertyChanged(string.Empty);
 
         return IsLingering

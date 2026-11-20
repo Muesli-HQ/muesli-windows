@@ -92,6 +92,21 @@ public sealed class ModelAndSingleInstanceTests
     }
 
     [Fact]
+    public void CleanupLeavesASiblingModelsInFlightArtifacts()
+    {
+        using var directory = new TestDirectory();
+        var own = directory.File(".sherpa-onnx-whisper-tiny.0123abcd.download");
+        var sibling = directory.File(".sherpa-onnx-whisper-tiny.en.0123abcd.download");
+        File.WriteAllText(own, "partial");
+        File.WriteAllText(sibling, "in flight");
+
+        ModelSetupArtifactCleaner.Cleanup(directory.Path, "sherpa-onnx-whisper-tiny");
+
+        Assert.False(File.Exists(own));
+        Assert.True(File.Exists(sibling));
+    }
+
+    [Fact]
     public async Task CrossProcessModelLockSerializesAndHonorsCancellation()
     {
         using var directory = new TestDirectory();

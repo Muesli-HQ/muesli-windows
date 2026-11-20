@@ -45,7 +45,10 @@ public sealed class WinUiModelsContext : IDisposable
 
     public void SetActive(string modelId, bool forMeetings)
     {
-        var normalized = TranscriptionModelCatalog.GetRequired(modelId).Id;
+        var model = TranscriptionModelCatalog.GetRequired(modelId);
+        if (!TranscriptionModelCatalog.IsSupportedOnThisPc(model))
+            throw new InvalidOperationException($"{model.DisplayName} {TranscriptionModelCatalog.UnsupportedOnThisPcMessage}");
+        var normalized = model.Id;
         var settings = _settingsStore.Load();
         _settingsStore.Save(forMeetings
             ? settings with { FinalMeetingModelId = normalized }

@@ -103,6 +103,25 @@ public sealed class WinUiIndicatorHost : IDisposable
         : _meetingPaused ? 0f
         : _meetings.CurrentLevel;
 
+    // macOS 9d0ad706 caches feedback configuration. Live meetings update several times a second, and each update
+    // read and normalized the settings file up to three times. The file's write time invalidates the cache, so a
+    // save from any settings context is seen.
+    private MuesliSettings? _feedbackSettings;
+    private DateTime _feedbackSettingsStamp;
+
+    private MuesliSettings FeedbackSettings()
+    {
+        DateTime stamp;
+        try { stamp = File.GetLastWriteTimeUtc(App.Library.Profile.SettingsPath); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { stamp = DateTime.MinValue; }
+        if (_feedbackSettings is null || stamp != _feedbackSettingsStamp || stamp == DateTime.MinValue)
+        {
+            _feedbackSettings = App.Settings.Load();
+            _feedbackSettingsStamp = stamp;
+        }
+        return _feedbackSettings;
+    }
+
     private void UpdateState()
     {
         if (Volatile.Read(ref _disposed) != 0 || _window is null) return;
@@ -238,7 +257,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private IndicatorSnapshot BuildSnapshot()
     {
-        var settings = App.Settings.Load();
+        var settings = FeedbackSettings();
         return new IndicatorSnapshot
         {
             SessionId = _sessionId,
@@ -249,6 +268,10 @@ public sealed class WinUiIndicatorHost : IDisposable
             Message = _owner == IndicatorOwnerKind.ComputerUse && _state == FloatingIndicatorState.Transcribing
                 ? _status
                 : ComposeMessage(_state, _dictation.Status ?? "", _owner == IndicatorOwnerKind.Meeting ? _meetings.ProcessingStage : null),
+            // macOS clears the reason outside recording and for meetings.
+            RecordingNotice = _state == FloatingIndicatorState.Recording && _owner == IndicatorOwnerKind.Dictation
+                ? BufferedDictationInsertionStops.FromStatus(_status)?.Title()
+                : null,
             RecordingColorHex = settings.RecordingColorHex,
             IndicatorStyle = settings.IndicatorStyle,
             MeetingPaused = _meetingPaused,
@@ -267,6 +290,7 @@ public sealed class WinUiIndicatorHost : IDisposable
             // A meeting names the step it is on after Stop, as the macOS pill does.
             FloatingIndicatorState.Transcribing => string.IsNullOrWhiteSpace(meetingStage) ? "Transcribing" : meetingStage,
             FloatingIndicatorState.Success or FloatingIndicatorState.Error or FloatingIndicatorState.Notice => status,
+            FloatingIndicatorState.Recording => BufferedDictationInsertionStops.FromStatus(status)?.Detail() ?? "",
             _ => ""
         };
 
@@ -330,7 +354,7 @@ public sealed class WinUiIndicatorHost : IDisposable
                 break;
 
             case IndicatorCommandType.HoverEnter:
-                if (_owner == IndicatorOwnerKind.Meeting && App.Settings.Load().ShowLiveWaveformOnHover &&
+                if (_owner == IndicatorOwnerKind.Meeting && FeedbackSettings().ShowLiveWaveformOnHover &&
                     command.IndicatorX is { } x && command.IndicatorY is { } y &&
                     command.IndicatorWidth is > 0 and < 2000 && command.IndicatorHeight is > 0 and < 2000)
                 {
@@ -368,7 +392,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void LoadPosition()
     {
-        var settings = App.Settings.Load();
+        var settings = FeedbackSettings();
         _indicatorAnchor = string.IsNullOrWhiteSpace(settings.IndicatorAnchor) ? "Middle Right" : settings.IndicatorAnchor;
         _savedLeft = settings.IndicatorLeft;
         _savedTop = settings.IndicatorTop;

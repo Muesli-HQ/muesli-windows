@@ -655,6 +655,12 @@ internal sealed class MeetingCaptureSession : IDisposable
 
     private long ElapsedMeetingMs() => Math.Max(0, (long)(DateTime.Now - _startedAt).TotalMilliseconds);
 
+    /// <summary>macOS screenAudioSink: the meeting's 16 kHz mic/system feed for screen-recording clips,
+    /// positioned on the meeting clock (samples since the meeting started).</summary>
+    public Action<float[], long, bool>? ScreenAudioSink { get; set; }
+
+    public long ElapsedMeetingSamples => ElapsedMeetingMs() * 16;
+
     private void OnMicrophoneLevelChanged(object? sender, AudioLevelEventArgs e) =>
         LevelChanged?.Invoke(this, e);
 
@@ -664,6 +670,8 @@ internal sealed class MeetingCaptureSession : IDisposable
         var partOffsetMs = e.Channel == LiveTranscriptChannel.Microphone ? _micPartStartedAtMs : _systemPartStartedAtMs;
         _rollingPreview?.Feed(new LivePcmSamplesEventArgs(e.Channel, e.Samples,
             e.StartSample + (partOffsetMs ?? 0) * 16));
+        if (partOffsetMs is { } offset)
+            ScreenAudioSink?.Invoke(e.Samples, e.StartSample + offset * 16, e.Channel == LiveTranscriptChannel.Microphone);
     }
 
     private void OnLiveTranscriptSnapshot(object? sender, LiveTranscriptSnapshot snapshot)

@@ -50,7 +50,9 @@ public static class MeetingUrlParser
 
         if (IsHost(host, "meet.google.com")) return ParseGoogleMeet(uri, segments);
         if (IsHost(host, "zoom.us") || IsHost(host, "zoomgov.com")) return ParseZoom(uri, segments);
-        if (IsHost(host, "teams.microsoft.com") || IsHost(host, "teams.live.com")) return ParseTeams(uri, segments);
+        if (IsHost(host, "teams.microsoft.com")) return ParseTeams(uri, segments);
+        // MAC-13 (macOS 606f9ba7): Teams free is an exact host, and only its /meet/<id> links are meetings.
+        if (host == "teams.live.com") return MeetPathId(uri) is { } freeId ? new(MicrosoftTeams, uri.GetLeftPart(UriPartial.Query), freeId) : null;
         if (IsHost(host, "webex.com")) return ParseWebex(uri, segments);
         if (IsHost(host, "chime.aws")) return ParseChime(uri, segments);
         if (IsHost(host, "facetime.apple.com")) return ParseFaceTime(uri, segments);
@@ -94,15 +96,31 @@ public static class MeetingUrlParser
     private static MeetingUrlMatch? ParseTeams(Uri uri, string[] segments)
     {
         var path = string.Join('/', segments).ToLowerInvariant();
-        // teams.microsoft.com/l/meetup-join/... and teams.live.com/meet/<id>
-        if (path.StartsWith("l/meetup-join", StringComparison.Ordinal) ||
-            path.StartsWith("meet/", StringComparison.Ordinal) ||
-            path.StartsWith("l/message", StringComparison.Ordinal) == false && path.StartsWith("dl/launcher", StringComparison.Ordinal))
+        // Short form (macOS 0e81d032): teams.microsoft.com/meet/<id>?p=<passcode>.
+        if (segments.Length > 0 && segments[0].Equals("meet", StringComparison.OrdinalIgnoreCase))
+        {
+            return MeetPathId(uri) is { } id ? new(MicrosoftTeams, uri.GetLeftPart(UriPartial.Query), id) : null;
+        }
+        // teams.microsoft.com/l/meetup-join/... and the desktop launcher that wraps it.
+        if (path.StartsWith("l/meetup-join/", StringComparison.Ordinal) || path.StartsWith("dl/launcher", StringComparison.Ordinal))
         {
             var code = segments.LastOrDefault(segment => segment.Length >= 6);
             return new(MicrosoftTeams, uri.GetLeftPart(UriPartial.Query), code);
         }
         return null;
+    }
+
+    /// <summary>
+    /// The &lt;id&gt; of a raw "/meet/&lt;id&gt;" path, or null. Checked on the raw path so "/meet/?p=",
+    /// "/meet/#x" and "/meet//x" (macOS daa52934, 395e938e) never count as a meeting.
+    /// </summary>
+    private static string? MeetPathId(Uri uri)
+    {
+        var raw = uri.AbsolutePath;
+        if (!raw.StartsWith("/meet/", StringComparison.OrdinalIgnoreCase)) return null;
+        var rest = raw["/meet/".Length..];
+        var id = rest.Split('/')[0];
+        return id.Length == 0 ? null : Uri.UnescapeDataString(id);
     }
 
     private static MeetingUrlMatch? ParseWebex(Uri uri, string[] segments)

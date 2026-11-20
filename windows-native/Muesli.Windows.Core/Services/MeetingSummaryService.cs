@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace Muesli.Windows.Services;
@@ -211,9 +212,9 @@ public static class MeetingSummaryService
         string? previousMeetingNotes = null,
         IEnumerable<string>? participantNames = null)
     {
-        if (string.IsNullOrWhiteSpace(transcript))
+        if (HasNothingToSummarize(transcript, manualNotes, previousMeetingNotes))
         {
-            return new SummaryGenerationResult("", "local", false, null);
+            return new SummaryGenerationResult(EmptyRecordingNotes, "local", false, null);
         }
 
         var localInput = string.IsNullOrWhiteSpace(manualNotes) ? transcript : $"{transcript}\n{manualNotes}";
@@ -256,7 +257,8 @@ public static class MeetingSummaryService
         {
             var summary = IsHostedProvider(provider)
                 ? await CompleteAsync(provider, EffectiveSystemPrompt(settings) + rosterGuidance, SummaryUserPrompt(transcript, meetingTitle, manualNotes, roster),
-                    settings, httpClient, cancellationToken)
+                    settings, httpClient, cancellationToken,
+                    MeetingSummaryOutputPolicy.NormalizedLimit(settings.MeetingSummaryMaxOutputTokens))
                 : CreateLocalSummary(localInput, meetingTitle, settings);
             return new SummaryGenerationResult(
                 summary,
@@ -308,9 +310,22 @@ public static class MeetingSummaryService
 
     private const string TitlePromptPrefix = "Write a concise 3–7 word meeting title.";
 
+    /// <summary>macOS emptyRecordingNotes: the notes of a recording with nothing to summarize.</summary>
+    public const string EmptyRecordingNotes = "No transcript available";
+
+    /// <summary>
+    /// macOS hasNothingToSummarize (6bb10e8e, 32790f6c): metadata alone is not meeting content, so no title or
+    /// summary model runs. Earlier notes that only hold the empty-recording result count as empty.
+    /// </summary>
+    public static bool HasNothingToSummarize(string? transcript, string? manualNotes, string? previousMeetingNotes = null) =>
+        string.IsNullOrWhiteSpace(transcript) && string.IsNullOrWhiteSpace(manualNotes) &&
+        (previousMeetingNotes?.Trim() ?? "") is "" or EmptyRecordingNotes;
+
     /// <summary>
     /// One system + user turn through a configured provider (summaries, dictation cleanup). Throws
     /// <see cref="SummaryProviderException"/> with a safe reason on any failure.
+    /// <paramref name="outputLimit"/> is the user's optional summary cap; null leaves output length to the
+    /// provider (macOS 7d2c1ff0). The ChatGPT account endpoint manages its own limit.
     /// </summary>
     public static Task<string> CompleteAsync(
         string provider,
@@ -318,17 +333,18 @@ public static class MeetingSummaryService
         string userPrompt,
         MuesliSettings settings,
         HttpClient? httpClient = null,
-        CancellationToken cancellationToken = default) => provider switch
+        CancellationToken cancellationToken = default,
+        int? outputLimit = null) => provider switch
     {
         SummaryProviderDisclosure.ChatGpt => SummarizeWithChatGptAsync(systemPrompt, userPrompt, settings, httpClient, cancellationToken),
         SummaryProviderDisclosure.Anthropic => SummarizeWithAnthropicAsync(systemPrompt, userPrompt, settings, httpClient ?? AnthropicHttp, cancellationToken),
         SummaryProviderDisclosure.ClaudeCode => ClaudeCodeSummarizer.RunAsync(
             systemPrompt, userPrompt, settings.ClaudeCodeModel, settings.ClaudeCodeExecutablePath, ClaudeCodeRunTimeout(settings), cancellationToken),
-        "openai" => SummarizeWithOpenAIAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
-        "openrouter" => SummarizeWithOpenRouterAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
-        "ollama" => SummarizeWithOllamaAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
-        "lmstudio" => SummarizeWithLmStudioAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
-        "custom" => SummarizeWithCustomLlmAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken),
+        "openai" => SummarizeWithOpenAIAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken, outputLimit),
+        "openrouter" => SummarizeWithOpenRouterAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken, outputLimit),
+        "ollama" => SummarizeWithOllamaAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken, outputLimit),
+        "lmstudio" => SummarizeWithLmStudioAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken, outputLimit),
+        "custom" => SummarizeWithCustomLlmAsync(systemPrompt, userPrompt, settings, httpClient ?? Http, cancellationToken, outputLimit),
         _ => throw new SummaryProviderException("unsupported-provider")
     };
 
@@ -379,7 +395,8 @@ public static class MeetingSummaryService
         string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? outputLimit)
     {
         var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -393,6 +410,8 @@ public static class MeetingSummaryService
         }
 
         var model = string.IsNullOrWhiteSpace(settings.OpenAIModel) ? "gpt-5.4-mini" : settings.OpenAIModel;
+        // macOS: reasoning follows the shared summary thinking setting and the model's supported levels.
+        var effort = ReasoningEffortPolicy.Resolved(model, settings.MeetingSummaryReasoningEffort);
         var body = new
         {
             model,
@@ -401,9 +420,9 @@ public static class MeetingSummaryService
                 new { role = "system", content = systemPrompt },
                 new { role = "user", content = userPrompt }
             },
-            reasoning = new { effort = "low" },
+            reasoning = effort is null ? null : new { effort },
             text = new { verbosity = "low" },
-            max_output_tokens = 2500
+            max_output_tokens = outputLimit
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/responses");
@@ -450,9 +469,15 @@ public static class MeetingSummaryService
         string instructions,
         string userText,
         HttpClient? httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? model = null,
+        string? preferredEffort = null,
+        Func<string, Task>? onReasoningSummary = null)
     {
         httpClient ??= Http;
+        model ??= Muesli.Windows.ComputerUse.ResponsesPlanner.DefaultModel;
+        // Quill passes no summary preference and keeps the low effort it always used.
+        var effort = preferredEffort is null ? "low" : ReasoningEffortPolicy.Resolved(model, preferredEffort);
         if (ChatGptCredentials is not { } credentials) throw new SummaryProviderException("not-signed-in");
         (string Token, string AccountId) signIn;
         try { signIn = await credentials(cancellationToken); }
@@ -460,7 +485,7 @@ public static class MeetingSummaryService
 
         var body = new
         {
-            model = Muesli.Windows.ComputerUse.ResponsesPlanner.DefaultModel,
+            model,
             store = false,
             stream = true,
             instructions,
@@ -468,7 +493,7 @@ public static class MeetingSummaryService
             {
                 new { role = "user", content = new object[] { new { type = "input_text", text = userText } } }
             },
-            reasoning = new { effort = "low" }
+            reasoning = effort is null ? null : new { effort, summary = onReasoningSummary is not null && effort != "none" ? "auto" : null }
         };
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://chatgpt.com/backend-api/codex/responses");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", signIn.Token);
@@ -481,15 +506,17 @@ public static class MeetingSummaryService
         using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (!response.IsSuccessStatusCode) throw new SummaryProviderException($"http-{(int)response.StatusCode}");
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var text = await ReadResponsesStreamTextAsync(stream, cancellationToken);
+        var text = await ReadResponsesStreamTextAsync(stream, cancellationToken, onReasoningSummary);
         return string.IsNullOrWhiteSpace(text) ? throw new SummaryProviderException("empty-response") : text.Trim();
     }
 
     /// <summary>Concatenates a Responses event stream's output text.</summary>
-    internal static async Task<string> ReadResponsesStreamTextAsync(Stream stream, CancellationToken cancellationToken)
+    internal static async Task<string> ReadResponsesStreamTextAsync(Stream stream, CancellationToken cancellationToken,
+        Func<string, Task>? onReasoningSummary = null)
     {
         using var reader = new StreamReader(stream);
         var text = new StringBuilder();
+        var summary = new ReasoningSummaryAccumulator();
         while (await reader.ReadLineAsync(cancellationToken) is { } line)
         {
             if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
@@ -502,6 +529,8 @@ public static class MeetingSummaryService
                 if (type is "error" or "response.failed") throw new SummaryProviderException("provider-error");
                 if (type == "response.output_text.delta" && json.RootElement.TryGetProperty("delta", out var delta))
                     text.Append(delta.GetString());
+                if (onReasoningSummary is not null && JsonNode.Parse(data) is JsonObject payload && summary.Apply(payload))
+                    await onReasoningSummary(summary.Text);
             }
             catch (JsonException)
             {
@@ -520,7 +549,8 @@ public static class MeetingSummaryService
         string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? outputLimit)
     {
         var endpoint = string.IsNullOrWhiteSpace(settings.OllamaEndpoint)
             ? "http://localhost:11434"
@@ -540,7 +570,9 @@ public static class MeetingSummaryService
             {
                 new { role = "system", content = systemPrompt },
                 new { role = "user", content = userPrompt }
-            }
+            },
+            // -1 lets Ollama generate until the model stops instead of its small built-in default.
+            options = new { num_predict = outputLimit ?? -1 }
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "/api/chat"));
@@ -576,7 +608,8 @@ public static class MeetingSummaryService
         string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? outputLimit)
     {
         var endpoint = string.IsNullOrWhiteSpace(settings.LmStudioEndpoint)
             ? "http://localhost:1234"
@@ -600,7 +633,8 @@ public static class MeetingSummaryService
             model,
             apiKey: "",
             httpClient,
-            cancellationToken);
+            cancellationToken,
+            outputLimit);
     }
 
     /// <summary>
@@ -614,7 +648,8 @@ public static class MeetingSummaryService
         string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? outputLimit)
     {
         if (!TryResolveCustomLlmUri(settings.CustomLlmEndpoint, out var uri))
         {
@@ -641,7 +676,8 @@ public static class MeetingSummaryService
             model,
             apiKey ?? "",
             httpClient,
-            cancellationToken);
+            cancellationToken,
+            outputLimit);
     }
 
     private static async Task<string> SummarizeWithChatCompletionsAsync(
@@ -652,8 +688,11 @@ public static class MeetingSummaryService
         string model,
         string apiKey,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? outputLimit)
     {
+        // OpenAI's newer models require max_completion_tokens; other compatible servers use max_tokens.
+        var isOpenAI = uri.Host.Contains("openai.com", StringComparison.OrdinalIgnoreCase);
         var body = new
         {
             model,
@@ -663,7 +702,8 @@ public static class MeetingSummaryService
                 new { role = "system", content = systemPrompt },
                 new { role = "user", content = userPrompt }
             },
-            max_tokens = 2500
+            max_tokens = isOpenAI ? null : outputLimit,
+            max_completion_tokens = isOpenAI ? outputLimit : null
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, uri);
@@ -723,7 +763,8 @@ public static class MeetingSummaryService
         string userPrompt,
         MuesliSettings settings,
         HttpClient httpClient,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? outputLimit)
     {
         var apiKey = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -747,7 +788,7 @@ public static class MeetingSummaryService
                 new { role = "system", content = systemPrompt },
                 new { role = "user", content = userPrompt }
             },
-            max_tokens = 2500
+            max_tokens = outputLimit
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://openrouter.ai/api/v1/chat/completions");
@@ -769,9 +810,12 @@ public static class MeetingSummaryService
             : text.Trim();
     }
 
+    private static readonly JsonSerializerOptions RequestJson = new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+
     private static StringContent JsonContent<T>(T value)
     {
-        return new StringContent(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json");
+        // A model without reasoning levels omits the parameter instead of sending "reasoning": null.
+        return new StringContent(JsonSerializer.Serialize(value, RequestJson), Encoding.UTF8, "application/json");
     }
 
     private static string SummaryInstructions(string template)
@@ -1459,6 +1503,8 @@ public static class MeetingSummaryService
         CancellationToken cancellationToken = default, HttpClient? httpClient = null)
     {
         if (meeting.TitleIsManual) return meeting.Title;
+        // macOS keeps the existing title instead of asking a model to name an empty recording.
+        if (HasNothingToSummarize(meeting.Transcript, meeting.ManualNotes)) return meeting.Title;
         var fallback = MeetingTitleService.Generate(meeting.Transcript, meeting.CreatedAt, meeting.Title, meeting.ManualNotes);
         if (!IsModelProvider(settings.MeetingSummaryProvider)) return fallback;
         var result = await CreateSummaryResultAsync(meeting.Transcript, meeting.Title, settings with
@@ -1564,6 +1610,18 @@ public sealed record SummaryGenerationResult(
     string Provider,
     bool UsedLocalFallback,
     string? SafeFailureReason);
+
+/// <summary>
+/// macOS MeetingSummaryOutputPolicy (7d2c1ff0): summaries are provider-controlled unless the user asks for a cap.
+/// The Anthropic half (model maximums, streaming above 21,333 tokens, stop-reason checks) waits for an Anthropic
+/// provider on Windows.
+/// </summary>
+public static class MeetingSummaryOutputPolicy
+{
+    public static readonly IReadOnlyList<int> Presets = [2_500, 5_000, 10_000, 20_000, 64_000, 128_000];
+
+    public static int? NormalizedLimit(int? value) => value is > 0 ? value : null;
+}
 
 /// <summary>
 /// macOS MeetingSummaryRetryPolicy: retry transient failures (timeouts, empty replies, 408/409/425/

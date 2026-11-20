@@ -67,6 +67,17 @@
       ]
     },
     {
+      "id": "whisper-net-vulkan",
+      "source": "NuGet Whisper.net.Runtime.Vulkan",
+      "version": "1.9.1",
+      "license": "MIT",
+      "licenseFile": "licenses/MIT.txt",
+      "noticesHeading": "Whisper.net 1.9.1 and whisper.cpp native runtime",
+      "allowedInPublicWinX64": true,
+      "requiredInPublicWinX64": true,
+      "nativeFiles": [ "whisper.dll", "ggml-whisper.dll", "ggml-base-whisper.dll", "ggml-cpu-whisper.dll", "ggml-vulkan-whisper.dll" ]
+    },
+    {
       "id": "sqlite-e-sqlite3",
       "source": "NuGet SQLitePCLRaw.lib.e_sqlite3 via Microsoft.Data.Sqlite 10.0.11",
       "version": "2.1.12",

@@ -3,6 +3,26 @@ using System.Text.RegularExpressions;
 
 namespace Muesli.Windows.Services;
 
+/// <summary>macOS TranscriptCleanupBackendOption for Quill: the local general model, or ChatGPT.</summary>
+public static class QuillBackends
+{
+    public const string Local = "local";
+    public const string ChatGpt = "chatgpt";
+
+    /// <summary>macOS resolves an unknown or missing backend to local.</summary>
+    public static string Normalize(string? value) =>
+        string.Equals(value?.Trim(), ChatGpt, StringComparison.OrdinalIgnoreCase) ? ChatGpt : Local;
+
+    /// <summary>
+    /// macOS supportsQuil: only the general Qwen 3.5 0.8B follows arbitrary rewrite instructions. Cleanup fine-tunes
+    /// emit their training schema instead.
+    /// </summary>
+    public const string LocalModelId = CleanupModelCatalog.QwenBasicId;
+
+    /// <summary>macOS QuilModelPolicy.localMaximumInputCharacters.</summary>
+    public const int LocalMaximumInputCharacters = 2_500;
+}
+
 /// <summary>A Quill failure whose message is safe and useful to show the user.</summary>
 public sealed class QuillException(string message) : Exception(message);
 
@@ -58,11 +78,12 @@ public static partial class QuillTransformation
         string selectedText,
         string instruction,
         Func<string, string, CancellationToken, Task<string>> complete,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int maximumInputCharacters = MaximumInputCharacters)
     {
         if (string.IsNullOrWhiteSpace(instruction)) throw new QuillException("Quill did not hear a spoken instruction.");
-        if (selectedText.Length > MaximumInputCharacters)
-            throw new QuillException($"The highlighted text is too long for Quill (maximum {MaximumInputCharacters:N0} characters).");
+        if (selectedText.Length > maximumInputCharacters)
+            throw new QuillException($"The highlighted text is too long for Quill (maximum {maximumInputCharacters:N0} characters).");
         var prompt = UserPrompt(selectedText, instruction.Trim());
         var reply = await complete(SystemPrompt, prompt, cancellationToken);
         if (!LooksLikeCommentary(Normalize(reply))) return Validated(reply);

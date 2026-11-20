@@ -12,6 +12,7 @@ public sealed partial class ModelsPage : Page
     public ModelsPage()
     {
         InitializeComponent();
+        InitializeCotypist();
         Unloaded += (_, _) => ViewModel.Dispose();
         ViewModel.PropertyChanged += (_, _) => UpdateCategoryState();
         Loaded += (_, _) =>
@@ -60,6 +61,12 @@ public sealed partial class ModelsPage : Page
 
     private void CategoryBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
+        _showCotypist = sender.SelectedItem is SelectorBarItem { Tag: "cotypist" };
+        if (_showCotypist)
+        {
+            UpdateCategoryState();
+            return;
+        }
         if (sender.SelectedItem is SelectorBarItem { Tag: string tag } && int.TryParse(tag, out var index))
         {
             ViewModel.CategoryIndex = index;
@@ -86,6 +93,13 @@ public sealed partial class ModelsPage : Page
             ModelStatusTone.Success => InfoBarSeverity.Success,
             _ => InfoBarSeverity.Informational
         };
+        CotypistPanel.Visibility = _showCotypist ? Visibility.Visible : Visibility.Collapsed;
+        if (_showCotypist)
+        {
+            ModelsPanel.Visibility = CleanupPanel.Visibility = Visibility.Collapsed;
+            if (CotypistTab is { } tab && CategoryBar.SelectedItem != tab) CategoryBar.SelectedItem = tab;
+            return;
+        }
         ModelsPanel.Visibility = ViewModel.IsCleanupCategory ? Visibility.Collapsed : Visibility.Visible;
         CleanupPanel.Visibility = ViewModel.IsCleanupCategory ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = !ViewModel.IsCleanupCategory && !ViewModel.HasItems

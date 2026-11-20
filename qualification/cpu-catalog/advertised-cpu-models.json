@@ -293,7 +293,7 @@
     },
     {
       "id": "bodhan-core-int8",
-      "displayName": "Bodhan Core INT8",
+      "displayName": "Bodhan Core Lite",
       "kind": "Bodhan",
       "allowedRoles": [
         "dictation",
@@ -320,7 +320,7 @@
     },
     {
       "id": "bodhan-flex-int8",
-      "displayName": "Bodhan Flex INT8",
+      "displayName": "Bodhan Flex Lite",
       "kind": "Bodhan",
       "allowedRoles": [
         "dictation",

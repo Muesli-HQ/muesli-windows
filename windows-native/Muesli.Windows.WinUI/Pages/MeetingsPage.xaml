@@ -132,6 +132,17 @@
                                 <TextBlock Text="Import Audio" />
                             </StackPanel>
                         </Button>
+                        <!-- macOS Meetings → Import → Granola (MAC-05). -->
+                        <Button Style="{StaticResource MeetingsHeaderButtonStyle}"
+                                Command="{x:Bind ViewModel.ImportGranolaCommand}"
+                                ToolTipService.ToolTip="Import a Granola export. In Granola: Settings → Profile → Export historical data → Generate CSV, then choose the emailed ZIP."
+                                AutomationProperties.Name="Import meetings from Granola"
+                                AutomationProperties.AutomationId="ImportGranolaButton">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE8B5;" FontSize="14" />
+                                <TextBlock Text="Import Granola" />
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                     <StackPanel x:Name="SecondaryActions" Orientation="Horizontal" Spacing="8">
                         <!-- Compact pill menus matching MeetingsView.swift: sort symbols + label. -->

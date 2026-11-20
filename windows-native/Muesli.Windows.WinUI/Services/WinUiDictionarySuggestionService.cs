@@ -22,6 +22,7 @@ public sealed class WinUiDictionarySuggestionService : IDisposable
     private MeetingNotificationWindow? _window;
     private string? _activeKey;
     private IntPtr _anchor;
+    private int _watch;
 
     public WinUiDictionarySuggestionService(
         WinUiLibraryContext library, WinUiSettingsContext settings, IUiDispatcher dispatcher, WinUiDictationContext dictation)
@@ -31,12 +32,23 @@ public sealed class WinUiDictionarySuggestionService : IDisposable
         _dispatcher = dispatcher;
         _dictation = dictation;
         _dictation.Pasted += OnPasted;
+        _dictation.Starting += StopWatching;
+    }
+
+    /// <summary>
+    /// macOS 2ca15704: a previous dictation's watch must never read the next dictation's live revisions
+    /// as corrections, and a suggestion already queued to the UI thread is dropped once its watch ends.
+    /// </summary>
+    private void StopWatching()
+    {
+        Interlocked.Increment(ref _watch);
+        _monitor.Cancel();
     }
 
     /// <summary>Turns the feature on or off; turning it off stops any watch in progress.</summary>
     public void SetEnabled(bool enabled)
     {
-        if (!enabled) _monitor.Cancel();
+        if (!enabled) StopWatching();
         _settings.Save(_settings.Load() with { EnableDictionaryCorrectionPrompts = enabled });
     }
 
@@ -54,7 +66,11 @@ public sealed class WinUiDictionarySuggestionService : IDisposable
     {
         if (!_settings.Load().EnableDictionaryCorrectionPrompts || paste.Window == IntPtr.Zero) return;
         var context = paste.App is { } app ? $"{app.Name}|{app.AppId}" : "";
-        _monitor.Start(paste.Text, context, paste.Window, suggestion => _dispatcher.TryEnqueue(() => Record(suggestion, paste.Window)));
+        var watch = Interlocked.Increment(ref _watch);
+        _monitor.Start(paste.Text, context, paste.Window, suggestion => _dispatcher.TryEnqueue(() =>
+        {
+            if (Volatile.Read(ref _watch) == watch) Record(suggestion, paste.Window);
+        }));
     }
 
     private void Record(DictionarySuggestion suggestion, IntPtr window)
@@ -125,6 +141,7 @@ public sealed class WinUiDictionarySuggestionService : IDisposable
     public void Dispose()
     {
         _dictation.Pasted -= OnPasted;
+        _dictation.Starting -= StopWatching;
         _monitor.Dispose();
         _window?.SuppressCallbacks();
     }

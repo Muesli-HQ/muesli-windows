@@ -609,7 +609,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         try
         {
             MeetingStatus = "Meeting transcription will start shortly.";
-            await _meetingRuntime.StartQuickNoteAsync(cancellationToken);
+            await _meetingRuntime.StartQuickNoteAsync(cancellationToken, SelectedFolderId);
             MeetingStatus = "Ready";
         }
         catch (Exception exception)
@@ -720,6 +720,8 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
                     MediaImportFormats.SupportedExtensions),
                 cancellationToken);
             if (picked is null) return;
+            // macOS 7c3abb66: the folder open when the import starts, not when it ends.
+            var folderId = SelectedFolderId;
             IsImporting = true;
             ImportProgress = 0;
             MeetingStatus = $"Transcribing {picked.DisplayName}…";
@@ -730,7 +732,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
                     ? "Decoding imported media…"
                     : "Transcribing imported media…";
             });
-            await _meetingRuntime.ImportAsync(picked.Path, progress, cancellationToken);
+            await _meetingRuntime.ImportAsync(picked.Path, progress, cancellationToken, folderId);
             Reload();
             MeetingStatus = "Imported meeting saved";
         }
@@ -746,6 +748,56 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         {
             IsImporting = false;
             ImportProgress = 0;
+            NotifyCommandState();
+        }
+    }
+
+    /// <summary>macOS GranolaImportView (MAC-05): choose the export, review the preview, then import.</summary>
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private async Task ImportGranolaAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var picked = await _filePickers.PickOpenFileAsync(
+                new FilePickerRequest("Import from Granola", [".zip", ".csv"]), cancellationToken);
+            if (picked is null) return;
+            IsImporting = true;
+            MeetingStatus = "Reading the Granola export…";
+            var records = await Task.Run(() => GranolaImport.Read([picked.Path]), cancellationToken);
+            var workspaces = records.Select(record => record.Workspace).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().ToList();
+            var preview = $"{records.Count} {(records.Count == 1 ? "meeting" : "meetings")}" +
+                (workspaces.Count > 0 ? $" from {string.Join(", ", workspaces)}" : "") +
+                $", newest first:\n{string.Join("\n", records.Take(5).Select(record => $"• {(string.IsNullOrWhiteSpace(record.Title) ? "Untitled" : record.Title)} ({record.CreatedAt.LocalDateTime:d MMM yyyy})"))}" +
+                (records.Count > 5 ? $"\n… and {records.Count - 5} more" : "") +
+                "\n\nNew meetings go into the \"Granola\" folder. Meetings you already imported are kept as they are. Summaries are not regenerated.";
+            var choice = await _dialogs.ConfirmAsync(preview, "Import from Granola", "Import", "Cancel", cancellationToken);
+            if (choice != AppDialogChoice.Primary)
+            {
+                MeetingStatus = "";
+                return;
+            }
+            MeetingStatus = "Importing from Granola…";
+            var report = await Task.Run(() => _library.ImportGranola(records), CancellationToken.None);
+            Reload();
+            MeetingStatus = report.Imported == 0
+                ? "These Granola meetings were already imported"
+                : $"Imported {report.Imported} {(report.Imported == 1 ? "meeting" : "meetings")} from Granola";
+        }
+        catch (OperationCanceledException)
+        {
+            MeetingStatus = "";
+        }
+        catch (GranolaImportException exception)
+        {
+            MeetingStatus = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            MeetingStatus = $"Could not import from Granola: {exception.Message}";
+        }
+        finally
+        {
+            IsImporting = false;
             NotifyCommandState();
         }
     }
@@ -1067,6 +1119,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         StartQuickNoteCommand.NotifyCanExecuteChanged();
         DiscardRecoveryCommand.NotifyCanExecuteChanged();
         ImportAudioCommand.NotifyCanExecuteChanged();
+        ImportGranolaCommand.NotifyCanExecuteChanged();
         StopRecordingCommand.NotifyCanExecuteChanged();
         PauseRecordingCommand.NotifyCanExecuteChanged();
         ResumeRecordingCommand.NotifyCanExecuteChanged();
@@ -1124,7 +1177,10 @@ public sealed record MeetingListItem(
 
     public static MeetingListItem From(PersistedMeeting item, string? folderName)
     {
-        var source = RecordingBadge(item);
+        var imported = item.SystemCaptureMode == "imported-media";
+        // macOS SyncOriginDisplay: Granola imports carry their own origin badge (MAC-05).
+        var granola = GranolaImport.IsImported(item.Id);
+        var source = granola ? (GranolaImport.OriginLabel, "\uE8B5") : imported ? ("Imported", "\uE896") : RecordingBadge(item);
         return new(
             item.Id,
             item.FolderId,
@@ -1136,7 +1192,7 @@ public sealed record MeetingListItem(
             item.CreatedAt.ToLocalTime().ToString("MMM d, yyyy 'at' h:mm:ss tt", System.Globalization.CultureInfo.CurrentCulture),
             FormatDuration(item.DurationMs),
             SessionStateLabel(item.SessionState, item.RecoveredFromInterruption),
-            string.IsNullOrWhiteSpace(item.ModelProfile) ? "Local model" : item.ModelProfile,
+            granola ? "Granola" : string.IsNullOrWhiteSpace(item.ModelProfile) ? "Local model" : item.ModelProfile,
             item.RecoveredFromInterruption ||
             item.SessionState is not (MeetingSessionState.Completed or MeetingSessionState.Idle),
             folderName,

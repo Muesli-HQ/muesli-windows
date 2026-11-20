@@ -1,3 +1,4 @@
+using Muesli.Windows.Services;
 using System.Diagnostics;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
@@ -434,7 +435,11 @@ public sealed class WindowsDesktop : ICuaDesktop
     {
         var text = call.String("text") ?? throw new ArgumentException("paste_text needs text.");
         FocusForText(call);
-        WindowsInput.PasteText(text);
+        try { WindowsInput.PasteText(text); }
+        catch (ClipboardOwnershipLostException)
+        {
+            return CuaResult.Fail("Another app changed the clipboard before the paste, so nothing was pasted. Try again or use type_text.");
+        }
         return CuaResult.Ok($"Pasted {text.Length} characters{LabelSuffix(call)}; the clipboard was restored.");
     }
 
