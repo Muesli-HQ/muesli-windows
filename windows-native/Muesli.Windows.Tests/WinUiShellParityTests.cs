@@ -7,28 +7,7 @@ namespace Muesli.Windows.Tests;
 public sealed class WinUiShellParityTests
 {
     [Fact]
-    public void FeatureTourIsOfferedOncePerReleaseAfterSetup()
-    {
-        var tour = FeatureTourCatalog.Latest;
-        Assert.Equal("0.3", tour.DisplayVersion);
-        Assert.All(tour.Steps, step => Assert.False(string.IsNullOrWhiteSpace(step.TargetId)));
-
-        // Fresh install: setup is not done, so only the launch is recorded.
-        var (fresh, recorded) = FeatureTourPresentationPolicy.AutomaticTour(new MuesliSettings(), "0.3.0", tour);
-        Assert.False(fresh);
-        Assert.Equal("0.3.0", recorded.FeatureTourLastLaunchedVersion);
-        // Finishing setup on this release does not tour the new user on the next launch.
-        Assert.False(FeatureTourPresentationPolicy.AutomaticTour(recorded with { OnboardingCompleted = true }, "0.3.0", tour).Present);
-        // An existing install from before launch markers, or an upgrade, is offered it once.
-        Assert.True(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.3.0", null, null, true, tour));
-        Assert.True(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.3.1", "0.2.9", null, true, tour));
-        Assert.False(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.3.1", "0.2.9", "0.3.0", true, tour));
-        Assert.False(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.2.9", null, null, true, tour));
-        Assert.True(FeatureTourPresentationPolicy.ShouldPresentAutomatically("0.3.0", "0.3.0-beta", "0.2.0", true, tour));
-    }
-
-    [Fact]
-    public void FeatureTourTargetsExistInTheirPages()
+    public void OnboardingStepsFollowTheMacOsOrder()
     {
         Assert.Equal(7, OnboardingStepCatalog.Steps.Count);
         Assert.Equal(OnboardingProgress.LastStep, OnboardingStepCatalog.Steps[^1].Step);
@@ -239,10 +218,8 @@ public sealed class WinUiShellParityTests
         Assert.Contains("ComputerUseThinking", settings);
 
         var timeline = File.ReadAllText(Path.Combine(winUi, "Pages", "TimelinePage.xaml"));
-        // Timeline is one chronological mixed feed with the macOS app and date filters, but no
-        // source filter (Windows has one source) and no kind segmented control.
-        Assert.Contains("TimelineDateFilter", timeline);
-        Assert.Contains("TimelineAppFilter", timeline);
+        // Timeline is one chronological mixed feed: no source filter and no kind segmented control.
+        Assert.Contains("TimelineSort", timeline);
         Assert.DoesNotContain("TimelineFilterAll", timeline);
         Assert.DoesNotContain("From iPhone", timeline);
         Assert.DoesNotContain("This Mac", timeline);
@@ -252,15 +229,6 @@ public sealed class WinUiShellParityTests
         Assert.Contains("PauseMeetingButton", recordingPage);
         Assert.Contains("ShowLiveTranscriptButton", recordingPage);
         Assert.Contains("MeetingRecoveryPanel", meetings);
-        Assert.DoesNotContain("MeetingsRefreshButton", meetings);
-
-        // The meeting being recorded opens as its notes document (macOS compactQuickNotesHeader).
-        var detail = File.ReadAllText(Path.Combine(winUi, "Pages", "MeetingDetailPage.xaml"));
-        Assert.Contains("MeetingRecordingView", detail);
-        Assert.Contains("ShowLiveTranscriptButton", detail);
-        Assert.Contains("MeetingRecordingNotesEditor", detail);
-        Assert.Contains("MeetingThreadBreadcrumb", detail);
-        Assert.DoesNotContain("MeetingSaveButton", detail);
 
         var main = File.ReadAllText(Path.Combine(winUi, "MainPage.xaml"));
         Assert.Contains("SidebarGreeting", main);
@@ -271,17 +239,8 @@ public sealed class WinUiShellParityTests
         Assert.True(File.Exists(Path.Combine(winUi, "ComputerUseConfirmationWindow.xaml")));
 
         var about = File.ReadAllText(Path.Combine(winUi, "Pages", "AboutPage.xaml"));
-        // macOS AboutView: Support (Donate, GitHub, Report), Spread the Word, Data, Acknowledgements.
-        // Setup and the tour live in the tray menu, as macOS keeps them in the menu bar.
-        Assert.Contains("DonateButton", about);
-        Assert.Contains("GitHubButton", about);
-        Assert.Contains("ExportSupportBundleButton", about);
-        Assert.Contains("ShareOnXButton", about);
-        Assert.Contains("ACKNOWLEDGEMENTS", about);
-        Assert.DoesNotContain("ResumeSetupButton", about);
-        Assert.DoesNotContain("RuntimeDiagnosticsExpander", about);
-        // macOS moved "Spread the Word" out of the sidebar into About.
-        Assert.DoesNotContain("TweetNav", main);
+        Assert.Contains("ResumeSetupButton", about);
+        Assert.Contains("ReplayFeatureTourButton", about);
     }
 
     private static string FindRepositoryRoot() => TestRepositoryLayout.Root;

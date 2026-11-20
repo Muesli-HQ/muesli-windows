@@ -642,7 +642,7 @@
                                           ItemsSource="{x:Bind ViewModel.ComputerUseEfforts, Mode=OneWay}"
                                           SelectedIndex="{x:Bind ViewModel.ComputerUseEffortIndex, Mode=TwoWay}"
                                           AutomationProperties.Name="Computer Use thinking"
-                                          AutomationProperties.AutomationId="ComputerUseEffortPicker" />
+                                          AutomationProperties.AutomationId="ComputerUseThinking" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">

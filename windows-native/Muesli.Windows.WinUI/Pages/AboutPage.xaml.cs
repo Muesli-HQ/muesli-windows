@@ -4,7 +4,6 @@ using Muesli.Windows.Core.Insights;
 using Muesli.Windows.Services;
 using Muesli.Windows.WinUI.Services;
 using Muesli.Windows.WinUI.ViewModels;
-using Windows.System;
 
 namespace Muesli.Windows.WinUI.Pages;
 
@@ -15,15 +14,17 @@ public sealed partial class AboutPage : Page
         App.Settings,
         App.Clipboard,
         App.FilePickers,
-        App.Dialogs);
+        App.Dialogs,
+        () => App.ShowOnboarding(explicitResume: true),
+        App.ShowFeatureTour);
 
     public AboutPage()
     {
         InitializeComponent();
-        Loaded += (_, _) =>
+        Loaded += async (_, _) =>
         {
-            ViewModel.Load();
             AutoReportToggle.IsOn = App.Settings.Load().EnableAutomaticDiagnosticIssuePrompts;
+            await ViewModel.LoadAsync();
             ApplyResponsiveLayout(ActualWidth);
         };
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
@@ -38,10 +39,10 @@ public sealed partial class AboutPage : Page
         isError ? InfoBarSeverity.Error : InfoBarSeverity.Success;
 
     private void Donate_Click(object sender, RoutedEventArgs e) =>
-        _ = Launcher.LaunchUriAsync(new Uri(ContributionShare.DonateUrl));
+        _ = global::Windows.System.Launcher.LaunchUriAsync(new Uri(ContributionShare.DonateUrl));
 
     private void GitHub_Click(object sender, RoutedEventArgs e) =>
-        _ = Launcher.LaunchUriAsync(new Uri(ContributionShare.GitHubUrl));
+        _ = global::Windows.System.Launcher.LaunchUriAsync(new Uri(ContributionShare.GitHubUrl));
 
     /// <summary>macOS openManualDiagnosticReport; the support bundle stays one click away.</summary>
     private void OpenReport_Click(object sender, RoutedEventArgs e) =>
@@ -57,10 +58,6 @@ public sealed partial class AboutPage : Page
         if (settings.EnableAutomaticDiagnosticIssuePrompts != AutoReportToggle.IsOn)
             App.Settings.Save(settings with { EnableAutomaticDiagnosticIssuePrompts = AutoReportToggle.IsOn });
     }
-
-    private void PostOnX_Click(object sender, RoutedEventArgs e) => _ = ViewModel.ShareAsync(linkedIn: false);
-
-    private void PostOnLinkedIn_Click(object sender, RoutedEventArgs e) => _ = ViewModel.ShareAsync(linkedIn: true);
 
     private void ApplyResponsiveLayout(double pageWidth)
     {
