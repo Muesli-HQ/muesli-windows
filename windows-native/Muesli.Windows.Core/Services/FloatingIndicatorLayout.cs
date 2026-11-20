@@ -209,8 +209,11 @@ public static class FloatingIndicatorLayout
             ? new DipSize(MinimalGripThickness + 2 * MinimalGripHitMargin, MinimalGripLength + 2 * MinimalGripHitMargin, 0)
             : new DipSize(MinimalGripLength + 2 * MinimalGripHitMargin, MinimalGripThickness + 2 * MinimalGripHitMargin, 0);
 
-    public static DipSize SizeFor(FloatingIndicatorState state, bool hovered, string? message = "", bool computerUse = false)
+    public static DipSize SizeFor(FloatingIndicatorState state, bool hovered, string? message = "", bool computerUse = false, string? recordingNotice = null)
     {
+        // macOS: the recording pill widens to its notice text plus 54 points.
+        if (state == FloatingIndicatorState.Recording && !string.IsNullOrEmpty(recordingNotice))
+            return new DipSize(Math.Ceiling(recordingNotice.Length * 6.2) + 54, LiveHeight, LiveRadius);
         if (computerUse && state == FloatingIndicatorState.Transcribing)
             return new DipSize(ComputerUseWidthFor(message), TranscribingHeight, TranscribingRadius);
         return state switch

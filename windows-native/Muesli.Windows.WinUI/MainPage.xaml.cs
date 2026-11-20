@@ -293,6 +293,9 @@ public sealed partial class MainPage : Page
         if (sender is Button button && button.Tag is string tag)
         {
             DismissSearchQuery();
+            App.MeetingChatDocumentTarget = null;
+            // macOS SidebarView: the Ask Meetings row is showMeetingChatIndex.
+            if (tag == "askmeetings") App.MeetingChat?.ShowIndex();
             _selectedTag = tag;
             RefreshNavigationVisuals();
             Navigate(tag);
@@ -324,6 +327,7 @@ public sealed partial class MainPage : Page
         {
             "timeline" => typeof(Pages.TimelinePage),
             "dictations" => typeof(Pages.DictationsPage),
+            "askmeetings" => typeof(Pages.AskMeetingsPage),
             "dictionary" => typeof(Pages.DictionaryPage),
             "models" => typeof(Pages.ModelsPage),
             "settings" => typeof(Pages.SettingsPage),
@@ -344,6 +348,8 @@ public sealed partial class MainPage : Page
     public void NavigateTo(string tag)
     {
         DismissSearchQuery();
+        // macOS showMeetingsHome / returnToMeetingChat: leaving a cited meeting drops its passage target.
+        App.MeetingChatDocumentTarget = null;
 
         // A folder tag is created dynamically from the local profile. Selecting it is still a
         // normal button invocation, so automation and feature-tour navigation behave identically.
@@ -361,6 +367,19 @@ public sealed partial class MainPage : Page
         _selectedTag = tag;
         RefreshNavigationVisuals();
         Navigate(tag);
+    }
+
+    /// <summary>
+    /// macOS MuesliController.showMeetingChatSource: open the cited meeting document on its passage. Back
+    /// returns to the chat while the target is set.
+    /// </summary>
+    public void ShowMeetingDocument(string meetingId, MeetingChatDocumentTarget target)
+    {
+        DismissSearchQuery();
+        _selectedTag = "meetings";
+        RefreshNavigationVisuals();
+        App.MeetingChatDocumentTarget = target;
+        ContentFrame.Navigate(typeof(Pages.MeetingDetailPage), meetingId);
     }
 
     /// <summary>
@@ -744,7 +763,10 @@ public sealed partial class MainPage : Page
         RefreshThemeToggle();
     }
 
-    /// <summary>macOS darkModeToggle: picks light or dark through the same setting Settings uses.</summary>
+    /// <summary>
+    /// macOS darkModeToggle (MAC-30, 54e12876): the shared Light / Follow System / Dark control, writing
+    /// the same setting as Settings → Appearance.
+    /// </summary>
     private void ThemeToggle_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as Button)?.Tag is not string theme) return;
@@ -753,10 +775,16 @@ public sealed partial class MainPage : Page
         App.Settings.Save(settings with { Theme = theme });
     }
 
+    /// <summary>Highlights the saved choice, not the resolved theme, so Follow System reads as chosen.</summary>
     private void RefreshThemeToggle()
     {
-        var dark = ActualTheme != ElementTheme.Light;
-        foreach (var (button, selected) in new[] { (LightThemeButton, !dark), (DarkThemeButton, dark) })
+        var saved = App.ResolveTheme(App.Settings.Load().Theme);
+        foreach (var (button, selected) in new[]
+                 {
+                     (LightThemeButton, saved == ElementTheme.Light),
+                     (SystemThemeButton, saved == ElementTheme.Default),
+                     (DarkThemeButton, saved == ElementTheme.Dark)
+                 })
         {
             button.Background = selected ? Brush("MuesliSelectedBrush") : null;
             button.Foreground = selected ? Brush("MuesliAccentBrush") : Brush("MuesliTextTertiaryBrush");
@@ -817,6 +845,7 @@ public sealed partial class MainPage : Page
             yield return child;
         }
 
+        yield return AskMeetingsNav;
         yield return InsightsNav;
         yield return DictionaryNav;
         yield return ModelsNav;

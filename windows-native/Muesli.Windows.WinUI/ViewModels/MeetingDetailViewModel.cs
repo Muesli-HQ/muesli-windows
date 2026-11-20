@@ -647,6 +647,13 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         Metadata = $"{meeting.CreatedAt.ToLocalTime():MMM d, yyyy · h:mm tt} · {FormatDuration(meeting.DurationMs)} · {meeting.ModelProfile}";
         MetadataDate = meeting.CreatedAt.ToLocalTime().ToString("d MMM yyyy 'at' h:mm:ss tt");
         MetadataDuration = FormatHeaderDuration(meeting.DurationMs);
+        if (GranolaImport.IsImported(meeting.Id))
+        {
+            // macOS: the export has no duration, so the slot carries the origin; the date is document creation.
+            MetadataDate = "Created " + MetadataDate;
+            var workspace = Services.MeetingImports.Find(_library.Profile.RootDirectory, meeting.Id)?.WorkspaceName;
+            MetadataDuration = string.IsNullOrWhiteSpace(workspace) ? GranolaImport.OriginLabel : $"{GranolaImport.OriginLabel} · {workspace}";
+        }
         MetadataWords = $"{meeting.WordCount} words";
         HasManualTitle = meeting.TitleIsManual;
         TitleOwnershipLabel = meeting.TitleIsManual

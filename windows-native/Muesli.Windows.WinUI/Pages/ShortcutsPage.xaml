@@ -168,7 +168,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Quill: hold to speak an editing instruction; ChatGPT rewrites the selection. -->
+                <!-- Quill: hold to speak an editing instruction; the selected writing model rewrites the selection. -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Quill shortcut">
                     <StackPanel Spacing="16">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
@@ -200,7 +200,19 @@
                                     AutomationProperties.Name="Change Quill shortcut"
                                     AutomationProperties.AutomationId="ChangeQuillShortcutButton"
                                     ToolTipService.ToolTip="Press to capture a new Windows shortcut. Escape cancels." />
-                            <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.QuillState, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
+                            <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.QuillState, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" TextWrapping="Wrap" />
+                        </Grid>
+                        <!-- MAC-27: macOS Quill writing model. On this PC (Qwen Basic) is the default; ChatGPT is opt-in. -->
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <TextBlock Text="Writing model" Style="{StaticResource ShortcutCaptionStyle}" VerticalAlignment="Center" />
+                            <ComboBox x:Name="QuillBackendPicker" Grid.Column="1" MinWidth="240"
+                                      SelectedIndex="{x:Bind ViewModel.QuillBackendIndex, Mode=OneWay}"
+                                      SelectionChanged="QuillBackend_SelectionChanged"
+                                      AutomationProperties.Name="Quill writing model"
+                                      AutomationProperties.AutomationId="QuillBackendPicker">
+                                <ComboBoxItem Content="On this PC: Qwen 3.5 0.8B (General)" />
+                                <ComboBoxItem Content="ChatGPT (your signed-in account)" />
+                            </ComboBox>
                         </Grid>
                     </StackPanel>
                 </Border>

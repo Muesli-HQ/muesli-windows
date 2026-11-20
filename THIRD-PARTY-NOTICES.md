@@ -65,6 +65,15 @@ The build selects `LicenseType.Community`; the release owner confirmed eligibili
 - Use: optional local GGUF transcript cleanup (disabled by default).
 - Included text: `licenses/MIT.txt`.
 
+### Whisper.net 1.9.1 and whisper.cpp native runtime
+
+- Copyright: Whisper.net and whisper.cpp contributors.
+- Sources: https://github.com/sandrohanea/whisper.net and
+  https://github.com/ggml-org/whisper.cpp
+- License: MIT.
+- Use: timed live-dictation preview decoding (Vulkan, CPU fallback).
+- Included text: `licenses/MIT.txt`.
+
 ### sherpa-onnx 1.13.4
 
 - Copyright: The Next-gen Kaldi development team and contributors.

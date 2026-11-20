@@ -30,8 +30,8 @@ The runnable Windows catalog contains sixteen offline choices aligned with the W
 - SenseVoice Small INT8
 - Qwen3-ASR 0.6B INT8
 - Cohere Transcribe INT8 (English selected)
-- Bodhan Core INT8 and FP16
-- Bodhan Flex INT8 and FP16
+- Bodhan Core Lite (INT8, CPU) and Pro (FP16, CUDA)
+- Bodhan Flex Lite (INT8, CPU) and Pro (FP16, CUDA)
 
 Bodhan Core and Flex are ONNX ports of Bodhan AI / AI4Bharat's Indic-Transcribe models, exported from the official
 PyTorch code and hosted at `Mvkd2k06/indic-transcribe-core-onnx` and `Mvkd2k06/indic-transcribe-flex-onnx`. They run

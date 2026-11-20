@@ -26,6 +26,32 @@ public sealed partial class MeetingDetailPage : Page
     public MeetingsPageViewModel? Recording { get; private set; }
 
     private string _meetingId = "";
+    private MeetingChatDocumentTarget? _citationTarget;
+
+    /// <summary>
+    /// macOS MeetingDetailView with appState.meetingChatDocumentTarget: the "Referenced passage" banner,
+    /// "Back to Chat", and the cited transcript message highlighted.
+    /// </summary>
+    private void ShowCitationTarget()
+    {
+        BackLabel.Text = _citationTarget is null ? "Back to Meetings" : "Back to Chat";
+        AutomationProperties.SetName(BackButton, _citationTarget is null ? "Back to meetings" : "Back to chat");
+        CitationBanner.Visibility = _citationTarget is null ? Visibility.Collapsed : Visibility.Visible;
+        if (_citationTarget is not { } target) return;
+        var citation = target.Citation;
+        CitationBannerTitle.Text = "Referenced passage · " + citation.Kind.Label();
+        CitationBannerExcerpt.Text = citation.Excerpt;
+        var text = citation.Kind switch
+        {
+            MeetingChatSourceKind.Transcript => ViewModel.Transcript,
+            MeetingChatSourceKind.ManualNotes => ViewModel.ManualNotes,
+            _ => ViewModel.Summary
+        };
+        var range = target.Locate(text);
+        CitationBannerChanged.Visibility = range is null ? Visibility.Visible : Visibility.Collapsed;
+        if (range is not null && target.ShowsTranscript)
+            SavedTranscriptFeed.Highlight(MeetingChatDocumentTarget.TranscriptMessageIndex(text, range));
+    }
 
     public MeetingDetailPage()
     {
@@ -33,6 +59,7 @@ public sealed partial class MeetingDetailPage : Page
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(ViewModel.Transcript)) SavedTranscriptFeed.Update(null, ViewModel.Transcript);
+            if (args.PropertyName == nameof(ViewModel.HasRecording)) RenderVideo();
 
             if (args.PropertyName == nameof(ViewModel.IsPlaying))
             {
@@ -50,8 +77,11 @@ public sealed partial class MeetingDetailPage : Page
         ViewModel.MeetingRemoved += OnMeetingRemoved;
         ViewModel.RecordingStarted += OnRecordingStarted;
         App.Meetings.Changed += OnMeetingRuntimeChanged;
+        App.ScreenRecording.Changed += OnScreenRecordingChanged;
         Loaded += (_, _) =>
         {
+            UpdateScreenStatus();
+            RenderVideo();
             ApplyResponsiveLayout(ActualWidth);
             SyncTabBar();
             UpdateFolderPill();
@@ -64,6 +94,8 @@ public sealed partial class MeetingDetailPage : Page
             ViewModel.MeetingRemoved -= OnMeetingRemoved;
             ViewModel.RecordingStarted -= OnRecordingStarted;
             App.Meetings.Changed -= OnMeetingRuntimeChanged;
+            App.ScreenRecording.Changed -= OnScreenRecordingChanged;
+            StopVideo();
             EndRecordingMode(reload: false);
             ViewModel.Dispose();
         };
@@ -87,10 +119,15 @@ public sealed partial class MeetingDetailPage : Page
     {
         base.OnNavigatedTo(e);
         _meetingId = e.Parameter as string ?? "";
+        MeetingChat.EmbeddedMeetingId = _meetingId;
         ViewModel.Load(_meetingId);
+        _citationTarget = App.MeetingChatDocumentTarget is { } target && target.Citation.MeetingId == _meetingId ? target : null;
+        if (_citationTarget is not null) ViewModel.ShowNotesTab = !_citationTarget.ShowsTranscript;
+        ShowCitationTarget();
         SyncTabBar();
         UpdateMode();
         ShowPeople(MeetingParticipants.Load(App.Library.Profile.RootDirectory, _meetingId));
+        RenderVideo();
     }
 
     /// <summary>
@@ -103,6 +140,146 @@ public sealed partial class MeetingDetailPage : Page
         || (Recording is not null && App.Meetings.IsBusy);
 
     private void OnMeetingRuntimeChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(UpdateMode);
+
+    private void OnScreenRecordingChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(() =>
+    {
+        UpdateScreenStatus();
+        RenderVideo();
+    });
+
+    private string _videoMode = "Video";
+    private string? _selectedClipId;
+    private string _renderedVideo = "";
+    private MediaPlayerElement? _videoPlayer;
+
+    /// <summary>Port of macOS MeetingMediaView: a clip picker ("Part n · time"), one player, and a
+    /// Video/Audio switch when the meeting also kept a separate audio recording.</summary>
+    private void RenderVideo()
+    {
+        var clips = _meetingId.Length > 0 ? App.ScreenRecording.Clips(_meetingId) : [];
+        var hasAudio = ViewModel.HasRecording;
+        var selected = clips.FirstOrDefault(clip => clip.Id == _selectedClipId) ?? clips.FirstOrDefault();
+        var showVideo = selected is not null && (_videoMode == "Video" || !hasAudio);
+        var key = $"{string.Join(',', clips.Select(clip => clip.Id))}|{hasAudio}|{_videoMode}|{selected?.Id}";
+        AudioHost.Visibility = showVideo ? Visibility.Collapsed : Visibility.Visible;
+        if (key == _renderedVideo) return;
+        _renderedVideo = key;
+        StopVideo();
+        VideoPanel.Children.Clear();
+        VideoPanel.Visibility = clips.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (clips.Count == 0) return;
+        if (hasAudio)
+        {
+            var media = new Microsoft.UI.Xaml.Controls.SelectorBar();
+            foreach (var mode in new[] { "Video", "Audio" })
+                media.Items.Add(new SelectorBarItem { Text = mode, IsSelected = mode == _videoMode });
+            media.SelectionChanged += (bar, _) => { _videoMode = bar.SelectedItem?.Text ?? "Video"; RenderVideo(); };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(media, "Media");
+            VideoPanel.Children.Add(media);
+        }
+        if (!showVideo || selected is null) return;
+        if (clips.Count > 1)
+        {
+            var parts = new ComboBox { MinWidth = 200 };
+            for (var index = 0; index < clips.Count; index++)
+                parts.Items.Add(new ComboBoxItem { Content = $"Part {index + 1} · {clips[index].CapturedAt.ToLocalTime():t}", Tag = clips[index].Id });
+            parts.SelectedIndex = clips.ToList().FindIndex(clip => clip.Id == selected.Id);
+            parts.SelectionChanged += (_, _) => { _selectedClipId = (parts.SelectedItem as ComboBoxItem)?.Tag as string; RenderVideo(); };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(parts, "Recording");
+            VideoPanel.Children.Add(parts);
+        }
+        if (App.ScreenRecording.MediaPath(selected) is not { } path)
+        {
+            VideoPanel.Children.Add(new TextBlock { Text = "Screen recording unavailable", Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["MuesliTextSecondaryBrush"] });
+            return;
+        }
+        _videoPlayer = new MediaPlayerElement
+        {
+            AreTransportControlsEnabled = true, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform, MinHeight = 220, MaxHeight = 400,
+            Source = global::Windows.Media.Core.MediaSource.CreateFromUri(new Uri(path))
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_videoPlayer, "MeetingVideoPlayer");
+        VideoPanel.Children.Add(_videoPlayer);
+    }
+
+    private void StopVideo()
+    {
+        if (_videoPlayer is null) return;
+        _videoPlayer.MediaPlayer?.Pause();
+        _videoPlayer.Source = null;
+        _videoPlayer = null;
+    }
+
+    /// <summary>The always-visible screen capture disclosure, plus the last screen-recording message.</summary>
+    private void UpdateScreenStatus()
+    {
+        var screen = App.ScreenRecording;
+        var text = screen.RecordingMeetingId == _meetingId && _meetingId.Length > 0
+            ? (screen.IsFinalizing ? "Saving screen recording…"
+                : screen.PauseState.IsPaused ? $"Screen recording paused · {screen.SourceName}"
+                : $"Recording screen · {screen.SourceName}")
+            : screen.IsPreparing ? "Preparing screen recording…" : "";
+        if (screen.Message is { } message && (screen.MessageMeetingId is null || screen.MessageMeetingId == _meetingId))
+            text = text.Length > 0 ? $"{text}\n{message}" : message;
+        ScreenStatus.Text = text;
+        ScreenStatus.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ScreenGlyph.Foreground = screen.IsRecording && !screen.PauseState.IsPaused
+            ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 0xEF, 0x44, 0x44)) : null;
+    }
+
+    private void Screen_Click(object sender, RoutedEventArgs e)
+    {
+        var screen = App.ScreenRecording;
+        var meetings = App.Meetings;
+        var flyout = new MenuFlyout();
+        if (screen.IsRecording)
+        {
+            var pause = new MenuFlyoutItem { Text = screen.PauseState.UserPaused ? "Resume Screen Recording" : "Pause Screen Recording",
+                IsEnabled = !screen.IsFinalizing && !screen.IsPreparing };
+            pause.Click += (_, _) => screen.ToggleScreenPause();
+            var stop = new MenuFlyoutItem { Text = "Stop Screen Recording", IsEnabled = !screen.IsFinalizing };
+            stop.Click += async (_, _) => await screen.StopAsync();
+            flyout.Items.Add(pause);
+            flyout.Items.Add(stop);
+        }
+        else
+        {
+            var record = new MenuFlyoutItem
+            {
+                Text = screen.IsPreparing ? "Preparing Screen Recording…" : "Record Screen…",
+                IsEnabled = screen.IsAvailable && meetings.IsRecording && !meetings.IsPaused && !meetings.IsBusy && !screen.IsPreparing && !screen.IsFinalizing
+            };
+            record.Click += async (_, _) => await RecordScreenAsync();
+            flyout.Items.Add(record);
+        }
+        flyout.ShowAt((FrameworkElement)sender);
+    }
+
+    /// <summary>macOS MuesliController.startMeetingScreenRecording: picker, confirm, then capture.</summary>
+    private async Task RecordScreenAsync()
+    {
+        var screen = App.ScreenRecording;
+        var meetings = App.Meetings;
+        if (meetings.ActiveMeetingId is not { } meetingId || meetings.IsPaused) return;
+        var picked = await Controls.MeetingScreenSourcePicker.PickAsync(XamlRoot, Controls.MeetingScreenSourcePicker.Sources());
+        if (picked is not { } choice || meetings.ActiveMeetingId != meetingId || !meetings.IsRecording || meetings.IsPaused) return;
+        if (choice.Source.CreateItem() is not { } item)
+        {
+            ScreenStatus.Text = "That window or display is no longer available. Try Record Screen again.";
+            ScreenStatus.Visibility = Visibility.Visible;
+            return;
+        }
+        try { meetings.EnsureDraftSaved(); }
+        catch (Exception error)
+        {
+            ScreenStatus.Text = $"Screen recording could not start: {error.Message}";
+            ScreenStatus.Visibility = Visibility.Visible;
+            return;
+        }
+        await screen.StartAsync(meetingId, meetings.CaptureSessionId, meetings.StartedAt, item, $"{choice.Source.Title} — {choice.Source.Subtitle}");
+        // The optional announcement never gates capture or its retention.
+        if (choice.Announce && screen.RecordingMeetingId == meetingId) await screen.PlayAnnouncementAsync();
+    }
 
     /// <summary>
     /// The meeting being recorded shows its live notes and recording controls; once it stops,
@@ -127,6 +304,7 @@ public sealed partial class MeetingDetailPage : Page
         var recording = Recording is not null;
         RecordingView.Visibility = recording ? Visibility.Visible : Visibility.Collapsed;
         StandardView.Visibility = recording ? Visibility.Collapsed : Visibility.Visible;
+        MeetingChat.Visibility = !recording && ViewModel.HasMeeting && App.MeetingChat is not null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void EndRecordingMode(bool reload)
@@ -179,6 +357,8 @@ public sealed partial class MeetingDetailPage : Page
 
     private void Back_Click(object sender, RoutedEventArgs e)
     {
+        // macOS returnToMeetingChat: a cited document returns to the conversation it came from.
+        if (_citationTarget is not null) { (App.Window as MainWindow)?.ShellPage?.NavigateTo("askmeetings"); return; }
         if (Frame.CanGoBack) Frame.GoBack();
     }
 
@@ -283,6 +463,23 @@ public sealed partial class MeetingDetailPage : Page
         FolderPillIcon.Glyph = ViewModel.HasFolder ? "" : "";
         FolderPill.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
             ViewModel.HasFolder ? "MuesliAccentBrush" : "MuesliTextSecondaryBrush"];
+    }
+
+    /// <summary>MAC-04: while recording, choosing a template only saves it for this meeting; notes are written at Stop.</summary>
+    private void RecordingTemplateMenu_Opening(object? sender, object e)
+    {
+        RecordingTemplateMenu.Items.Clear();
+        if (Recording is not { } recording) return;
+        foreach (var name in recording.RecordingTemplateNames)
+        {
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = name,
+                IsChecked = string.Equals(name, recording.RecordingTemplate, StringComparison.OrdinalIgnoreCase)
+            };
+            item.Click += (_, _) => recording.SelectRecordingTemplate(name);
+            RecordingTemplateMenu.Items.Add(item);
+        }
     }
 
     /// <summary>The Template submenu lists every template with a check on the meeting's, then Manage Templates….</summary>

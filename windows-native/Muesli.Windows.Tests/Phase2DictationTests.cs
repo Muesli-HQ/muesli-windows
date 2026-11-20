@@ -249,6 +249,25 @@ public sealed class Phase2DictationTests
             DefaultCaptureEndpointPolicy.ChoosePreferredId(handsFree.Id, handsFree.Id, handsFree.Id, [handsFree, array]));
     }
 
+    /// <summary>
+    /// MAC-18 (macOS e4d37656): a default endpoint that is present but not active (unplugged jack,
+    /// disabled device; the Windows form of a closed lid) is never chosen, and the recording rotates
+    /// off it when its state drops.
+    /// </summary>
+    [Theory]
+    [InlineData(DeviceState.Unplugged)]
+    [InlineData(DeviceState.Disabled)]
+    [InlineData(DeviceState.NotPresent)]
+    public void AutomaticSkipsAnInactiveDefaultAndRotatesOffIt(DeviceState state)
+    {
+        var usb = new CaptureEndpointDescriptor("usb", "Microphone (USB PnP Audio Device)");
+        // "builtin" is still the saved Windows default but isn't in the active list.
+        Assert.Equal("usb", DefaultCaptureEndpointPolicy.ChoosePreferredId("builtin", "builtin", null, [usb]));
+        Assert.True(AudioRouteRecoveryPolicy.ShouldRotate(
+            AudioCaptureService.SystemDefaultMicrophone, "builtin", false,
+            new AudioEndpointChange(AudioEndpointChangeKind.StateChanged, "builtin", state)));
+    }
+
     [Fact]
     public void DefaultCaptureKeepsJackWhenNoArraySiblingExists()
     {

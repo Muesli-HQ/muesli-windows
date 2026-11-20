@@ -20,9 +20,11 @@
             <Setter Property="BorderBrush" Value="{ThemeResource ControlFillColorTransparentBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0,2" />
-            <Setter Property="MinHeight" Value="36" />
+            <!-- MAC-12 (macOS a5ef96d9, 2dd3d4b3): one line at a fixed height. A long title scrolls inside
+                 the box instead of growing the header; the * column keeps it from widening the page. -->
+            <Setter Property="Height" Value="40" />
             <Setter Property="MaxLength" Value="200" />
-            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="AcceptsReturn" Value="False" />
             <Setter Property="UseSystemFocusVisuals" Value="True" />
         </Style>
@@ -91,6 +93,10 @@
     </Page.Resources>
 
     <Grid Background="{ThemeResource MuesliBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="16" HorizontalAlignment="Stretch">
 
@@ -106,7 +112,7 @@
                         AutomationProperties.AutomationId="MeetingDetailBackButton">
                     <StackPanel Orientation="Horizontal" Spacing="7">
                         <FontIcon Glyph="&#xE76B;" FontSize="12" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                        <TextBlock Text="Back to Meetings" />
+                        <TextBlock x:Name="BackLabel" Text="Back to Meetings" />
                     </StackPanel>
                 </Button>
 
@@ -128,6 +134,16 @@
                             </StackPanel>
                             <TextBlock Text="{x:Bind Recording.CaptureStatus, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"
                                        Foreground="{ThemeResource MuesliTextTertiaryBrush}" AutomationProperties.AutomationId="MeetingCaptureStatusLabel" />
+                            <!-- MAC-04: macOS recordingTemplatePicker; disabled once Stop begins. -->
+                            <DropDownButton Content="{x:Bind Recording.RecordingTemplateLabel, Mode=OneWay}"
+                                            IsEnabled="{x:Bind Recording.CanEditRecordingNotes, Mode=OneWay}"
+                                            Margin="0,4,0,0" MaxWidth="320"
+                                            AutomationProperties.Name="Meeting template"
+                                            AutomationProperties.AutomationId="MeetingRecordingTemplatePicker">
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout x:Name="RecordingTemplateMenu" Placement="BottomEdgeAlignedLeft" Opening="RecordingTemplateMenu_Opening" />
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
                         </StackPanel>
                         <StackPanel x:Name="RecordingActions" Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Top" HorizontalAlignment="Right">
                             <Ellipse Width="7" Height="7" Fill="#EF4444" VerticalAlignment="Center" ToolTipService.ToolTip="Recording"
@@ -174,6 +190,13 @@
                                     <TextBlock Text="Stop" />
                                 </StackPanel>
                             </Button>
+                            <!-- macOS "Record Screen…" (recording Details popover) and the screen pause/stop controls. -->
+                            <Button x:Name="ScreenButton" Style="{StaticResource MeetingIconButtonStyle}" Click="Screen_Click"
+                                    ToolTipService.ToolTip="Screen recording"
+                                    AutomationProperties.Name="Screen recording"
+                                    AutomationProperties.AutomationId="MeetingScreenRecordingButton">
+                                <FontIcon x:Name="ScreenGlyph" Glyph="&#xE7F4;" FontSize="12" />
+                            </Button>
                             <Button Style="{StaticResource MeetingIconButtonStyle}"
                                     Command="{x:Bind Recording.ShowLiveTranscriptCommand, Mode=OneWay}"
                                     ToolTipService.ToolTip="Show live transcript window"
@@ -190,6 +213,8 @@
                             </Button>
                         </StackPanel>
                     </Grid>
+                    <TextBlock x:Name="ScreenStatus" FontSize="12" TextWrapping="Wrap" Visibility="Collapsed"
+                               Foreground="{ThemeResource MuesliTextSecondaryBrush}" AutomationProperties.AutomationId="MeetingScreenRecordingStatus" />
                     <InfoBar IsOpen="{x:Bind Recording.IsSourceMissing, Mode=OneWay}" IsClosable="False" Severity="Warning"
                              Title="Meeting signal lost" Message="Recording continues. Stop if the meeting ended."
                              AutomationProperties.AutomationId="MeetingSignalLostNotice">
@@ -581,6 +606,9 @@
                     the waveform as the seek bar, and a monospaced time readout. Windows adds its
                     You/Others track picker when a meeting kept both tracks.
                 -->
+                <!-- MeetingMediaView.swift: screen clips play one at a time; Video/Audio when both exist. -->
+                <StackPanel x:Name="VideoPanel" Spacing="8" Visibility="Collapsed" AutomationProperties.AutomationId="MeetingVideoPanel" />
+                <Grid x:Name="AudioHost">
                 <Border Background="{ThemeResource MuesliBackgroundRaisedBrush}"
                         BorderBrush="{ThemeResource MuesliBorderBrush}"
                         BorderThickness="1"
@@ -635,6 +663,7 @@
                         </ComboBox>
                     </Grid>
                 </Border>
+                </Grid>
 
                 <!-- macOS audio warning banner: orange 12% fill, 35% outline, a filled triangle. -->
                 <Border Background="#1FFF9F43"
@@ -707,6 +736,18 @@
                                 </ScrollViewer>
                             </Border>
                         </Expander>
+                    </StackPanel>
+                </Border>
+
+                <!-- macOS MeetingDetailView: the passage an Ask Meetings citation opened this document on. -->
+                <Border x:Name="CitationBanner" Visibility="Collapsed" Padding="16" CornerRadius="8"
+                        Background="{ThemeResource MuesliSelectedBrush}" AutomationProperties.AutomationId="MeetingChatCitationBanner">
+                    <StackPanel Spacing="6">
+                        <TextBlock x:Name="CitationBannerTitle" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                        <TextBlock x:Name="CitationBannerExcerpt" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                        <TextBlock x:Name="CitationBannerChanged" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource MuesliWarningBrush}"
+                                   Text="The exact passage has changed. This is the original excerpt from the answer." />
                     </StackPanel>
                 </Border>
 
@@ -895,5 +936,7 @@
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
+        <!-- macOS safeAreaInset(edge: .bottom): the meeting's Ask Meetings panel, hidden while recording. -->
+        <controls:MeetingChatView x:Name="MeetingChat" Grid.Row="1" />
     </Grid>
 </Page>

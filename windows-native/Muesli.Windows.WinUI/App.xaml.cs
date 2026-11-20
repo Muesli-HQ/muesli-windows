@@ -6,6 +6,7 @@ using Windows.UI;
 using Windows.UI.ViewManagement;
 using Muesli.Windows.Core.Profiles;
 using Muesli.Windows.Core.Contracts;
+using Muesli.Windows.Core.Services;
 using Muesli.Windows.WinUI.Services;
 using Microsoft.Windows.AppLifecycle;
 using Muesli.Windows.Services;
@@ -46,9 +47,32 @@ public partial class App : Application
 
     public static WinUiMeetingContext Meetings { get; private set; } = null!;
 
+    private static MeetingChatCoordinator? _meetingChat;
+
+    /// <summary>macOS AppState.meetingChatDocumentTarget: the cited passage the meeting document opens on.</summary>
+    public static MeetingChatDocumentTarget? MeetingChatDocumentTarget { get; set; }
+
+    /// <summary>
+    /// macOS MuesliController.meetingChatCoordinator: one shared Ask Meetings state for the app. Chat history
+    /// lives in the SQLite library, so a profile still on the JSON store gets null and the page fails closed.
+    /// </summary>
+    public static MeetingChatCoordinator? MeetingChat => _meetingChat ??= Library.History is Muesli.Windows.Services.Persistence.SqliteLibraryHistoryAdapter sqlite
+        ? new MeetingChatCoordinator(new MeetingChatStore(sqlite.Store.Database), () => new MeetingSummaryTextGenerator(Settings.Load()),
+            action => UiDispatcher.TryEnqueue(action))
+        : null;
+
     public static WinUiModelsContext Models { get; private set; } = null!;
 
+    /// <summary>macOS VisualMemoryController: meeting screen recording and its clip catalog.</summary>
+    public static MeetingScreenRecording ScreenRecording { get; private set; } = null!;
+
     public static WinUiSettingsContext Settings { get; private set; } = null!;
+
+    /// <summary>Null unless this build includes Cotypist and its text service is installed.</summary>
+    public static CotypistSetup? Cotypist { get; private set; }
+
+    /// <summary>Cotypist's suggestion history, for the Insights panel; null when Cotypist isn't running.</summary>
+    public static Muesli.Windows.Cotypist.CotypistHistoryStore? CotypistHistory { get; private set; }
 
     public static WinUiDictationContext Dictation { get; private set; } = null!;
 
@@ -75,6 +99,27 @@ public partial class App : Application
     private string? _signalLossPromptId;
     private bool _exiting;
     private readonly AppLogService _log = new();
+    private CotypistPipeServer? _cotypistServer;
+
+    /// <summary>macOS CotypistService.start: only in a build that bundles the TSF helper. Untaken
+    /// suggestions are pruned at startup and daily.</summary>
+    private void StartCotypist()
+    {
+        if (!Muesli.Windows.Cotypist.CotypistAvailability.IsHelperBundled ||
+            (Library.History as Muesli.Windows.Services.Persistence.SqliteLibraryHistoryAdapter)?.Store.Database is not { } database) return;
+        var history = CotypistHistory = new Muesli.Windows.Cotypist.CotypistHistoryStore(database);
+        var service = new CotypistService(Settings.Load, history, _log.Info);
+        Cotypist = new CotypistSetup(service, Settings.Load, _log.Info);
+        var helper = Muesli.Windows.Cotypist.CotypistAvailability.HelperPath;
+        _cotypistServer = new CotypistPipeServer(service.HandleAsync, processId => CotypistPipeServer.HasHelperLoaded(processId, helper), _log.Info);
+        _ = Task.Run(async () =>
+        {
+            using var daily = new PeriodicTimer(TimeSpan.FromDays(1));
+            do { try { history.Prune(DateTimeOffset.UtcNow); } catch (Exception error) { _log.Info($"Cotypist prune failed. category={error.GetType().Name}"); } }
+            while (await daily.WaitForNextTickAsync());
+        });
+        _log.Info("Cotypist listening.");
+    }
     private UiExceptionPolicy _uiExceptionPolicy = null!;
     private OnboardingWindow? _onboarding;
     private ComputerUseConfirmationWindow? _computerUseConfirmation;
@@ -189,6 +234,21 @@ public partial class App : Application
         Settings.Changed += (_, settings) => DispatcherQueue.TryEnqueue(() => Themes.AccentPalette.Apply(settings.RecordingColorHex));
         _desktopInstance.StartListening(() => UiDispatcher.TryEnqueue(() => ((MainWindow)Window).ShowDashboard()));
         Meetings = new WinUiMeetingContext(Library, Settings, UiDispatcher);
+        ScreenRecording = new MeetingScreenRecording(
+            (Library.History as Muesli.Windows.Services.Persistence.SqliteLibraryHistoryAdapter)?.Store.Database, () => Meetings, _log);
+        Meetings.ScreenRecordingFinishing = discard => discard
+            ? ScreenRecording.DiscardSessionAsync(Meetings.CaptureSessionId)
+            : ScreenRecording.StopAsync();
+        Meetings.HasScreenMedia = ScreenRecording.HasMedia;
+        // Pausing the meeting pauses video; resuming it never overrides an explicit screen pause.
+        Meetings.Changed += (_, _) => UiDispatcher.TryEnqueue(() => ScreenRecording.SetMeetingPaused(Meetings.IsPaused));
+        Microsoft.Win32.SystemEvents.SessionSwitch += (_, args) =>
+        {
+            if (args.Reason is Microsoft.Win32.SessionSwitchReason.SessionLock or Microsoft.Win32.SessionSwitchReason.ConsoleDisconnect
+                or Microsoft.Win32.SessionSwitchReason.RemoteDisconnect)
+                UiDispatcher.TryEnqueue(ScreenRecording.SuspendForPrivacy);
+        };
+        StartCotypist();
         Models = new WinUiModelsContext(Library, Settings);
         Dictation = new WinUiDictationContext(Library, Settings, UiDispatcher);
         DictionarySuggestions = new WinUiDictionarySuggestionService(Library, Settings, UiDispatcher, Dictation);
@@ -272,7 +332,10 @@ public partial class App : Application
             {
                 var status = Microsoft.Windows.System.Power.PowerManager.SystemSuspendStatus;
                 if (status == Microsoft.Windows.System.Power.SystemSuspendStatus.Entering)
+                {
+                    UiDispatcher.TryEnqueue(ScreenRecording.SuspendForPrivacy);
                     Meetings.SuspendForPowerAsync().Wait(TimeSpan.FromSeconds(5));
+                }
                 else if (status is Microsoft.Windows.System.Power.SystemSuspendStatus.AutoResume
                     or Microsoft.Windows.System.Power.SystemSuspendStatus.ManualResume)
                     UiDispatcher.TryEnqueue(async () =>
@@ -446,8 +509,20 @@ public partial class App : Application
                 await Dialogs.ShowInfoAsync("Wait for the current meeting operation to finish before quitting.", "Meeting in progress");
                 return;
             }
-            if (Dictation.IsRecording || Dictation.IsBusy) await Dictation.CancelAsync();
-            await Meetings.PreserveForShutdownAsync();
+            // macOS 4a36479f: wait at most 8 s for shutdown, then quit anyway and log the step it was stuck on.
+            // Each step runs even if the one before it failed, so a dictation fault can't skip the meeting checkpoint.
+            var step = "starting";
+            var finished = await ShutdownDeadline.RunAsync(ShutdownDeadline.Default, async () =>
+            {
+                step = "cancelling dictation";
+                try { if (Dictation.IsRecording || Dictation.IsBusy) await Dictation.CancelAsync(); }
+                catch (Exception exception) { _log.Error("Dictation could not be cancelled during shutdown.", exception); }
+                step = "checkpointing the meeting";
+                await Meetings.PreserveForShutdownAsync();
+                step = "done";
+            });
+            if (!finished)
+                _log.Error($"Shutdown still waiting on step={step} after {ShutdownDeadline.Default.TotalSeconds:0} s; quitting anyway.");
             ((MainWindow)Window).CloseForExit();
         }
         catch (Exception exception)

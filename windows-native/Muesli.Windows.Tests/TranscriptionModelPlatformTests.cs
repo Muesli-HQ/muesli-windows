@@ -219,6 +219,28 @@ public sealed class TranscriptionModelPlatformTests
     }
 
     [Fact]
+    public async Task SecondPrepareJoinsTheRunningOneAndItsCancellationOnlyStopsItsWait()
+    {
+        var block = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var operations = new FakeModelOperations { Prepare = async (_, _) => await block.Task };
+        using var lifecycle = new TranscriptionModelLifecycleService(operations);
+        var first = lifecycle.PrepareAsync("whisper-tiny-en");
+        await operations.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        using var leave = new CancellationTokenSource();
+        var joined = lifecycle.PrepareAsync("whisper-tiny-en");
+        var leaving = lifecycle.PrepareAsync("whisper-tiny-en", null, leave.Token);
+        leave.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => leaving);
+        Assert.False(first.IsCompleted);
+
+        block.SetResult();
+        await first;
+        await joined;
+        Assert.Equal(["whisper-tiny-en"], operations.Prepared);
+        Assert.Equal(TranscriptionModelStatus.Ready, lifecycle.Snapshot("whisper-tiny-en").Status);
+    }
+
+    [Fact]
     public async Task DeleteFailureHasDistinctStatusAndRetryCanRecover()
     {
         var operations = new FakeModelOperations { Verified = true, DeleteFailure = new IOException("file locked") };

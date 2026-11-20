@@ -191,4 +191,17 @@ public sealed class MeetingBehaviorParityTests
         Assert.False(MeetingCandidateResolver.QualifiesAsMeeting(duplex));
         Assert.True(MeetingCandidateResolver.QualifiesAsMeeting(duplex with { CandidateOutputInUse = true }));
     }
+
+    [Theory]
+    [InlineData(new[] { 10 }, new[] { 10 }, true)]       // one Slack process captures and renders
+    [InlineData(new[] { 10 }, new[] { 11 }, false)]      // split across two helpers
+    [InlineData(new[] { 10 }, new int[0], false)]        // input only
+    [InlineData(new int[0], new[] { 10 }, false)]        // output only
+    [InlineData(new[] { 99 }, new[] { 99 }, false)]      // duplex, but another app
+    public void Duplex_evidence_needs_one_process_of_the_app(int[] input, int[] render, bool expected)
+    {
+        var slack = new HashSet<int> { 10, 11 };
+        Assert.Equal(expected, MeetingPresenceSignals.HasSameProcessDuplex(input, render, slack.Contains));
+    }
 }
+

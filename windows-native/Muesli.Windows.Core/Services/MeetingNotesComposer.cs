@@ -113,7 +113,9 @@ public static class MeetingNotesComposer
             Title = existing.TitleIsManual ? existing.Title : recorded.Title,
             TitleIsManual = existing.TitleIsManual,
             FolderId = existing.FolderId,
-            SpeakerAliases = existing.SpeakerAliases
+            SpeakerAliases = existing.SpeakerAliases,
+            // MAC-04: a template chosen while recording belongs to the draft.
+            TemplateName = string.IsNullOrWhiteSpace(existing.TemplateName) ? recorded.TemplateName : existing.TemplateName
         };
     }
 
@@ -154,7 +156,9 @@ public static class MeetingNotesComposer
         meeting with
         {
             SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
-            ManualNotes = notes ?? ""
+            ManualNotes = notes ?? "",
+            // macOS: meeting word counts cover the transcript and manual notes, never the generated summary.
+            WordCount = Muesli.Windows.Core.Insights.LibraryMetrics.CountWords(meeting.Transcript) + Muesli.Windows.Core.Insights.LibraryMetrics.CountWords(notes)
         };
 
     public static MeetingNotesDocument Document(PersistedMeeting meeting) =>

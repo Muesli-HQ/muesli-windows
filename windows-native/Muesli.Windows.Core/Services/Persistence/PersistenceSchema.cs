@@ -19,7 +19,7 @@ public sealed record SchemaMigration(int Version, string Description, Action<Sql
 public static class PersistenceSchema
 {
     /// <summary>The schema this build writes and expects.</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 5;
 
     public const string DictationKind = "dictation";
     public const string MeetingKind = "meeting";
@@ -222,8 +222,89 @@ public static class PersistenceSchema
         new SchemaMigration(
             2,
             "Durable JSON/SQLite cutover authority and first-write state.",
-            connection => Execute(connection, CutoverStateSchema))
+            connection => Execute(connection, CutoverStateSchema)),
+        new SchemaMigration(
+            3,
+            "Ask Meetings threads, source dependencies and the rebuildable passage index.",
+            connection => Execute(connection, MeetingChatSchema.Sql)),
+        new SchemaMigration(
+            4,
+            "Meeting screen-recording clips and their durable file-cleanup outbox.",
+            connection => Execute(connection, MeetingVideoSchema)),
+        new SchemaMigration(
+            5,
+            "Cotypist typeahead history: suggestions and per-app sessions (local only).",
+            connection => Execute(connection, CotypistSchema))
     ];
+
+    /// <summary>
+    /// macOS DictationStore.migrateCotypist (2f10b23d). Local-only, no sync identity. The app and the
+    /// user's sentence are written only for accepted or partial suggestions, so the macOS scrubbing
+    /// UPDATEs for older rows have nothing to fix on Windows. Times are UTC ticks like every table here.
+    /// </summary>
+    private const string CotypistSchema = """
+        CREATE TABLE cotypist_sessions (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at_utc       INTEGER NOT NULL,
+            last_activity_at_utc INTEGER NOT NULL,
+            target_app_name      TEXT NOT NULL DEFAULT '',
+            target_app_id        TEXT NOT NULL DEFAULT '',
+            source               TEXT NOT NULL DEFAULT 'cotypist'
+        ) STRICT;
+
+        CREATE INDEX ix_cotypist_sessions_app_activity ON cotypist_sessions (target_app_id, last_activity_at_utc DESC);
+
+        CREATE TABLE cotypist_suggestions (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at_utc     INTEGER NOT NULL,
+            session_id         INTEGER NULL REFERENCES cotypist_sessions(id) ON DELETE SET NULL,
+            target_app_name    TEXT NOT NULL DEFAULT '',
+            target_app_id      TEXT NOT NULL DEFAULT '',
+            trigger            TEXT NOT NULL,
+            suggestion_text    TEXT NOT NULL,
+            accepted_text      TEXT NOT NULL DEFAULT '',
+            outcome            TEXT NOT NULL,
+            words_suggested    INTEGER NOT NULL DEFAULT 0,
+            words_accepted     INTEGER NOT NULL DEFAULT 0,
+            first_word_logprob REAL NULL,
+            first_ms           INTEGER NULL,
+            full_ms            INTEGER NULL,
+            context_source     TEXT NOT NULL DEFAULT '',
+            model              TEXT NOT NULL DEFAULT '',
+            context_before     TEXT NOT NULL DEFAULT ''
+        ) STRICT;
+
+        CREATE INDEX ix_cotypist_suggestions_session ON cotypist_suggestions (session_id);
+        CREATE INDEX ix_cotypist_suggestions_time ON cotypist_suggestions (created_at_utc);
+        """;
+
+    /// <summary>
+    /// macOS MeetingVideoStore.migrate (2f10b23d). The outbox has no meeting FK so a queued file survives
+    /// the meeting row. Windows deletes meetings outright (no tombstones), so only the hard-delete
+    /// trigger applies; it queues cleanup before the cascade removes the clip rows.
+    /// </summary>
+    private const string MeetingVideoSchema = """
+        CREATE TABLE meeting_video_clips (
+            id              TEXT PRIMARY KEY NOT NULL,
+            kind            TEXT NOT NULL,
+            meeting_id      TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            captured_at_utc INTEGER NOT NULL,
+            body            TEXT NOT NULL
+        ) STRICT;
+
+        CREATE INDEX ix_meeting_video_clips_time ON meeting_video_clips (kind, captured_at_utc);
+        CREATE INDEX ix_meeting_video_clips_meeting ON meeting_video_clips (meeting_id);
+
+        CREATE TABLE meeting_video_cleanup (
+            id   TEXT PRIMARY KEY NOT NULL,
+            body TEXT NOT NULL
+        ) STRICT;
+
+        CREATE TRIGGER meeting_video_hard_delete BEFORE DELETE ON meetings
+        BEGIN
+            INSERT OR REPLACE INTO meeting_video_cleanup SELECT id, body FROM meeting_video_clips WHERE meeting_id = OLD.id;
+        END;
+        """;
 
     internal static void Execute(SqliteConnection connection, string sql)
     {

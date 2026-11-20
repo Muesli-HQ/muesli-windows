@@ -147,9 +147,10 @@ public partial class ModelsPageViewModel
         _cudaPackCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
+            var meter = new ModelTransferMeter();
             var progress = new Progress<ModelDownloadProgress>(value =>
             {
-                ShowStatus(value.DisplayText, ModelStatusTone.Informational);
+                ShowStatus(meter.Describe(value), ModelStatusTone.Informational);
                 RefreshAcceleration();
             });
             var result = await _models.PrepareCudaPackAsync(progress, _cudaPackCancellation.Token);
@@ -389,10 +390,11 @@ public partial class ModelsPageViewModel
         item.IsBusy = true;
         try
         {
+            var meter = new ModelTransferMeter();
             var progress = new Progress<ModelDownloadProgress>(value =>
             {
                 item.ProgressPercent = value.Percent;
-                ShowStatus($"{item.DisplayName}: {value.DisplayText}", ModelStatusTone.Informational);
+                ShowStatus($"{item.DisplayName}: {meter.Describe(value)}", ModelStatusTone.Informational);
                 ReloadCleanup();
             });
             await operation(progress, cancellationToken);

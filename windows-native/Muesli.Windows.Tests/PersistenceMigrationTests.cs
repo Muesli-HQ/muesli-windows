@@ -282,7 +282,8 @@ public sealed class JsonToSqliteMigrationTests
             return names;
         });
         Assert.DoesNotContain(tables, name => name.Contains("setting", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(tables, name => name.Contains("session", StringComparison.OrdinalIgnoreCase));
+        // cotypist_sessions is typeahead history (macOS schema), not a meeting session journal.
+        Assert.DoesNotContain(tables, name => name.Contains("session", StringComparison.OrdinalIgnoreCase) && !name.StartsWith("cotypist_", StringComparison.Ordinal));
     }
 
     [Fact]

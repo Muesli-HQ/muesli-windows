@@ -60,11 +60,23 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     public event EventHandler<AudioLevelEventArgs>? LevelChanged;
     public event EventHandler<LiveTranscriptSnapshot>? LiveTranscriptChanged;
     public event EventHandler<Exception>? LiveTranscriptionFailed;
+    public event EventHandler? ProcessingStageChanged;
+
+    /// <summary>Read at finalization: opt-in in-room speaker identification on the mic track.</summary>
+    public bool DiarizeMicrophoneAudio { get; set; }
+
+    /// <summary>A named post-meeting stage ("Identifying Speakers"), or null for the generic one.</summary>
+    public string? ProcessingStage { get; private set; }
 
     public MeetingSessionState State => _stateMachine.State;
     public bool IsRecording => State is MeetingSessionState.Recording or MeetingSessionState.DegradedRecording;
     public bool IsBusy => State is MeetingSessionState.Preparing or MeetingSessionState.Stopping or MeetingSessionState.Finalizing;
     public PersistedMeeting? ResumedMeeting => _journal?.ResumedMeeting;
+
+    /// <summary>Routes the meeting audio feed into the active screen-recording clip, or null to detach.</summary>
+    public Action<float[], long, bool>? ScreenAudioSink { get => _capture.ScreenAudioSink; set => _capture.ScreenAudioSink = value; }
+
+    public long ElapsedMeetingSamples => _capture.ElapsedMeetingSamples;
 
     public IReadOnlyList<RecoverableMeetingSession> DiscoverRecoverableSessions() =>
         _recovery.Discover(_journal?.SessionId);
@@ -569,7 +581,13 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             _startedAt,
             CurrentHealthWarnings(),
             _capture.LiveResult,
-            cancellationToken)).ConfigureAwait(false);
+            cancellationToken,
+            DiarizeMicrophoneAudio,
+            stage =>
+            {
+                ProcessingStage = stage;
+                ProcessingStageChanged?.Invoke(this, EventArgs.Empty);
+            })).ConfigureAwait(false);
         _journal = outcome.Journal;
         if (outcome.TerminalState == MeetingSessionState.Failed &&
             _stateMachine.CanApply(MeetingSessionTrigger.Fail))

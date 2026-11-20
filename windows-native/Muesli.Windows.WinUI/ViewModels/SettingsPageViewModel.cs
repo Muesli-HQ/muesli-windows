@@ -83,6 +83,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string StartupAvailabilityNotice { get; private set; } = "";
     [ObservableProperty] public partial bool AutoMeetingDetectionEnabled { get; set; }
     [ObservableProperty] public partial bool SaveMeetingRecordings { get; set; }
+    [ObservableProperty] public partial bool DiarizeMicrophoneAudio { get; set; }
     [ObservableProperty] public partial bool AutoExportMarkdownEnabled { get; set; }
     [ObservableProperty] public partial string AutoExportMarkdownDirectory { get; set; } = "";
     [ObservableProperty] public partial bool AutoExportPdfEnabled { get; set; }
@@ -138,6 +139,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial int RecordingFormatIndex { get; set; }
     private static readonly string[] PasteShortcuts = ["ctrl-v", "ctrl-shift-v", "shift-insert"];
     [ObservableProperty] public partial int MeetingSummaryRetryCount { get; set; } = MeetingSummaryRetryPolicy.DefaultRetryCount;
+    /// <summary>macOS summary_output_limit: 0 is "No added limit", then the presets plus any saved custom value.</summary>
+    [ObservableProperty] public partial int SummaryOutputLimitIndex { get; set; }
+    [ObservableProperty] public partial IReadOnlyList<string> SummaryOutputLimits { get; private set; } = [];
+    private int[] _summaryOutputLimitValues = [0];
 
     /// <summary>macOS indicator_position choices; "Custom" appears only after a drag.</summary>
     public static readonly string[] IndicatorAnchors =
@@ -161,7 +166,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial IReadOnlyList<string> Microphones { get; private set; } = [];
     [ObservableProperty] public partial string? SelectedMicrophone { get; set; }
     [ObservableProperty] public partial IReadOnlyList<string> DictationModels { get; private set; } = [];
+    [NotifyPropertyChangedFor(nameof(ShowBufferedLiveDictation))]
     [ObservableProperty] public partial string SelectedDictationModel { get; set; } = "";
+    [ObservableProperty] public partial bool EnableBufferedLiveDictation { get; set; }
+    /// <summary>macOS shows the toggle only for a local backend that supports buffered live transcription.</summary>
+    public bool ShowBufferedLiveDictation => TranscriptionModelCatalog.Models.FirstOrDefault(model =>
+        model.DisplayName == SelectedDictationModel) is { } model && BufferedLiveDictationSupport.Supports(model.Kind);
     [ObservableProperty] public partial IReadOnlyList<string> MeetingModels { get; private set; } = [];
     [ObservableProperty] public partial string SelectedMeetingModel { get; set; } = "";
     [ObservableProperty] public partial IReadOnlyList<string> LiveModels { get; private set; } = [];
@@ -188,6 +198,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowLmStudioSettings))]
     [NotifyPropertyChangedFor(nameof(ShowCustomHttpSettings))]
     [NotifyPropertyChangedFor(nameof(SummaryDisclosure))]
+    [NotifyPropertyChangedFor(nameof(ShowSummaryOutputLimit))]
     [ObservableProperty] public partial SummaryProviderInfo? SelectedSummaryProvider { get; set; } = SummaryProviderDisclosure.For("local");
     [NotifyPropertyChangedFor(nameof(SummaryDisclosure))]
     [ObservableProperty] public partial string OllamaEndpoint { get; set; } = "http://localhost:11434";
@@ -211,6 +222,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
     public bool ShowOllamaSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.Ollama;
     public bool ShowChatGptSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.ChatGpt;
+    /// <summary>API backends only: ChatGPT manages its own output limit and local notes have none.</summary>
+    public bool ShowSummaryOutputLimit => SelectedSummaryProvider?.Id is { } id &&
+        id != SummaryProviderDisclosure.ChatGpt && MeetingSummaryService.IsHostedProvider(id);
     public bool ShowOpenAISettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenAI;
     public bool ShowOpenRouterSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.OpenRouter;
     public bool ShowLmStudioSettings => SelectedSummaryProvider?.Id == SummaryProviderDisclosure.LmStudio;
@@ -291,9 +305,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(CaptureStatus), nameof(DetectionStatus), nameof(IsStartupAvailable),
         nameof(IsStartupUnavailable), nameof(StartupAvailabilityNotice), nameof(AutoExportFolderHelp), nameof(CleanupSourceHelp),
         nameof(CleanupPresetNames), nameof(CleanupPresetPreview), nameof(ShowCleanupPreset),
-        nameof(SummaryDisclosure), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings), nameof(ShowChatGptSettings),
+        nameof(SummaryDisclosure), nameof(ShowSummaryOutputLimit), nameof(ShowOllamaSettings), nameof(ShowOpenAISettings), nameof(ShowChatGptSettings),
         nameof(ShowOpenRouterSettings), nameof(ShowGeneral), nameof(ShowDictation),
-        nameof(ShowComputerUse), nameof(ShowMeetings), nameof(ShowAppearance)
+        nameof(ShowComputerUse), nameof(ShowMeetings), nameof(ShowAppearance), nameof(ShowBufferedLiveDictation)
     ];
 
     private bool _trackEdits;
@@ -324,6 +338,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
         AutoMeetingDetectionEnabled = _source.AutoMeetingDetectionEnabled;
         SaveMeetingRecordings = _source.SaveMeetingRecordings;
+        DiarizeMicrophoneAudio = _source.DiarizeMicrophoneAudio;
         RecordingFormatIndex = _source.MeetingRecordingFormat == "m4a" ? 1 : 0;
         AutoExportMarkdownEnabled = _source.AutoExportMarkdownEnabled;
         AutoExportMarkdownDirectory = _source.AutoExportMarkdownDirectory;
@@ -331,17 +346,23 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         PostMeetingHookEnabled = _source.PostMeetingHookEnabled;
         PostMeetingHookExecutablePath = _source.PostMeetingHookExecutablePath;
         PostMeetingHookTimeoutSeconds = _source.PostMeetingHookTimeoutSeconds;
-        MeetingTemplates = MeetingSummaryService.BuiltInTemplateNames.Concat(_library.LoadMeetingTemplates().Select(item => item.Name)).Distinct().ToList();
+        MeetingTemplates = BoundLists.Same(MeetingTemplates, MeetingSummaryService.BuiltInTemplateNames.Concat(_library.LoadMeetingTemplates().Select(item => item.Name)).Distinct().ToList());
         MeetingSummaryTemplate = MeetingSummaryService.NormalizeTemplateName(_source.MeetingSummaryTemplate);
         RemoveFillerWords = _source.RemoveFillerWords;
+        EnableBufferedLiveDictation = _source.EnableBufferedLiveDictation;
         PasteShortcutIndex = Math.Max(0, Array.IndexOf(PasteShortcuts, _source.PasteShortcut));
         PauseMediaDuringDictation = _source.PauseMediaDuringDictation;
         MuteAudioDuringDictation = _source.MuteAudioDuringDictation;
         MeetingSummaryRetryCount = MeetingSummaryRetryPolicy.Clamp(_source.MeetingSummaryRetryCount);
+        var savedLimit = MeetingSummaryOutputPolicy.NormalizedLimit(_source.MeetingSummaryMaxOutputTokens);
+        _summaryOutputLimitValues = [0, .. MeetingSummaryOutputPolicy.Presets.Append(savedLimit ?? 0).Where(v => v > 0).Distinct().Order()];
+        SummaryOutputLimits = BoundLists.Same(SummaryOutputLimits, [.. _summaryOutputLimitValues.Select(v => v == 0 ? "No added limit (default)" : $"{v:N0} tokens")]);
+        SummaryOutputLimitIndex = Math.Max(0, Array.IndexOf(_summaryOutputLimitValues, savedLimit ?? 0));
         EnableLocalCleanup = _source.EnableLocalCleanup;
         CleanupSourceIndex = Math.Max(0, Array.IndexOf(CleanupSources, _source.CleanupSource));
+        var presetNames = CleanupPresetNames;
         _cleanupPresets = CleanupPrompts.All(_source.CustomCleanupPrompts);
-        OnPropertyChanged(nameof(CleanupPresetNames));
+        if (!presetNames.SequenceEqual(CleanupPresetNames)) OnPropertyChanged(nameof(CleanupPresetNames));
         CleanupPresetIndex = Math.Max(0, _cleanupPresets.ToList().FindIndex(preset => preset.Id == _source.ActiveCleanupPromptId));
         EnableAppContext = _source.EnableAppContext;
         EnableDictationOcrContext = _source.EnableDictationOcrContext;
@@ -354,22 +375,22 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         ThemeIndex = _source.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
         IndicatorStyleIndex = _source.IndicatorStyle == "minimal" ? 1 : 0;
         var anchor = Array.IndexOf(IndicatorAnchors, _source.IndicatorAnchor);
-        IndicatorPositions = anchor < 0 ? [.. IndicatorAnchors, CustomIndicatorPosition] : IndicatorAnchors;
+        IndicatorPositions = BoundLists.Same(IndicatorPositions, anchor < 0 ? [.. IndicatorAnchors, CustomIndicatorPosition] : IndicatorAnchors);
         IndicatorPositionIndex = anchor < 0 ? IndicatorAnchors.Length : anchor;
         AutoExportContentIndex = Math.Max(0, Array.IndexOf(AutoExportContents, _source.AutoExportMarkdownContent));
         RecordingColorIndex = Array.FindIndex(RecordingColors, color => color.Hex == _source.RecordingColorHex);
-        Microphones = new[] { "Automatic" }.Concat(_dictation.ListMicrophones()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        Microphones = BoundLists.Same(Microphones, new[] { "Automatic" }.Concat(_dictation.ListMicrophones()).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
         SelectedMicrophone = string.IsNullOrWhiteSpace(_source.MicrophoneName) ? "Automatic" : _source.MicrophoneName;
         // macOS lists only installed models; the Models page owns downloads. The saved selections
         // stay listed so the picker never shows blank (dictation then fails closed with guidance).
-        DictationModels = TranscriptionModelCatalog.Models
+        DictationModels = BoundLists.Same(DictationModels, TranscriptionModelCatalog.Models
             .Where(model => TranscriptionModelReadiness.IsVerified(model) ||
                 model.Id == _source.DictationModelId || model.Id == _source.FinalMeetingModelId)
-            .Select(model => model.DisplayName).ToList();
+            .Select(model => model.DisplayName).ToList());
         MeetingModels = DictationModels;
         SelectedDictationModel = TranscriptionModelCatalog.Get(_source.DictationModelId).DisplayName;
         SelectedMeetingModel = TranscriptionModelCatalog.Get(_source.FinalMeetingModelId).DisplayName;
-        LiveModels = new[] { "Off" }.Concat(StreamingModelCatalog.Models.Select(model => model.DisplayName)).ToList();
+        LiveModels = BoundLists.Same(LiveModels, new[] { "Off" }.Concat(StreamingModelCatalog.Models.Select(model => model.DisplayName)).ToList());
         SelectedLiveModel = string.IsNullOrWhiteSpace(_source.LiveMeetingModelId)
             ? "Off"
             : StreamingModelCatalog.Get(_source.LiveMeetingModelId)?.DisplayName ?? "Off";
@@ -395,7 +416,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OpenAIApiKey = _source.ResolvedOpenAIApiKey;
         OpenRouterApiKey = _source.ResolvedOpenRouterApiKey;
         await RefreshMicrophonePermissionAsync();
-        NotifySections();
     }
 
     partial void OnSectionIndexChanged(int value) => NotifySections();
@@ -423,6 +443,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             StartAtLogin = StartAtLogin,
             AutoMeetingDetectionEnabled = AutoMeetingDetectionEnabled,
             SaveMeetingRecordings = SaveMeetingRecordings,
+            DiarizeMicrophoneAudio = DiarizeMicrophoneAudio,
             MeetingRecordingFormat = RecordingFormatIndex == 1 ? "m4a" : "wav",
             AutoExportMarkdownEnabled = AutoExportMarkdownEnabled,
             AutoExportMarkdownDirectory = AutoExportMarkdownDirectory.Trim(),
@@ -433,7 +454,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             PostMeetingHookTimeoutSeconds = Math.Clamp(PostMeetingHookTimeoutSeconds, 1, 600),
             MeetingSummaryTemplate = MeetingSummaryTemplate,
             MeetingSummaryRetryCount = MeetingSummaryRetryPolicy.Clamp(MeetingSummaryRetryCount),
+            MeetingSummaryMaxOutputTokens = MeetingSummaryOutputPolicy.NormalizedLimit(
+                _summaryOutputLimitValues.ElementAtOrDefault(Math.Max(0, SummaryOutputLimitIndex))),
             RemoveFillerWords = RemoveFillerWords,
+            EnableBufferedLiveDictation = EnableBufferedLiveDictation,
             PasteShortcut = PasteShortcuts[Math.Clamp(PasteShortcutIndex, 0, PasteShortcuts.Length - 1)],
             PauseMediaDuringDictation = PauseMediaDuringDictation,
             MuteAudioDuringDictation = MuteAudioDuringDictation,
@@ -583,7 +607,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     {
         var model = SelectedPlannerModel;
         var effort = ComputerUseConfiguration.Effort(model, _computerUseEffort);
-        ComputerUseEfforts = model.Efforts.Select(ComputerUseConfiguration.EffortLabel).ToList();
+        ComputerUseEfforts = BoundLists.Same(ComputerUseEfforts, model.Efforts.Select(ComputerUseConfiguration.EffortLabel).ToList());
         ComputerUseEffortIndex = model.Efforts.ToList().IndexOf(effort);
     }
 
@@ -670,13 +694,13 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
     private void AssignPermissions(IReadOnlyList<WindowsPermissionRow> rows)
     {
-        Permissions = rows.Select((row, index) => new SettingsPermissionItem(
+        Permissions = BoundLists.Same(Permissions, rows.Select((row, index) => new SettingsPermissionItem(
             row.Name,
             row.Status,
             row.Granted,
             row.Help,
             CanOpenSystemSettings: string.Equals(row.Name, "Microphone", StringComparison.OrdinalIgnoreCase),
-            IsLast: index == rows.Count - 1)).ToList();
+            IsLast: index == rows.Count - 1)).ToList());
     }
 
     private void NotifySections()

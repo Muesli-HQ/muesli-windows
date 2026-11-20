@@ -125,11 +125,30 @@ public sealed class WinUiIndicatorHost : IDisposable
         _dispatcher.TryEnqueue(PublishAmplitude);
     }
 
+    // macOS 9d0ad706 caches feedback configuration. Live meetings update several times a second, and each update
+    // read and normalized the settings file up to three times. The file's write time invalidates the cache, so a
+    // save from any settings context is seen.
+    private MuesliSettings? _feedbackSettings;
+    private DateTime _feedbackSettingsStamp;
+
+    private MuesliSettings FeedbackSettings()
+    {
+        DateTime stamp;
+        try { stamp = File.GetLastWriteTimeUtc(App.Library.Profile.SettingsPath); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { stamp = DateTime.MinValue; }
+        if (_feedbackSettings is null || stamp != _feedbackSettingsStamp || stamp == DateTime.MinValue)
+        {
+            _feedbackSettings = App.Settings.Load();
+            _feedbackSettingsStamp = stamp;
+        }
+        return _feedbackSettings;
+    }
+
     private void UpdateState()
     {
         if (Volatile.Read(ref _disposed) != 0 || _companionLost) return;
 
-        var settings = App.Settings.Load();
+        var settings = FeedbackSettings();
         var status = _dictation.Status ?? "";
         var state = FloatingIndicatorStateClassifier.Classify(status, _dictation.IsRecording, _dictation.IsTranscribing);
         var owner = IndicatorOwnerKind.Dictation;
@@ -241,7 +260,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private IndicatorSnapshot BuildSnapshot()
     {
-        var settings = App.Settings.Load();
+        var settings = FeedbackSettings();
         var visible = _state != FloatingIndicatorState.Idle || settings.ShowFloatingIndicator;
         return new IndicatorSnapshot
         {
@@ -253,6 +272,10 @@ public sealed class WinUiIndicatorHost : IDisposable
             Message = _owner == IndicatorOwnerKind.ComputerUse && _state == FloatingIndicatorState.Transcribing
                 ? _status
                 : ComposeMessage(_state, _status),
+            // macOS clears the reason outside recording and for meetings.
+            RecordingNotice = _state == FloatingIndicatorState.Recording && _owner == IndicatorOwnerKind.Dictation
+                ? BufferedDictationInsertionStops.FromStatus(_status)?.Title()
+                : null,
             RecordingColorHex = settings.RecordingColorHex,
             IndicatorStyle = settings.IndicatorStyle,
             MeetingPaused = _meetingPaused,
@@ -293,6 +316,7 @@ public sealed class WinUiIndicatorHost : IDisposable
         {
             FloatingIndicatorState.Transcribing => "Transcribing",
             FloatingIndicatorState.Success or FloatingIndicatorState.Error => status,
+            FloatingIndicatorState.Recording => BufferedDictationInsertionStops.FromStatus(status)?.Detail() ?? "",
             _ => ""
         };
 
@@ -376,7 +400,7 @@ public sealed class WinUiIndicatorHost : IDisposable
             case IndicatorCommandType.HoverEnter:
                 _dispatcher.TryEnqueue(() =>
                 {
-                    if (_owner == IndicatorOwnerKind.Meeting && App.Settings.Load().ShowLiveWaveformOnHover &&
+                    if (_owner == IndicatorOwnerKind.Meeting && FeedbackSettings().ShowLiveWaveformOnHover &&
                         command.IndicatorX is { } x && command.IndicatorY is { } y &&
                         command.IndicatorWidth is > 0 and < 2000 && command.IndicatorHeight is > 0 and < 2000)
                         App.LiveTranscript.ShowOnIndicatorHover(new global::Windows.Graphics.RectInt32(x, y, command.IndicatorWidth.Value, command.IndicatorHeight.Value));
@@ -440,7 +464,7 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void LoadPosition()
     {
-        var settings = App.Settings.Load();
+        var settings = FeedbackSettings();
         _indicatorAnchor = string.IsNullOrWhiteSpace(settings.IndicatorAnchor) ? "Middle Right" : settings.IndicatorAnchor;
         _savedLeft = settings.IndicatorLeft;
         _savedTop = settings.IndicatorTop;

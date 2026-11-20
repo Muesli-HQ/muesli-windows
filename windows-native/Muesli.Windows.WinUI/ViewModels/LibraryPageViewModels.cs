@@ -564,6 +564,18 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string PartialOthers { get; private set; } = "";
 
     public bool ShowRecordingNotes => !ShowLiveTab;
+
+    /// <summary>macOS recordingTemplatePicker (14617391): changeable while recording, locked once Stop begins.</summary>
+    public string RecordingTemplateLabel => $"Template: {_meetingRuntime.RecordingTemplate}";
+    public string RecordingTemplate => _meetingRuntime.RecordingTemplate;
+    public IReadOnlyList<string> RecordingTemplateNames => _meetingRuntime.TemplateNames;
+
+    public void SelectRecordingTemplate(string name)
+    {
+        try { _meetingRuntime.SelectRecordingTemplate(name); }
+        catch (Exception exception) { MeetingStatus = exception.Message; }
+        UpdateRuntimeState();
+    }
     public bool CanEditRecordingNotes => _meetingRuntime.ActiveMeetingId is not null && CanStop;
     public bool HasLiveCaptions => LiveCaptions.Count > 0;
     public bool HasPartialYou => !string.IsNullOrWhiteSpace(PartialYou);
@@ -690,7 +702,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         : IsStarting && !IsActive ? "Meeting transcription will start shortly."
         : IsPaused ? _meetingRuntime.FinalizationFailed ? "Saving failed · audio kept. Choose Stop to retry." : "Recording paused"
         : IsRecording ? "Recording now"
-        : "Finalizing notes";
+        : _meetingRuntime.ProcessingStage ?? "Finalizing notes";
 
     /// <summary>Current sort, shown on the compact sort pill (MeetingsView.swift parity).</summary>
     public string SortLabel => SortIndex == 1 ? "Oldest first" : "Newest first";
@@ -736,7 +748,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
             IsStarting = true;
             BannerTitle = "Quick Note";
             MeetingStatus = "Starting recording…";
-            await _meetingRuntime.StartQuickNoteAsync(cancellationToken);
+            await _meetingRuntime.StartQuickNoteAsync(cancellationToken, SelectedFolderId);
             MeetingStatus = "Recording Quick Note";
         }
         catch (Exception exception)
@@ -872,6 +884,8 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
                     MediaImportFormats.SupportedExtensions),
                 cancellationToken);
             if (picked is null) return;
+            // macOS 7c3abb66: the folder open when the import starts, not when it ends.
+            var folderId = SelectedFolderId;
             IsImporting = true;
             BannerTitle = picked.DisplayName;
             ImportProgress = 0;
@@ -883,7 +897,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
                     ? "Decoding imported media…"
                     : "Transcribing imported media…";
             });
-            await _meetingRuntime.ImportAsync(picked.Path, progress, cancellationToken);
+            await _meetingRuntime.ImportAsync(picked.Path, progress, cancellationToken, folderId);
             Reload();
             MeetingStatus = "Imported meeting saved";
         }
@@ -899,6 +913,56 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         {
             IsImporting = false;
             ImportProgress = 0;
+            NotifyCommandState();
+        }
+    }
+
+    /// <summary>macOS GranolaImportView (MAC-05): choose the export, review the preview, then import.</summary>
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private async Task ImportGranolaAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var picked = await _filePickers.PickOpenFileAsync(
+                new FilePickerRequest("Import from Granola", [".zip", ".csv"]), cancellationToken);
+            if (picked is null) return;
+            IsImporting = true;
+            MeetingStatus = "Reading the Granola export…";
+            var records = await Task.Run(() => GranolaImport.Read([picked.Path]), cancellationToken);
+            var workspaces = records.Select(record => record.Workspace).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().ToList();
+            var preview = $"{records.Count} {(records.Count == 1 ? "meeting" : "meetings")}" +
+                (workspaces.Count > 0 ? $" from {string.Join(", ", workspaces)}" : "") +
+                $", newest first:\n{string.Join("\n", records.Take(5).Select(record => $"• {(string.IsNullOrWhiteSpace(record.Title) ? "Untitled" : record.Title)} ({record.CreatedAt.LocalDateTime:d MMM yyyy})"))}" +
+                (records.Count > 5 ? $"\n… and {records.Count - 5} more" : "") +
+                "\n\nNew meetings go into the \"Granola\" folder. Meetings you already imported are kept as they are. Summaries are not regenerated.";
+            var choice = await _dialogs.ConfirmAsync(preview, "Import from Granola", "Import", "Cancel", cancellationToken);
+            if (choice != AppDialogChoice.Primary)
+            {
+                MeetingStatus = "";
+                return;
+            }
+            MeetingStatus = "Importing from Granola…";
+            var report = await Task.Run(() => _library.ImportGranola(records), CancellationToken.None);
+            Reload();
+            MeetingStatus = report.Imported == 0
+                ? "These Granola meetings were already imported"
+                : $"Imported {report.Imported} {(report.Imported == 1 ? "meeting" : "meetings")} from Granola";
+        }
+        catch (OperationCanceledException)
+        {
+            MeetingStatus = "";
+        }
+        catch (GranolaImportException exception)
+        {
+            MeetingStatus = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            MeetingStatus = $"Could not import from Granola: {exception.Message}";
+        }
+        finally
+        {
+            IsImporting = false;
             NotifyCommandState();
         }
     }
@@ -1116,6 +1180,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasPartialOthers));
         OnPropertyChanged(nameof(LiveCaptionHint));
         OnPropertyChanged(nameof(CanEditRecordingNotes));
+        OnPropertyChanged(nameof(RecordingTemplateLabel));
         SaveRecordingNotesCommand.NotifyCanExecuteChanged();
         CaptureStatus = _meetingRuntime.CaptureStatus;
         DetectionStatus = _detection.Status;
@@ -1160,6 +1225,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         StartQuickNoteCommand.NotifyCanExecuteChanged();
         DiscardRecoveryCommand.NotifyCanExecuteChanged();
         ImportAudioCommand.NotifyCanExecuteChanged();
+        ImportGranolaCommand.NotifyCanExecuteChanged();
         StopRecordingCommand.NotifyCanExecuteChanged();
         DiscardRecordingCommand.NotifyCanExecuteChanged();
         PauseRecordingCommand.NotifyCanExecuteChanged();
@@ -1234,7 +1300,9 @@ public sealed record MeetingListItem(
     public static MeetingListItem From(PersistedMeeting item, string? folderName)
     {
         var imported = item.SystemCaptureMode == "imported-media";
-        var source = imported ? ("Imported", "\uE896") : RecordingBadge(item);
+        // macOS SyncOriginDisplay: Granola imports carry their own origin badge (MAC-05).
+        var granola = GranolaImport.IsImported(item.Id);
+        var source = granola ? (GranolaImport.OriginLabel, "\uE8B5") : imported ? ("Imported", "\uE896") : RecordingBadge(item);
         return new(
             item.Id,
             item.FolderId,
@@ -1246,7 +1314,7 @@ public sealed record MeetingListItem(
             item.CreatedAt.ToLocalTime().ToString("d MMM yyyy 'at' h:mm:ss tt"),
             FormatDuration(item.DurationMs),
             SessionStateLabel(item.SessionState, item.RecoveredFromInterruption),
-            string.IsNullOrWhiteSpace(item.ModelProfile) ? "Local model" : item.ModelProfile,
+            granola ? "Granola" : string.IsNullOrWhiteSpace(item.ModelProfile) ? "Local model" : item.ModelProfile,
             item.RecoveredFromInterruption ||
             item.SessionState is not (MeetingSessionState.Completed or MeetingSessionState.Idle),
             folderName,
@@ -1260,8 +1328,8 @@ public sealed record MeetingListItem(
                 MeetingSessionState.Failed or MeetingSessionState.RecoverableInterruption => "warning",
                 _ => "tertiary"
             },
-            SourceTone = imported ? "accent" : "secondary",
-            SourceBadgeHelp = imported ? "Imported audio" : "Saved recording available"
+            SourceTone = imported || granola ? "accent" : "secondary",
+            SourceBadgeHelp = granola ? GranolaImport.OriginHelp : imported ? "Imported audio" : "Saved recording available"
         };
     }
 

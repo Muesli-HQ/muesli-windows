@@ -490,6 +490,28 @@ public sealed class NativeParakeetClient : ITranscriptionModelSession
         return new TranscriptionResult(text, diagnostic, audioDurationMs, segments);
     }
 
+    public async Task<BufferedTranscriptionWindow> TranscribePreviewAsync(
+        float[] samples, bool requiresWordTimings, CancellationToken cancellationToken)
+    {
+        if (!IsRuntimeAvailable || !IsModelVerified)
+            throw new InvalidOperationException("Native Parakeet model is not downloaded and verified. Prepare it from Models first.");
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await Task.Run(() =>
+            {
+                ThrowIfDisposed();
+                EnsureRecognizer();
+                return BufferedPreviewWindows.FromSherpa(Decode(samples, 16000), requiresWordTimings);
+            }, cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private OfflineRecognizerResult Decode(float[] samples, int sampleRate)
     {
         using var stream = _recognizer!.CreateStream();

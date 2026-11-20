@@ -26,6 +26,8 @@ public sealed class WinRtClipboardAdapter(IUiDispatcher dispatcher) : IClipboard
         return done.Task;
     }
 
+    public uint Generation => FocusedTextSelection.ClipboardSequence;
+
     public Task<ClipboardSnapshot> CaptureAsync(CancellationToken cancellationToken) => OnUiThread(() => CaptureOnUiAsync(cancellationToken));
 
     public Task SetTextAsync(string text, CancellationToken cancellationToken) => OnUiThread(() => SetTextOnUi(text, cancellationToken));

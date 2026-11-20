@@ -81,6 +81,19 @@ public sealed class LiveTranscriptFeed : UserControl
         if (scroll) DispatcherQueue.TryEnqueue(() => { UpdateLayout(); _scroll ??= FindScroll(_list); _scroll?.ChangeView(null, _scroll.ScrollableHeight, null, false); });
     }
 
+    /// <summary>macOS MeetingTranscriptView highlightedMessageID: mark one saved message and center it.</summary>
+    public void Highlight(int? index)
+    {
+        for (var i = 0; i < _committed.Count; i++)
+        {
+            if (_committed[i] is not Grid row) continue;
+            if (i == index) Theme(row, "Background", "MuesliSelectedBrush");
+            else row.ClearValue(StyleProperty);
+        }
+        if (index is { } target && target < _committed.Count)
+            DispatcherQueue.TryEnqueue(() => _list.ScrollIntoView(_committed[target], ScrollIntoViewAlignment.Leading));
+    }
+
     private static ScrollViewer? FindScroll(DependencyObject parent)
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)

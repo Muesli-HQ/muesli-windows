@@ -67,6 +67,12 @@ public sealed class Phase3MeetingLifecycleTests
     [InlineData(MeetingSessionState.Recording, MeetingSessionTrigger.Complete)]
     [InlineData(MeetingSessionState.Completed, MeetingSessionTrigger.Resume)]
     [InlineData(MeetingSessionState.Cancelled, MeetingSessionTrigger.FinalizeInterrupted)]
+    // MAC-08 (macOS 6a49dcf9): a repeated start never re-enters preparation of a running or ending session.
+    [InlineData(MeetingSessionState.Preparing, MeetingSessionTrigger.Prepare)]
+    [InlineData(MeetingSessionState.Recording, MeetingSessionTrigger.Prepare)]
+    [InlineData(MeetingSessionState.DegradedRecording, MeetingSessionTrigger.Prepare)]
+    [InlineData(MeetingSessionState.Stopping, MeetingSessionTrigger.Prepare)]
+    [InlineData(MeetingSessionState.Finalizing, MeetingSessionTrigger.Prepare)]
     public void InvalidTransitionsFailWithoutChangingState(
         MeetingSessionState state,
         MeetingSessionTrigger trigger)

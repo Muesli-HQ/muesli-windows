@@ -34,7 +34,8 @@ public static class DictationTargetApps
     {
         if (window == IntPtr.Zero) return null;
         var (processId, appId, name) = Win32Desktop.Identity(window);
-        if (processId == 0 || processId == Environment.ProcessId || string.IsNullOrWhiteSpace(name)) return null;
+        // MAC-20: Muesli itself is attributed when it is the recipient (macOS c7eed1a4).
+        if (processId == 0 || string.IsNullOrWhiteSpace(name)) return null;
         string? exePath = null;
         try
         {

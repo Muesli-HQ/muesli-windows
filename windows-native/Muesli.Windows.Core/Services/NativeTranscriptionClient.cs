@@ -17,6 +17,13 @@ internal interface ITranscriptionModelSession : IDisposable
         string filePath,
         IProgress<TranscriptionProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// macOS transcribePreview: one 16 kHz window for live dictation. Never downloads or repairs a
+    /// model. Without timings only the text is returned.
+    /// </summary>
+    Task<BufferedTranscriptionWindow> TranscribePreviewAsync(float[] samples, bool requiresWordTimings, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Live previews require a supported Parakeet, Whisper, or Bodhan model.");
 }
 
 internal interface ITranscriptionModelSessionFactory
@@ -126,6 +133,9 @@ internal sealed class NativeTranscriptionModelSessionFactory : ITranscriptionMod
             IProgress<TranscriptionProgress>? progress = null,
             CancellationToken cancellationToken = default) =>
             Session.TranscribeFileAsync(title, filePath, progress, cancellationToken);
+
+        public Task<BufferedTranscriptionWindow> TranscribePreviewAsync(float[] samples, bool requiresWordTimings, CancellationToken cancellationToken) =>
+            Session.TranscribePreviewAsync(samples, requiresWordTimings, cancellationToken);
 
         private ITranscriptionModelSession Session
         {
@@ -239,6 +249,14 @@ public sealed class NativeTranscriptionClient : IDisposable
         UseSessionAsync(
             session => session.TranscribeFileAsync(title, filePath, progress, cancellationToken),
             cancellationToken);
+
+    /// <summary>
+    /// Shares the operation gate with final transcription, like macOS acquireDecode: a preview never
+    /// overlaps another decode on this recognizer.
+    /// </summary>
+    public Task<BufferedTranscriptionWindow> TranscribePreviewAsync(
+        float[] samples, bool requiresWordTimings, CancellationToken cancellationToken = default) =>
+        UseSessionAsync(session => session.TranscribePreviewAsync(samples, requiresWordTimings, cancellationToken), cancellationToken);
 
     private async Task<T> UseSessionAsync<T>(
         Func<ITranscriptionModelSession, Task<T>> operation,

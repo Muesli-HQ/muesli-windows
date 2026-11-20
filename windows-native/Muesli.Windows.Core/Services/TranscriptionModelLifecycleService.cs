@@ -134,6 +134,7 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
         public TranscriptionModelStatus? Status;
         public string? Detail;
         public Func<CancellationToken, Task>? Retry;
+        public Task? Prepare;
     }
 
     private readonly ITranscriptionModelOperations _operations;
@@ -203,6 +204,21 @@ public sealed class TranscriptionModelLifecycleService : IDisposable
         CancellationToken cancellationToken = default)
     {
         var model = TranscriptionModelCatalog.GetRequired(modelId);
+        var state = _states.GetOrAdd(model.Id, _ => new OperationState());
+        // MAC-28: a second caller (onboarding, then the Models page) joins the running
+        // preparation instead of failing; its own cancellation only stops its wait.
+        lock (state.Gate)
+        {
+            if (state.Prepare is { IsCompleted: false } shared) return shared.WaitAsync(cancellationToken);
+            return state.Prepare = StartPrepareAsync(model, progress, cancellationToken);
+        }
+    }
+
+    private Task StartPrepareAsync(
+        TranscriptionModelDefinition model,
+        IProgress<ModelDownloadProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         return StartOperationAsync(
             model,
             TranscriptionModelStatus.Downloading,

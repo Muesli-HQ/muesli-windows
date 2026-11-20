@@ -35,6 +35,7 @@ public sealed class CuaMuesliSettings(Func<MuesliSettings> load, Action<MuesliSe
         Toggle("sounds", "Sound effects", s => s.SoundEnabled, (s, v) => s with { SoundEnabled = v }),
         Toggle("remove_filler_words", "Remove filler words", s => s.RemoveFillerWords, (s, v) => s with { RemoveFillerWords = v }),
         Toggle("double_tap_dictation", "Double-tap hands-free dictation", s => s.EnableDoubleTapDictation, (s, v) => s with { EnableDoubleTapDictation = v }),
+        Toggle("buffered_live_dictation", "Watch text appear during hands-free mode", s => s.EnableBufferedLiveDictation, (s, v) => s with { EnableBufferedLiveDictation = v }),
         Toggle("meeting_detection", "Automatic meeting detection", s => s.AutoMeetingDetectionEnabled, (s, v) => s with { AutoMeetingDetectionEnabled = v }),
     ];
 

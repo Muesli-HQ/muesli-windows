@@ -16,7 +16,11 @@ namespace Muesli.Windows.Services;
 /// </summary>
 public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
 {
-    private static readonly SemaphoreSlim DownloadGate = new(1, 1);
+    // MAC-28: one gate per model, so different models download in parallel (macOS
+    // ModelDownloadCoordinator keys jobs per model); the per-model file lock covers other processes.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> DownloadGates =
+        new(StringComparer.OrdinalIgnoreCase);
+    private SemaphoreSlim DownloadGate => DownloadGates.GetOrAdd(_model.Id, _ => new SemaphoreSlim(1, 1));
     private readonly TranscriptionModelDefinition _model;
     private readonly SemaphoreSlim _recognizerGate = new(1, 1);
     private OfflineRecognizer? _recognizer;
@@ -425,7 +429,7 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
         var candidate = ExecutionProviderService.PreferredProviders(role, _model.Kind)
             .FirstOrDefault(request => request.IsGpu == gpu)
             ?? throw new InvalidOperationException(
-                $"{_model.DisplayName} needs an NVIDIA GPU with the CUDA acceleration pack and GPU acceleration allowed in Settings. The INT8 variant runs on any PC.");
+                $"{_model.DisplayName} {TranscriptionModelCatalog.UnsupportedOnThisPcMessage}");
         var started = Stopwatch.StartNew();
         try
         {
@@ -490,6 +494,33 @@ public sealed class NativeOfflineAsrClient : ITranscriptionModelSession
         }
 
         return options;
+    }
+
+    public async Task<BufferedTranscriptionWindow> TranscribePreviewAsync(
+        float[] samples, bool requiresWordTimings, CancellationToken cancellationToken)
+    {
+        if (!IsModelVerified)
+            throw new InvalidOperationException($"{_model.DisplayName} is not downloaded and verified. Prepare it from Models first.");
+        await _recognizerGate.WaitAsync(cancellationToken);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await Task.Run(() =>
+            {
+                ThrowIfDisposed();
+                EnsureRecognizer();
+                // Bodhan and sherpa Whisper report no word timings; they stream untimed (continuity) chunks.
+                if (_bodhan is not null) return new BufferedTranscriptionWindow(RecognizeBodhan(samples), []);
+                using var stream = _recognizer!.CreateStream();
+                stream.AcceptWaveform(16000, samples);
+                _recognizer.Decode(stream);
+                return BufferedPreviewWindows.FromSherpa(stream.Result, requiresWordTimings);
+            }, cancellationToken);
+        }
+        finally
+        {
+            _recognizerGate.Release();
+        }
     }
 
     private string RecognizeBodhan(float[] chunk)

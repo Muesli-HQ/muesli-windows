@@ -42,6 +42,13 @@ public partial class InsightsPageViewModel(
     [ObservableProperty] public partial string SelectedAveragePace { get; private set; } = "—";
     [ObservableProperty] public partial string SelectedActiveDays { get; private set; } = "0";
     [ObservableProperty] public partial string StreakNumber { get; private set; } = "0";
+    // macOS cotypistPanel: only when a Cotypist suggestion was accepted in the selected period.
+    [ObservableProperty] public partial bool HasCotypist { get; private set; }
+    [ObservableProperty] public partial string CotypistWords { get; private set; } = "0";
+    [ObservableProperty] public partial string CotypistAccepted { get; private set; } = "0";
+    [ObservableProperty] public partial bool HasCotypistRate { get; private set; }
+    [ObservableProperty] public partial string CotypistRate { get; private set; } = "";
+    [ObservableProperty] public partial string CotypistRateLabel { get; private set; } = "";
     [ObservableProperty] public partial string StreakSummary { get; private set; } = "Dictate today to start a new streak.";
     [ObservableProperty] public partial string StreakBestLabel { get; private set; } = "Best: 0 days";
     [ObservableProperty] public partial string StreakActiveDaysLabel { get; private set; } = "0 active days";
@@ -151,6 +158,20 @@ public partial class InsightsPageViewModel(
     }
 
     partial void OnRangeIndexChanged(int value) => Reload();
+
+    private void BuildCotypist(InsightsRange range)
+    {
+        var start = InsightsWordAnalyzer.StartDate(range, DateTime.Now.Date);
+        var totals = App.CotypistHistory?.InsightsTotals(start is { } day ? new DateTimeOffset(day) : null, DateTimeOffset.Now);
+        HasCotypist = totals is not null;
+        if (totals is null) return;
+        CotypistWords = totals.WordsAccepted.ToString("N0");
+        CotypistAccepted = totals.SuggestionsAccepted.ToString("N0");
+        HasCotypistRate = totals.AcceptanceRate is not null;
+        CotypistRate = totals.AcceptanceRate is { } rate ? rate.ToString("P0") : "";
+        var rangeDays = range switch { InsightsRange.ThirtyDays => 30, InsightsRange.NinetyDays => 90, InsightsRange.TwelveMonths => 365, _ => int.MaxValue };
+        CotypistRateLabel = rangeDays > totals.RateDays ? $"Taken, last {totals.RateDays} days" : "Of suggestions shown";
+    }
     partial void OnActivityModeIndexChanged(int value) => Reload();
 
     private void Reload()
@@ -205,6 +226,7 @@ public partial class InsightsPageViewModel(
             _ => "Dictate today to start a new streak."
         };
         DictationSessions = snapshot.Selected.DictationSessions.ToString("N0");
+        BuildCotypist(range);
         CompletedMeetings = snapshot.Selected.Meetings.ToString("N0");
         DictationBreakdown =
             $"{Count(snapshot.Selected.DictationWords, "word", "words")} · " +

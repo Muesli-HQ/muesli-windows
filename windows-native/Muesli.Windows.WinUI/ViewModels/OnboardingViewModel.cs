@@ -487,11 +487,12 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         DownloadStatus = "";
         DownloadError = "";
         NotifyDownload();
+        var meter = new ModelTransferMeter();
         var progress = new Progress<ModelDownloadProgress>(value => App.UiDispatcher.TryEnqueue(() =>
         {
             if (_downloadingModelId != id) return;
             DownloadProgress = value.Percent is int percent ? percent / 100d : null;
-            DownloadStatus = value.DisplayText;
+            DownloadStatus = meter.Describe(value);
             NotifyDownload();
         }));
         _ = Task.Run(async () =>

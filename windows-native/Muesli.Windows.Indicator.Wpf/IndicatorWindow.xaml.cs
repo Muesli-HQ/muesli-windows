@@ -29,6 +29,7 @@ public partial class IndicatorWindow : Window
 
     private readonly Action<IndicatorCommand> _sendCommand;
     private readonly List<Border> _waveBars = [];
+    private string? _recordingNotice;
     private readonly IndicatorAmplitudeSmoother _smoother = new();
     private readonly DispatcherTimer _waveTimer;
 
@@ -77,6 +78,23 @@ public partial class IndicatorWindow : Window
             Interval = TimeSpan.FromMilliseconds(1000.0 / FloatingIndicatorLayout.WaveformUpdateFramesPerSecond)
         };
         _waveTimer.Tick += (_, _) => AnimateWaveform();
+        _topmostTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _topmostTimer.Tick += (_, _) => KeepOnTop();
+    }
+
+    private readonly DispatcherTimer _topmostTimer;
+
+    /// <summary>
+    /// macOS orders the panel front on every show (floating level, all Spaces). WPF's Topmost alone
+    /// drifts: the pill is owned by WPF's hidden non-topmost owner window and can sink below normal
+    /// windows, so the topmost band is re-asserted while visible. Exclusive full-screen games and
+    /// presentation mode are left alone.
+    /// </summary>
+    private void KeepOnTop()
+    {
+        if (!IsVisible || SHQueryUserNotificationState(out var state) == 0 && state is QunsRunningD3DFullScreen or QunsPresentationMode) return;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero) SetWindowPos(handle, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
@@ -189,6 +207,7 @@ public partial class IndicatorWindow : Window
         _hotkeyLabel = string.IsNullOrWhiteSpace(snapshot.HotkeyLabel) ? "shortcut" : snapshot.HotkeyLabel;
         _recordingAccentHex = string.IsNullOrWhiteSpace(snapshot.RecordingColorHex) ? "1e1e2e" : snapshot.RecordingColorHex;
         _message = snapshot.Message ?? "";
+        _recordingNotice = string.IsNullOrEmpty(snapshot.RecordingNotice) ? null : snapshot.RecordingNotice;
         _highContrast = snapshot.HighContrast;
         _indicatorAnchor = string.IsNullOrWhiteSpace(snapshot.IndicatorAnchor) ? "Middle Right" : snapshot.IndicatorAnchor;
         _savedLeft = snapshot.SavedLeft;
@@ -200,6 +219,7 @@ public partial class IndicatorWindow : Window
         if (!_visible)
         {
             _waveTimer.Stop();
+            _topmostTimer.Stop();
             Hide();
             return;
         }
@@ -231,6 +251,8 @@ public partial class IndicatorWindow : Window
 
         Render();
         UpdateWaveTimer();
+        KeepOnTop();
+        _topmostTimer.Start();
     }
 
     /// <summary>
@@ -256,7 +278,7 @@ public partial class IndicatorWindow : Window
     {
         var size = MinimalResting
             ? FloatingIndicatorLayout.MinimalRestingSize(_indicatorAnchor)
-            : FloatingIndicatorLayout.SizeFor(_state, _hovered, _message, _owner == IndicatorOwnerKind.ComputerUse);
+            : FloatingIndicatorLayout.SizeFor(_state, _hovered, _message, _owner == IndicatorOwnerKind.ComputerUse, _recordingNotice);
         _widthDip = size.Width;
         _heightDip = size.Height;
         _cornerRadiusDip = size.CornerRadius;
@@ -408,29 +430,51 @@ public partial class IndicatorWindow : Window
         };
         grid.Children.Add(left);
 
-        var wave = new StackPanel
+        if (_recordingNotice is { } notice)
         {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        var barCount = IndicatorWaveform.BarCount;
-        for (var index = 0; index < barCount; index++)
-        {
-            var bar = new Border
+            // macOS 4481c15a: live text stopped, the microphone didn't. The yellow title replaces the
+            // waveform (which then stops, as _waveBars stays empty); the detail is the tooltip.
+            var label = new TextBlock
             {
-                Width = FloatingIndicatorLayout.WaveformBarWidth,
-                Height = FloatingIndicatorLayout.WaveformMinHeight,
-                Margin = new Thickness(FloatingIndicatorLayout.WaveformBarSpacing / 2, 0,
-                                       FloatingIndicatorLayout.WaveformBarSpacing / 2, 0),
-                CornerRadius = new CornerRadius(FloatingIndicatorLayout.WaveformBarWidth / 2),
-                Background = brush,
+                Text = notice,
+                FontSize = 11,
+                FontWeight = FontWeights.Medium,
+                Foreground = new SolidColorBrush(MediaColor.FromRgb(0xFF, 0xD6, 0x0A)),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(22, 0, 22, 0),
+                HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             };
-            _waveBars.Add(bar);
-            wave.Children.Add(bar);
+            grid.ToolTip = _message;
+            System.Windows.Automation.AutomationProperties.SetName(grid, _message);
+            grid.Children.Add(label);
         }
-        grid.Children.Add(wave);
+        else
+        {
+            var wave = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var barCount = IndicatorWaveform.BarCount;
+            for (var index = 0; index < barCount; index++)
+            {
+                var bar = new Border
+                {
+                    Width = FloatingIndicatorLayout.WaveformBarWidth,
+                    Height = FloatingIndicatorLayout.WaveformMinHeight,
+                    Margin = new Thickness(FloatingIndicatorLayout.WaveformBarSpacing / 2, 0,
+                                           FloatingIndicatorLayout.WaveformBarSpacing / 2, 0),
+                    CornerRadius = new CornerRadius(FloatingIndicatorLayout.WaveformBarWidth / 2),
+                    Background = brush,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                _waveBars.Add(bar);
+                wave.Children.Add(bar);
+            }
+            grid.Children.Add(wave);
+        }
 
         var stop = new Border
         {
@@ -982,7 +1026,12 @@ public partial class IndicatorWindow : Window
     [DllImport("user32.dll", SetLastError = true)]
     private static extern long SetWindowLongPtr(IntPtr hWnd, int nIndex, long value);
 
-    private const uint SwpNoSize = 0x0001, SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010;
+    private const uint SwpNoSize = 0x0001, SwpNoMove = 0x0002, SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010;
+    private static readonly IntPtr HwndTopmost = new(-1);
+    private const int QunsRunningD3DFullScreen = 3, QunsPresentationMode = 4;
+
+    [DllImport("shell32.dll")]
+    private static extern int SHQueryUserNotificationState(out int state);
     private const uint MonitorDefaultToNearest = 2;
     private const int MdtEffectiveDpi = 0;
 
@@ -1003,6 +1052,7 @@ public partial class IndicatorWindow : Window
     {
         _disposed = true;
         _waveTimer.Stop();
+        _topmostTimer.Stop();
         _collapseTimer.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _sendCommand(new IndicatorCommand { SessionId = _sessionId, Type = IndicatorCommandType.Exit });

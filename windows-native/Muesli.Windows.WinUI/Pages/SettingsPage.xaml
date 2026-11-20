@@ -303,6 +303,29 @@
                         </ItemsRepeater>
                     </Border>
 
+                    <!-- macOS LocalStorageUsageView (MAC-11); rows are built in code-behind after an off-thread scan. -->
+                    <TextBlock Text="STORAGE" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <StackPanel Spacing="12" Padding="16">
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                <StackPanel>
+                                    <TextBlock x:Name="StorageTotal" Text="Calculating…" FontSize="26" FontWeight="SemiBold"
+                                               AutomationProperties.AutomationId="StorageTotal" />
+                                    <TextBlock Text="Muesli data and downloaded models" Style="{StaticResource RowHelpStyle}" Margin="0" />
+                                </StackPanel>
+                                <ProgressRing x:Name="StorageProgress" Grid.Column="1" Width="16" Height="16" IsActive="False" />
+                                <Button x:Name="StorageRefresh" Grid.Column="2" Click="StorageRefresh_Click"
+                                        Style="{StaticResource MuesliGhostButtonStyle}" Padding="8,4"
+                                        ToolTipService.ToolTip="Refresh storage usage"
+                                        AutomationProperties.Name="Refresh storage usage"
+                                        AutomationProperties.AutomationId="StorageRefreshButton">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="12" />
+                                </Button>
+                            </Grid>
+                            <StackPanel x:Name="StorageRows" Spacing="10" AutomationProperties.AutomationId="StorageBreakdown" />
+                        </StackPanel>
+                    </Border>
+
                     <TextBlock Text="DATA" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel Spacing="12" Padding="16">
@@ -331,15 +354,31 @@
                 <StackPanel x:Name="DictationPanel" Spacing="14" Visibility="Collapsed">
                     <TextBlock Text="SPEECH RECOGNITION" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
-                        <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                            <TextBlock Text="Dictation model" Style="{StaticResource RowTitleStyle}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1"
-                                      Style="{StaticResource PickerStyle}"
-                                      ItemsSource="{x:Bind ViewModel.DictationModels, Mode=OneWay}"
-                                      SelectedItem="{x:Bind ViewModel.SelectedDictationModel, Mode=TwoWay}"
-                                      AutomationProperties.Name="Dictation model"
-                                      AutomationProperties.AutomationId="DictationModelPicker" />
-                        </Grid>
+                        <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <TextBlock Text="Dictation model" Style="{StaticResource RowTitleStyle}" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.DictationModels, Mode=OneWay}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedDictationModel, Mode=TwoWay}"
+                                          AutomationProperties.Name="Dictation model"
+                                          AutomationProperties.AutomationId="DictationModelPicker" />
+                            </Grid>
+                            <StackPanel Visibility="{x:Bind ViewModel.ShowBufferedLiveDictation, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Border Style="{StaticResource DividerStyle}" />
+                                <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                    <StackPanel MinWidth="0">
+                                        <TextBlock Text="Watch text appear during hands-free mode" Style="{StaticResource RowTitleStyle}" />
+                                        <TextBlock Text="Preview as you speak; apply enabled cleanup when you stop." Style="{StaticResource RowHelpStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1"
+                                                  Style="{StaticResource SettingsToggleStyle}"
+                                                  IsOn="{x:Bind ViewModel.EnableBufferedLiveDictation, Mode=TwoWay}"
+                                                  AutomationProperties.Name="Watch text appear during hands-free mode"
+                                                  AutomationProperties.AutomationId="BufferedLiveDictationToggle" />
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
                     </Border>
 
                     <TextBlock Text="TRANSCRIPTION" Style="{StaticResource SettingsSectionLabelStyle}" />
@@ -494,6 +533,24 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- macOS DictationFormattingSettingsView (MAC-15). -->
+                    <TextBlock Text="APP FORMATTING" Style="{StaticResource SettingsSectionLabelStyle}" />
+                    <Border Style="{StaticResource SettingsCardStyle}">
+                        <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                            <StackPanel MinWidth="0">
+                                <TextBlock Text="Your words, formatted for each app" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="Prefer lowercase messages or fewer final periods? Set up formatting for your most-used apps." Style="{StaticResource RowHelpStyle}" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource MuesliSecondaryButtonStyle}"
+                                    Padding="12,5" MinHeight="0" CornerRadius="6" FontSize="12"
+                                    Click="ManageAppFormatting_Click"
+                                    AutomationProperties.Name="Set up app formatting"
+                                    AutomationProperties.AutomationId="ManageAppFormattingButton"
+                                    Content="Set Up App Formatting…" />
+                        </Grid>
+                    </Border>
+
                     <TextBlock Text="ADVANCED" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
@@ -563,6 +620,170 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <!-- macOS cotypistSettingsSection (SettingsView.swift:2012): only in a build that includes
+                         Cotypist with its text service installed. Its controls apply at once, like macOS,
+                         and stay out of the Save draft; SettingsPage.Cotypist.cs drives them. -->
+                    <StackPanel x:Name="CotypistSection" Spacing="14" Visibility="Collapsed">
+                        <TextBlock Text="COTYPIST (EXPERIMENTAL)" Style="{StaticResource SettingsSectionLabelStyle}" />
+                        <Border Style="{StaticResource SettingsCardStyle}">
+                            <StackPanel>
+                                <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                    <StackPanel MinWidth="0">
+                                        <TextBlock Text="Typeahead suggestions" Style="{StaticResource RowTitleStyle}" />
+                                        <TextBlock x:Name="CotypistStatusText" Style="{StaticResource RowHelpStyle}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="CotypistToggle"
+                                                  Grid.Column="1"
+                                                  Style="{StaticResource SettingsToggleStyle}"
+                                                  Toggled="CotypistToggle_Toggled"
+                                                  AutomationProperties.Name="Typeahead suggestions"
+                                                  AutomationProperties.AutomationId="CotypistToggle" />
+                                </Grid>
+                                <!-- macOS cotypistModelRow: the selected model until it's on this PC. -->
+                                <Grid x:Name="CotypistModelRow"
+                                      ColumnDefinitions="Auto,*,Auto"
+                                      ColumnSpacing="12"
+                                      Margin="16,0,16,12"
+                                      Padding="12"
+                                      CornerRadius="6"
+                                      Background="{ThemeResource MuesliSurfacePrimaryBrush}">
+                                    <FontIcon Glyph="&#xE950;" FontSize="14" Foreground="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Spacing="4" MinWidth="0">
+                                        <TextBlock x:Name="CotypistModelTitle" FontSize="13" FontWeight="Medium" Foreground="{ThemeResource MuesliTextPrimaryBrush}" TextWrapping="Wrap" />
+                                        <ProgressBar x:Name="CotypistModelProgress" Maximum="1" Visibility="Collapsed" />
+                                        <TextBlock x:Name="CotypistModelDetail" Style="{StaticResource RowHelpStyle}" Margin="0" />
+                                    </StackPanel>
+                                    <Button x:Name="CotypistModelAction"
+                                            Grid.Column="2"
+                                            Style="{StaticResource CompactActionStyle}"
+                                            Click="CotypistModelAction_Click"
+                                            AutomationProperties.AutomationId="CotypistModelAction" />
+                                </Grid>
+                                <!-- Shown only while Cotypist is on: off, none of them do anything. -->
+                                <StackPanel x:Name="CotypistOptionsPanel">
+                                    <!-- macOS cotypistKeyHints. Ctrl+Right is Option-Right's Windows counterpart. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="16" Padding="16,0,16,12">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Border Padding="6,1" MinWidth="20" CornerRadius="5" BorderThickness="1" BorderBrush="{ThemeResource MuesliBorderBrush}" Background="{ThemeResource MuesliSurfacePrimaryBrush}">
+                                                <TextBlock Text="Tab" FontSize="11" FontWeight="SemiBold" />
+                                            </Border>
+                                            <TextBlock Text="Accept" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Border Padding="6,1" MinWidth="20" CornerRadius="5" BorderThickness="1" BorderBrush="{ThemeResource MuesliBorderBrush}" Background="{ThemeResource MuesliSurfacePrimaryBrush}">
+                                                <TextBlock Text="Ctrl" FontSize="11" FontWeight="SemiBold" />
+                                            </Border>
+                                            <Border Padding="6,1" MinWidth="20" CornerRadius="5" BorderThickness="1" BorderBrush="{ThemeResource MuesliBorderBrush}" Background="{ThemeResource MuesliSurfacePrimaryBrush}">
+                                                <TextBlock Text="→" FontSize="11" FontWeight="SemiBold" />
+                                            </Border>
+                                            <TextBlock Text="Accept one word" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="Keep typing to ignore" FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <Border Style="{StaticResource DividerStyle}" />
+                                    <Grid ColumnDefinitions="*,Auto,Auto" Padding="16,8" ColumnSpacing="8">
+                                        <TextBlock Text="Model" Style="{StaticResource RowTitleStyle}" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="CotypistModelLabel" Grid.Column="1" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
+                                        <Button Grid.Column="2"
+                                                Content="Change"
+                                                Style="{StaticResource CompactActionStyle}"
+                                                Click="CotypistModels_Click"
+                                                AutomationProperties.Name="Change typeahead model"
+                                                AutomationProperties.AutomationId="CotypistChangeModel" />
+                                    </Grid>
+                                    <Border Style="{StaticResource DividerStyle}" />
+                                    <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                        <StackPanel MinWidth="0">
+                                            <TextBlock Text="Suggestion length" Style="{StaticResource RowTitleStyle}" />
+                                            <TextBlock Text="How far ahead each suggestion reaches." Style="{StaticResource RowHelpStyle}" />
+                                        </StackPanel>
+                                        <ComboBox x:Name="CotypistLengthPicker"
+                                                  Grid.Column="1"
+                                                  Style="{StaticResource PickerStyle}"
+                                                  SelectionChanged="CotypistOption_Changed"
+                                                  AutomationProperties.Name="Suggestion length"
+                                                  AutomationProperties.AutomationId="CotypistLengthPicker" />
+                                    </Grid>
+                                    <Border Style="{StaticResource DividerStyle}" />
+                                    <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                        <StackPanel MinWidth="0">
+                                            <TextBlock Text="How often to suggest" Style="{StaticResource RowTitleStyle}" />
+                                            <TextBlock Text="Fewer shows only suggestions the model is sure of." Style="{StaticResource RowHelpStyle}" />
+                                        </StackPanel>
+                                        <ComboBox x:Name="CotypistFrequencyPicker"
+                                                  Grid.Column="1"
+                                                  Style="{StaticResource PickerStyle}"
+                                                  SelectionChanged="CotypistOption_Changed"
+                                                  AutomationProperties.Name="How often to suggest"
+                                                  AutomationProperties.AutomationId="CotypistFrequencyPicker" />
+                                    </Grid>
+                                    <Border Style="{StaticResource DividerStyle}" />
+                                    <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                        <StackPanel MinWidth="0">
+                                            <TextBlock Text="Finish half-typed words" Style="{StaticResource RowTitleStyle}" />
+                                            <TextBlock x:Name="CotypistCompleteWordsHelp" Style="{StaticResource RowHelpStyle}" />
+                                        </StackPanel>
+                                        <ToggleSwitch x:Name="CotypistCompleteWordsToggle"
+                                                      Grid.Column="1"
+                                                      Style="{StaticResource SettingsToggleStyle}"
+                                                      Toggled="CotypistOption_Changed"
+                                                      AutomationProperties.Name="Finish half-typed words"
+                                                      AutomationProperties.AutomationId="CotypistCompleteWordsToggle" />
+                                    </Grid>
+                                    <!-- macOS cotypistSubRow: refines the row above, indented, no divider. -->
+                                    <Grid x:Name="CotypistWordPauseRow" ColumnDefinitions="*,Auto" Padding="32,0,16,8" ColumnSpacing="16">
+                                        <TextBlock Text="Pause before completing" FontSize="13" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="CotypistWordPausePicker"
+                                                  Grid.Column="1"
+                                                  Style="{StaticResource PickerStyle}"
+                                                  SelectionChanged="CotypistOption_Changed"
+                                                  AutomationProperties.Name="Pause before completing"
+                                                  AutomationProperties.AutomationId="CotypistWordPausePicker" />
+                                    </Grid>
+                                    <Border Style="{StaticResource DividerStyle}" />
+                                    <!-- macOS cotypistQuietApps. -->
+                                    <StackPanel Padding="16,10" Spacing="12">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                            <StackPanel MinWidth="0">
+                                                <TextBlock Text="Quiet in these apps" Style="{StaticResource RowTitleStyle}" />
+                                                <TextBlock Text="Cotypist won't suggest anything in apps you add here." Style="{StaticResource RowHelpStyle}" />
+                                            </StackPanel>
+                                            <Button x:Name="CotypistAddAppButton"
+                                                    Grid.Column="1"
+                                                    Style="{StaticResource CompactActionStyle}"
+                                                    AutomationProperties.Name="Add app"
+                                                    AutomationProperties.AutomationId="CotypistAddApp">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon Glyph="&#xE710;" FontSize="11" />
+                                                    <TextBlock Text="Add app" />
+                                                </StackPanel>
+                                                <Button.Flyout>
+                                                    <MenuFlyout x:Name="CotypistAddAppMenu" Opening="CotypistAddAppMenu_Opening" />
+                                                </Button.Flyout>
+                                            </Button>
+                                        </Grid>
+                                        <Grid x:Name="CotypistQuietEmpty"
+                                              ColumnDefinitions="Auto,*"
+                                              ColumnSpacing="12"
+                                              Padding="12"
+                                              CornerRadius="6"
+                                              BorderThickness="1"
+                                              BorderBrush="{ThemeResource MuesliBorderBrush}"
+                                              Background="{ThemeResource MuesliSurfacePrimaryBrush}">
+                                            <FontIcon Glyph="&#xE930;" FontSize="18" Foreground="{ThemeResource MuesliAccentBrush}" VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock Text="On in every app" FontSize="13" FontWeight="Medium" Foreground="{ThemeResource MuesliTextPrimaryBrush}" />
+                                                <TextBlock Text="Add password managers, or apps with their own autocomplete like code editors." FontSize="12" Foreground="{ThemeResource MuesliTextTertiaryBrush}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <VariableSizedWrapGrid x:Name="CotypistQuietChips" Orientation="Horizontal" ItemWidth="176" ItemHeight="44" />
+                                        <StackPanel x:Name="CotypistRecommended" Orientation="Horizontal" Spacing="8" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- COMPUTER USE -->
@@ -731,6 +952,18 @@
                                               AutomationProperties.Name="Save meeting recordings"
                                               AutomationProperties.AutomationId="SaveMeetingRecordingsToggle" />
                             </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Identify speakers in the room" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Label people sharing your microphone as Local speaker 1, 2... after the meeting." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.DiarizeMicrophoneAudio, Mode=TwoWay}"
+                                              AutomationProperties.Name="Identify speakers in the room"
+                                              AutomationProperties.AutomationId="DiarizeMicrophoneAudioToggle" />
+                            </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.SaveMeetingRecordings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.SaveMeetingRecordings), Mode=OneWay}">
                                 <StackPanel MinWidth="0">
@@ -817,6 +1050,18 @@
                                            SpinButtonPlacementMode="Compact"
                                            AutomationProperties.Name="Summary retries"
                                            AutomationProperties.AutomationId="SummaryRetryCount" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowSummaryOutputLimit), Mode=OneWay}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowSummaryOutputLimit), Mode=OneWay}">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Output token limit" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="No added limit lets the model finish naturally. Provider and model limits still apply." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.SummaryOutputLimits, Mode=OneWay}"
+                                          SelectedIndex="{x:Bind ViewModel.SummaryOutputLimitIndex, Mode=TwoWay}"
+                                          AutomationProperties.Name="Meeting summary output token limit"
+                                          AutomationProperties.AutomationId="SummaryOutputLimitPicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowOllamaSettings), Mode=OneWay}">

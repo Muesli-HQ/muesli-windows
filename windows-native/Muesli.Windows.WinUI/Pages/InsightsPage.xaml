@@ -406,6 +406,32 @@
                     </StackPanel>
                 </Border>
 
+                <!-- macOS cotypistPanel (InsightsView.swift:445): only once a Cotypist suggestion was taken. -->
+                <Border x:Name="CotypistCard" Style="{StaticResource InsightPanelStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasCotypist), Mode=OneWay}" AutomationProperties.Name="Cotypist" AutomationProperties.AutomationId="InsightsCotypistCard">
+                    <StackPanel Spacing="18">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="COTYPIST" Style="{StaticResource InsightPanelTitleStyle}" />
+                            <TextBlock Text="Suggestions you accepted as you typed" Style="{StaticResource InsightPanelSubtitleStyle}" />
+                        </StackPanel>
+                        <Grid ColumnDefinitions="*,Auto,*,Auto,*" Margin="-16,0">
+                            <StackPanel Spacing="6" Padding="16,0">
+                                <TextBlock Text="{x:Bind ViewModel.CotypistWords, Mode=OneWay}" Style="{StaticResource InsightStreakValueStyle}" Foreground="{ThemeResource MuesliAccentBrush}" />
+                                <TextBlock Text="Words written for you" Style="{StaticResource InsightCaptionStyle}" />
+                            </StackPanel>
+                            <Rectangle Grid.Column="1" Style="{StaticResource InsightDividerStyle}" />
+                            <StackPanel Grid.Column="2" Spacing="6" Padding="16,0">
+                                <TextBlock Text="{x:Bind ViewModel.CotypistAccepted, Mode=OneWay}" Style="{StaticResource InsightStreakValueStyle}" Foreground="{ThemeResource MuesliAccentBrush}" />
+                                <TextBlock Text="Suggestions accepted" Style="{StaticResource InsightCaptionStyle}" />
+                            </StackPanel>
+                            <Rectangle Grid.Column="3" Style="{StaticResource InsightDividerStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasCotypistRate), Mode=OneWay}" />
+                            <StackPanel Grid.Column="4" Spacing="6" Padding="16,0" Visibility="{x:Bind BoolToVisibility(ViewModel.HasCotypistRate), Mode=OneWay}">
+                                <TextBlock Text="{x:Bind ViewModel.CotypistRate, Mode=OneWay}" Style="{StaticResource InsightStreakValueStyle}" Foreground="{ThemeResource MuesliAccentBrush}" />
+                                <TextBlock Text="{x:Bind ViewModel.CotypistRateLabel, Mode=OneWay}" Style="{StaticResource InsightCaptionStyle}" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
                 <!-- macOS attributionPanel: the models and apps you dictate with in the selected period. -->
                 <Border x:Name="HabitsCard" Style="{StaticResource InsightPanelStyle}" Visibility="{x:Bind BoolToVisibility(ViewModel.HasData), Mode=OneWay}"
                         AutomationProperties.Name="Your dictation habits" AutomationProperties.AutomationId="InsightsHabitsCard">

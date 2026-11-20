@@ -24,6 +24,7 @@ public sealed class DictationCoordinator : IDisposable
     private Task<ModelOperationResult>? _modelWarmupTask;
     private CancellationTokenSource? _sessionCancellation;
     private DictationRollingTranscriber? _rollingTranscriber;
+    private EventHandler<LivePcmSamplesEventArgs>? _liveSamples;
     private string? _microphoneName;
     private volatile bool _prepareEnabled;
     private int _preloadScheduled;
@@ -130,7 +131,11 @@ public sealed class DictationCoordinator : IDisposable
     public Task StartAsync(string? microphoneName) =>
         StartAsync(microphoneName, DictationSessionKind.Interactive);
 
-    public async Task StartAsync(string? microphoneName, DictationSessionKind sessionKind)
+    /// <param name="liveSamples">
+    /// Live dictation's PCM sink (16 kHz mono). It replaces the rolling transcriber: the live session
+    /// owns recognition during capture, as on macOS.
+    /// </param>
+    public async Task StartAsync(string? microphoneName, DictationSessionKind sessionKind, Action<float[]>? liveSamples = null)
     {
         _microphoneName = microphoneName;
         // The global hotkey outlives this coordinator during shutdown. Without this guard every
@@ -171,8 +176,16 @@ public sealed class DictationCoordinator : IDisposable
 
             // Chunks decode while the user speaks, so the boost covers capture as well as the tail.
             _performanceBoost ??= TranscriptionPerformance.Boost();
-            _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient);
-            _audioCaptureService.PcmSamplesAvailable += _rollingTranscriber.Feed;
+            if (liveSamples is not null)
+            {
+                _liveSamples = (_, e) => liveSamples(e.Samples);
+                _audioCaptureService.PcmSamplesAvailable += _liveSamples;
+            }
+            else
+            {
+                _rollingTranscriber = new DictationRollingTranscriber(_transcriptionClient);
+                _audioCaptureService.PcmSamplesAvailable += _rollingTranscriber.Feed;
+            }
             var preCaptureMs = startTimer.ElapsedMilliseconds;
             try
             {
@@ -231,12 +244,15 @@ public sealed class DictationCoordinator : IDisposable
         return await StopAsync(traceId, CancellationToken.None);
     }
 
-    public async Task<DictationStopResult> StopAsync(string traceId, CancellationToken cancellationToken)
+    /// <param name="transcribe">Live dictation's finalizer, given the recorded WAV in place of recognition.</param>
+    public async Task<DictationStopResult> StopAsync(string traceId, CancellationToken cancellationToken,
+        Func<string, Task<TranscriptionResult>>? transcribe = null)
     {
-        return await StopAsync(traceId, cancellationToken, keepLatestDictationAlias: true);
+        return await StopAsync(traceId, cancellationToken, keepLatestDictationAlias: true, transcribe);
     }
 
-    private async Task<DictationStopResult> StopAsync(string traceId, CancellationToken cancellationToken, bool keepLatestDictationAlias)
+    private async Task<DictationStopResult> StopAsync(string traceId, CancellationToken cancellationToken, bool keepLatestDictationAlias,
+        Func<string, Task<TranscriptionResult>>? transcribe = null)
     {
         await _gate.WaitAsync();
         CapturedAudio? capturedAudio = null;
@@ -320,7 +336,8 @@ public sealed class DictationCoordinator : IDisposable
                 IsTranscribing = true;
                 _log.Info($"Dictation recognition started. trace={traceId}; model={ModelId}; " +
                     $"warmupPending={_modelWarmupTask is { IsCompleted: false }}");
-                transcriptionTask = rolling is null
+                transcriptionTask = transcribe is not null ? transcribe(capturedAudio.TranscriptionPath)
+                    : rolling is null
                     ? _transcriptionClient.TranscribeFileAsync("Dictation", capturedAudio.TranscriptionPath)
                     : rolling.FinishAsync(capturedAudio.TranscriptionPath);
                 _activeTranscriptionTask = transcriptionTask;
@@ -469,8 +486,25 @@ public sealed class DictationCoordinator : IDisposable
         _ = ObserveWarmupAsync(_modelWarmupTask);
     }
 
+    /// <summary>
+    /// Live dictation found no safe target: its PCM (buffered from the start) feeds the rolling
+    /// transcriber instead, so the stop keeps chunked latency rather than a whole-file decode.
+    /// </summary>
+    public Action<float[]> BeginRollingTranscription()
+    {
+        var rolling = new DictationRollingTranscriber(_transcriptionClient);
+        _rollingTranscriber = rolling;
+        long next = 0;
+        return samples =>
+        {
+            rolling.Feed(this, new LivePcmSamplesEventArgs(LiveTranscriptChannel.Microphone, samples, next));
+            next += samples.LongLength;
+        };
+    }
+
     private DictationRollingTranscriber? DetachRollingTranscriber()
     {
+        if (Interlocked.Exchange(ref _liveSamples, null) is { } live) _audioCaptureService.PcmSamplesAvailable -= live;
         var rolling = _rollingTranscriber;
         if (rolling is not null)
         {

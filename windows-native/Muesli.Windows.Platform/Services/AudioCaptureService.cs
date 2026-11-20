@@ -30,6 +30,7 @@ public sealed class AudioCaptureService : IDisposable
     private DateTimeOffset _startedAt;
     private long _lastLevelNotificationTicks;
     private readonly StreamingPcmNormalizer _livePcmNormalizer = new();
+    private long _droppedBuffers;
     private int _disposed;
 
     public AudioCaptureService(
@@ -222,7 +223,11 @@ public sealed class AudioCaptureService : IDisposable
             ThrowIfDisposed();
             var stopStarted = Stopwatch.StartNew();
             var current = Interlocked.Exchange(ref _session, null);
-            current?.StopAndDispose();
+            if (current is not null)
+            {
+                await current.StopAndDisposeAsync().ConfigureAwait(false);
+                _droppedBuffers += current.DroppedBuffers;
+            }
             stopStarted.Stop();
 
             var segmentPaths = _segments.Select(segment => segment.Path).ToList();
@@ -294,6 +299,8 @@ public sealed class AudioCaptureService : IDisposable
                 (int)flushStarted.ElapsedMilliseconds,
                 (int)preparationStarted.ElapsedMilliseconds,
                 preparation);
+            if (_droppedBuffers > 0) preparation += $"; {_droppedBuffers} capture buffers dropped because the writer fell behind";
+            _droppedBuffers = 0;
             _segments.Clear();
             failureCleanup.Complete();
             return captured;
@@ -408,7 +415,7 @@ public sealed class AudioCaptureService : IDisposable
             _session = null;
             if (createdSession is not null)
             {
-                createdSession.StopAndDispose();
+                createdSession.Discard();
             }
             else
             {
@@ -490,8 +497,9 @@ public sealed class AudioCaptureService : IDisposable
             }
 
             var previousName = current.DeviceName;
-            current.StopAndDispose();
-            _session = null;
+            _session = null; // invalidated before teardown, so a failed stop never leaves the old graph live
+            await current.StopAndDisposeAsync().ConfigureAwait(false);
+            _droppedBuffers += current.DroppedBuffers;
             await WaitForFileFlushAsync(current.Path).ConfigureAwait(false);
 
             try
@@ -568,7 +576,7 @@ public sealed class AudioCaptureService : IDisposable
     private void StopAndCleanupUnderGate(bool deleteFiles)
     {
         var session = Interlocked.Exchange(ref _session, null);
-        session?.StopAndDispose();
+        session?.Discard();
         if (deleteFiles)
         {
             foreach (var segment in _segments)
@@ -674,6 +682,7 @@ public sealed class AudioCaptureService : IDisposable
         private readonly object _writerGate = new();
         private readonly Action<byte[], int, WaveFormat?> _accumulateLevels;
         private readonly Action<Exception> _captureFaulted;
+        private readonly CaptureBufferPump _pump;
         private WaveFileWriter? _writer;
         private int _stopped;
 
@@ -693,6 +702,8 @@ public sealed class AudioCaptureService : IDisposable
             DeviceName = deviceName;
             _accumulateLevels = accumulateLevels;
             _captureFaulted = captureFaulted;
+            // MAC-35: the WASAPI callback only copies; the file, levels and live PCM happen on the pump's worker.
+            _pump = new CaptureBufferPump(Consume, captureFaulted);
             Capture.DataAvailable += OnDataAvailable;
             Capture.RecordingStopped += OnRecordingStopped;
         }
@@ -701,40 +712,62 @@ public sealed class AudioCaptureService : IDisposable
         public string Path { get; }
         public string DeviceId { get; }
         public string DeviceName { get; }
+        public long DroppedBuffers => _pump.Dropped;
 
-        private void OnDataAvailable(object? sender, WaveInEventArgs args)
+        private void OnDataAvailable(object? sender, WaveInEventArgs args) => _pump.Offer(args.Buffer, args.BytesRecorded);
+
+        private void Consume(byte[] buffer, int count)
         {
             lock (_writerGate)
             {
-                _writer?.Write(args.Buffer, 0, args.BytesRecorded);
+                _writer?.Write(buffer, 0, count);
             }
-            _accumulateLevels(args.Buffer, args.BytesRecorded, Capture.WaveFormat);
+            _accumulateLevels(buffer, count, Capture.WaveFormat);
         }
 
         private void OnRecordingStopped(object? sender, StoppedEventArgs args)
         {
-            DisposeWriter();
-            if (Volatile.Read(ref _stopped) == 0)
+            if (Volatile.Read(ref _stopped) != 0) return;
+            // The device stopped on its own: finish the file with every accepted buffer before repair reads it.
+            var exception = args.Exception ?? new InvalidOperationException("Microphone capture stopped unexpectedly.");
+            _ = Task.Run(async () =>
             {
-                _captureFaulted(args.Exception ?? new InvalidOperationException("Microphone capture stopped unexpectedly."));
-            }
+                await _pump.DrainAsync().ConfigureAwait(false);
+                DisposeWriter();
+                _captureFaulted(exception);
+            });
         }
 
-        public void StopAndDispose()
+        /// <summary>Stop: the capture thread's last buffers are accepted, all of them reach the file, then it closes.</summary>
+        public Task StopAndDisposeAsync() => StopCoreAsync(drain: true);
+
+        /// <summary>Discard: delivery closes before the device stops; queued buffers are dropped.</summary>
+        public void Discard() => StopCoreAsync(drain: false).GetAwaiter().GetResult();
+
+        private async Task StopCoreAsync(bool drain)
         {
             if (Interlocked.Exchange(ref _stopped, 1) != 0)
             {
+                if (drain) await _pump.DrainAsync().ConfigureAwait(false);
                 return;
             }
+            if (!drain) _pump.Discard();
             try
             {
-                Capture.StopRecording();
+                // MAC-19: a faulted endpoint can throw from stop; teardown still finishes so a replacement can start.
+                await ContainEngineCallAsync(async () =>
+                {
+                    Capture.StopRecording();
+                    await WaitForCaptureThreadAsync(Capture).ConfigureAwait(false);
+                }).ConfigureAwait(false);
             }
             finally
             {
                 Capture.DataAvailable -= OnDataAvailable;
                 Capture.RecordingStopped -= OnRecordingStopped;
-                Capture.Dispose();
+                await ContainEngineCallAsync(() => { Capture.Dispose(); return Task.CompletedTask; }).ConfigureAwait(false);
+                if (drain) await _pump.DrainAsync().ConfigureAwait(false);
+                else _pump.Discard();
                 DisposeWriter();
             }
         }
@@ -747,6 +780,32 @@ public sealed class AudioCaptureService : IDisposable
                 _writer = null;
             }
         }
+    }
+
+    /// <summary>NAudio delivers a final packet after StopRecording returns; wait (bounded) for its capture thread to end.</summary>
+    /// <summary>
+    /// MAC-19 (macOS 09f318ea/25d7148e): native engine teardown faults are contained, never propagated,
+    /// so a failed cleanup can't strand the session or block the replacement graph. Returns the fault.
+    /// </summary>
+    internal static async Task<Exception?> ContainEngineCallAsync(Func<Task> call)
+    {
+        try
+        {
+            await call().ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
+    }
+
+    internal static async Task WaitForCaptureThreadAsync(IWaveIn capture)
+    {
+        if (capture is not WasapiCapture wasapi) return;
+        var deadline = Stopwatch.StartNew();
+        while (wasapi.CaptureState != CaptureState.Stopped && deadline.ElapsedMilliseconds < 2_000)
+            await Task.Delay(5).ConfigureAwait(false);
     }
 
     private sealed class EndpointNotificationClient(AudioCaptureService owner) : IMMNotificationClient

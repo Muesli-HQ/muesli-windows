@@ -6,8 +6,8 @@ namespace Muesli.Windows.WinUI.Services;
 /// <summary>
 /// macOS Quill: highlight text, hold the Quill shortcut and say how to change it, release, and the
 /// selection is replaced with the rewrite. With nothing highlighted, the spoken request is written
-/// at the cursor. The instruction is transcribed locally; the rewrite goes to the signed-in
-/// ChatGPT account, the same account Computer Use and ChatGPT summaries use.
+/// at the cursor. The instruction is transcribed locally. The rewrite runs on this PC with Qwen Basic (macOS's
+/// default local backend), or goes to the signed-in ChatGPT account when the user chose it.
 /// </summary>
 public sealed class WinUiQuillContext : IDisposable
 {
@@ -19,6 +19,8 @@ public sealed class WinUiQuillContext : IDisposable
     private readonly GlobalHotkeyService _hotkey = new();
     private readonly WinRtClipboardAdapter _clipboard;
     private readonly ActiveAppPasteService _paste;
+    // Its own model instance: the dictation cleanup service may hold a different cleanup model.
+    private readonly NativeTextCleanupService _writer;
     private CancellationTokenSource? _run;
     private IntPtr _target;
     private bool _listening;
@@ -36,8 +38,23 @@ public sealed class WinUiQuillContext : IDisposable
         _clipboard = new WinRtClipboardAdapter(dispatcher);
         _paste = new ActiveAppPasteService(_clipboard, new NativeWindowActivationAdapter(),
             new NativeKeyboardInputAdapter(() => _settings.Load().PasteShortcut));
+        _writer = new NativeTextCleanupService(_log);
         _dictation.Changed += OnDictationChanged;
     }
+
+    /// <summary>
+    /// Why Quill can't run with its selected backend, or null. macOS gates Quill on its own model, not on hosted
+    /// dictation credentials: local needs the general model downloaded, ChatGPT needs a sign-in.
+    /// </summary>
+    public static string? Unavailable(MuesliSettings settings, bool chatGptSignedIn) =>
+        QuillBackends.Normalize(settings.QuillBackend) == QuillBackends.ChatGpt
+            ? chatGptSignedIn ? null : "Sign in to ChatGPT in Settings to use Quill with ChatGPT."
+            : LocalModelPath() is null
+                ? "Quill's on-device model isn't downloaded. Download Qwen Basic Cleanup in Models → Cleanup, or choose ChatGPT for Quill in Shortcuts."
+                : null;
+
+    private static string? LocalModelPath() =>
+        CleanupModelCatalog.ResolveInstalledModelPath(QuillBackends.LocalModelId);
 
     public event EventHandler? Changed;
     public string Status { get; private set; } = "";
@@ -75,7 +92,7 @@ public sealed class WinUiQuillContext : IDisposable
         if (_listening || _running || _starting) return;
         Outcome = null;
         var settings = _settings.Load();
-        if (!_computerUse.ChatGpt.IsSignedIn) { Fail("Sign in to ChatGPT in Settings to use Quill."); return; }
+        if (Unavailable(settings, _computerUse.ChatGpt.IsSignedIn) is { } unavailable) { Fail(unavailable); return; }
         if (_dictation.IsRecording || _dictation.IsBusy) { Fail("Finish the active dictation first."); return; }
         // The app the user is editing; Muesli itself never becomes the target.
         _target = _paste.CaptureForegroundWindow();
@@ -117,8 +134,15 @@ public sealed class WinUiQuillContext : IDisposable
             await FocusedTextSelection.WaitForModifiersReleasedAsync(TimeSpan.FromSeconds(1), run.Token);
             var selected = await ReadSelectionAsync(run.Token);
             Report(selected.Length > 0 ? "Rewriting…" : "Writing…");
-            var replacement = await QuillTransformation.TransformAsync(selected, instruction,
-                (system, user, token) => MeetingSummaryService.CompleteWithChatGptAsync(system, user, null, token), run.Token);
+            var local = QuillBackends.Normalize(_settings.Load().QuillBackend) == QuillBackends.Local;
+            var replacement = local
+                ? await QuillTransformation.TransformAsync(selected, instruction,
+                    (system, user, token) => _writer.GenerateAsync(
+                        LocalModelPath() ?? throw new QuillException("The selected Quill model is not downloaded or configured."),
+                        system, user, token),
+                    run.Token, QuillBackends.LocalMaximumInputCharacters)
+                : await QuillTransformation.TransformAsync(selected, instruction,
+                    (system, user, token) => MeetingSummaryService.CompleteWithChatGptAsync(system, user, null, token), run.Token);
             run.Token.ThrowIfCancellationRequested();
             await _paste.PasteTextAsync(replacement, _target, run.Token);
             Outcome = new(selected.Length > 0 ? "Rewrote the selection" : "Inserted text", true);
@@ -208,5 +232,6 @@ public sealed class WinUiQuillContext : IDisposable
         _run?.Cancel();
         _run?.Dispose();
         _hotkey.Dispose();
+        _writer.Dispose();
     }
 }

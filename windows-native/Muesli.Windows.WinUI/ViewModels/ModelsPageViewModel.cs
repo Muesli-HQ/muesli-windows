@@ -142,7 +142,15 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
     private void SetActive(ModelVariantItem? item)
     {
         if (item is null || !item.IsReady) return;
-        _models.SetActive(item.Id, forMeetings: RoleIndex == 1);
+        try
+        {
+            _models.SetActive(item.Id, forMeetings: RoleIndex == 1);
+        }
+        catch (InvalidOperationException exception)
+        {
+            ShowStatus(exception.Message, ModelStatusTone.Error);
+            return;
+        }
         Reload();
         ShowStatus($"{item.DisplayName} is now active for {RoleLabel}.");
     }
@@ -205,10 +213,11 @@ public partial class ModelsPageViewModel : ObservableObject, IDisposable
     {
         try
         {
+            var meter = new ModelTransferMeter();
             var progress = new Progress<ModelDownloadProgress>(value =>
             {
                 _progressByModel[item.Id] = value.Percent;
-                StatusMessage = $"{item.DisplayName}: {value.DisplayText}";
+                StatusMessage = $"{item.DisplayName}: {meter.Describe(value)}";
                 StatusTone = ModelStatusTone.Informational;
                 IsStatusOpen = true;
                 Reload();
@@ -670,7 +679,7 @@ public sealed partial class ModelVariantItem : ObservableObject
         CanVerify = snapshot.CanVerify;
         CanDelete = snapshot.CanDelete && !(isSelectedForDictation || isSelectedForMeetings);
         IsReady = snapshot.Status is TranscriptionModelStatus.Ready or TranscriptionModelStatus.Selected;
-        CanSetActive = !isActive && IsReady;
+        CanSetActive = !isActive && IsReady && TranscriptionModelCatalog.IsSupportedOnThisPc(snapshot.Model);
         ProgressPercent = progressPercent;
         OnPropertyChanged(string.Empty);
     }
