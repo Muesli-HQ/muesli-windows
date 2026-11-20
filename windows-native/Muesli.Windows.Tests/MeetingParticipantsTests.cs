@@ -26,6 +26,21 @@ public sealed class MeetingParticipantsTests
     }
 
     [Fact]
+    public void ClearingAllMeetingsRemovesEveryonesDetails()
+    {
+        var root = Directory.CreateTempSubdirectory("muesli-people").FullName;
+        try
+        {
+            MeetingParticipants.Add(root, "m1", "Ada", "ada@example.com");
+            MeetingParticipants.Clear(root);
+            Assert.False(File.Exists(MeetingParticipants.PathFor(root)));
+            Assert.Empty(MeetingParticipants.Load(root, "m1"));
+            MeetingParticipants.Clear(root); // nothing left to delete is fine
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public void PromptRosterSkipsEmailsAndEscapesNames()
     {
         Assert.Equal(["Ada", "B<b>"], MeetingParticipants.NamesForPrompt(["Ada", "ada", "x@y.com", "123", "B<b>"]));

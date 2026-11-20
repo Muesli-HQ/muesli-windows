@@ -100,4 +100,35 @@ public static class CuaSafety
             return "Muesli does not use the Windows Run dialog.";
         return null;
     }
+
+    /// <summary>Start menu names for blocked tools whose name differs from their process.</summary>
+    private static readonly HashSet<string> BlockedStartAppNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Command Prompt", "Windows PowerShell", "Windows PowerShell ISE", "Terminal", "Windows Terminal",
+        "Registry Editor", "Windows Security", "Run",
+    };
+
+    /// <summary>
+    /// The deny-list for a Start menu entry, checked before it is launched. Its id is either an
+    /// executable path ("…\powershell.exe") or a package app id ("Microsoft.WindowsTerminal_8wekyb3d8bbwe!App").
+    /// </summary>
+    public static string? BlockReasonForStartApp(string name, string id)
+    {
+        // "Developer Command Prompt for VS 2022", "Developer PowerShell for VS 2022".
+        if (BlockedStartAppNames.Contains(name.Trim()) ||
+            name.StartsWith("Developer Command Prompt", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("Developer PowerShell", StringComparison.OrdinalIgnoreCase))
+            return BlockReason("cmd", "");
+        var package = id.Split('!')[0].Split('_')[0];
+        foreach (var candidate in new[]
+                 {
+                     name.Replace(" ", ""),
+                     Path.GetFileNameWithoutExtension(id),
+                     package[(package.LastIndexOf('.') + 1)..],
+                 })
+        {
+            if (candidate.Length > 0 && BlockReason(candidate, "") is { } reason) return reason;
+        }
+        return null;
+    }
 }

@@ -294,6 +294,19 @@ public sealed class CuaRuntimeTests
     }
 
     [Fact]
+    public void BlockedStartMenuAppsAreRefusedBeforeLaunch()
+    {
+        Assert.NotNull(CuaSafety.BlockReasonForStartApp("Command Prompt", @"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\cmd.exe"));
+        Assert.NotNull(CuaSafety.BlockReasonForStartApp("Windows PowerShell", @"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe"));
+        Assert.NotNull(CuaSafety.BlockReasonForStartApp("Terminal", "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"));
+        Assert.NotNull(CuaSafety.BlockReasonForStartApp("Developer Command Prompt for VS 2022", @"C:\vs\Common7\Tools\VsDevCmd.lnk"));
+        Assert.NotNull(CuaSafety.BlockReasonForStartApp("KeePassXC", @"C:\Program Files\KeePassXC\KeePassXC.exe"));
+        Assert.NotNull(CuaSafety.BlockReasonForStartApp("ChatGPT", "OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0!ChatGPT"));
+        Assert.Null(CuaSafety.BlockReasonForStartApp("Notepad", "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"));
+        Assert.Null(CuaSafety.BlockReasonForStartApp("Calculator", "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"));
+    }
+
+    [Fact]
     public void CatalogIsWellFormed()
     {
         var tools = CuaCatalog.ResponsesTools();

@@ -145,6 +145,23 @@ public sealed class CuaPlannerTests
         Assert.True(auth.IsSignedIn);
         auth.SignOut();
         Assert.False(auth.IsSignedIn);
+        Assert.False(secrets.IsConfigured("computer-use-chatgpt-auth/0"));
+    }
+
+    [Fact]
+    public void ComputerUseSignInLeavesTheMeetingNotesCredentialAlone()
+    {
+        var secrets = new InMemorySecretStore();
+        secrets.Write("chatgpt-auth", "1");      // ChatGptAuthManager's part count
+        secrets.Write("chatgpt-auth.0", "{}");
+        secrets.Write("chatgpt-auth/0", "old");  // a part an earlier Computer Use build left behind
+        var auth = new ChatGptAuth(secrets, new HttpClient(new FakeHandler()), _ => { });
+        Assert.False(auth.IsSignedIn);
+        SaveTokens(secrets, new ChatGptAuth.Tokens("a", "r", DateTimeOffset.UtcNow.AddHours(1), "x"));
+        Assert.True(auth.IsSignedIn);
+        auth.SignOut();
+        Assert.Equal("1", secrets.Read("chatgpt-auth"));
+        Assert.True(secrets.IsConfigured("chatgpt-auth.0"));
         Assert.False(secrets.IsConfigured("chatgpt-auth/0"));
     }
 
@@ -172,8 +189,8 @@ public sealed class CuaPlannerTests
     {
         var json = JsonSerializer.Serialize(tokens);
         var parts = json.Chunk(1000).Select(chunk => new string(chunk)).ToArray();
-        for (var index = 0; index < parts.Length; index++) secrets.Write($"chatgpt-auth/{index}", parts[index]);
-        secrets.Write("chatgpt-auth", parts.Length.ToString());
+        for (var index = 0; index < parts.Length; index++) secrets.Write($"computer-use-chatgpt-auth/{index}", parts[index]);
+        secrets.Write("computer-use-chatgpt-auth", parts.Length.ToString());
     }
 
     private static string Jwt(string account) => $"h.{Encode(new { chatgpt_account_id = account, pad = new string('p', 1500) })}.s";

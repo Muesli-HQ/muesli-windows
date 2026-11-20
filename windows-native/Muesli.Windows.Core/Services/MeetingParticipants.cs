@@ -71,6 +71,12 @@ public static class MeetingParticipants
         }
     }
 
+    /// <summary>Deletes the whole file when all meeting history is cleared.</summary>
+    public static void Clear(string profileRoot)
+    {
+        lock (Gate) File.Delete(PathFor(profileRoot));
+    }
+
     /// <summary>macOS participantNamesForPrompt: unique, letter-bearing names, each and all bounded.</summary>
     public static IReadOnlyList<string> NamesForPrompt(IEnumerable<string> names)
     {

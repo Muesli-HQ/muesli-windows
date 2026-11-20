@@ -41,6 +41,12 @@ public static class MeetingImports
         }
     }
 
+    /// <summary>Deletes the whole file when all meeting history is cleared.</summary>
+    public static void Clear(string profileRoot)
+    {
+        lock (Gate) File.Delete(PathFor(profileRoot));
+    }
+
     private static Dictionary<string, MeetingImportProvenance> Read(string profileRoot)
     {
         try

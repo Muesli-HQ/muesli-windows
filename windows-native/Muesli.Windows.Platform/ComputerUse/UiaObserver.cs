@@ -279,6 +279,16 @@ public sealed class UiaObserver : IDisposable
         return cells.Distinct();
     }
 
+    /// <summary>
+    /// Whether keyboard focus is on a password field right now. Focus that cannot be read counts
+    /// as a password field, so typing fails closed.
+    /// </summary>
+    public bool FocusIsPassword()
+    {
+        try { return _automation.FocusedElement()?.Properties.IsPassword.ValueOrDefault == true; }
+        catch (Exception) { return true; }
+    }
+
     private CuaFocusedElement? FocusedElement(long windowId, int processId, CuaRect window, out string? selectedText, out string? documentText)
     {
         selectedText = null;

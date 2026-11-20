@@ -156,6 +156,8 @@ public sealed class WindowsDesktop : ICuaDesktop
         string launched;
         if (app.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(app))
         {
+            // The deny-list applies before anything starts, not only once a window appears.
+            if (CuaSafety.BlockReason(Path.GetFileNameWithoutExtension(app), "") is { } blocked) return CuaResult.Fail(blocked);
             Process.Start(new ProcessStartInfo(app) { UseShellExecute = true });
             launched = Path.GetFileNameWithoutExtension(app);
         }
@@ -163,6 +165,7 @@ public sealed class WindowsDesktop : ICuaDesktop
         {
             var match = MatchStartApp(app) ?? throw new InvalidOperationException(
                 $"No installed app named \"{app}\". Use list_apps to see installed app names.");
+            if (CuaSafety.BlockReasonForStartApp(match.Name, match.Id) is { } blocked) return CuaResult.Fail(blocked);
             Process.Start(new ProcessStartInfo("explorer.exe", $"shell:AppsFolder\\{match.Id}") { UseShellExecute = true });
             launched = match.Name;
         }
@@ -444,18 +447,24 @@ public sealed class WindowsDesktop : ICuaDesktop
     }
 
     /// <summary>Brings the app forward and, when an element is named, focuses it (clicking edit
-    /// surfaces so the caret lands inside).</summary>
+    /// surfaces so the caret lands inside). Whatever ends up focused is checked live, so a password
+    /// box focused earlier (or by the app itself) is refused even when no element is named.</summary>
     private void FocusForText(CuaToolCall call)
     {
         var window = PrepareInput(call);
-        if (call.ElementIndex is null) return;
-        var (element, info) = Element(call);
-        if (info.Label.Contains("password", StringComparison.Ordinal)) throw new InvalidOperationException("Muesli does not type into password fields.");
-        if (info.Label.Contains("focused", StringComparison.Ordinal)) return;
-        var (x, y) = Center(element, info);
-        if (Win32Desktop.RootWindowAt(x, y) == window.Id) WindowsInput.Click(x, y);
-        else element.Focus();
-        Thread.Sleep(80);
+        if (call.ElementIndex is not null)
+        {
+            var (element, info) = Element(call);
+            if (info.Label.Contains("password", StringComparison.Ordinal)) throw new InvalidOperationException("Muesli does not type into password fields.");
+            if (!info.Label.Contains("focused", StringComparison.Ordinal))
+            {
+                var (x, y) = Center(element, info);
+                if (Win32Desktop.RootWindowAt(x, y) == window.Id) WindowsInput.Click(x, y);
+                else element.Focus();
+                Thread.Sleep(80);
+            }
+        }
+        if (_observer.FocusIsPassword()) throw new InvalidOperationException("Muesli does not type into password fields.");
     }
 
     private CuaResult PressKey(CuaToolCall call)

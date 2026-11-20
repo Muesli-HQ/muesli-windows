@@ -260,8 +260,16 @@ public sealed class WinUiLibraryContext : IDisposable
     public int ClearMeetings()
     {
         var count = History.LoadMeetings().Count;
-        if (count == 0) return 0;
-        History.SaveMeetings([], afterExplicitDeletion: true);
+        if (count > 0) History.SaveMeetings([], afterExplicitDeletion: true);
+        // The people and import details (names, emails, workspaces) go with the meetings they describe.
+        foreach (var clear in new Action<string>[] { MeetingParticipants.Clear, MeetingImports.Clear })
+        {
+            try { clear(Profile.RootDirectory); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                new AppLogService().Error("Cleared meeting details could not be removed from disk.", exception);
+            }
+        }
         return count;
     }
 

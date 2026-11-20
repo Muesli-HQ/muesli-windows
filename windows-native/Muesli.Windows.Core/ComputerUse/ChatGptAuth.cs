@@ -22,7 +22,11 @@ public sealed class ChatGptAuth(ISecretStore secrets, HttpClient http, Action<Ur
     private const string AuthorizeUrl = "https://auth.openai.com/oauth/authorize";
     private const string TokenUrl = "https://auth.openai.com/oauth/token";
     private const string RedirectUri = "http://localhost:1455/auth/callback";
-    private const string SecretKey = "chatgpt-auth";
+    // Not "chatgpt-auth": meeting notes' ChatGptAuthManager owns that key with differently named
+    // parts, and sharing it let either sign-in overwrite the other's part count.
+    private const string SecretKey = "computer-use-chatgpt-auth";
+    // Parts an earlier build stored as "chatgpt-auth/<n>"; removed so no old refresh token lingers.
+    private const string LegacyPartPrefix = "chatgpt-auth/";
     private const int ChunkLength = 1000;
 
     private readonly SemaphoreSlim _refresh = new(1, 1);
@@ -155,10 +159,17 @@ public sealed class ChatGptAuth(ISecretStore secrets, HttpClient http, Action<Ur
 
     private Tokens? Load()
     {
+        DeleteLegacyParts();
         if (!int.TryParse(secrets.Read(SecretKey), out var count) || count <= 0) return null;
         var json = string.Concat(Enumerable.Range(0, count).Select(index => secrets.Read($"{SecretKey}/{index}")));
         try { return JsonSerializer.Deserialize<Tokens>(json); }
         catch (JsonException) { return null; }
+    }
+
+    private void DeleteLegacyParts()
+    {
+        for (var index = 0; index < 64 && secrets.IsConfigured($"{LegacyPartPrefix}{index}"); index++)
+            secrets.Delete($"{LegacyPartPrefix}{index}");
     }
 
     private void Save(Tokens tokens)
