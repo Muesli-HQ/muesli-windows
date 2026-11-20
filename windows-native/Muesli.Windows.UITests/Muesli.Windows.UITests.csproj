@@ -20,6 +20,10 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <!-- Only for seeding fixtures through the legacy JSON importer; the app under test is a separate process. -->
+    <ProjectReference Include="..\Muesli.Windows.Core\Muesli.Windows.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

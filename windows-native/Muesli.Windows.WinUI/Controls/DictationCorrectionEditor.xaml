@@ -10,7 +10,7 @@
                  IsSpellCheckEnabled="False" TextChanged="Replacement_Changed"
                  AutomationProperties.Name="Replacement text" AutomationProperties.AutomationId="CorrectionReplacement" />
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-            <CheckBox x:Name="RememberBox" Content="Remember for future transcriptions" IsChecked="True"
+            <CheckBox x:Name="RememberBox" Content="Remember for future transcriptions" IsChecked="False"
                       FontSize="12" MinHeight="26" Padding="8,0,0,0" VerticalContentAlignment="Center"
                       Unchecked="Remember_Unchecked" AutomationProperties.AutomationId="CorrectionRemember"
                       ToolTipService.ToolTip="Apply this correction to future output. Manage remembered corrections in Dictionary." />

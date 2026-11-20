@@ -15,6 +15,10 @@ internal static class MuesliCommandHost
     {
         try
         {
+            // A data-only developer command: it must not touch the recognizer or the settings.
+            if (Has(args, "--import-legacy-history"))
+                return RunLegacyHistoryImport(args);
+
             // The execution provider must be chosen before the first native recognizer exists.
             // --provider wins so a CPU/GPU benchmark pair can be produced from one machine; when it
             // is absent the persisted product setting is used, matching the WinUI app.
@@ -52,6 +56,29 @@ internal static class MuesliCommandHost
             Console.Error.WriteLine(exception.Message);
             return 1;
         }
+    }
+
+    /// <summary>
+    /// One-time import of the JSON history kept by development builds. The profile root is always
+    /// named explicitly: this command never guesses which profile to act on. It only reads the JSON
+    /// files and refuses to run when the profile already has a library database.
+    /// </summary>
+    private static int RunLegacyHistoryImport(string[] args)
+    {
+        var profileRoot = Path.GetFullPath(RequiredOption(args, "--profile-root"));
+        var dataDirectory = Path.Combine(profileRoot, "data");
+        Console.WriteLine($"Importing JSON history from {dataDirectory}");
+        var result = Muesli.Windows.Services.Persistence.LegacyJsonHistoryImporter.Import(dataDirectory);
+        foreach (var warning in result.Warnings) Console.WriteLine($"warning: {warning}");
+        if (!result.Succeeded)
+        {
+            Console.Error.WriteLine(result.Message);
+            return 1;
+        }
+
+        Console.WriteLine(result.Message);
+        Console.WriteLine($"Library database: {result.DatabasePath}");
+        return 0;
     }
 
     private static IDisposable? ApplyPowerMode(string? mode)
@@ -566,6 +593,7 @@ internal static class MuesliCommandHost
             --diagnose-native [--audio <wav>] [--model <id>] [--runs <n>] [--output <json>]
             --benchmark-native --audio <wav> [--reference <txt>] [--model <id>] [--runs <n>] [--output <json>]
             --benchmark-meeting [--mic-audio <path>] [--system-audio <path>] [--model <id>] [--runs <n>] [--output <json>]
+            --import-legacy-history --profile-root <profile folder>
 
           Every command accepts --provider auto|cpu|cuda to pin the execution provider for a run.
           """;

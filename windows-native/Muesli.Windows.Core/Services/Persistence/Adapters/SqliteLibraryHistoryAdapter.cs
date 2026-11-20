@@ -4,34 +4,36 @@ namespace Muesli.Windows.Services.Persistence;
 
 /// <summary>
 /// SQLite-backed <see cref="ILibraryHistoryAdapter"/>. The production composition root opens it
-/// only after <see cref="PersistenceCutover.EnsureMigrated"/> succeeds. All structured library data lives here.
+/// only after <see cref="LibraryDatabaseStartup.Prepare"/> reports the database ready. All structured library data lives here.
 /// </summary>
 public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibrarySearchAdapter, ILibraryFolderAdapter, IDictationTextEditor, IAtomicDictationCorrectionStore, IDisposable
 {
     private readonly MuesliPersistenceStore _store;
-    private readonly string _jsonDirectory;
     private readonly bool _ownsStore;
     private bool _disposed;
 
     public SqliteLibraryHistoryAdapter(
         MuesliPersistenceStore store,
-        string jsonDirectory,
         bool ownsStore = false, string? warning = null)
     {
         ArgumentNullException.ThrowIfNull(store);
-        ArgumentException.ThrowIfNullOrWhiteSpace(jsonDirectory);
         _store = store;
-        _jsonDirectory = Path.GetFullPath(jsonDirectory);
         _ownsStore = ownsStore;
         LastWarning = warning;
     }
 
-    /// <summary>Opens <c>muesli.db</c> beside the JSON history directory.</summary>
-    public static SqliteLibraryHistoryAdapter Open(string jsonDirectory, string? warning = null)
+    /// <summary>Opens the existing <c>muesli.db</c> in a profile's data directory.</summary>
+    public static SqliteLibraryHistoryAdapter Open(string dataDirectory, string? warning = null)
     {
-        var store = new MuesliPersistenceStore(MuesliDatabase.OpenExisting(PersistencePaths.DatabasePathFor(jsonDirectory)));
-        return new SqliteLibraryHistoryAdapter(store, jsonDirectory, ownsStore: true, warning: warning);
+        var store = new MuesliPersistenceStore(MuesliDatabase.OpenExisting(PersistencePaths.DatabasePathFor(dataDirectory)));
+        return new SqliteLibraryHistoryAdapter(store, ownsStore: true, warning: warning);
     }
+
+    /// <summary>
+    /// Raised after a dictation or meeting was explicitly deleted and the deletion committed.
+    /// The host uses it to replace database backups that still contain the deleted content.
+    /// </summary>
+    public event Action? ContentDeleted;
 
     public MuesliPersistenceStore Store => _store;
 
@@ -51,28 +53,24 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         ArgumentNullException.ThrowIfNull(dictation);
         using var transaction = _store.BeginTransaction();
         _store.Dictations.Upsert(LibraryHistoryMapper.ToRecord(dictation));
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "dictations");
         transaction.Commit();
     }
 
     public void SaveDictations(IEnumerable<PersistedDictation> dictations, bool afterExplicitDeletion = false)
     {
         var incoming = dictations.ToList();
+        var contentDeleted = false;
         using var transaction = _store.BeginTransaction();
         if (afterExplicitDeletion)
         {
             var keep = incoming.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-            var deleted = new HashSet<string>(StringComparer.Ordinal);
             foreach (var existing in _store.Dictations.List(UnboundedHistoryQuery.Dictations))
             {
                 if (!keep.Contains(existing.Id))
                 {
-                    _store.Dictations.Delete(existing.Id);
-                    deleted.Add(existing.Id);
+                    contentDeleted |= _store.Dictations.Delete(existing.Id);
                 }
             }
-
-            LegacyLibraryRecovery.RemoveRecords(_jsonDirectory, JsonHistorySnapshotReader.DictationsFileName, deleted);
         }
 
         foreach (var dictation in incoming)
@@ -88,8 +86,8 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
                 });
         }
 
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "dictations");
         transaction.Commit();
+        if (contentDeleted) ContentDeleted?.Invoke();
     }
 
     public bool TryUpdateDictationText(string id, string expectedText, string replacementText)
@@ -104,7 +102,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
             WordCount = Muesli.Windows.Core.Insights.LibraryMetrics.CountWords(replacementText),
             UpdatedAtUtc = DateTimeOffset.UtcNow
         });
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "dictations");
         transaction.Commit();
         return true;
     }
@@ -173,9 +170,8 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
     {
         using var transaction = _store.BeginTransaction();
         if (!_store.Dictations.Delete(id)) return false;
-        LegacyLibraryRecovery.RemoveRecords(_jsonDirectory, JsonHistorySnapshotReader.DictationsFileName, new HashSet<string> { id });
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "delete-dictation");
         transaction.Commit();
+        ContentDeleted?.Invoke();
         return true;
     }
 
@@ -185,9 +181,8 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         foreach (var link in _store.Meetings.ListFollowUpsLinkedTo(id).Where(link => link.Id == $"meeting_thread_{id}"))
             _store.Meetings.DeleteFollowUp(link.Id);
         if (!_store.Meetings.Delete(id)) return false;
-        LegacyLibraryRecovery.RemoveRecords(_jsonDirectory, JsonHistorySnapshotReader.MeetingsFileName, new HashSet<string> { id });
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "delete-meeting");
         transaction.Commit();
+        ContentDeleted?.Invoke();
         return true;
     }
 
@@ -198,21 +193,18 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
     public void SaveMeetings(IEnumerable<PersistedMeeting> meetings, bool afterExplicitDeletion = false)
     {
         var incoming = meetings.ToList();
+        var contentDeleted = false;
         using var transaction = _store.BeginTransaction();
         if (afterExplicitDeletion)
         {
             var keep = incoming.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-            var deleted = new HashSet<string>(StringComparer.Ordinal);
             foreach (var existing in _store.Meetings.List(UnboundedHistoryQuery.Meetings))
             {
                 if (!keep.Contains(existing.Id))
                 {
-                    _store.Meetings.Delete(existing.Id);
-                    deleted.Add(existing.Id);
+                    contentDeleted |= _store.Meetings.Delete(existing.Id);
                 }
             }
-
-            LegacyLibraryRecovery.RemoveRecords(_jsonDirectory, JsonHistorySnapshotReader.MeetingsFileName, deleted);
         }
 
         foreach (var meeting in incoming)
@@ -255,8 +247,8 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
             }
         }
 
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "meetings");
         transaction.Commit();
+        if (contentDeleted) ContentDeleted?.Invoke();
     }
 
     public IReadOnlyList<PersistedMeetingFolder> LoadMeetingFolders() =>
@@ -266,7 +258,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
     {
         using var transaction = _store.BeginTransaction();
         _store.Folders.Move(id, newParentId);
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "move-folder");
         transaction.Commit();
     }
 
@@ -274,8 +265,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
     {
         using var transaction = _store.BeginTransaction();
         var removed = _store.Folders.Delete(id, FolderDeleteMode.Detach);
-        if (removed) LegacyLibraryRecovery.RemoveRecords(_jsonDirectory, JsonHistorySnapshotReader.FoldersFileName, new HashSet<string> { id });
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "delete-folder");
         transaction.Commit();
         return removed;
     }
@@ -297,16 +286,13 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         if (afterExplicitDeletion)
         {
             var keep = incoming.Select(folder => folder.Id).ToHashSet(StringComparer.Ordinal);
-            var deleted = new HashSet<string>(StringComparer.Ordinal);
             foreach (var existing in _store.Folders.List())
             {
                 if (!keep.Contains(existing.Id))
                 {
                     _store.Folders.Delete(existing.Id, FolderDeleteMode.Detach);
-                    deleted.Add(existing.Id);
                 }
             }
-            LegacyLibraryRecovery.RemoveRecords(_jsonDirectory, JsonHistorySnapshotReader.FoldersFileName, deleted);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -326,7 +312,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
             });
         }
 
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "folders");
         transaction.Commit();
     }
 
@@ -335,12 +320,7 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
     public void SaveDictionary(IEnumerable<DictionaryEntryRecord> entries)
     {
         using var transaction = _store.BeginTransaction();
-        var incoming = entries.ToList();
-        var keep = incoming.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-        var deleted = _store.Dictionary.List().Where(entry => !keep.Contains(entry.Id)).Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-        _store.Dictionary.Replace(incoming);
-        LegacyLibraryRecovery.RemoveRecords(_jsonDirectory, PersistenceCutover.DictionaryFileName, deleted);
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "dictionary");
+        _store.Dictionary.Replace(entries.ToList());
         transaction.Commit();
     }
 
@@ -352,16 +332,13 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         var incoming = templates.ToList();
         using var transaction = _store.BeginTransaction();
         var keep = incoming.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-        var deleted = new HashSet<string>(StringComparer.Ordinal);
         foreach (var existing in _store.Templates.List())
         {
             if (!keep.Contains(existing.Id))
             {
                 _store.Templates.Delete(existing.Id);
-                deleted.Add(existing.Id);
             }
         }
-        LegacyLibraryRecovery.RemoveRecords(_jsonDirectory, JsonHistorySnapshotReader.TemplatesFileName, deleted);
 
         for (var index = 0; index < incoming.Count; index++)
         {
@@ -370,7 +347,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
                 LibraryHistoryMapper.ToRecord(template, index, _store.Templates.Find(template.Id)));
         }
 
-        PersistenceCutoverState.MarkFirstPostCutoverWrite(_store.Database, "templates");
         transaction.Commit();
     }
 

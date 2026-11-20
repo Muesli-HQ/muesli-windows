@@ -31,6 +31,7 @@ public sealed class DictationCorrectionAutomationTests
             Assert.Empty(DictionaryEntries(session));
             SendKeys.SendWait("{HOME}^a");
             SetReplacement(session, " Vathsan ");
+            SetRemember(session, true);
             SendKeys.SendWait("{ENTER}");
             WaitUntil(() => Value(session.RequireAutomationId("DictationText")) == "  Vathsan  ");
             var entry = Assert.Single(DictionaryEntries(session));
@@ -110,7 +111,8 @@ public sealed class DictationCorrectionAutomationTests
             AssertSelection(text, "Vatsan");
             Assert.Equal("Vatsan", Value(Find(session, "CorrectionReplacement")));
             Assert.Equal("CorrectionReplacement", AutomationElement.FocusedElement.Current.AutomationId);
-            Assert.Equal(ToggleState.On, Toggle(Find(session, "CorrectionRemember")).Current.ToggleState);
+            // A correction changes only this dictation unless the user asks for it to be remembered.
+            Assert.Equal(ToggleState.Off, Toggle(Find(session, "CorrectionRemember")).Current.ToggleState);
             SetReplacement(session, "Cancelled");
             SendKeys.SendWait("{ESC}");
             WaitUntil(() => TryFind(session, "CorrectionReplacement") is null);
@@ -127,6 +129,7 @@ public sealed class DictationCorrectionAutomationTests
             AssertSelection(text, "Vatsan");
             Assert.Equal("Vatsan", Value(Find(session, "CorrectionReplacement")));
             SetReplacement(session, "Vathsan");
+            SetRemember(session, true);
             var popover = Find(session, "CorrectionPopover");
             Assert.True(popover.Current.BoundingRectangle.Width / session.CurrentDpiScale < 350);
             Assert.True(popover.Current.BoundingRectangle.Height / session.CurrentDpiScale < 95);
@@ -141,12 +144,12 @@ public sealed class DictationCorrectionAutomationTests
             text.SetFocus();
             ((TextPattern)text.GetCurrentPattern(TextPattern.Pattern)).DocumentRange.FindText("Vatsan", false, false).Select();
             SetReplacement(session, "Guest");
+            SetRemember(session, true);
             SendKeys.SendWait("{ENTER}");
             Assert.Contains("different remembered replacement", Find(session, "CorrectionFeedback").Current.Name);
             Assert.Equal(ToggleState.Off, Toggle(Find(session, "CorrectionReplaceConflict")).Current.ToggleState);
             Assert.Equal("Vatsan, meet Vathsan! 👩🏽‍💻", Value(text));
-            Find(session, "CorrectionRemember").SetFocus();
-            SendKeys.SendWait(" ");
+            SetRemember(session, false);
             SendKeys.SendWait("{ENTER}");
             WaitUntil(() => Value(session.RequireAutomationId("DictationText")) == "Guest, meet Vathsan! 👩🏽‍💻");
             Assert.Equal("Vathsan", Assert.Single(DictionaryEntries(session)).GetProperty("replacement").GetString());
@@ -192,6 +195,14 @@ public sealed class DictationCorrectionAutomationTests
 
     private static void AssertSelection(AutomationElement element, string expected) =>
         WaitUntil(() => Assert.Single(((TextPattern)element.GetCurrentPattern(TextPattern.Pattern)).GetSelection()).GetText(-1) == expected);
+    private static void SetRemember(MuesliWinUiSession session, bool remember)
+    {
+        var toggle = Toggle(Find(session, "CorrectionRemember"));
+        if ((toggle.Current.ToggleState == ToggleState.On) != remember) toggle.Toggle();
+        // Enter is handled by the editor, so keyboard focus goes back to the replacement box.
+        Find(session, "CorrectionReplacement").SetFocus();
+    }
+
     private static string Value(AutomationElement e) => ((ValuePattern)e.GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
     private static void SetReplacement(MuesliWinUiSession session, string value)
     {

@@ -158,7 +158,7 @@ public sealed class DictationCorrectionService(ILibraryHistoryAdapter history)
         }
         catch
         {
-            // A write can throw after committing (e.g. SQLite's dictionary cutover bookkeeping).
+            // A legacy store has two durable boundaries, so a write can throw after the first committed.
             // Restore only our exact candidate; never overwrite a newer value during compensation.
             if (dictionaryAttempted)
             {

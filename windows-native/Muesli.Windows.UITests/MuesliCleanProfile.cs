@@ -117,6 +117,20 @@ internal sealed class MuesliCleanProfile : IDisposable
             SeedPopulatedFixture();
         else if (SeedDeterministicMeeting)
             SeedMeetingDetailFixture();
+        if (SeedPopulatedData || SeedDeterministicMeeting)
+            ImportSeededHistory();
+    }
+
+    /// <summary>
+    /// The fixtures are written as JSON because that is the readable way to author them. The app
+    /// only opens a SQLite library, so they are imported with the same developer importer that
+    /// converts a real pre-SQLite profile.
+    /// </summary>
+    public void ImportSeededHistory()
+    {
+        var result = Muesli.Windows.Services.Persistence.LegacyJsonHistoryImporter.Import(
+            Path.Combine(MuesliRoot, "data"));
+        Assert.True(result.Succeeded, result.Message);
     }
 
     private void RecoverInterruptedSwap()

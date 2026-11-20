@@ -288,7 +288,7 @@ public sealed class DictationCorrectionTests
         public HistoryFixture(bool sqlite)
         {
             _sqlite = sqlite;
-            if (sqlite) new PersistenceCutover(_root).EnsureMigrated();
+            if (sqlite) Assert.True(LibraryDatabaseStartup.Prepare(_root).IsReady);
             History = Open();
         }
         private ILibraryHistoryAdapter Open() => _sqlite ? SqliteLibraryHistoryAdapter.Open(_root) : new JsonLibraryHistoryAdapter(new AppDataStore(_root));

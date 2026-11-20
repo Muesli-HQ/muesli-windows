@@ -135,10 +135,12 @@ public static partial class DictionaryCorrectionService
             .Where(match => match.Index >= start && match.Index + match.Length <= start + length).ToList();
         if (matches.Count is 0 or > 12 || matches[0].Index != start ||
             matches[^1].Index + matches[^1].Length != start + length) return false;
-        // No discarded punctuation: a remembered phrase must mean the same thing to the matcher.
+        // No discarded punctuation, and only the spacing the matcher itself accepts between words:
+        // a phrase joined by a non-breaking space would be saved as a rule that never matches.
         for (var i = 1; i < matches.Count; i++)
-            if (!text.AsSpan(matches[i - 1].Index + matches[i - 1].Length,
-                    matches[i].Index - matches[i - 1].Index - matches[i - 1].Length).IsWhiteSpace()) return false;
+            foreach (var character in text.AsSpan(matches[i - 1].Index + matches[i - 1].Length,
+                         matches[i].Index - matches[i - 1].Index - matches[i - 1].Length))
+                if (character is not (' ' or '\t' or '\r' or '\n')) return false;
         return true;
     }
 
@@ -238,6 +240,14 @@ public static partial class DictionaryCorrectionService
     private static string PreserveSimpleCasing(string replacement, string source)
     {
         if (source.Length == 0 || replacement.Length == 0)
+        {
+            return replacement;
+        }
+
+        // A replacement that carries its own capitals (iPhone, GitHub, McKinsey) is written exactly
+        // as the user typed it. Only an all-lower-case replacement follows the source's leading
+        // capital, so "there -> their" still yields "Their" at the start of a sentence.
+        if (replacement.Any(char.IsUpper))
         {
             return replacement;
         }

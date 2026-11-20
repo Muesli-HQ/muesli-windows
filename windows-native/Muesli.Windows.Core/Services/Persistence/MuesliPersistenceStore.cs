@@ -10,7 +10,7 @@ public static class PersistencePaths
 {
     public const string DatabaseFileName = "muesli.db";
 
-    /// <summary>The JSON history directory this store migrates from: %APPDATA%\muesli\data.</summary>
+    /// <summary>The active profile's data directory, for example %APPDATA%\muesli\data.</summary>
     public static string DefaultDataDirectory =>
         Muesli.Windows.Core.Profiles.MuesliProfilePaths.Current().DataDirectory;
 
@@ -23,8 +23,8 @@ public static class PersistencePaths
 /// <summary>
 /// The persistence layer's entry point: one database and the repositories over it.
 /// <para>
-/// The production composition root opens this store after verified initialization/cutover.
-/// SQLite owns all live structured library data; legacy JSON is recovery/import input only.
+/// The production composition root opens this store once LibraryDatabaseStartup reports it ready.
+/// SQLite owns all structured library data. See database-schema.md at the repository root.
 /// </para>
 /// </summary>
 public sealed class MuesliPersistenceStore : IDisposable

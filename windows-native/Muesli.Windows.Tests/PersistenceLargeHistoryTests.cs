@@ -221,7 +221,7 @@ public sealed class PersistenceLargeHistoryTests : IClassFixture<LargeHistoryFix
     {
         // Roll the fixture back after measurement so other search expectations remain independent.
         using var transaction = _fixture.Store.BeginTransaction();
-        using var adapter = new SqliteLibraryHistoryAdapter(_fixture.Store, Path.GetDirectoryName(_fixture.DatabasePath)!);
+        using var adapter = new SqliteLibraryHistoryAdapter(_fixture.Store);
         var original = _fixture.Store.Dictations.Find("dictation-004242")!;
         var elapsed = Fastest(() =>
         {

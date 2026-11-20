@@ -54,6 +54,7 @@ public static class JsonHistorySnapshotReader
     public const string FoldersFileName = "windows-meeting-folders.json";
     public const string TemplatesFileName = "windows-meeting-templates.json";
     public const string LibraryMutationFileName = "windows-library-mutation.json";
+    public const string DictionaryFileName = "windows-dictionary.json";
 
     /// <summary>
     /// Matches <see cref="AtomicJsonFile"/>'s serializer settings. The two must agree: this reader
@@ -141,10 +142,10 @@ public static class JsonHistorySnapshotReader
     {
         var problems = new List<SnapshotProblem>();
         var newest = DateTimeOffset.UnixEpoch;
-        var entries = ReadArray(directory, PersistenceCutover.DictionaryFileName, problems, ref newest,
+        var entries = ReadArray(directory, DictionaryFileName, problems, ref newest,
             element => element.Deserialize<DictionaryEntryRecord>(JsonOptions));
         try { SqliteDictionaryRepository.Validate(entries); }
-        catch (PersistenceException exception) { problems.Add(new(PersistenceCutover.DictionaryFileName, exception.Message, true)); }
+        catch (PersistenceException exception) { problems.Add(new(DictionaryFileName, exception.Message, true)); }
         return new JsonHistorySnapshot { Dictionary = entries, Problems = problems };
     }
 

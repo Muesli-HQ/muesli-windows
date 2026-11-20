@@ -111,6 +111,7 @@ internal sealed class MuesliWinUiSession : IDisposable
             {
                 new { id = "correction-ui", timestamp = DateTime.UtcNow, text, durationMs = 1200, modelProfile = "ui-test" }
             }));
+            profile.ImportSeededHistory();
             return LaunchPackaged(profile);
         }
         catch { profile.Dispose(); throw; }
