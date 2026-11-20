@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Muesli.Windows.WinUI.Controls.DictationCorrectionEditor"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    KeyDown="Editor_KeyDown" AutomationProperties.Name="Correct selected text"
+    AutomationProperties.AutomationId="CorrectionPopover">
+    <StackPanel Width="320" Spacing="6">
+        <TextBox x:Name="ReplacementBox" FontSize="14" MinHeight="34" Padding="10,6" MaxLength="200"
+                 IsSpellCheckEnabled="False" TextChanged="Replacement_Changed"
+                 AutomationProperties.Name="Replacement text" AutomationProperties.AutomationId="CorrectionReplacement" />
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <CheckBox x:Name="RememberBox" Content="Remember for future transcriptions" IsChecked="False"
+                      FontSize="12" MinHeight="26" Padding="8,0,0,0" VerticalContentAlignment="Center"
+                      Unchecked="Remember_Unchecked" AutomationProperties.AutomationId="CorrectionRemember"
+                      ToolTipService.ToolTip="Apply this correction to future output. Manage remembered corrections in Dictionary." />
+            <TextBlock Grid.Column="1" Text="Enter to save" FontSize="11" VerticalAlignment="Center"
+                       Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
+        </Grid>
+        <TextBlock x:Name="FeedbackText" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap"
+                   Foreground="{ThemeResource MuesliDestructiveTextBrush}"
+                   AutomationProperties.LiveSetting="Assertive" AutomationProperties.AutomationId="CorrectionFeedback" />
+        <CheckBox x:Name="ReplaceConflictBox" Content="Replace the existing dictionary correction"
+                  FontSize="12" MinHeight="26" Padding="8,0,0,0" VerticalContentAlignment="Center"
+                  Visibility="Collapsed" AutomationProperties.AutomationId="CorrectionReplaceConflict" />
+    </StackPanel>
+</UserControl>

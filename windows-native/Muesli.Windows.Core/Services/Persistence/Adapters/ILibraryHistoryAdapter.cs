@@ -1,13 +1,10 @@
 namespace Muesli.Windows.Services.Persistence;
 
 /// <summary>
-/// FeatureRuntime-facing history contract. The production composition root selects the JSON
-/// adapter while the L27 gate is off and the SQLite adapter after a verified cutover.
+/// Library history contract. Production always selects SQLite after verified initialization.
 /// </summary>
 /// <remarks>
-/// Dictionary entries have no SQLite repository today. A repository-backed adapter must keep
-/// serving dictionary reads and writes (delegating to JSON until a dictionary table exists) so
-/// FeatureRuntime does not grow a second store path.
+/// Legacy JSON adapters remain available for migration/import compatibility and isolated fixtures.
 /// </remarks>
 public interface ILibraryHistoryAdapter
 {
@@ -42,4 +39,10 @@ public interface ILibraryFolderAdapter
     void MoveMeetingFolder(string id, string? newParentId);
 
     bool DeleteMeetingFolder(string id);
+}
+
+/// <summary>Compare-and-swap text only; never recreates a deleted row or replaces recording metadata.</summary>
+public interface IDictationTextEditor
+{
+    bool TryUpdateDictationText(string id, string expectedText, string replacementText);
 }

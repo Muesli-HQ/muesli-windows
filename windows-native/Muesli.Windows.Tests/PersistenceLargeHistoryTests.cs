@@ -216,6 +216,27 @@ public sealed class PersistenceLargeHistoryTests : IClassFixture<LargeHistoryFix
         Assert.Equal(_fixture.Result.SourceFingerprint, result.SourceFingerprint);
     }
 
+    [Fact]
+    public void AtomicCorrectionTouchesOneRecordAndMeetsTheExistingOperationBudget()
+    {
+        // Roll the fixture back after measurement so other search expectations remain independent.
+        using var transaction = _fixture.Store.BeginTransaction();
+        using var adapter = new SqliteLibraryHistoryAdapter(_fixture.Store);
+        var original = _fixture.Store.Dictations.Find("dictation-004242")!;
+        var elapsed = Fastest(() =>
+        {
+            var result = adapter.SaveCorrection(original.Id, original.Text, original.Text + " corrected",
+                "test original", "test replacement");
+            Assert.True(result.Succeeded, result.Message);
+            Assert.True(adapter.TryUpdateDictationText(original.Id, original.Text + " corrected", original.Text));
+            return result;
+        });
+        Assert.True(elapsed < SearchBudget, $"One-record correction took {elapsed.TotalMilliseconds:F0} ms.");
+        Assert.Equal(LargeHistoryFixture.DictationCount, _fixture.Store.Dictations.Count());
+        Assert.Equal(LargeHistoryFixture.MeetingCount, _fixture.Store.Meetings.Count());
+        Assert.Single(adapter.LoadDictionary());
+    }
+
     private static TimeSpan Fastest<T>(Func<T> work)
     {
         // The first call warms the page cache and prepares the statement; neither is what the

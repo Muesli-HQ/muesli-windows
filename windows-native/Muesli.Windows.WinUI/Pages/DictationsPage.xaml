@@ -223,22 +223,34 @@
                                                 <DataTemplate x:DataType="vm:DictationListItem">
                                                     <!--
                                                         macOS DictationRowView: 80pt monospaced time, a 20pt
-                                                        gap, the text at reading size over three lines, and
+                                                        gap, fully selectable text at reading size, and
                                                         copy/delete revealed on hover. No duration column:
                                                         macOS never prints one on a dictation row.
                                                     -->
                                                     <Grid>
                                                         <Grid ColumnDefinitions="80,*,Auto" ColumnSpacing="20" Padding="20,16">
                                                             <TextBlock Text="{x:Bind TimeLabel}" Style="{StaticResource MuesliTimestampStyle}" FontWeight="Medium" VerticalAlignment="Top" Margin="0,2,0,0" />
-                                                            <TextBlock Grid.Column="1"
+                                                            <TextBox Grid.Column="1"
                                                                        Text="{x:Bind Text}"
+                                                                       Tag="{x:Bind}"
+                                                                       IsReadOnly="True"
+                                                                       SelectionHighlightColorWhenNotFocused="{ThemeResource MuesliAccentMutedBrush}"
+                                                                       AcceptsReturn="True"
+                                                                       IsSpellCheckEnabled="False"
+                                                                       IsTextPredictionEnabled="False"
+                                                                       Loaded="DictationText_Loaded"
+                                                                       SelectionChanged="DictationText_SelectionChanged"
+                                                                       AutomationProperties.Name="Saved dictation text"
+                                                                       AutomationProperties.AutomationId="DictationText"
+                                                                       ToolTipService.ToolTip="Highlight a word or phrase to correct it."
+                                                                       Background="Transparent"
+                                                                       BorderThickness="0"
+                                                                       Padding="0"
+                                                                       MinHeight="0"
                                                                        FontFamily="{StaticResource MuesliFontFamily}"
                                                                        FontSize="15"
-                                                                       LineHeight="23"
                                                                        Foreground="{ThemeResource MuesliTextPrimaryBrush}"
-                                                                       TextWrapping="Wrap"
-                                                                       MaxLines="3"
-                                                                       TextTrimming="CharacterEllipsis" />
+                                                                       TextWrapping="Wrap" />
                                                             <StackPanel x:Name="RowActions"
                                                                         Grid.Column="2"
                                                                         Orientation="Horizontal"

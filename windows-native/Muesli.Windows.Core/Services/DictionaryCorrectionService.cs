@@ -125,6 +125,25 @@ public static partial class DictionaryCorrectionService
     private static IReadOnlyList<string> TokenizePhrase(string phrase) =>
         WordToken().Matches(phrase.Trim()).Select(match => match.Value).ToList();
 
+    // Use the matcher's own tokenization for conflict detection, including legacy entries whose
+    // punctuation/spacing is ignored by the matcher. Case-only replacement differences still matter.
+    internal static string PhraseKey(string phrase) => string.Join(" ", TokenizePhrase(phrase)).ToUpperInvariant();
+
+    internal static bool CanRememberSelection(string text, int start, int length)
+    {
+        var matches = WordToken().Matches(text).Cast<Match>()
+            .Where(match => match.Index >= start && match.Index + match.Length <= start + length).ToList();
+        if (matches.Count is 0 or > 12 || matches[0].Index != start ||
+            matches[^1].Index + matches[^1].Length != start + length) return false;
+        // No discarded punctuation, and only the spacing the matcher itself accepts between words:
+        // a phrase joined by a non-breaking space would be saved as a rule that never matches.
+        for (var i = 1; i < matches.Count; i++)
+            foreach (var character in text.AsSpan(matches[i - 1].Index + matches[i - 1].Length,
+                         matches[i].Index - matches[i - 1].Index - matches[i - 1].Length))
+                if (character is not (' ' or '\t' or '\r' or '\n')) return false;
+        return true;
+    }
+
     private static double ConservativeThreshold(string expected, double configured)
     {
         var length = expected.Length;
@@ -225,12 +244,20 @@ public static partial class DictionaryCorrectionService
             return replacement;
         }
 
+        // A replacement that carries its own capitals (iPhone, GitHub, McKinsey) is written exactly
+        // as the user typed it. Only an all-lower-case replacement follows the source's leading
+        // capital, so "there -> their" still yields "Their" at the start of a sentence.
+        if (replacement.Any(char.IsUpper))
+        {
+            return replacement;
+        }
+
         return char.IsUpper(source[0])
             ? char.ToUpperInvariant(replacement[0]) + replacement[1..]
             : replacement;
     }
 
-    [GeneratedRegex(@"[\p{L}\p{N}]+(?:['\u2019-][\p{L}\p{N}]+)*", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"[\p{L}\p{N}][\p{L}\p{N}\p{M}]*(?:['\u2019-][\p{L}\p{N}][\p{L}\p{N}\p{M}]*)*", RegexOptions.CultureInvariant)]
     private static partial Regex WordToken();
 
     private sealed record Candidate(IReadOnlyList<string> PhraseTokens, string Replacement, double Threshold);

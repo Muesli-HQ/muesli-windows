@@ -14,7 +14,7 @@ namespace Muesli.Windows.WinUI.Services;
 public sealed class WinUiLibraryContext : IDisposable
 {
     private readonly IMuesliProfileLease? _profileLease;
-    private readonly AppDataStore _jsonStore;
+    private Task _backup = Task.CompletedTask;
 
     public WinUiLibraryContext(IMuesliProfilePaths paths)
     {
@@ -28,16 +28,18 @@ public sealed class WinUiLibraryContext : IDisposable
                 $"The WinUI profile is already in use: {paths.RootDirectory}");
         try
         {
-            _jsonStore = new AppDataStore(paths.DataDirectory);
-            if (PersistenceCutoverGate.IsEnabled || File.Exists(PersistencePaths.DatabasePathFor(paths.DataDirectory)))
-            {
-                var result = new PersistenceCutover(paths.DataDirectory).EnsureMigrated();
-                if (!result.Succeeded)
-                    throw new InvalidOperationException("Muesli history could not be opened. No history was changed.");
-                History = SqliteLibraryHistoryAdapter.Open(paths.DataDirectory);
-            }
-            else History = new JsonLibraryHistoryAdapter(_jsonStore);
+            // SQLite is the only history store. The check creates an empty database for a new
+            // profile and otherwise refuses with a reason the shell shows the user; it never
+            // reads or converts JSON history from earlier development builds.
+            var startup = LibraryDatabaseStartup.Prepare(paths.DataDirectory);
+            if (!startup.IsReady) throw new LibraryUnavailableException(startup);
+            var history = SqliteLibraryHistoryAdapter.Open(paths.DataDirectory);
+            History = history;
             Profile = paths;
+            // The database is the only copy of the history, so keep rolling copies of it. An
+            // explicit deletion replaces them: a backup must not keep text the user removed.
+            history.ContentDeleted += () => RunBackup(history, paths.DataDirectory, replaceAll: true);
+            RunBackup(history, paths.DataDirectory, replaceAll: false);
         }
         catch
         {
@@ -46,9 +48,33 @@ public sealed class WinUiLibraryContext : IDisposable
         }
     }
 
+    // One at a time, in order, off the UI thread: copying a large library takes a moment.
+    private void RunBackup(SqliteLibraryHistoryAdapter history, string dataDirectory, bool replaceAll) =>
+        _backup = _backup.ContinueWith(_ =>
+        {
+            try
+            {
+                if (replaceAll) LibraryDatabaseBackup.ReplaceAll(history.Store.Database, dataDirectory);
+                else LibraryDatabaseBackup.CreateIfDue(history.Store.Database, dataDirectory);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The app is closing; the next launch takes the backup.
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                                  or PersistenceException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                new AppLogService().Error($"Library backup failed. replaceAll={replaceAll}; reason={exception.GetType().Name}");
+            }
+        }, TaskScheduler.Default);
+
     public IMuesliProfilePaths Profile { get; }
 
     public ILibraryHistoryAdapter History { get; }
+
+    public DictationCorrectionResult CorrectDictation(DictationCorrectionSelection selection, string replacement,
+        bool remember, IReadOnlyList<DictionaryEntryRecord>? confirmedConflicts = null) =>
+        new DictationCorrectionService(History).Save(selection, replacement, remember, confirmedConflicts);
 
     /// <summary>
     /// Permanently removes one dictation from the active profile. The privacy-sensitive
@@ -58,6 +84,7 @@ public sealed class WinUiLibraryContext : IDisposable
     public bool DeleteDictation(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        if (History is SqliteLibraryHistoryAdapter sqlite) return sqlite.DeleteDictation(id);
         var dictations = History.LoadDictations().ToList();
         var removed = dictations.RemoveAll(item =>
             string.Equals(item.Id, id, StringComparison.Ordinal)) > 0;
@@ -111,14 +138,10 @@ public sealed class WinUiLibraryContext : IDisposable
     public bool DeleteMeeting(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        if (History is SqliteLibraryHistoryAdapter sqlite)
-            foreach (var link in sqlite.Store.Meetings.ListFollowUpsLinkedTo(id).Where(link => link.Id == $"meeting_thread_{id}"))
-                sqlite.Store.Meetings.DeleteFollowUp(link.Id);
-        var meetings = History.LoadMeetings().ToList();
-        var meeting = meetings.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
+        var meeting = FindMeeting(id);
         if (meeting is null) return false;
-        meetings.Remove(meeting);
-        History.SaveMeetings(meetings, afterExplicitDeletion: true);
+        if (History is SqliteLibraryHistoryAdapter sqlite) sqlite.DeleteMeeting(id);
+        else History.SaveMeetings(History.LoadMeetings().Where(item => item.Id != id), afterExplicitDeletion: true);
         // macOS deletes the saved recording with the meeting. Only Muesli-owned capture files under
         // recordings/<id> are touched; imported originals are never deleted.
         var cleanup = new CaptureStorageService(Profile.CaptureDirectory).DeleteOwnedMeetingAudio(
@@ -280,6 +303,10 @@ public sealed class WinUiLibraryContext : IDisposable
 
     public void Dispose()
     {
+        // Let a backup that is being written finish: closing the database under it would leave
+        // the profile without the copy it was about to get.
+        try { _backup.Wait(TimeSpan.FromSeconds(30)); }
+        catch (AggregateException) { /* already logged by the backup itself */ }
         (History as IDisposable)?.Dispose();
         _profileLease?.Dispose();
     }

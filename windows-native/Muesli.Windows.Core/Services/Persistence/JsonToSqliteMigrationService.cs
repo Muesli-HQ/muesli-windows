@@ -63,12 +63,6 @@ public sealed record JsonToSqliteMigrationResult
 
     public string? Failure { get; init; }
 
-    /// <summary>
-    /// Dated copy of the JSON history files taken before import. Null when there was nothing to copy.
-    /// L27 does not delete this directory; retention is a later point.
-    /// </summary>
-    public string? JsonSnapshotDirectory { get; init; }
-
     public bool Succeeded => Outcome is JsonMigrationOutcome.Migrated
         or JsonMigrationOutcome.AlreadyCurrent
         or JsonMigrationOutcome.NothingToMigrate;
@@ -95,19 +89,16 @@ public sealed class JsonToSqliteMigrationService
     private readonly string _jsonDirectory;
     private readonly string _databasePath;
     private readonly Action<string>? _report;
-    private readonly Func<bool>? _validateDatabasePathBeforeOpen;
 
     public JsonToSqliteMigrationService(
         string jsonDirectory,
         string? databasePath = null,
-        Action<string>? report = null,
-        Func<bool>? validateDatabasePathBeforeOpen = null)
+        Action<string>? report = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(jsonDirectory);
         _jsonDirectory = Path.GetFullPath(jsonDirectory);
         _databasePath = Path.GetFullPath(databasePath ?? PersistencePaths.DatabasePathFor(jsonDirectory));
         _report = report;
-        _validateDatabasePathBeforeOpen = validateDatabasePathBeforeOpen;
     }
 
     public string DatabasePath => _databasePath;
@@ -139,8 +130,8 @@ public sealed class JsonToSqliteMigrationService
     }
 
     /// <summary>
-    /// Imports an already captured plan. The cutover path calls this overload so the migration does
-    /// not read live JSON a second time after it has calculated the authority fingerprint.
+    /// Imports an already built plan. <see cref="LegacyJsonHistoryImporter"/> calls this overload so
+    /// the history is read from disk once and the dictionary is imported from that same snapshot.
     /// </summary>
     internal JsonToSqliteMigrationResult Migrate(
         MigrationPlan plan,
@@ -159,15 +150,9 @@ public sealed class JsonToSqliteMigrationService
             };
         }
 
-        var databaseExisted = _validateDatabasePathBeforeOpen?.Invoke() ?? File.Exists(_databasePath);
+        var databaseExisted = File.Exists(_databasePath);
         string? backupPath = null;
         var resumed = false;
-
-        if (_validateDatabasePathBeforeOpen is not null &&
-            _validateDatabasePathBeforeOpen() != databaseExisted)
-        {
-            throw new IOException("The SQLite history path changed while the migration was starting.");
-        }
 
         using (var database = MuesliDatabase.Open(_databasePath))
         {
@@ -246,7 +231,7 @@ public sealed class JsonToSqliteMigrationService
                 }
                 catch (Exception)
                 {
-                    _report?.Invoke("The failed migration transaction could not be reopened; no cutover was activated.");
+                    _report?.Invoke("The failed migration transaction could not be rolled back cleanly; nothing was imported.");
                 }
             }
             finally

@@ -25,6 +25,15 @@ public sealed class PersistenceSchemaException : PersistenceException
     }
 }
 
+/// <summary>Thrown when a database has a schema that did not come from a released Muesli build.</summary>
+public sealed class UnsupportedDatabaseException : PersistenceException
+{
+    public UnsupportedDatabaseException(string message)
+        : base(message)
+    {
+    }
+}
+
 /// <summary>
 /// A unit of work. Commit is explicit: disposing without committing rolls back, so an exception
 /// escaping a using block can never leave a half-written meeting behind.
@@ -71,7 +80,11 @@ public sealed class MuesliDatabase : IDisposable
     /// Opens (creating if needed) the database at <paramref name="databasePath"/> and brings it to
     /// the current schema.
     /// </summary>
-    public static MuesliDatabase Open(string databasePath)
+    public static MuesliDatabase Open(string databasePath) => OpenFile(databasePath, create: true);
+
+    public static MuesliDatabase OpenExisting(string databasePath) => OpenFile(databasePath, create: false);
+
+    private static MuesliDatabase OpenFile(string databasePath, bool create)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         var fullPath = Path.GetFullPath(databasePath);
@@ -82,7 +95,7 @@ public sealed class MuesliDatabase : IDisposable
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = fullPath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
+            Mode = create ? SqliteOpenMode.ReadWriteCreate : SqliteOpenMode.ReadWrite,
             Cache = SqliteCacheMode.Private,
             ForeignKeys = true,
 
@@ -115,6 +128,9 @@ public sealed class MuesliDatabase : IDisposable
         try
         {
             connection.Open();
+            // Before any pragma: switching the journal mode rewrites the file header, and a
+            // database this build refuses must be left byte-for-byte as it was found.
+            RejectForeignDatabase(connection);
             Configure(connection, isFileDatabase);
             SchemaMigrator.Migrate(connection, PersistenceSchema.Migrations);
             return new MuesliDatabase(connection, databasePath, isFileDatabase);
@@ -123,6 +139,23 @@ public sealed class MuesliDatabase : IDisposable
         {
             connection.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// A database that already has a schema but not Muesli's application id was written by an
+    /// unreleased development build (their version numbers overlap this schema's) or is not a
+    /// Muesli library at all. Migrating it would be a guess, so it is refused untouched.
+    /// </summary>
+    private static void RejectForeignDatabase(SqliteConnection connection)
+    {
+        if (SchemaMigrator.ReadVersion(connection) == 0) return;
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA application_id;";
+        if (Convert.ToInt32(command.ExecuteScalar() ?? 0) != PersistenceSchema.ApplicationId)
+        {
+            throw new UnsupportedDatabaseException(
+                "This database was written by a pre-release Muesli build and cannot be opened by this one.");
         }
     }
 

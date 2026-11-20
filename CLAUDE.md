@@ -43,5 +43,5 @@ submission remain release gates.
 - Local transcription is the default and must fail closed when its selected model is unavailable.
 - Microphone and meeting-loopback capture must always be explicit and visibly disclosed.
 - Never add fake history or placeholder product data.
-- Preserve compatibility with existing `%APPDATA%\muesli` history and settings.
+- Library history lives in SQLite (`data\muesli.db`); read `database-schema.md` before changing persistence. Never edit a shipped schema version; add a new numbered migration. Preserve compatibility with existing settings files. JSON history from pre-release builds is imported once with `scripts\import-legacy-history.ps1`, never by the app.
 - Keep the retired WPF product shell out of the active solution and release path.

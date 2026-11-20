@@ -43,7 +43,7 @@ public sealed class WinUiProductionIntegrationTests
         var profile = MuesliProfilePaths.Isolated(directory.Path);
         var json = new AppDataStore(profile.DataDirectory);
         json.SaveDictations([new PersistedDictation("dictation", DateTime.Now, "retained text", 1000, TranscriptionModelCatalog.DefaultModelId)]);
-        Assert.True(new PersistenceCutover(profile.DataDirectory).EnsureMigrated().Succeeded);
+        Assert.True(LegacyJsonHistoryImporter.Import(profile.DataDirectory).Succeeded);
         using (var library = new WinUiLibraryContext(profile))
         {
             Assert.IsType<SqliteLibraryHistoryAdapter>(library.History);
@@ -62,7 +62,7 @@ public sealed class WinUiProductionIntegrationTests
         var first = new PersistedDictation("first", DateTime.UtcNow.AddMinutes(-1), "first text", 1000, "parakeet-v3");
         var second = new PersistedDictation("second", DateTime.UtcNow, "second text", 2000, "parakeet-v3");
         new AppDataStore(profile.DataDirectory).SaveDictations([first]);
-        Assert.True(new PersistenceCutover(profile.DataDirectory).EnsureMigrated().Succeeded);
+        Assert.True(LegacyJsonHistoryImporter.Import(profile.DataDirectory).Succeeded);
 
         using (var library = new WinUiLibraryContext(profile))
         {
