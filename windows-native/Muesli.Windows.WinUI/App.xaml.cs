@@ -65,6 +65,9 @@ public partial class App : Application
 
     public static MeetingLiveTranscriptWindow LiveTranscript { get; private set; } = null!;
 
+    internal static TelemetryDeckClient? Telemetry { get; private set; }
+    private static readonly System.Net.Http.HttpClient TelemetryHttp = new() { Timeout = TimeSpan.FromSeconds(5) };
+
     private AppInstance? _mainInstance;
     private SingleInstanceCoordinator? _desktopInstance;
     private MeetingAutoStopTracker? _autoStop;
@@ -181,6 +184,15 @@ public partial class App : Application
         // is created: the packaged CPU and the optional CUDA sherpa builds cannot be mixed inside
         // one process, so a provider change is applied on the next launch.
         var startupSettings = Settings.Load();
+        var testTelemetry = MuesliDevSlot.Current != null ||
+            !string.Equals(Library.Profile.RootDirectory, MuesliProfilePaths.Production().RootDirectory, StringComparison.OrdinalIgnoreCase);
+#if DEBUG
+        testTelemetry = true;
+#endif
+        var telemetry = new TelemetryDeckClient(Library.Profile.RootDirectory,
+            typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown", testTelemetry,
+            () => Settings.Load().ShareUsageAnalytics, TelemetryHttp);
+        Telemetry = telemetry;
         ExecutionProviderService.Configure(startupSettings.ExecutionProvider);
         NativeTextCleanupService.Configure(startupSettings.CleanupModelId);
         Themes.AccentPalette.Apply(startupSettings.RecordingColorHex);
@@ -349,6 +361,7 @@ public partial class App : Application
                 _desktopInstance?.Dispose();
         };
         Window.Activate();
+        _ = telemetry.SignalAsync(ProductEvent.AppLaunched);
         _log.Info($"Muesli WinUI starting. AppVersion={typeof(App).Assembly.GetName().Version}. Profile={Library.Profile.RootDirectory}.");
         Dictation.RegisterHotkey();
         ApplyMeetingDetection(Settings.Load().AutoMeetingDetectionEnabled);

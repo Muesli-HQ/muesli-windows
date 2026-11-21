@@ -297,6 +297,8 @@ public sealed class WinUiMeetingContext : IDisposable
         ActiveMeetingId = null;
         IsSourceMissing = false;
         var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
+        if (!unchangedSpeech && meeting.SessionState == MeetingSessionState.Completed)
+            _ = App.Telemetry?.SignalAsync(ProductEvent.MeetingCompleted);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -480,6 +482,7 @@ public sealed class WinUiMeetingContext : IDisposable
         };
         SaveMeeting(meeting);
         meeting = await FinalizeMeetingAsync(meeting, cancellationToken);
+        _ = App.Telemetry?.SignalAsync(ProductEvent.MeetingImported);
         RaiseChanged();
         return meeting;
     }
