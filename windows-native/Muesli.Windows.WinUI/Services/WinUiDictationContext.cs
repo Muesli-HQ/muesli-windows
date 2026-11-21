@@ -658,6 +658,7 @@ public sealed class WinUiDictationContext : IDisposable
                 result.DurationMs,
                 hostedText ? HostedDictationTranscriber.ModelLabel(result) : _coordinator.ModelId));
             persisted = true;
+            _ = App.Telemetry?.SignalAsync(ProductEvent.DictationCompleted);
             persistenceMs = stageStarted.ElapsedMilliseconds;
 
             if (_pasteTarget != IntPtr.Zero)

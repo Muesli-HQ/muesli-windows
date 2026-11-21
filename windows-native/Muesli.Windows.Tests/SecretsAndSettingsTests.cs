@@ -3,6 +3,23 @@ namespace Muesli.Windows.Tests;
 public sealed class SecretsAndSettingsTests
 {
     [Fact]
+    public void UsageAnalyticsDefaultsOnAndPreservesExplicitOptOutAfterRestart()
+    {
+        using var directory = new TestDirectory();
+        var path = directory.File("settings.json");
+        var store = new SettingsStore(path, new InMemorySecretStore());
+        Assert.True(store.Load().ShareUsageAnalytics);
+
+        File.WriteAllText(path, """{"schemaVersion":10}""");
+        var upgraded = store.Load();
+        Assert.True(upgraded.ShareUsageAnalytics);
+
+        store.Save(upgraded with { ShareUsageAnalytics = false });
+        var reopened = new SettingsStore(path, new InMemorySecretStore());
+        Assert.False(reopened.Load().ShareUsageAnalytics);
+    }
+
+    [Fact]
     public void PostMeetingAutomationDefaultsAreSafeAndDisabled()
     {
         using var directory = new TestDirectory();
