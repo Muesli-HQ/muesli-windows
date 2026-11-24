@@ -29,6 +29,7 @@ public static class LibraryDatabaseBackup
     private const string FilePrefix = "muesli-";
     private const string FileSuffix = ".db";
     private const string PartialSuffix = ".partial";
+    private const string PurgeMarkerFileName = "purge-pending";
     private const string TimestampFormat = "yyyyMMdd-HHmmssfff";
 
     public static string DirectoryFor(string dataDirectory) =>
@@ -54,7 +55,11 @@ public static class LibraryDatabaseBackup
         return backups.OrderByDescending(backup => backup.CreatedAtUtc).ToList();
     }
 
-    /// <summary>Takes a backup unless the newest one is younger than <paramref name="interval"/>.</summary>
+    /// <summary>
+    /// Takes a backup unless the newest one is younger than <paramref name="interval"/>. When a
+    /// deletion's purge was recorded but never finished (the app was closed first), it is finished
+    /// here instead, whatever the age of the newest backup.
+    /// </summary>
     public static LibraryBackupInfo? CreateIfDue(
         MuesliDatabase database,
         string dataDirectory,
@@ -62,19 +67,25 @@ public static class LibraryDatabaseBackup
         int retainedCount = DefaultRetainedCount,
         DateTimeOffset? now = null)
     {
+        if (PurgePendingSince(dataDirectory) is not null) return ReplaceAll(database, dataDirectory);
         var moment = now ?? DateTimeOffset.UtcNow;
         var newest = List(dataDirectory).FirstOrDefault();
         if (newest is not null && moment - newest.CreatedAtUtc < (interval ?? DefaultInterval)) return null;
         return Create(database, dataDirectory, retainedCount, moment);
     }
 
-    /// <summary>Takes a backup now and removes the oldest ones beyond <paramref name="retainedCount"/>.</summary>
-    public static LibraryBackupInfo Create(
+    /// <summary>
+    /// Takes a backup now and removes the oldest ones beyond <paramref name="retainedCount"/>.
+    /// Returns null, keeping nothing, when a deletion was recorded while the copy was being made:
+    /// that copy may still hold the deleted content.
+    /// </summary>
+    public static LibraryBackupInfo? Create(
         MuesliDatabase database,
         string dataDirectory,
         int retainedCount = DefaultRetainedCount,
         DateTimeOffset? now = null)
     {
+        var startedAtUtc = DateTime.UtcNow;
         ArgumentNullException.ThrowIfNull(database);
         ArgumentOutOfRangeException.ThrowIfLessThan(retainedCount, 1);
         var directory = DirectoryFor(dataDirectory);
@@ -93,6 +104,7 @@ public static class LibraryDatabaseBackup
         try
         {
             database.BackupTo(partial);
+            if (PurgePendingSince(dataDirectory) is { } deletedAtUtc && deletedAtUtc >= startedAtUtc) return null;
             File.Move(partial, path);
         }
         finally
@@ -112,22 +124,70 @@ public static class LibraryDatabaseBackup
     /// Removes every backup, then takes a fresh one. Called after an explicit deletion so the
     /// deleted text does not survive in an older copy.
     /// </summary>
-    public static LibraryBackupInfo ReplaceAll(MuesliDatabase database, string dataDirectory)
+    public static LibraryBackupInfo? ReplaceAll(MuesliDatabase database, string dataDirectory)
     {
+        var pendingSince = PurgePendingSince(dataDirectory);
         DeleteAll(dataDirectory);
-        return Create(database, dataDirectory);
+        var created = Create(database, dataDirectory);
+        // Clear the record only if no further deletion arrived meanwhile; otherwise the next run
+        // must purge again.
+        if (created is not null && pendingSince is not null && PurgePendingSince(dataDirectory) == pendingSince)
+        {
+            File.Delete(PurgeMarkerPath(dataDirectory));
+        }
+
+        return created;
     }
+
+    /// <summary>
+    /// Records, durably and at once, that an explicit deletion happened and every existing backup
+    /// must go, then removes the backups it can. The record survives the app being closed or
+    /// killed, so the purge is finished on the next launch if it was not finished now.
+    /// </summary>
+    public static void RecordDeletionAndPurge(string dataDirectory)
+    {
+        var directory = DirectoryFor(dataDirectory);
+        Directory.CreateDirectory(directory);
+        var marker = PurgeMarkerPath(dataDirectory);
+        using (var stream = new FileStream(marker, FileMode.Create, FileAccess.Write, FileShare.Read, 1, FileOptions.WriteThrough))
+        {
+            stream.WriteByte((byte)'1');
+            stream.Flush(flushToDisk: true);
+        }
+
+        File.SetLastWriteTimeUtc(marker, DateTime.UtcNow);
+        DeleteAll(dataDirectory);
+    }
+
+    /// <summary>When a deletion's backup purge was recorded and has not finished, the time it was recorded.</summary>
+    public static DateTime? PurgePendingSince(string dataDirectory)
+    {
+        var marker = PurgeMarkerPath(dataDirectory);
+        return File.Exists(marker) ? File.GetLastWriteTimeUtc(marker) : null;
+    }
+
+    private static string PurgeMarkerPath(string dataDirectory) =>
+        Path.Combine(DirectoryFor(dataDirectory), PurgeMarkerFileName);
 
     public static int DeleteAll(string dataDirectory)
     {
         var directory = DirectoryFor(dataDirectory);
         if (!Directory.Exists(directory)) return 0;
-        DeletePartials(directory);
         var deleted = 0;
         foreach (var backup in List(dataDirectory))
         {
             File.Delete(backup.Path);
             deleted++;
+        }
+
+        try
+        {
+            DeletePartials(directory);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A copy still being written is locked. It is discarded by Create when it finishes,
+            // because the purge record is newer than its start.
         }
 
         return deleted;
@@ -152,7 +212,19 @@ public static class LibraryDatabaseBackup
             if (File.Exists(source)) File.Move(source, $"{databasePath}.replaced-{stamp}{suffix}");
         }
 
-        File.Copy(usable.Path, databasePath, overwrite: false);
+        // Copy under another name and rename, so an interrupted restore never leaves a partial
+        // file where the library is expected.
+        var staging = $"{databasePath}.restoring-{stamp}";
+        try
+        {
+            File.Copy(usable.Path, staging, overwrite: false);
+            File.Move(staging, databasePath);
+        }
+        finally
+        {
+            if (File.Exists(staging)) File.Delete(staging);
+        }
+
         return usable;
     }
 

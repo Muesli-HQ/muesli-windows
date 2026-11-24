@@ -314,7 +314,8 @@ but the database header and directory listings, and it never modifies a file it 
 | Database present and current | Ready. | The app. |
 | No database, legacy JSON history present | `LegacyHistoryNeedsImport`. Nothing is created. | A dialog naming the files and the import script. |
 | No database, backups present | `DatabaseMissing`. | A dialog offering to restore the newest backup. |
-| Database cannot be opened | `DatabaseUnreadable`. | A dialog; offers the newest good backup when there is one. |
+| No database, but `muesli.db-wal` or `muesli.db-shm` present | `DatabaseMissing`. Nothing is created: the orphaned log can hold recent history and a new database would make SQLite discard it. | A dialog naming the files; offers a backup when there is one. |
+| Database cannot be opened, or exists but is empty (no schema) | `DatabaseUnreadable`. An empty file is never given a schema. | A dialog; offers the newest good backup when there is one. |
 | Database from a newer Muesli | `DatabaseFromNewerBuild`. | A dialog saying to update Muesli. |
 | Database from a pre-release build | `DatabaseFromPreReleaseBuild`. | A dialog saying which files to move aside. |
 
@@ -335,9 +336,16 @@ copies in `data\backups\muesli-<UTC yyyyMMdd-HHmmssfff>.db`.
 - **Explicit deletion replaces the backups.** When the user deletes a dictation or meeting, or
   clears history, every backup is deleted and a fresh one is taken, so no copy keeps the deleted
   text. Do not add a deletion path that skips `SqliteLibraryHistoryAdapter.ContentDeleted`.
+- **The purge is durable.** Before the deletion returns, `RecordDeletionAndPurge` writes
+  `backups\purge-pending` to disk and deletes the existing copies. Only writing the replacement
+  runs in the background. If the app closes first, the next launch sees the record and finishes
+  the purge whatever the age of the newest backup. A copy that started before the deletion and
+  finishes after it is discarded, not kept. The record is removed once a clean replacement
+  exists.
 - `RestoreLatest` picks the newest backup that passes `PRAGMA quick_check`, renames the current
-  `muesli.db` (and its `-wal` and `-shm`) to `muesli.db.replaced-<timestamp>`, and copies the
-  backup into place. Nothing is deleted by a restore.
+  `muesli.db` (and its `-wal` and `-shm`) to `muesli.db.replaced-<timestamp>`, copies the backup
+  to `muesli.db.restoring-<timestamp>` and renames it into place, so an interrupted restore
+  never leaves a partial `muesli.db`. Nothing is deleted by a restore.
 
 Backups share the disk with the database. They protect against a damaged file or a bad
 upgrade, not against losing the disk.

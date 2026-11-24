@@ -83,6 +83,30 @@ public static class LibraryDatabaseStartup
 
         if (!File.Exists(databasePath))
         {
+            // A write-ahead log without its database is what is left when muesli.db was moved or
+            // lost after a crash. The log can hold the most recent history, and creating a new
+            // database beside it would make SQLite discard it.
+            var orphans = new[] { "-wal", "-shm" }
+                .Select(suffix => PersistencePaths.DatabaseFileName + suffix)
+                .Where(name => File.Exists(Path.Combine(directory, name)))
+                .ToList();
+            if (orphans.Count > 0)
+            {
+                return new LibraryStartupResult
+                {
+                    Outcome = LibraryStartupOutcome.DatabaseMissing,
+                    DatabasePath = databasePath,
+                    LatestBackup = latestBackup,
+                    Message =
+                        $"The Muesli library database is missing from {directory}, but part of it " +
+                        $"({string.Join(", ", orphans)}) is still there and may hold recent history. " +
+                        "Nothing was changed. If muesli.db was moved, put it back beside those files. " +
+                        (latestBackup is not null
+                            ? $"Otherwise a backup from {Describe(latestBackup)} is available."
+                            : "To start with an empty library instead, move those files out of the folder.")
+                };
+            }
+
             if (latestBackup is not null)
             {
                 return new LibraryStartupResult

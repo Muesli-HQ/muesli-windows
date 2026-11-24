@@ -38,7 +38,22 @@ public sealed class WinUiLibraryContext : IDisposable
             Profile = paths;
             // The database is the only copy of the history, so keep rolling copies of it. An
             // explicit deletion replaces them: a backup must not keep text the user removed.
-            history.ContentDeleted += () => RunBackup(history, paths.DataDirectory, replaceAll: true);
+            // The purge is recorded on disk and the old copies removed before the deletion returns
+            // to its caller; only writing the replacement copy is left to the background. If the
+            // app is closed first, the record makes the next launch finish the purge.
+            history.ContentDeleted += () =>
+            {
+                try
+                {
+                    LibraryDatabaseBackup.RecordDeletionAndPurge(paths.DataDirectory);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    new AppLogService().Error($"Library backups could not be purged after a deletion. reason={exception.GetType().Name}");
+                }
+
+                RunBackup(history, paths.DataDirectory, replaceAll: true);
+            };
             RunBackup(history, paths.DataDirectory, replaceAll: false);
         }
         catch

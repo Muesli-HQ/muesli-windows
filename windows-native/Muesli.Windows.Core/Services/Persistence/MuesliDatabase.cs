@@ -104,7 +104,7 @@ public sealed class MuesliDatabase : IDisposable
             Pooling = false
         };
 
-        return Create(builder.ToString(), fullPath, isFileDatabase: true);
+        return Create(builder.ToString(), fullPath, isFileDatabase: true, mustBeInitialized: !create);
     }
 
     /// <summary>A private in-memory database that lives exactly as long as this object.</summary>
@@ -122,12 +122,25 @@ public sealed class MuesliDatabase : IDisposable
         return Create(builder.ToString(), ":memory:", isFileDatabase: false);
     }
 
-    private static MuesliDatabase Create(string connectionString, string databasePath, bool isFileDatabase)
+    private static MuesliDatabase Create(
+        string connectionString,
+        string databasePath,
+        bool isFileDatabase,
+        bool mustBeInitialized = false)
     {
         var connection = new SqliteConnection(connectionString);
         try
         {
             connection.Open();
+            // An existing file with no schema is an empty or truncated file (an interrupted copy,
+            // for example), not a library. Stamping a schema onto it would present an empty
+            // library as if nothing were wrong, so only the create path may initialize.
+            if (mustBeInitialized && SchemaMigrator.ReadVersion(connection) == 0)
+            {
+                throw new PersistenceException(
+                    "The database file exists but is empty or was never initialized.");
+            }
+
             // Before any pragma: switching the journal mode rewrites the file header, and a
             // database this build refuses must be left byte-for-byte as it was found.
             RejectForeignDatabase(connection);
