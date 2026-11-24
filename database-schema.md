@@ -70,7 +70,7 @@ erDiagram
     search_documents ||--|| search_index : "rowid = doc_id"
 ```
 
-`templates`, `dictionary_entries`, `migration_runs` and `schema_migrations` stand alone.
+`templates`, `dictionary_entries` and `schema_migrations` stand alone.
 `search_documents` points at a dictation, meeting or folder through a logical
 `(record_kind, record_id)` pair, not a foreign key.
 
@@ -127,7 +127,7 @@ child rows so a history list never loads megabytes of transcript.
 | `final_transcript_owner_model_id` | TEXT | Model that owns the final transcript. |
 | `gap_recovery_model_id` | TEXT NULL | Model used to fill capture gaps, if any. |
 | `automation_result_json` | TEXT NULL | Post-meeting automation outcome, stored verbatim so unknown fields round-trip. |
-| `source_schema_version` | INTEGER | Meeting record schema the row was written with (`AppDataStore.CurrentMeetingSchemaVersion` for new rows). |
+| `source_schema_version` | INTEGER | Meeting record schema the row was written with (`PersistedMeeting.CurrentSchemaVersion` for new rows). |
 
 Indexes: `ix_meetings_created`, `ix_meetings_folder`, `ix_meetings_state`.
 
@@ -243,21 +243,6 @@ triggers. Any new write path must call the repository (or `SearchIndexWriter`) i
 transaction, or the record becomes unfindable. FTS5 also creates shadow tables
 (`search_index_data`, `search_index_idx`, ...). They belong to SQLite; never read or write them.
 
-### `migration_runs`
-
-A record of each run of the one-time JSON import (see [Legacy JSON history](#legacy-json-history)).
-A library that was never imported has no rows here.
-
-| Column | Type | Meaning |
-| --- | --- | --- |
-| `id` | TEXT PK | Run id. |
-| `source_fingerprint` | TEXT | Content hash of the JSON history that was imported. |
-| `state` | TEXT | `started`, `completed` or `failed`. |
-| `started_at_utc`, `completed_at_utc` | INTEGER | |
-| `dictation_count`, `meeting_count`, `folder_count`, `template_count` | INTEGER | Rows imported. |
-| `backup_path` | TEXT NULL | Unused by the importer, which only fills a new database. |
-| `failure` | TEXT NULL | Why a failed run failed. |
-
 ### `schema_migrations`
 
 One row per applied schema step: `version`, `description`, `applied_at_utc`. It is a readable
@@ -287,8 +272,7 @@ database to upgrade from.
 2. Make the step work on a database full of real data: add columns with a `DEFAULT` or as
    `NULL`, backfill in the same step, and rebuild a table only when SQLite cannot `ALTER` it.
 3. Update every place that names columns: the repository's `SELECT` and `INSERT` lists, the
-   record type in `PersistenceModels.cs`, `LibraryHistoryMapper`, and `PersistenceDigest` if the
-   field is user content.
+   record type in `PersistenceModels.cs` and `LibraryHistoryMapper`.
 4. If the field is searchable, extend `SearchIndexWriter` and the `search_index` definition, and
    rebuild the index in the migration step.
 5. Store new enums as strings through `PersistenceEnums` and new timestamps as ticks through
@@ -310,17 +294,20 @@ but the database header and directory listings, and it never modifies a file it 
 
 | Profile state | Outcome | What the user sees |
 | --- | --- | --- |
-| No database, no legacy JSON, no backups | An empty database is created. | The app, with an empty library. |
+| No database and no backups | An empty database is created. | The app, with an empty library. |
 | Database present and current | Ready. | The app. |
-| No database, legacy JSON history present | `LegacyHistoryNeedsImport`. Nothing is created. | A dialog naming the files and the import script. |
 | No database, backups present | `DatabaseMissing`. | A dialog offering to restore the newest backup. |
 | No database, but `muesli.db-wal` or `muesli.db-shm` present | `DatabaseMissing`. Nothing is created: the orphaned log can hold recent history and a new database would make SQLite discard it. | A dialog naming the files; offers a backup when there is one. |
 | Database cannot be opened, or exists but is empty (no schema) | `DatabaseUnreadable`. An empty file is never given a schema. | A dialog; offers the newest good backup when there is one. |
 | Database from a newer Muesli | `DatabaseFromNewerBuild`. | A dialog saying to update Muesli. |
 | Database from a pre-release build | `DatabaseFromPreReleaseBuild`. | A dialog saying which files to move aside. |
 
-In every refusal the app exits after the dialog. It never opens an empty library over history
-it can see, because that would look like data loss.
+In every refusal the app exits after the dialog. It never replaces a database, or the remains of
+one, with an empty library.
+
+Pre-release development builds kept history in `windows-*.json` files in the data folder. No
+released build ever did. This build does not read, convert or delete those files: a profile that
+has them and no database simply starts with an empty library.
 
 ## Backups
 
@@ -375,32 +362,6 @@ upgrade, not against losing the disk.
 | API keys and sign-in tokens | Windows Credential Manager | Secrets never go in the database or in JSON. |
 | Dictionary suggestions | Settings (`dictionarySuggestions`) | Pending suggestions, not rules. Accepted ones become `dictionary_entries`. |
 | Logs | `<profile>\logs\` | |
-
-## Legacy JSON history
-
-Development builds before the SQLite library kept history in `windows-dictations.json`,
-`windows-meetings.json`, `windows-meeting-folders.json`, `windows-meeting-templates.json`,
-`windows-dictionary.json` and `windows-library-mutation.json` in the `data` folder. No released
-build ever did.
-
-The app does not read, convert, rewrite or delete these files. When it finds them and no
-database it stops and says so. Converting them is a deliberate, one-time developer action:
-
-```powershell
-.\scripts\import-legacy-history.ps1 -ProfileRoot "$env:APPDATA\muesli"
-```
-
-That runs `Muesli.Windows.CommandHost --import-legacy-history`, which calls
-`LegacyJsonHistoryImporter`:
-
-- it only reads the JSON, and leaves every file byte-for-byte as it was;
-- it builds the database in a temporary file, verifies counts and content hashes against the
-  source, and only then moves it into place, so a failed import leaves no database;
-- it refuses to run when the profile already has a `muesli.db`.
-
-`AppDataStore`, `JsonLibraryHistoryAdapter`, `JsonHistorySnapshotReader`, `MigrationPlan`,
-`PersistenceDigest` and `JsonToSqliteMigrationService` exist to serve that importer and its
-tests. They are not a production storage mode. Do not add callers.
 
 ## Safe inspection
 

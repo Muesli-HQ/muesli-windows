@@ -1,6 +1,6 @@
 namespace Muesli.Windows.Services.Persistence;
 
-/// <summary>FeatureRuntime-facing search contract shared by JSON and SQLite history modes.</summary>
+/// <summary>FeatureRuntime-facing search contract of the library.</summary>
 public interface ILibrarySearchAdapter
 {
     IReadOnlyList<SearchHit> Search(SearchQuery query);

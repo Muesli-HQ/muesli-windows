@@ -52,7 +52,7 @@ public sealed partial class DictationCorrectionEditor : UserControl
         {
             var result = _save(ReplacementBox.Text, RememberBox.IsChecked == true,
                 ReplaceConflictBox.IsChecked == true ? _conflicts : null);
-            if (result.Succeeded || result.Outcome == DictationCorrectionOutcome.PartialFailure)
+            if (result.Succeeded)
             {
                 CloseRequested?.Invoke(true);
                 return;

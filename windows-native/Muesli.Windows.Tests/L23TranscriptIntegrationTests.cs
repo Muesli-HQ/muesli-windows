@@ -5,15 +5,15 @@ namespace Muesli.Windows.Tests;
 public sealed class L23TranscriptIntegrationTests
 {
     [Fact]
-    public void LibraryTranscriptMeetingStoreUsesTheActiveJsonAdapter()
+    public void LibraryTranscriptMeetingStoreUsesTheActiveAdapter()
     {
         using var directory = new TestDirectory();
-        var json = new AppDataStore(directory.Path);
-        var adapter = new JsonLibraryHistoryAdapter(json);
+
+        using var adapter = TestLibrary.Open(directory.Path);
         var bridge = new LibraryTranscriptMeetingStore(adapter);
         var meeting = new PersistedMeeting
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Id = "meeting-bridge",
             Title = "Bridge test",
             CreatedAt = new DateTime(2026, 8, 20, 9, 0, 0),
@@ -41,7 +41,7 @@ public sealed class L23TranscriptIntegrationTests
         File.WriteAllBytes(importedAudio, [1, 2, 3, 4]);
         var store = new MemoryStore(new PersistedMeeting
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Id = "meeting-owned",
             Title = "Imported meeting",
             CreatedAt = DateTime.UtcNow,

@@ -6,8 +6,8 @@ using Muesli.Windows.WinUI.Services;
 namespace Muesli.Windows.Tests;
 
 /// <summary>
-/// SQLite is the only history store: what a launch does with each state a profile can be in, the
-/// rolling backups, and the one-time developer import of JSON history.
+/// SQLite is the only history store: what a launch does with each state a profile can be in,
+/// and the rolling backups.
 /// </summary>
 public sealed class SqliteLibraryStorageTests
 {
@@ -33,8 +33,7 @@ public sealed class SqliteLibraryStorageTests
             adapter.AppendDictation(Dictation);
         }
 
-        // Nothing JSON-shaped is written for history, and no marker or snapshot is left behind.
-        Assert.Empty(LibraryDatabaseStartup.FindLegacyHistoryFiles(profile.DataDirectory));
+        // The only folder the library adds beside the database is its backups.
         Assert.DoesNotContain(Directory.EnumerateDirectories(profile.DataDirectory), path =>
             Path.GetFileName(path) != LibraryDatabaseBackup.DirectoryName);
         using var restarted = new WinUiLibraryContext(profile);
@@ -61,46 +60,6 @@ public sealed class SqliteLibraryStorageTests
         Assert.Contains("dictionary_entries", tables);
         Assert.DoesNotContain("persistence_cutover_state", tables);
         Assert.DoesNotContain("dictionary_import_state", tables);
-    }
-
-    [Theory]
-    [InlineData("windows-dictations.json")]
-    [InlineData("windows-meetings.json.bak")]
-    [InlineData("windows-dictionary.json")]
-    [InlineData("windows-meeting-templates.json.corrupt-20260101-000000000-abc.json")]
-    public void LegacyJsonHistoryWithoutADatabaseIsReportedAndNeverOpenedAsAnEmptyLibrary(string fileName)
-    {
-        using var directory = new TestDirectory();
-        File.WriteAllText(directory.File(fileName), "[]");
-        var before = File.ReadAllBytes(directory.File(fileName));
-
-        var result = LibraryDatabaseStartup.Prepare(directory.Path);
-
-        Assert.Equal(LibraryStartupOutcome.LegacyHistoryNeedsImport, result.Outcome);
-        Assert.Contains("import-legacy-history.ps1", result.Message);
-        Assert.Contains(fileName, result.Message);
-        Assert.False(File.Exists(PersistencePaths.DatabasePathFor(directory.Path)));
-        Assert.Equal(before, File.ReadAllBytes(directory.File(fileName)));
-        Assert.Equal(new[] { fileName }, Directory.EnumerateFiles(directory.Path).Select(Path.GetFileName));
-
-        var profile = MuesliProfilePaths.Isolated(directory.File("profile"));
-        Directory.CreateDirectory(profile.DataDirectory);
-        File.WriteAllText(Path.Combine(profile.DataDirectory, fileName), "[]");
-        var thrown = Assert.Throws<LibraryUnavailableException>(() => new WinUiLibraryContext(profile));
-        Assert.Equal(LibraryStartupOutcome.LegacyHistoryNeedsImport, thrown.Result.Outcome);
-        // The refusal released the profile, so a later launch is not locked out.
-        File.Delete(Path.Combine(profile.DataDirectory, fileName));
-        using var opened = new WinUiLibraryContext(profile);
-    }
-
-    [Fact]
-    public void SettingsAndRecordingJournalsAreNotMistakenForLegacyHistory()
-    {
-        using var directory = new TestDirectory();
-        File.WriteAllText(directory.File("windows-settings.json"), "{}");
-        File.WriteAllText(directory.File("meeting-session-journal.json"), "{}");
-        File.WriteAllText(directory.File("my-transcript-export.json"), "user-owned");
-        Assert.True(LibraryDatabaseStartup.Prepare(directory.Path).IsReady);
     }
 
     [Fact]
@@ -138,6 +97,27 @@ public sealed class SqliteLibraryStorageTests
         Assert.Equal(LibraryStartupOutcome.DatabaseFromPreReleaseBuild, result.Outcome);
         Assert.Contains("pre-release", result.Message);
         Assert.Equal(before, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void JsonFilesLeftByPreReleaseBuildsAreIgnoredAndNeverTouched()
+    {
+        // Development builds kept history in windows-*.json. This build neither reads nor
+        // converts them: the profile simply starts on an empty SQLite library.
+        using var directory = new TestDirectory();
+        File.WriteAllText(directory.File("windows-dictations.json"), "[{\"id\":\"old\",\"text\":\"old history\"}]");
+        File.WriteAllText(directory.File("windows-meetings.json.corrupt-20260101-000000000-abc.json"), "{ broken");
+        var before = Directory.EnumerateFiles(directory.Path).ToDictionary(path => path, File.ReadAllBytes);
+
+        var result = LibraryDatabaseStartup.Prepare(directory.Path);
+
+        Assert.True(result.IsReady);
+        Assert.True(result.CreatedDatabase);
+        using var adapter = SqliteLibraryHistoryAdapter.Open(directory.Path);
+        Assert.Empty(adapter.LoadDictations());
+        adapter.AppendDictation(Dictation);
+        Assert.True(adapter.DeleteDictation(Dictation.Id));
+        foreach (var (path, bytes) in before) Assert.Equal(bytes, File.ReadAllBytes(path));
     }
 
     // ---- Backups ---------------------------------------------------------------------------
@@ -391,123 +371,6 @@ public sealed class SqliteLibraryStorageTests
         Assert.Null(LibraryDatabaseBackup.PurgePendingSince(directory.Path));
     }
 
-    // ---- One-time developer import ----------------------------------------------------------
-
-    [Fact]
-    public void TheImporterBringsHistoryAndDictionaryAcrossAndLeavesTheJsonUntouched()
-    {
-        using var directory = new TestDirectory();
-        var legacy = new AppDataStore(directory.Path);
-        legacy.SaveDictations([Dictation]);
-        legacy.SaveDictionary([Rule]);
-        legacy.SaveMeetings([new PersistedMeeting { Id = "m", Title = "Planning", Transcript = "raw words", CreatedAt = DateTime.UtcNow }]);
-        var before = Directory.EnumerateFiles(directory.Path).ToDictionary(path => path, File.ReadAllBytes);
-
-        var result = LegacyJsonHistoryImporter.Import(directory.Path);
-
-        Assert.True(result.Succeeded, result.Message);
-        Assert.Equal(1, result.Counts.Dictations);
-        Assert.Equal(1, result.Counts.Meetings);
-        Assert.Equal(1, result.DictionaryEntries);
-        foreach (var (path, bytes) in before) Assert.Equal(bytes, File.ReadAllBytes(path));
-        Assert.Equal(
-            before.Keys.Append(result.DatabasePath).Order(),
-            Directory.EnumerateFiles(directory.Path).Order());
-        Assert.True(LibraryDatabaseStartup.Prepare(directory.Path).IsReady);
-        using var adapter = SqliteLibraryHistoryAdapter.Open(directory.Path);
-        Assert.Equal(Dictation, Assert.Single(adapter.LoadDictations()));
-        Assert.Equal(Rule, Assert.Single(adapter.LoadDictionary()));
-        Assert.Equal("Planning", Assert.Single(adapter.LoadMeetings()).Title);
-        Assert.Single(adapter.Search(new SearchQuery { Text = "lee" }));
-    }
-
-    [Fact]
-    public void TheImporterNeverTouchesAnExistingLibrary()
-    {
-        using var directory = new TestDirectory();
-        Assert.True(LibraryDatabaseStartup.Prepare(directory.Path).IsReady);
-        using (var adapter = SqliteLibraryHistoryAdapter.Open(directory.Path))
-            adapter.AppendDictation(Dictation with { Id = "live", Text = "live library" });
-        new AppDataStore(directory.Path).SaveDictations([Dictation]);
-
-        var result = LegacyJsonHistoryImporter.Import(directory.Path);
-
-        Assert.False(result.Succeeded);
-        Assert.Contains("already exists", result.Message);
-        using var reopened = SqliteLibraryHistoryAdapter.Open(directory.Path);
-        Assert.Equal("live", Assert.Single(reopened.LoadDictations()).Id);
-    }
-
-    [Theory]
-    [InlineData("windows-dictations.json", "{ broken")]
-    [InlineData("windows-meetings.json", "{\"schemaVersion\":999,\"data\":[]}")]
-    [InlineData("windows-dictionary.json", "[{\"id\":\"same\",\"phrase\":\"a\"},{\"id\":\"same\",\"phrase\":\"b\"}]")]
-    public void AnImportThatCannotBeCompleteCreatesNoLibraryAtAll(string fileName, string content)
-    {
-        using var directory = new TestDirectory();
-        new AppDataStore(directory.Path).SaveDictations([Dictation]);
-        File.WriteAllText(directory.File(fileName), content);
-        if (fileName == "windows-dictations.json") File.Delete(directory.File(fileName + ".bak"));
-
-        var result = LegacyJsonHistoryImporter.Import(directory.Path);
-
-        Assert.False(result.Succeeded);
-        Assert.NotEmpty(result.Message);
-        Assert.Equal(content, File.ReadAllText(directory.File(fileName)));
-        Assert.DoesNotContain(Directory.EnumerateFiles(directory.Path), path =>
-            Path.GetFileName(path).StartsWith("muesli.db", StringComparison.Ordinal));
-        // The profile is still in the state the app reports, not an empty library.
-        Assert.Equal(LibraryStartupOutcome.LegacyHistoryNeedsImport, LibraryDatabaseStartup.Prepare(directory.Path).Outcome);
-    }
-
-    [Fact]
-    public void TheImporterRecoversAMissingPrimaryFromItsBackupAndSaysSo()
-    {
-        using var directory = new TestDirectory();
-        new AppDataStore(directory.Path).SaveDictations([Dictation]);
-        new AppDataStore(directory.Path).SaveDictionary([Rule]);
-        foreach (var name in new[] { JsonHistorySnapshotReader.DictationsFileName, JsonHistorySnapshotReader.DictionaryFileName })
-            File.Move(directory.File(name), directory.File(name + ".bak"));
-
-        var result = LegacyJsonHistoryImporter.Import(directory.Path);
-
-        Assert.True(result.Succeeded, result.Message);
-        Assert.Contains(result.Warnings, warning => warning.Contains("backup was used"));
-        using var adapter = SqliteLibraryHistoryAdapter.Open(directory.Path);
-        Assert.Equal(Dictation, Assert.Single(adapter.LoadDictations()));
-        Assert.Equal(Rule, Assert.Single(adapter.LoadDictionary()));
-    }
-
-    [Fact]
-    public void TheImporterHonoursAPendingFolderMutationWithoutRewritingIt()
-    {
-        using var directory = new TestDirectory();
-        var meeting = new PersistedMeeting { Id = "m", Title = "preserved", FolderId = "new-folder", Transcript = "raw" };
-        new AtomicJsonFile().Save(directory.File(JsonHistorySnapshotReader.LibraryMutationFileName), new
-        {
-            Folders = new[] { new PersistedMeetingFolder("new-folder", "new") }, Meetings = new[] { meeting }
-        });
-        var original = File.ReadAllBytes(directory.File(JsonHistorySnapshotReader.LibraryMutationFileName));
-
-        var result = LegacyJsonHistoryImporter.Import(directory.Path);
-
-        Assert.True(result.Succeeded, result.Message);
-        using var adapter = SqliteLibraryHistoryAdapter.Open(directory.Path);
-        Assert.Equal("new-folder", Assert.Single(adapter.LoadMeetings()).FolderId);
-        Assert.Equal("new-folder", Assert.Single(adapter.LoadMeetingFolders()).Id);
-        Assert.Equal(original, File.ReadAllBytes(directory.File(JsonHistorySnapshotReader.LibraryMutationFileName)));
-    }
-
-    [Fact]
-    public void AProfileWithOnlyEmptyLegacyFilesImportsToAnEmptyUsableLibrary()
-    {
-        using var directory = new TestDirectory();
-        File.WriteAllText(directory.File(JsonHistorySnapshotReader.DictionaryFileName), "[]");
-        var result = LegacyJsonHistoryImporter.Import(directory.Path);
-        Assert.True(result.Succeeded, result.Message);
-        Assert.True(LibraryDatabaseStartup.Prepare(directory.Path).IsReady);
-    }
-
     // ---- Corrections commit as one unit ------------------------------------------------------
 
     [Fact]
@@ -579,25 +442,6 @@ public sealed class SqliteLibraryStorageTests
         Assert.Equal(DictationCorrectionOutcome.Stale,
             adapter.SaveCorrection("d", Dictation.Text, "stale", "new phrase", "new rule").Outcome);
         Assert.Single(adapter.LoadDictionary());
-    }
-
-    [Fact]
-    public void DeletingARecordOnlyTouchesTheDatabase()
-    {
-        // Development builds kept JSON history beside the database. A deletion must not parse,
-        // rewrite or remove any of it: an unreadable leftover used to make deletion fail.
-        using var directory = new TestDirectory();
-        new AppDataStore(directory.Path).SaveDictations([Dictation, Dictation with { Id = "keep", Text = "keep" }]);
-        Assert.True(LegacyJsonHistoryImporter.Import(directory.Path).Succeeded);
-        File.WriteAllText(directory.File("windows-dictations.json.corrupt-20260101-000000000-abc.json"), "{ broken");
-        var before = Directory.EnumerateFiles(directory.Path, "windows-*").ToDictionary(path => path, File.ReadAllBytes);
-
-        using var adapter = SqliteLibraryHistoryAdapter.Open(directory.Path);
-        Assert.True(adapter.DeleteDictation("d"));
-
-        Assert.Equal("keep", Assert.Single(adapter.LoadDictations()).Id);
-        Assert.Empty(adapter.Search(new SearchQuery { Text = "lee" }));
-        foreach (var (path, bytes) in before) Assert.Equal(bytes, File.ReadAllBytes(path));
     }
 
     // ---- Remembered rules -------------------------------------------------------------------

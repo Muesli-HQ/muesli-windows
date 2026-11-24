@@ -12,8 +12,8 @@ public sealed record SchemaMigration(int Version, string Description, Action<Sql
 /// The database schema, expressed as an ordered list of migrations.
 /// <para>
 /// Timestamps are stored as UTC ticks in INTEGER columns. Ticks rather than seconds or milliseconds
-/// because a history imported from JSON must hash identically before and after the move, and
-/// rounding a timestamp is a silent loss the verification would then have to forgive.
+/// because the app's own timestamps carry that precision, and
+/// rounding a timestamp on the way in is a silent loss.
 /// </para>
 /// </summary>
 public static class PersistenceSchema
@@ -153,23 +153,6 @@ public static class PersistenceSchema
         ) STRICT;
 
         CREATE UNIQUE INDEX ux_search_documents ON search_documents (record_kind, record_id);
-
-        CREATE TABLE migration_runs (
-            id                  TEXT PRIMARY KEY NOT NULL,
-            source_fingerprint  TEXT NOT NULL,
-            state               TEXT NOT NULL
-                                CHECK (state IN ('started', 'completed', 'failed')),
-            started_at_utc      INTEGER NOT NULL,
-            completed_at_utc    INTEGER NULL,
-            dictation_count     INTEGER NOT NULL DEFAULT 0,
-            meeting_count       INTEGER NOT NULL DEFAULT 0,
-            folder_count        INTEGER NOT NULL DEFAULT 0,
-            template_count      INTEGER NOT NULL DEFAULT 0,
-            backup_path         TEXT NULL,
-            failure             TEXT NULL
-        ) STRICT;
-
-        CREATE INDEX ix_migration_runs_state ON migration_runs (state, started_at_utc DESC);
         """;
 
     /// <summary>

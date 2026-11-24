@@ -10,7 +10,7 @@ public sealed record DictationCorrectionSelection(string DictationId, string Sou
     public string Original => SourceText.Substring(Start, Length);
 }
 
-public enum DictationCorrectionOutcome { Saved, Invalid, Conflict, Stale, Failed, PartialFailure }
+public enum DictationCorrectionOutcome { Saved, Invalid, Conflict, Stale, Failed }
 
 public sealed record DictationCorrectionResult(
     DictationCorrectionOutcome Outcome, string Message,
@@ -20,8 +20,8 @@ public sealed record DictationCorrectionResult(
 }
 
 /// <summary>Explicit saved-history corrections. No clipboard, capture, or recognition side effects.
-/// SQLite saves history and dictionary atomically. Legacy adapters with separate durable boundaries
-/// compensate failed saves and report partial/unknown persistence rather than claim success.</summary>
+/// The dictation text and an optional dictionary rule are saved in one SQLite transaction, so a
+/// correction is either fully saved or not saved at all.</summary>
 public sealed class DictationCorrectionService(ILibraryHistoryAdapter history)
 {
     /// <summary>WinUI's text editor normalizes line endings. Translate its UTF-16 boundaries back
@@ -109,84 +109,6 @@ public sealed class DictationCorrectionService(ILibraryHistoryAdapter history)
         if (history is IAtomicDictationCorrectionStore atomicStore)
             return atomicStore.SaveCorrection(selection.DictationId, selection.SourceText, updated,
                 remember ? selection.Original : null, remember ? replacement : null, confirmedConflicts);
-        if (history is not IDictationTextEditor editor)
-            return new(DictationCorrectionOutcome.Failed, "This history store does not support corrections.");
-
-        IReadOnlyList<DictionaryEntryRecord> before;
-        List<DictionaryEntryRecord>? after = null;
-        try
-        {
-            before = remember ? history.LoadDictionary().ToList() : [];
-            if (remember)
-            {
-                var key = DictionaryCorrectionService.PhraseKey(selection.Original);
-                var matching = before.Where(entry => DictionaryCorrectionService.PhraseKey(entry.Phrase) == key).ToList();
-                var conflicts = matching.Where(entry => entry.Replacement.Trim() != replacement).ToList();
-                if (conflicts.Count > 0 && (confirmedConflicts is null || !conflicts.SequenceEqual(confirmedConflicts)))
-                    return new(DictationCorrectionOutcome.Conflict,
-                        "This phrase already has a different remembered replacement. Replace that entry, or uncheck remembering to edit only this dictation.", conflicts);
-                if (matching.Count != 1 || matching[0].Replacement.Trim() != replacement)
-                {
-                    var entry = matching.FirstOrDefault() ?? new DictionaryEntryRecord
-                    {
-                        Id = $"dict_{Guid.NewGuid():N}", Phrase = selection.Original,
-                        MatchingThreshold = DictionaryCorrectionService.MaximumThreshold
-                    };
-                    after = before.Where(item => DictionaryCorrectionService.PhraseKey(item.Phrase) != key).ToList();
-                    after.Add(entry with { Replacement = replacement });
-                }
-            }
-        }
-        catch
-        {
-            return new(DictationCorrectionOutcome.Failed, "Could not read the dictionary. Nothing was changed. Try again.");
-        }
-
-        var dictionaryAttempted = false;
-        try
-        {
-            if (!editor.TryUpdateDictationText(selection.DictationId, selection.SourceText, updated))
-                return new(DictationCorrectionOutcome.Stale, "This dictation changed or was deleted. Close the editor and select the text again.");
-            if (after is not null)
-            {
-                dictionaryAttempted = true;
-                history.SaveDictionary(after);
-            }
-            return new(DictationCorrectionOutcome.Saved, remember
-                ? "Dictation corrected and correction remembered. Manage it in Dictionary."
-                : "Dictation corrected. No dictionary entry was changed.");
-        }
-        catch
-        {
-            // A legacy store has two durable boundaries, so a write can throw after the first committed.
-            // Restore only our exact candidate; never overwrite a newer value during compensation.
-            if (dictionaryAttempted)
-            {
-                try
-                {
-                    if (history.LoadDictionary().SequenceEqual(after!)) history.SaveDictionary(before);
-                }
-                catch { /* The readback below determines what is safe to report. */ }
-            }
-            try { editor.TryUpdateDictationText(selection.DictationId, updated, selection.SourceText); }
-            catch { /* Report the persisted state, not the exception's potentially sensitive message. */ }
-            try
-            {
-                var text = history.LoadDictations().FirstOrDefault(row => row.Id == selection.DictationId)?.Text;
-                var dictionaryRestored = !dictionaryAttempted || history.LoadDictionary().SequenceEqual(before);
-                if (text == selection.SourceText && dictionaryRestored)
-                    return new(DictationCorrectionOutcome.Failed, "Could not save the correction. Both stores are unchanged. Try again.");
-                return new(DictationCorrectionOutcome.PartialFailure,
-                    (text == updated ? "The dictation correction was saved. " : text == selection.SourceText
-                        ? "The dictation is unchanged. " : "The dictation changed or was removed during saving. ") +
-                    (dictionaryRestored ? "The dictionary is unchanged. " : "The dictionary could not be restored. ") +
-                    "The save did not complete. Review Dictations and Dictionary before retrying.");
-            }
-            catch
-            {
-                return new(DictationCorrectionOutcome.PartialFailure,
-                    "The save failed and its saved state could not be verified. Review Dictations and Dictionary before retrying.");
-            }
-        }
+        return new(DictationCorrectionOutcome.Failed, "This history store does not support corrections.");
     }
 }

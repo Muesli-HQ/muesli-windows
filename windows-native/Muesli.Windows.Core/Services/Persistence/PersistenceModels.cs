@@ -58,10 +58,10 @@ public sealed record MeetingRecord
     public string? AutomationResultJson { get; init; }
 
     /// <summary>
-    /// The JSON meeting schema this row was imported from, retained so a later reader can tell a
-    /// natively created meeting from one lifted out of <see cref="AppDataStore"/>.
+    /// The meeting record shape this row was written with, so a later build can tell which
+    /// fields an older row could have carried.
     /// </summary>
-    public int SourceSchemaVersion { get; init; } = AppDataStore.CurrentMeetingSchemaVersion;
+    public int SourceSchemaVersion { get; init; } = PersistedMeeting.CurrentSchemaVersion;
 }
 
 /// <summary>

@@ -122,15 +122,29 @@ internal sealed class MuesliCleanProfile : IDisposable
     }
 
     /// <summary>
-    /// The fixtures are written as JSON because that is the readable way to author them. The app
-    /// only opens a SQLite library, so they are imported with the same developer importer that
-    /// converts a real pre-SQLite profile.
+    /// The fixtures above are authored as JSON because that is the readable way to write them.
+    /// The app only opens a SQLite library, so the harness loads them into <c>data\muesli.db</c>
+    /// through the same adapter the app uses. The JSON files stay as the fixture's source; the app
+    /// ignores them.
     /// </summary>
     public void ImportSeededHistory()
     {
-        var result = Muesli.Windows.Services.Persistence.LegacyJsonHistoryImporter.Import(
-            Path.Combine(MuesliRoot, "data"));
-        Assert.True(result.Succeeded, result.Message);
+        var data = Path.Combine(MuesliRoot, "data");
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        T[] Read<T>(string name)
+        {
+            var path = Path.Combine(data, name);
+            return File.Exists(path) ? JsonSerializer.Deserialize<T[]>(File.ReadAllText(path), options)! : [];
+        }
+
+        var startup = Muesli.Windows.Services.Persistence.LibraryDatabaseStartup.Prepare(data);
+        Assert.True(startup.IsReady, startup.Message);
+        using var library = Muesli.Windows.Services.Persistence.SqliteLibraryHistoryAdapter.Open(data);
+        library.SaveMeetingFolders(Read<Muesli.Windows.Services.PersistedMeetingFolder>("windows-meeting-folders.json"));
+        library.SaveMeetingTemplates(Read<Muesli.Windows.Services.PersistedMeetingTemplate>("windows-meeting-templates.json"));
+        library.SaveDictionary(Read<Muesli.Windows.Services.DictionaryEntryRecord>("windows-dictionary.json"));
+        library.SaveDictations(Read<Muesli.Windows.Services.PersistedDictation>("windows-dictations.json"));
+        library.SaveMeetings(Read<Muesli.Windows.Services.PersistedMeeting>("windows-meetings.json"));
     }
 
     private void RecoverInterruptedSwap()
@@ -220,7 +234,7 @@ internal sealed class MuesliCleanProfile : IDisposable
     /// <summary>
     /// Seeds the complete, read-only visual qualification fixture. Dates are relative to the
     /// machine's local today so grouping and streak calculations remain truthful on every run.
-    /// These are production JSON value files (version-0 shape), read by the real adapters.
+    /// Authored as JSON and loaded into the SQLite library by ImportSeededHistory.
     /// </summary>
     private void SeedPopulatedFixture()
     {

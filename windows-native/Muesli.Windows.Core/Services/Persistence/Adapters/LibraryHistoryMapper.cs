@@ -50,7 +50,7 @@ internal static class LibraryHistoryMapper
         var raw = detail.Transcript(MeetingTranscriptKind.Raw);
         return new PersistedMeeting
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Id = meeting.Id,
             Title = meeting.Title,
             TitleIsManual = meeting.TitleIsManual,
@@ -189,7 +189,7 @@ internal static class LibraryHistoryMapper
             AutomationResultJson = automationJson,
             SourceSchemaVersion = meeting.SchemaVersion == 0
                 ? meeting.SchemaVersion
-                : AppDataStore.CurrentMeetingSchemaVersion
+                : PersistedMeeting.CurrentSchemaVersion
         };
 
     public static PersistedMeetingFolder ToPersisted(FolderRecord folder) =>

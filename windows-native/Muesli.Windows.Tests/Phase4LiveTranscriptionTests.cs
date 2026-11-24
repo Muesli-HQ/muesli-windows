@@ -174,10 +174,10 @@ public sealed class Phase4LiveTranscriptionTests(Xunit.Abstractions.ITestOutputH
     public void CompletedMeetingOwnershipSurvivesJournalDeletionAndReload()
     {
         using var directory = new TestDirectory();
-        var store = new AppDataStore(directory.Path);
+        using var store = TestLibrary.Open(directory.Path);
         store.SaveMeetings([new PersistedMeeting
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Id = "meeting-live-owner",
             ModelProfile = "offline-final",
             LivePreviewModelId = "live-model",

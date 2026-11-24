@@ -162,13 +162,25 @@ public sealed class MuesliDatabase : IDisposable
     /// </summary>
     private static void RejectForeignDatabase(SqliteConnection connection)
     {
-        if (SchemaMigrator.ReadVersion(connection) == 0) return;
-        using var command = connection.CreateCommand();
-        command.CommandText = "PRAGMA application_id;";
-        if (Convert.ToInt32(command.ExecuteScalar() ?? 0) != PersistenceSchema.ApplicationId)
+        var version = SchemaMigrator.ReadVersion(connection);
+        if (version == 0) return;
+        using (var command = connection.CreateCommand())
         {
-            throw new UnsupportedDatabaseException(
-                "This database was written by a pre-release Muesli build and cannot be opened by this one.");
+            command.CommandText = "PRAGMA application_id;";
+            if (Convert.ToInt32(command.ExecuteScalar() ?? 0) != PersistenceSchema.ApplicationId)
+            {
+                throw new UnsupportedDatabaseException(
+                    "This database was written by a pre-release Muesli build and cannot be opened by this one.");
+            }
+        }
+
+        // A newer build's database is refused here, before any pragma can alter its header,
+        // rather than later by the migrator.
+        if (version > PersistenceSchema.CurrentVersion)
+        {
+            throw new PersistenceSchemaException(
+                $"The database is at schema version {version}, which is newer than the version " +
+                $"{PersistenceSchema.CurrentVersion} this build understands. Update Muesli to open it.");
         }
     }
 

@@ -4,7 +4,7 @@ namespace Muesli.Windows.Services;
 
 /// <summary>
 /// Transcript edit persistence bridge over the active history adapter. It deliberately receives
-/// the adapter from the composition root and never constructs an AppDataStore of its own.
+/// the adapter from the composition root and never opens a store of its own.
 /// </summary>
 public sealed class LibraryTranscriptMeetingStore : ITranscriptMeetingStore
 {

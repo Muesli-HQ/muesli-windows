@@ -4,7 +4,7 @@ namespace Muesli.Windows.Services.Persistence;
 /// Library history contract. Production always selects SQLite after verified initialization.
 /// </summary>
 /// <remarks>
-/// Legacy JSON adapters remain available for migration/import compatibility and isolated fixtures.
+/// <see cref="SqliteLibraryHistoryAdapter"/> is the only implementation.
 /// </remarks>
 public interface ILibraryHistoryAdapter
 {
@@ -33,7 +33,7 @@ public interface ILibraryHistoryAdapter
     void SaveMeetingTemplates(IEnumerable<PersistedMeetingTemplate> templates);
 }
 
-/// <summary>Explicit folder lifecycle operations shared by JSON and SQLite history modes.</summary>
+/// <summary>Explicit folder lifecycle operations of the library.</summary>
 public interface ILibraryFolderAdapter
 {
     void MoveMeetingFolder(string id, string? newParentId);
@@ -41,8 +41,3 @@ public interface ILibraryFolderAdapter
     bool DeleteMeetingFolder(string id);
 }
 
-/// <summary>Compare-and-swap text only; never recreates a deleted row or replaces recording metadata.</summary>
-public interface IDictationTextEditor
-{
-    bool TryUpdateDictationText(string id, string expectedText, string replacementText);
-}

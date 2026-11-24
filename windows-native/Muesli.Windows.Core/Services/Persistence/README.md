@@ -25,9 +25,6 @@ not the macOS `DictationStore` database and nothing syncs between them.
 | `SearchIndexWriter.cs` | Keeps the FTS documents in step with the relational tables. |
 | `Adapters/SqliteLibraryHistoryAdapter.cs` | The app-facing library: history, dictionary and the atomic correction save. |
 | `Adapters/ILibraryHistoryAdapter.cs` and friends | The contracts the app codes against. |
-| `LegacyJsonHistoryImporter.cs` | One-time developer import of JSON history into a new database. |
-| `JsonHistorySnapshotReader.cs`, `MigrationPlan.cs`, `JsonToSqliteMigrationService.cs`, `PersistenceDigest.cs` | Read-only JSON reading, mapping, verified import and content hashes used by that importer. |
-| `Adapters/JsonLibraryHistoryAdapter.cs` (with `AppDataStore`) | The JSON-era store, kept so tests can author legacy fixtures. Not a production mode. |
 
 Start at `MuesliPersistenceStore`, which opens a database and hands back the repositories. The
 app's composition root (`WinUiLibraryContext`) calls `LibraryDatabaseStartup.Prepare` and then
@@ -40,9 +37,8 @@ opens `SqliteLibraryHistoryAdapter`.
 transaction must be committed and disposed on the thread that opened it. A nested
 `BeginTransaction` joins the outer one; nothing commits until the outermost scope does.
 
-**Timestamps are UTC ticks in INTEGER columns.** The import verifies content hashes of values
-before and after the move, so rounding to milliseconds would turn every imported timestamp into
-a verification failure or a silent shift.
+**Timestamps are UTC ticks in INTEGER columns.** The app's timestamps carry that precision, and
+rounding on the way in would silently shift them.
 
 **Notes and transcripts are rows keyed by kind, not columns.** A re-summarization rewrites the
 generated note and must be structurally unable to touch the manual one; an edit must not
@@ -63,16 +59,15 @@ page. See the comment on `SqliteSearchRepository.Sql`.
 documents rewritten constantly during a recording, and crash recovery reads them before the app
 has a database open.
 
-**The app never converts JSON history.** No build was released before the SQLite library, so
-there is no in-app migration, snapshot, marker or fallback. A launch that finds legacy
-`windows-*.json` history and no database stops and points at
-`scripts/import-legacy-history.ps1`; it does not open an empty library over history it can see.
-The importer is all-or-nothing, only reads its source, and refuses to touch an existing
-database.
+**There is no JSON history.** No build was released before the SQLite library, so there is no
+migration, importer, marker or fallback. `windows-*.json` files left in a data folder by
+pre-release development builds are not read, converted or deleted; such a profile starts with an
+empty library.
 
 **Launch never guesses.** A missing database with backups, an unreadable database, one from a
 newer build and one from a pre-release build each produce a specific outcome and message
-(`LibraryStartupOutcome`). Only a profile with no history of any kind gets a new empty database.
+(`LibraryStartupOutcome`). Only a profile with no database, no backups and no leftover database
+files gets a new empty one.
 
 **The database is backed up, and deletion replaces the backups.** `LibraryDatabaseBackup` keeps
 the newest seven daily copies. Deleting a dictation or meeting raises
@@ -103,7 +98,7 @@ search pagination exist; moving every list onto them is not done.
 
 ## Tests
 
-`SqliteLibraryStorageTests` covers launch outcomes, backups and restore, the importer, and the
-correction transaction. `PersistenceMigrationTests` covers the schema migrator and the verified
-import. `PersistenceLargeHistoryTests` has timing budgets that are sensitive to machine load.
+`SqliteLibraryStorageTests` covers launch outcomes, backups and restore, and the
+correction transaction. `PersistenceMigrationTests` covers the schema migrator.
+`PersistenceLargeHistoryTests` has timing budgets that are sensitive to machine load.
 Every test uses a temporary directory; none may point at a real profile.

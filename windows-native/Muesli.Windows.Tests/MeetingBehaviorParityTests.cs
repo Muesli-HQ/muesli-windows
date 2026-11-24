@@ -82,7 +82,8 @@ public sealed class MeetingBehaviorParityTests
     public void FinalizationAndRecoveryPreserveWrittenNotesAndManualTitle()
     {
         using var directory = new TestDirectory();
-        var store = new AppDataStore(directory.Path);
+        using var store = TestLibrary.Open(directory.Path);
+        store.SaveMeetingFolders([new PersistedMeetingFolder("folder", "Folder")]);
         var notes = "    code block\n\n- follow up\n";
         var active = MeetingNotesComposer.ApplyManualNotes(new PersistedMeeting
         {

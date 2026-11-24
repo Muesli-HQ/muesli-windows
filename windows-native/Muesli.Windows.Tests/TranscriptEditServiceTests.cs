@@ -829,14 +829,14 @@ public sealed class TranscriptEditServiceTests
     }
 
     [Fact]
-    public async Task AppDataStoreRoundTripKeepsOriginalUntilCandidateIsAccepted()
+    public async Task LibraryRoundTripKeepsOriginalUntilCandidateIsAccepted()
     {
         using var directory = new TestDirectory();
         var audio = directory.File("microphone.wav");
         File.WriteAllBytes(audio, [1, 2, 3, 4]);
-        var data = new AppDataStore(Path.Combine(directory.Path, "data"));
+        using var data = TestLibrary.Open(Path.Combine(directory.Path, "data"));
         data.SaveMeetings([Meeting(audio)]);
-        var store = new AppDataBackedTranscriptStore(data);
+        var store = new LibraryBackedTranscriptStore(data);
         using var service = CreateService(store, Path.Combine(directory.Path, "scratch"), new FakeRetranscriptionAsr());
         var ready = await service.RetranscribeAsync("meet_1");
         Assert.Equal(OriginalTranscript, data.LoadMeetings().Single().Transcript);
@@ -907,7 +907,7 @@ public sealed class TranscriptEditServiceTests
 
     private static PersistedMeeting Meeting(string? audioPath = null) => new()
     {
-        SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+        SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
         Id = "meet_1",
         Title = ManualTitle,
         TitleIsManual = true,
@@ -1010,11 +1010,11 @@ public sealed class TranscriptEditServiceTests
         }
     }
 
-    private sealed class AppDataBackedTranscriptStore : ITranscriptMeetingStore
+    private sealed class LibraryBackedTranscriptStore : ITranscriptMeetingStore
     {
-        private readonly AppDataStore _store;
+        private readonly Muesli.Windows.Services.Persistence.SqliteLibraryHistoryAdapter _store;
 
-        public AppDataBackedTranscriptStore(AppDataStore store) => _store = store;
+        public LibraryBackedTranscriptStore(Muesli.Windows.Services.Persistence.SqliteLibraryHistoryAdapter store) => _store = store;
 
         public PersistedMeeting? Find(string meetingId) =>
             _store.LoadMeetings().FirstOrDefault(meeting => meeting.Id == meetingId);

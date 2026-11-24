@@ -342,37 +342,6 @@ public sealed class Phase3MeetingLifecycleTests
     }
 
     [Fact]
-    public void LegacyMeetingRecordMigratesWithoutLosingAudioOrCompletedStatus()
-    {
-        using var directory = new TestDirectory();
-        var dataPath = directory.File("windows-meetings.json");
-        var legacyAudio = directory.File("microphone.wav");
-        File.WriteAllBytes(legacyAudio, [1, 2, 3]);
-        File.WriteAllText(dataPath, JsonSerializer.Serialize(new[]
-        {
-            new
-            {
-                Id = "legacy",
-                Title = "Legacy",
-                CreatedAt = DateTime.UnixEpoch,
-                DurationMs = 1000,
-                Transcript = "retained text",
-                Summary = "",
-                SourcePath = legacyAudio,
-                ModelProfile = "parakeet-v3"
-            }
-        }));
-        var store = new AppDataStore(directory.Path);
-
-        var meeting = Assert.Single(store.LoadMeetings());
-
-        Assert.Equal(AppDataStore.CurrentMeetingSchemaVersion, meeting.SchemaVersion);
-        Assert.Equal(MeetingSessionState.Completed, meeting.SessionState);
-        Assert.Equal(legacyAudio, meeting.MicrophoneAudioPath);
-        Assert.Equal("retained text", meeting.Transcript);
-    }
-
-    [Fact]
     public void PlaybackTrackSelectionKeepsSeparateExistingChannelsAndRejectsMissingPaths()
     {
         using var directory = new TestDirectory();

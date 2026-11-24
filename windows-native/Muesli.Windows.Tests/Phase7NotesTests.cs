@@ -522,7 +522,7 @@ public sealed class Phase7NotesTests
 
     private static PersistedMeeting Meeting(string title = "Meeting", bool manualTitle = false) => new()
     {
-        SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+        SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
         Id = "meet_1",
         Title = title,
         TitleIsManual = manualTitle,
@@ -650,7 +650,7 @@ public sealed class Phase7NotesTests
     public void MeetingSchema4RoundTripsManualNotesAndTitleOwnership()
     {
         using var directory = new TestDirectory();
-        var store = new AppDataStore(directory.Path);
+        using var store = TestLibrary.Open(directory.Path);
         var meeting = MeetingNotesComposer.ApplyManualTitle(
             MeetingNotesComposer.ApplyManualNotes(Meeting(), "kept"), "Chosen");
 
@@ -660,28 +660,7 @@ public sealed class Phase7NotesTests
         Assert.Equal("kept", loaded.ManualNotes);
         Assert.True(loaded.TitleIsManual);
         Assert.Equal("Chosen", loaded.Title);
-        Assert.Equal(AppDataStore.CurrentMeetingSchemaVersion, loaded.SchemaVersion);
-    }
-
-    [Fact]
-    public void LegacyMeetingsWithoutManualNotesMigrateWithoutInventingThem()
-    {
-        using var directory = new TestDirectory();
-        var store = new AppDataStore(directory.Path);
-        store.SaveMeetings([new PersistedMeeting
-        {
-            SchemaVersion = 3,
-            Id = "legacy",
-            Title = "Legacy meeting",
-            Summary = "## Summary\n- old",
-            Transcript = "old transcript"
-        }]);
-
-        var loaded = Assert.Single(store.LoadMeetings());
-        Assert.Equal("", loaded.ManualNotes);
-        Assert.False(loaded.TitleIsManual);
-        Assert.Equal("Legacy meeting", loaded.Title);
-        Assert.Equal("## Summary\n- old", loaded.Summary);
+        Assert.Equal(PersistedMeeting.CurrentSchemaVersion, loaded.SchemaVersion);
     }
 
     // ---- fakes -------------------------------------------------------------------

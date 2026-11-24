@@ -8,9 +8,6 @@ public enum LibraryStartupOutcome
     /// <summary>The database exists (or was just created for a new profile) and can be opened.</summary>
     Ready,
 
-    /// <summary>History from a JSON-era development build is present and there is no database.</summary>
-    LegacyHistoryNeedsImport,
-
     /// <summary>There is no database, but backups show there used to be one.</summary>
     DatabaseMissing,
 
@@ -55,25 +52,14 @@ public sealed class LibraryUnavailableException(LibraryStartupResult result) : P
 /// <summary>
 /// Decides, once at launch, whether the library database can be used.
 /// <para>
-/// SQLite is the only store for history. This check never reads, copies, rewrites or deletes
-/// anything: it either reports the database ready, creates an empty one for a profile that has
-/// never had history, or explains why it will not open one. It never opens an empty library over
-/// history it can see, because that would look like data loss.
+/// SQLite is the only store for history. This check either reports the database ready, creates
+/// an empty one for a profile that has none, or explains why it will not open the one it found.
+/// It never replaces a database, or the remains of one, with an empty library. JSON files left
+/// by pre-release development builds are not history to this build and are ignored.
 /// </para>
 /// </summary>
 public static class LibraryDatabaseStartup
 {
-    /// <summary>The JSON files earlier development builds kept history in.</summary>
-    public static IReadOnlyList<string> LegacyHistoryFileNames { get; } =
-    [
-        JsonHistorySnapshotReader.DictationsFileName,
-        JsonHistorySnapshotReader.MeetingsFileName,
-        JsonHistorySnapshotReader.FoldersFileName,
-        JsonHistorySnapshotReader.TemplatesFileName,
-        JsonHistorySnapshotReader.DictionaryFileName,
-        JsonHistorySnapshotReader.LibraryMutationFileName
-    ];
-
     public static LibraryStartupResult Prepare(string dataDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
@@ -117,22 +103,6 @@ public static class LibraryDatabaseStartup
                     Message =
                         $"The Muesli library database is missing from {directory}. " +
                         $"A backup from {Describe(latestBackup)} is available."
-                };
-            }
-
-            var legacy = FindLegacyHistoryFiles(directory);
-            if (legacy.Count > 0)
-            {
-                return new LibraryStartupResult
-                {
-                    Outcome = LibraryStartupOutcome.LegacyHistoryNeedsImport,
-                    DatabasePath = databasePath,
-                    Message =
-                        $"Muesli found history from an earlier development build in {directory} " +
-                        $"({string.Join(", ", legacy)}) and no library database. Nothing was changed. " +
-                        "To keep that history, close Muesli and run scripts\\import-legacy-history.ps1 " +
-                        $"-ProfileRoot \"{Path.GetDirectoryName(directory)}\" from the repository. " +
-                        "To start with an empty library instead, move those files out of the folder."
                 };
             }
 
@@ -199,26 +169,6 @@ public static class LibraryDatabaseStartup
                         : "No backup is available. To start with an empty library, move muesli.db out of that folder.")
             };
         }
-    }
-
-    /// <summary>Names of the legacy history files present, including backup and quarantine copies.</summary>
-    public static IReadOnlyList<string> FindLegacyHistoryFiles(string dataDirectory)
-    {
-        if (!Directory.Exists(dataDirectory)) return [];
-        var found = new List<string>();
-        foreach (var path in Directory.EnumerateFiles(dataDirectory))
-        {
-            var name = Path.GetFileName(path);
-            if (LegacyHistoryFileNames.Any(source =>
-                    name.Equals(source, StringComparison.OrdinalIgnoreCase) ||
-                    name.StartsWith(source + ".", StringComparison.OrdinalIgnoreCase)))
-            {
-                found.Add(name);
-            }
-        }
-
-        found.Sort(StringComparer.OrdinalIgnoreCase);
-        return found;
     }
 
     private static string Describe(LibraryBackupInfo backup) =>

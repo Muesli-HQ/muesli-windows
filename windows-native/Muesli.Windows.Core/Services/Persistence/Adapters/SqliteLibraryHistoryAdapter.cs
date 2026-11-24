@@ -6,7 +6,7 @@ namespace Muesli.Windows.Services.Persistence;
 /// SQLite-backed <see cref="ILibraryHistoryAdapter"/>. The production composition root opens it
 /// only after <see cref="LibraryDatabaseStartup.Prepare"/> reports the database ready. All structured library data lives here.
 /// </summary>
-public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibrarySearchAdapter, ILibraryFolderAdapter, IDictationTextEditor, IAtomicDictationCorrectionStore, IDisposable
+public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibrarySearchAdapter, ILibraryFolderAdapter, IAtomicDictationCorrectionStore, IDisposable
 {
     private readonly MuesliPersistenceStore _store;
     private readonly bool _ownsStore;

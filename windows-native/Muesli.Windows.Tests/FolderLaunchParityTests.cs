@@ -6,43 +6,7 @@ namespace Muesli.Windows.Tests;
 public sealed class FolderLaunchParityTests
 {
     [Fact]
-    public void PendingJsonFolderMutationRecoversBothFilesAfterPartialCommit()
-    {
-        using var directory = new TestDirectory();
-        var store = new AppDataStore(directory.Path);
-        store.SaveMeetingFolders([
-            new PersistedMeetingFolder("parent", "Parent"),
-            new PersistedMeetingFolder("deleted", "Deleted", "parent"),
-            new PersistedMeetingFolder("child", "Child", "deleted")
-        ]);
-        store.SaveMeetings([new PersistedMeeting { Id = "meeting", FolderId = "deleted" }]);
-
-        var recoveredFolders = new List<PersistedMeetingFolder>
-        {
-            new("parent", "Parent"),
-            new("child", "Child", "parent")
-        };
-        var recoveredMeetings = new List<PersistedMeeting>
-        {
-            new() { Id = "meeting", FolderId = null }
-        };
-        var journalPath = directory.File("windows-library-mutation.json");
-        new AtomicJsonFile().Save(
-            journalPath,
-            new LibraryMutationJournal(recoveredFolders, recoveredMeetings),
-            AtomicJsonSaveMode.PrivacySensitive);
-
-        // Simulate a crash after the first of the two data files was replaced.
-        store.SaveMeetingFolders(recoveredFolders);
-        var reopened = new AppDataStore(directory.Path);
-
-        Assert.Null(Assert.Single(reopened.LoadMeetings()).FolderId);
-        Assert.Equal("parent", reopened.LoadMeetingFolders().Single(folder => folder.Id == "child").ParentId);
-        Assert.False(File.Exists(journalPath));
-    }
-
-    [Fact]
-    public void SqliteFolderMoveRejectsUnknownFolderLikeJsonAdapter()
+    public void SqliteFolderMoveRejectsUnknownFolder()
     {
         using var store = MuesliPersistenceStore.OpenInMemory();
 

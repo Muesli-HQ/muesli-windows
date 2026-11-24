@@ -142,7 +142,7 @@ public sealed class WinUiMeetingContext : IDisposable
         if (ActiveMeetingId is null) return;
         var meeting = _library.FindMeeting(ActiveMeetingId) ?? new PersistedMeeting
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Id = ActiveMeetingId, Title = _title, CreatedAt = _startedAt,
             ModelProfile = _settings.FinalMeetingModelId, SessionState = State
         };
@@ -464,7 +464,7 @@ public sealed class WinUiMeetingContext : IDisposable
         var transcript = result.Text.Trim();
         var meeting = new PersistedMeeting
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Id = $"meet_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..8]}",
             Title = title,
             CreatedAt = DateTime.Now,
@@ -505,7 +505,7 @@ public sealed class WinUiMeetingContext : IDisposable
         var transcript = result.Transcript?.Trim() ?? "";
         var meeting = new PersistedMeeting
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Id = result.MeetingId,
             Title = result.Title,
             CreatedAt = result.StartedAt,

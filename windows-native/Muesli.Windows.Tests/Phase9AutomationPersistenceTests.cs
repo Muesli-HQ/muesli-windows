@@ -25,10 +25,10 @@ public sealed class Phase9AutomationPersistenceTests
                 AutomationDestinationOwnership.UserSelectedDestination,
                 null,
                 1));
-        var store = new AppDataStore(directory.Path);
+        using var store = TestLibrary.Open(directory.Path);
         store.SaveMeetings([new PersistedMeeting
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Id = "meeting-with-automation",
             Title = "Saved before hook",
             CreatedAt = DateTime.UtcNow,
@@ -44,23 +44,4 @@ public sealed class Phase9AutomationPersistenceTests
         Assert.Equal(MeetingSessionState.Completed, loaded.SessionState);
     }
 
-    [Fact]
-    public void ExistingMeetingsLoadWithoutRetroactiveAutomationDiagnostics()
-    {
-        using var directory = new TestDirectory();
-        var store = new AppDataStore(directory.Path);
-        store.SaveMeetings([new PersistedMeeting
-        {
-            SchemaVersion = 4,
-            Id = "pre-automation",
-            Title = "Existing meeting",
-            CreatedAt = DateTime.UtcNow,
-            SessionState = MeetingSessionState.Completed
-        }]);
-
-        var loaded = Assert.Single(store.LoadMeetings());
-
-        Assert.Null(loaded.AutomationResult);
-        Assert.Equal(AppDataStore.CurrentMeetingSchemaVersion, loaded.SchemaVersion);
-    }
 }

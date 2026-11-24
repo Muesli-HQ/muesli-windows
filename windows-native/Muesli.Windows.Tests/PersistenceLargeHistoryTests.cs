@@ -5,7 +5,7 @@ namespace Muesli.Windows.Tests;
 
 /// <summary>
 /// A history the size of a heavy user's: ten thousand dictations and two thousand meetings, written
-/// as JSON and migrated once, then shared by every test in the class. It is generated from a fixed
+/// through the library adapter once, then shared by every test in the class. It is generated from a fixed
 /// seed so a failure here is reproducible rather than a story about one machine's data.
 /// </summary>
 public sealed class LargeHistoryFixture : IDisposable
@@ -29,7 +29,9 @@ public sealed class LargeHistoryFixture : IDisposable
     {
         var random = new Random(Seed);
         var start = new DateTime(2024, 1, 1, 8, 0, 0, DateTimeKind.Utc);
-        var appData = new AppDataStore(_directory.Path);
+        DatabasePath = PersistencePaths.DatabasePathFor(_directory.Path);
+        Store = MuesliPersistenceStore.Open(DatabasePath);
+        var appData = new SqliteLibraryHistoryAdapter(Store);
 
         appData.SaveMeetingFolders(Enumerable.Range(0, FolderCount)
             .Select(index => new PersistedMeetingFolder($"folder-{index}", $"Folder {index}"))
@@ -77,17 +79,7 @@ public sealed class LargeHistoryFixture : IDisposable
             })
             .ToList());
 
-        var service = new JsonToSqliteMigrationService(_directory.Path);
-        var migrationTimer = Stopwatch.StartNew();
-        Result = service.Migrate();
-        MigrationDuration = migrationTimer.Elapsed;
-        Store = MuesliPersistenceStore.Open(service.DatabasePath);
-        DatabasePath = service.DatabasePath;
     }
-
-    public JsonToSqliteMigrationResult Result { get; }
-
-    public TimeSpan MigrationDuration { get; }
 
     public MuesliPersistenceStore Store { get; }
 
@@ -117,17 +109,8 @@ public sealed class PersistenceLargeHistoryTests : IClassFixture<LargeHistoryFix
     public PersistenceLargeHistoryTests(LargeHistoryFixture fixture) => _fixture = fixture;
 
     [Fact]
-    public void TheWholeLargeHistoryIsImportedAndVerified()
+    public void TheWholeLargeHistoryIsStored()
     {
-        Assert.Equal(JsonMigrationOutcome.Migrated, _fixture.Result.Outcome);
-        Assert.Null(_fixture.Result.Failure);
-        Assert.Equal(
-            new MigrationCounts(
-                LargeHistoryFixture.DictationCount,
-                LargeHistoryFixture.MeetingCount,
-                LargeHistoryFixture.FolderCount,
-                LargeHistoryFixture.TemplateCount),
-            _fixture.Result.Counts);
 
         Assert.Equal(LargeHistoryFixture.DictationCount, _fixture.Store.Dictations.Count());
         Assert.Equal(LargeHistoryFixture.MeetingCount, _fixture.Store.Meetings.Count());
@@ -201,19 +184,6 @@ public sealed class PersistenceLargeHistoryTests : IClassFixture<LargeHistoryFix
         Assert.True(
             elapsed < SearchBudget,
             $"Reading one page took {elapsed.TotalMilliseconds:F0} ms.");
-    }
-
-    [Fact]
-    public void RunningTheMigrationAgainOverTheSameHistoryIsANoOp()
-    {
-        var service = new JsonToSqliteMigrationService(
-            Path.GetDirectoryName(_fixture.DatabasePath)!,
-            _fixture.DatabasePath);
-
-        var result = service.Migrate();
-
-        Assert.Equal(JsonMigrationOutcome.AlreadyCurrent, result.Outcome);
-        Assert.Equal(_fixture.Result.SourceFingerprint, result.SourceFingerprint);
     }
 
     [Fact]
