@@ -6,7 +6,7 @@ corrections). There is no JSON history mode and no flag that selects one.
 
 **Read [`database-schema.md`](../../../../database-schema.md) at the repository root before
 changing anything here.** It documents every table and column, versioning, launch behaviour,
-backups, deletion and safe inspection. Update it in the same change as the code.
+deletion and safe inspection. Update it in the same change as the code.
 
 Settings and in-progress recording journals stay as atomic JSON, audio and models stay as files,
 and credentials stay in Windows Credential Manager. The Windows database is its own schema; it is
@@ -20,7 +20,6 @@ not the macOS `DictationStore` database and nothing syncs between them.
 | `PersistenceSchema.cs` | The schema, as an ordered list of numbered migrations. Currently one: version 1. |
 | `SchemaMigrator.cs` | Applies pending migrations; refuses a database from a newer build. |
 | `LibraryDatabaseStartup.cs` | The launch check: ready, create for a new profile, or refuse with a reason. |
-| `LibraryDatabaseBackup.cs` | Rolling `VACUUM INTO` backups, replacement after deletion, and restore. |
 | `I*Repository.cs`, `Sqlite*Repository.cs` | Dictations, meetings, folders, templates, dictionary, search. |
 | `SearchIndexWriter.cs` | Keeps the FTS documents in step with the relational tables. |
 | `Adapters/SqliteLibraryHistoryAdapter.cs` | The app-facing library: history, dictionary and the atomic correction save. |
@@ -64,15 +63,13 @@ migration, importer, marker or fallback. `windows-*.json` files left in a data f
 pre-release development builds are not read, converted or deleted; such a profile starts with an
 empty library.
 
-**Launch never guesses.** A missing database with backups, an unreadable database, one from a
-newer build and one from a pre-release build each produce a specific outcome and message
-(`LibraryStartupOutcome`). Only a profile with no database, no backups and no leftover database
-files gets a new empty one.
+**Launch never guesses.** An orphaned write-ahead log with no database, an unreadable or empty
+database, one from a newer build and one from a pre-release build each produce a specific outcome
+and message (`LibraryStartupOutcome`), and the file is left untouched. Only a profile with no
+database at all gets a new empty one.
 
-**The database is backed up, and deletion replaces the backups.** `LibraryDatabaseBackup` keeps
-the newest seven daily copies. Deleting a dictation or meeting raises
-`SqliteLibraryHistoryAdapter.ContentDeleted`, and the host then deletes every backup and takes a
-fresh one, so a backup never keeps text the user removed. A new deletion path must raise it too.
+**There are no backups.** The app keeps one database and nothing else, as on macOS. A deletion
+is a plain `DELETE`; there are no copies to scrub.
 
 ## Corrections
 
@@ -98,7 +95,7 @@ search pagination exist; moving every list onto them is not done.
 
 ## Tests
 
-`SqliteLibraryStorageTests` covers launch outcomes, backups and restore, and the
+`SqliteLibraryStorageTests` covers launch outcomes, meeting saves and the
 correction transaction. `PersistenceMigrationTests` covers the schema migrator.
 `PersistenceLargeHistoryTests` has timing budgets that are sensitive to machine load.
 Every test uses a temporary directory; none may point at a real profile.

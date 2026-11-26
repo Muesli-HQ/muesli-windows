@@ -259,35 +259,6 @@ public sealed class MuesliDatabase : IDisposable
             return null;
         });
 
-    /// <summary>
-    /// Writes a consistent standalone copy of the database, including anything still in the WAL.
-    /// Used to retain a rollback backup before a migration.
-    /// </summary>
-    public void BackupTo(string backupPath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(backupPath);
-        var fullPath = Path.GetFullPath(backupPath);
-        if (File.Exists(fullPath))
-        {
-            throw new PersistenceException($"The backup path '{fullPath}' already exists.");
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        lock (_gate)
-        {
-            ThrowIfDisposed();
-            if (_ambient is not null)
-            {
-                throw new PersistenceException("A backup cannot be taken inside a transaction.");
-            }
-
-            using var command = _connection.CreateCommand();
-            command.CommandText = "VACUUM INTO $path;";
-            command.Parameters.AddWithValue("$path", fullPath);
-            command.ExecuteNonQuery();
-        }
-    }
-
     /// <summary>Folds the WAL back into the database file so the file alone is complete.</summary>
     public void Checkpoint()
     {

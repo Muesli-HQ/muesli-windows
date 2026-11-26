@@ -220,7 +220,7 @@ public sealed class DictationCorrectionTests
         private ILibraryHistoryAdapter Open() => SqliteLibraryHistoryAdapter.Open(_root);
         public void Seed(string text)
         {
-            Original = new("d", new DateTime(2026, 11, 18, 10, 0, 0, DateTimeKind.Utc), text, 2345, "test-model");
+            Original = new("d", new DateTime(2026, 11, 18, 10, 0, 0, DateTimeKind.Utc).ToLocalTime(), text, 2345, "test-model");
             History.AppendDictation(Original);
         }
         public void Reopen() { (History as IDisposable)?.Dispose(); History = Open(); }

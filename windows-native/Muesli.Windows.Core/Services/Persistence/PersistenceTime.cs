@@ -30,6 +30,14 @@ public static class PersistenceTime
             _ => new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc))
         };
 
-    /// <summary>The UTC <see cref="DateTime"/> the app's records expect.</summary>
+    /// <summary>
+    /// The local-time <see cref="DateTime"/> the app's records carry. Pages group history by
+    /// calendar day and compare it with local cut-offs ("today", "last week"), so a record read
+    /// back in UTC would land on the wrong day for anyone not in UTC. Storage stays UTC; this is
+    /// only the shape handed to the app, and <see cref="Normalize"/> turns it back losslessly.
+    /// </summary>
+    public static DateTime ToLocalDateTime(DateTimeOffset value) => value.LocalDateTime;
+
+    /// <summary>The UTC <see cref="DateTime"/> for callers that need an absolute instant.</summary>
     public static DateTime ToDateTime(DateTimeOffset value) => value.UtcDateTime;
 }

@@ -269,6 +269,26 @@
                                     AutomationProperties.Name="Meeting folders"
                                     AutomationProperties.AutomationId="MeetingFolderRail" />
 
+                        <!--
+                            Narrow windows show the rail icon-only and hide the folder rows above.
+                            This button's menu lists the folders and carries the same actions, so
+                            folders stay reachable at every supported width.
+                        -->
+                        <Button x:Name="CompactFoldersButton"
+                                Visibility="Collapsed"
+                                Style="{StaticResource MuesliSidebarButtonStyle}"
+                                AutomationProperties.Name="Meeting folders"
+                                AutomationProperties.AutomationId="CompactMeetingFoldersButton"
+                                ToolTipService.ToolTip="Meeting folders">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE8B7;" Style="{StaticResource MuesliSidebarIconStyle}" />
+                            </Grid>
+                            <Button.Flyout>
+                                <MenuFlyout x:Name="CompactFoldersFlyout" Placement="RightEdgeAlignedTop" Opening="CompactFoldersFlyout_Opening" />
+                            </Button.Flyout>
+                        </Button>
+
                         <Button x:Name="DictionaryNav"
                                 Style="{StaticResource MuesliSidebarButtonStyle}"
                                 Tag="dictionary"

@@ -18,7 +18,7 @@ internal static class LibraryHistoryMapper
     public static PersistedDictation ToPersisted(DictationRecord record) =>
         new(
             record.Id,
-            PersistenceTime.ToDateTime(record.CreatedAtUtc),
+            PersistenceTime.ToLocalDateTime(record.CreatedAtUtc),
             record.Text,
             record.DurationMs,
             record.ModelProfile);
@@ -54,7 +54,7 @@ internal static class LibraryHistoryMapper
             Id = meeting.Id,
             Title = meeting.Title,
             TitleIsManual = meeting.TitleIsManual,
-            CreatedAt = PersistenceTime.ToDateTime(meeting.CreatedAtUtc),
+            CreatedAt = PersistenceTime.ToLocalDateTime(meeting.CreatedAtUtc),
             DurationMs = meeting.DurationMs,
             Transcript = edited ?? raw ?? "",
             Summary = detail.Note(MeetingNoteKind.Generated) ?? "",

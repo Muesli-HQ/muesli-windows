@@ -3,8 +3,7 @@
 This document is the contributor and coding-agent map of the Muesli Windows library database.
 Read it before changing anything under
 [`windows-native/Muesli.Windows.Core/Services/Persistence/`](windows-native/Muesli.Windows.Core/Services/Persistence/),
-and update it in the same change whenever the schema, the deletion behaviour or the backup
-behaviour changes.
+and update it in the same change whenever the schema or the deletion behaviour changes.
 
 The executable source of truth is
 [`PersistenceSchema.cs`](windows-native/Muesli.Windows.Core/Services/Persistence/PersistenceSchema.cs).
@@ -28,8 +27,6 @@ The database is `muesli.db` in the `data` folder of the active profile.
 file name. While the app runs you will also see `muesli.db-wal` and `muesli.db-shm` beside it.
 Those two files are part of the database. Never copy, move or delete `muesli.db` on its own
 while they exist.
-
-Rolling backups live in `data\backups\` (see [Backups](#backups)).
 
 ## Storage rules at a glance
 
@@ -286,11 +283,11 @@ database to upgrade from.
 6. Add tests: a fresh database, an upgrade from the previous version with representative rows,
    a round-trip of the new field, and the newer-build refusal still holding.
 7. Remember that an older build cannot open the upgraded file. That is by design, and it is why
-   the backup taken before the upgrade matters (see below).
+   a schema change needs the same care as any other one-way step.
 8. Update this guide, the Persistence `README.md` and `docs/WINDOWS_PRIVACY.md` if what is
    stored or how it is deleted changed.
 
-Keep database work off the UI thread when it can be slow (bulk loads, backups). Single-row
+Keep database work off the UI thread when it can be slow (bulk loads). Single-row
 reads and writes are fast enough to stay where they are.
 
 ## What happens at launch
@@ -300,11 +297,10 @@ but the database header and directory listings, and it never modifies a file it 
 
 | Profile state | Outcome | What the user sees |
 | --- | --- | --- |
-| No database and no backups | An empty database is created. | The app, with an empty library. |
+| No database | An empty database is created. | The app, with an empty library. |
 | Database present and current | Ready. | The app. |
-| No database, backups present | `DatabaseMissing`. | A dialog offering to restore the newest backup. |
-| No database, but `muesli.db-wal` or `muesli.db-shm` present | `DatabaseMissing`. Nothing is created: the orphaned log can hold recent history and a new database would make SQLite discard it. | A dialog naming the files; offers a backup when there is one. |
-| Database cannot be opened, or exists but is empty (no schema) | `DatabaseUnreadable`. An empty file is never given a schema. | A dialog; offers the newest good backup when there is one. |
+| No database, but `muesli.db-wal` or `muesli.db-shm` present | `DatabaseMissing`. Nothing is created: the orphaned log can hold recent history and a new database would make SQLite discard it. | A dialog naming the files. |
+| Database cannot be opened, or exists but is empty (no schema) | `DatabaseUnreadable`. An empty file is never given a schema. | A dialog saying how to start with an empty library. |
 | Database from a newer Muesli | `DatabaseFromNewerBuild`. | A dialog saying to update Muesli. |
 | Database from a pre-release build | `DatabaseFromPreReleaseBuild`. | A dialog saying which files to move aside. |
 
@@ -315,35 +311,6 @@ Pre-release development builds kept history in `windows-*.json` files in the dat
 released build ever did. This build does not read, convert or delete those files: a profile that
 has them and no database simply starts with an empty library.
 
-## Backups
-
-The database is the only copy of the user's history, so `LibraryDatabaseBackup` keeps rolling
-copies in `data\backups\muesli-<UTC yyyyMMdd-HHmmssfff>.db`.
-
-- A copy is taken at launch when the newest one is more than 24 hours old. It runs off the UI
-  thread and uses `VACUUM INTO`, which produces a complete, consistent database including
-  anything still in the WAL.
-- The newest 7 are kept; older ones are deleted.
-- A copy is written as `*.db.partial` and renamed when finished, so an interrupted copy is
-  never listed or restored.
-- **Explicit deletion replaces the backups.** When the user deletes a dictation or meeting, or
-  clears history, every backup is deleted and a fresh one is taken, so no copy keeps the deleted
-  text. Do not add a deletion path that skips `SqliteLibraryHistoryAdapter.ContentDeleted`.
-- **The purge is durable.** Before the deletion returns, `RecordDeletionAndPurge` writes
-  `backups\purge-pending` to disk and deletes the existing copies. Only writing the replacement
-  runs in the background. If the app closes first, the next launch sees the record and finishes
-  the purge whatever the age of the newest backup. A copy that started before the deletion and
-  finishes after it is discarded, not kept. The record is removed once a clean replacement
-  exists. While the record exists no backup is offered for restore, so a lost database cannot
-  bring deleted content back.
-- `RestoreLatest` picks the newest backup that passes `PRAGMA quick_check`, renames the current
-  `muesli.db` (and its `-wal` and `-shm`) to `muesli.db.replaced-<timestamp>`, copies the backup
-  to `muesli.db.restoring-<timestamp>` and renames it into place, so an interrupted restore
-  never leaves a partial `muesli.db`. Nothing is deleted by a restore.
-
-Backups share the disk with the database. They protect against a damaged file or a bad
-upgrade, not against losing the disk.
-
 ## Deletion
 
 - Deleting a dictation removes its `dictations` row and its search document.
@@ -352,7 +319,6 @@ upgrade, not against losing the disk.
   search document is removed. Muesli-owned recording files are deleted by `CaptureStorageService`;
   imported source files are never touched.
 - Deleting a folder unfiles its contents (see `folders`).
-- Backups are replaced as described above.
 - SQLite does not overwrite freed pages. Deleted text can remain in unused space inside
   `muesli.db` and its WAL until SQLite reuses those pages. It is not reachable through the app
   or through search.
@@ -382,9 +348,11 @@ sqlite3 -readonly "$env:APPDATA\muesli\data\muesli.db" ".schema dictations"
 sqlite3 -readonly "$env:APPDATA\muesli\data\muesli.db" "PRAGMA user_version; PRAGMA application_id; PRAGMA quick_check; PRAGMA foreign_key_check;"
 ```
 
-To work on a copy, quit Muesli first and copy `muesli.db`, or use one of the files in
-`data\backups\`, each of which is already a complete standalone database. Do not copy a live
-`muesli.db` without its `-wal` and `-shm` files.
+To work on a copy, quit Muesli first and copy `muesli.db`. Do not copy a live `muesli.db`
+without its `-wal` and `-shm` files.
+
+Muesli keeps no backup of the database, as on macOS. Anyone who wants one should copy
+`muesli.db` while Muesli is closed.
 
 Do not dump personal rows into logs, issues or chat. Transcripts and notes are the user's
 private content.

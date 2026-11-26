@@ -116,55 +116,22 @@ public partial class App : Application
 
     /// <summary>
     /// Opens the library, or tells the user why it cannot be opened and returns null. Nothing else
-    /// in the app exists yet, so the explanation is a plain system dialog. When a backup can put
-    /// things right the dialog offers it; the damaged file is renamed, never deleted.
+    /// in the app exists yet, so the explanation is a plain system dialog.
     /// </summary>
     private WinUiLibraryContext? OpenLibraryOrExplain(IMuesliProfilePaths profile)
     {
-        for (var restored = false; ; )
+        try
         {
-            try
-            {
-                return new WinUiLibraryContext(profile);
-            }
-            catch (LibraryUnavailableException unavailable)
-            {
-                var result = unavailable.Result;
-                _log.Error($"Library unavailable at startup. outcome={result.Outcome}; backupAvailable={result.LatestBackup is not null}");
-                if (restored || !result.CanRestoreBackup)
-                {
-                    ShowStartupMessage(result.Message, offerRestore: false);
-                    return null;
-                }
-
-                if (!ShowStartupMessage(result.Message + "\n\nRestore that backup now? The current file is kept under a new name.", offerRestore: true))
-                    return null;
-                try
-                {
-                    if (LibraryDatabaseBackup.RestoreLatest(profile.DataDirectory) is null)
-                    {
-                        ShowStartupMessage("No usable backup could be restored. Nothing was changed.", offerRestore: false);
-                        return null;
-                    }
-                    _log.Info("Library restored from backup at startup.");
-                    restored = true;
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                    _log.Error("Library restore failed.", exception);
-                    ShowStartupMessage("The backup could not be restored. Close other programs using the Muesli folder and try again.", offerRestore: false);
-                    return null;
-                }
-            }
+            return new WinUiLibraryContext(profile);
         }
-    }
-
-    private static bool ShowStartupMessage(string message, bool offerRestore)
-    {
-        const uint ok = 0x0, yesNo = 0x4, warning = 0x30, setForeground = 0x10000, topMost = 0x40000;
-        const int yes = 6;
-        var title = MuesliDevSlot.Current is { } slot ? $"Muesli ({slot})" : "Muesli";
-        return MessageBoxW(IntPtr.Zero, message, title, (offerRestore ? yesNo : ok) | warning | setForeground | topMost) == yes;
+        catch (LibraryUnavailableException unavailable)
+        {
+            _log.Error($"Library unavailable at startup. outcome={unavailable.Result.Outcome}");
+            const uint ok = 0x0, warning = 0x30, setForeground = 0x10000, topMost = 0x40000;
+            var title = MuesliDevSlot.Current is { } slot ? $"Muesli ({slot})" : "Muesli";
+            MessageBoxW(IntPtr.Zero, unavailable.Result.Message, title, ok | warning | setForeground | topMost);
+            return null;
+        }
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]

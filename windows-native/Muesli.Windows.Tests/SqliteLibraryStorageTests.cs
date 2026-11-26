@@ -6,8 +6,7 @@ using Muesli.Windows.WinUI.Services;
 namespace Muesli.Windows.Tests;
 
 /// <summary>
-/// SQLite is the only history store: what a launch does with each state a profile can be in,
-/// and the rolling backups.
+/// SQLite is the only history store: what a launch does with each state a profile can be in.
 /// </summary>
 public sealed class SqliteLibraryStorageTests
 {
@@ -15,7 +14,8 @@ public sealed class SqliteLibraryStorageTests
     {
         Id = "rule-α", Phrase = "mues lee", Replacement = "Muesli", MatchingThreshold = 0.9123456789
     };
-    private static readonly PersistedDictation Dictation = new("d", new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc),
+    // Local time, as the app creates and reads records; storage converts to UTC and back.
+    private static readonly PersistedDictation Dictation = new("d", new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc).ToLocalTime(),
         "mues lee helps", 1234, "model");
 
     // ---- Startup ---------------------------------------------------------------------------
@@ -33,9 +33,8 @@ public sealed class SqliteLibraryStorageTests
             adapter.AppendDictation(Dictation);
         }
 
-        // The only folder the library adds beside the database is its backups.
-        Assert.DoesNotContain(Directory.EnumerateDirectories(profile.DataDirectory), path =>
-            Path.GetFileName(path) != LibraryDatabaseBackup.DirectoryName);
+        // The library is the database alone: no folders, markers or copies beside it.
+        Assert.Empty(Directory.EnumerateDirectories(profile.DataDirectory));
         using var restarted = new WinUiLibraryContext(profile);
         Assert.Equal(Dictation, Assert.Single(restarted.History.LoadDictations()));
     }
@@ -75,7 +74,6 @@ public sealed class SqliteLibraryStorageTests
 
         Assert.Equal(LibraryStartupOutcome.DatabaseFromNewerBuild, result.Outcome);
         Assert.Contains("Update Muesli", result.Message);
-        Assert.False(result.CanRestoreBackup);
         Assert.Equal(before, File.ReadAllBytes(path));
     }
 
@@ -120,278 +118,74 @@ public sealed class SqliteLibraryStorageTests
         foreach (var (path, bytes) in before) Assert.Equal(bytes, File.ReadAllBytes(path));
     }
 
-    // ---- Backups ---------------------------------------------------------------------------
-
-    [Fact]
-    public void BackupsAreTakenAtMostOncePerIntervalAndTheOldestAreRemoved()
-    {
-        using var directory = new TestDirectory();
-        using var store = MuesliPersistenceStore.Open(PersistencePaths.DatabasePathFor(directory.Path));
-        store.Dictations.Upsert(new DictationRecord { Id = "d", Text = "kept" });
-        var start = new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.Zero);
-
-        Assert.NotNull(LibraryDatabaseBackup.CreateIfDue(store.Database, directory.Path, now: start));
-        Assert.Null(LibraryDatabaseBackup.CreateIfDue(store.Database, directory.Path, now: start.AddHours(23)));
-        for (var day = 1; day <= 9; day++)
-            Assert.NotNull(LibraryDatabaseBackup.CreateIfDue(store.Database, directory.Path, now: start.AddDays(day)));
-
-        var backups = LibraryDatabaseBackup.List(directory.Path);
-        Assert.Equal(LibraryDatabaseBackup.DefaultRetainedCount, backups.Count);
-        Assert.Equal(start.AddDays(9), backups[0].CreatedAtUtc);
-        Assert.Equal(start.AddDays(3), backups[^1].CreatedAtUtc);
-        // A backup is a complete, independent database.
-        using var copy = MuesliPersistenceStore.Open(backups[0].Path);
-        Assert.Equal("kept", copy.Dictations.Find("d")!.Text);
-    }
-
-    [Fact]
-    public void AnInterruptedBackupIsNeverListedOrRestored()
-    {
-        using var directory = new TestDirectory();
-        Directory.CreateDirectory(LibraryDatabaseBackup.DirectoryFor(directory.Path));
-        File.WriteAllText(Path.Combine(LibraryDatabaseBackup.DirectoryFor(directory.Path), "muesli-20260101-090000000.db.partial"), "half");
-        File.WriteAllText(Path.Combine(LibraryDatabaseBackup.DirectoryFor(directory.Path), "notes.txt"), "user file");
-
-        Assert.Empty(LibraryDatabaseBackup.List(directory.Path));
-        Assert.Null(LibraryDatabaseBackup.RestoreLatest(directory.Path));
-        Assert.True(LibraryDatabaseStartup.Prepare(directory.Path).IsReady);
-    }
-
-    [Fact]
-    public void ADamagedDatabaseIsReportedAndCanBeRestoredFromTheNewestGoodBackup()
-    {
-        using var directory = new TestDirectory();
-        var path = PersistencePaths.DatabasePathFor(directory.Path);
-        using (var store = MuesliPersistenceStore.Open(path))
-        {
-            store.Dictations.Upsert(new DictationRecord { Id = "d", Text = "before the damage" });
-            LibraryDatabaseBackup.Create(store.Database, directory.Path, now: new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
-        }
-        // A newer backup that is itself damaged must be skipped, not restored.
-        File.WriteAllText(Path.Combine(LibraryDatabaseBackup.DirectoryFor(directory.Path), "muesli-20260102-000000000.db"), "not a database");
-        File.WriteAllText(path, "broken database");
-
-        var damaged = LibraryDatabaseStartup.Prepare(directory.Path);
-        Assert.Equal(LibraryStartupOutcome.DatabaseUnreadable, damaged.Outcome);
-        Assert.True(damaged.CanRestoreBackup);
-        Assert.Equal("broken database", File.ReadAllText(path));
-
-        var restored = LibraryDatabaseBackup.RestoreLatest(directory.Path);
-        Assert.NotNull(restored);
-        Assert.EndsWith("muesli-20260101-000000000.db", restored!.Path);
-        Assert.True(LibraryDatabaseStartup.Prepare(directory.Path).IsReady);
-        using var reopened = MuesliPersistenceStore.Open(path);
-        Assert.Equal("before the damage", reopened.Dictations.Find("d")!.Text);
-        // The damaged file is kept under a new name rather than deleted.
-        var replaced = Assert.Single(Directory.EnumerateFiles(directory.Path, "muesli.db.replaced-*"));
-        Assert.Equal("broken database", File.ReadAllText(replaced));
-    }
-
-    [Fact]
-    public void ADamagedDatabaseWithNoBackupIsReportedWithoutOfferingARestore()
-    {
-        using var directory = new TestDirectory();
-        File.WriteAllText(PersistencePaths.DatabasePathFor(directory.Path), "broken database");
-        var result = LibraryDatabaseStartup.Prepare(directory.Path);
-        Assert.Equal(LibraryStartupOutcome.DatabaseUnreadable, result.Outcome);
-        Assert.False(result.CanRestoreBackup);
-        Assert.Contains("No backup is available", result.Message);
-    }
-
-    [Fact]
-    public void AMissingDatabaseWithBackupsIsNotSilentlyReplacedByAnEmptyLibrary()
-    {
-        using var directory = new TestDirectory();
-        var path = PersistencePaths.DatabasePathFor(directory.Path);
-        using (var store = MuesliPersistenceStore.Open(path))
-        {
-            store.Dictations.Upsert(new DictationRecord { Id = "d", Text = "still in the backup" });
-            LibraryDatabaseBackup.Create(store.Database, directory.Path);
-        }
-        File.Delete(path);
-
-        var result = LibraryDatabaseStartup.Prepare(directory.Path);
-
-        Assert.Equal(LibraryStartupOutcome.DatabaseMissing, result.Outcome);
-        Assert.True(result.CanRestoreBackup);
-        Assert.False(File.Exists(path));
-        Assert.NotNull(LibraryDatabaseBackup.RestoreLatest(directory.Path));
-        using var reopened = MuesliPersistenceStore.Open(path);
-        Assert.Equal("still in the backup", reopened.Dictations.Find("d")!.Text);
-    }
-
-    [Fact]
-    public void TheAppBacksUpOnLaunchAndADeletionLeavesNoBackupHoldingTheDeletedText()
-    {
-        using var directory = new TestDirectory();
-        var profile = MuesliProfilePaths.Isolated(directory.Path);
-        using (var context = new WinUiLibraryContext(profile))
-        {
-            context.History.AppendDictation(Dictation);
-            context.History.AppendDictation(Dictation with { Id = "keep", Text = "keep this one" });
-        }
-        using (var context = new WinUiLibraryContext(profile))
-        {
-            // Force a backup that holds both rows, as an earlier day's launch would have.
-            var adapter = Assert.IsType<SqliteLibraryHistoryAdapter>(context.History);
-            LibraryDatabaseBackup.Create(adapter.Store.Database, profile.DataDirectory,
-                now: DateTimeOffset.UtcNow.AddDays(-1));
-            Assert.True(context.DeleteDictation("d"));
-        }
-
-        var backups = LibraryDatabaseBackup.List(profile.DataDirectory);
-        Assert.NotEmpty(backups);
-        foreach (var backup in backups)
-        {
-            using var copy = MuesliPersistenceStore.Open(backup.Path);
-            Assert.Null(copy.Dictations.Find("d"));
-            Assert.NotNull(copy.Dictations.Find("keep"));
-            Assert.Empty(copy.Search.Search(new SearchQuery { Text = "lee" }));
-        }
-    }
+    // ---- Damaged or partial databases ---------------------------------------------------------
 
     [Theory]
-    [InlineData("muesli.db-wal", false)]
-    [InlineData("muesli.db-shm", false)]
-    [InlineData("muesli.db-wal", true)]
-    public void AnOrphanedWriteAheadLogIsNeverOverwrittenByANewDatabase(string orphan, bool withBackup)
+    [InlineData("muesli.db-wal")]
+    [InlineData("muesli.db-shm")]
+    public void AnOrphanedWriteAheadLogIsNeverOverwrittenByANewDatabase(string orphan)
     {
         using var directory = new TestDirectory();
         var path = PersistencePaths.DatabasePathFor(directory.Path);
-        if (withBackup)
-        {
-            using (var store = MuesliPersistenceStore.Open(path))
-                LibraryDatabaseBackup.Create(store.Database, directory.Path);
-            File.Delete(path);
-        }
         File.WriteAllText(directory.File(orphan), "recent history that only the log holds");
 
         var result = LibraryDatabaseStartup.Prepare(directory.Path);
 
         Assert.Equal(LibraryStartupOutcome.DatabaseMissing, result.Outcome);
         Assert.Contains(orphan, result.Message);
-        Assert.Equal(withBackup, result.CanRestoreBackup);
         Assert.False(File.Exists(path));
         Assert.Equal("recent history that only the log holds", File.ReadAllText(directory.File(orphan)));
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void AnEmptyDatabaseFileIsNotStampedAsANewLibrary(bool withBackup)
+    [InlineData("")]
+    [InlineData("broken database")]
+    public void AnEmptyOrDamagedDatabaseFileIsReportedAndLeftAsItWas(string content)
     {
-        // An interrupted copy can leave a zero-byte muesli.db. SQLite opens it happily, so without
-        // this check it would be given a schema and shown as an empty, healthy library.
+        // SQLite opens a zero-byte file happily, so without the check it would be given a schema
+        // and shown as an empty, healthy library.
         using var directory = new TestDirectory();
         var path = PersistencePaths.DatabasePathFor(directory.Path);
-        if (withBackup)
-        {
-            using (var store = MuesliPersistenceStore.Open(path))
-            {
-                store.Dictations.Upsert(new DictationRecord { Id = "d", Text = "only in the backup" });
-                LibraryDatabaseBackup.Create(store.Database, directory.Path);
-            }
-            File.Delete(path);
-        }
-        File.WriteAllBytes(path, []);
+        File.WriteAllText(path, content);
 
         var result = LibraryDatabaseStartup.Prepare(directory.Path);
 
         Assert.Equal(LibraryStartupOutcome.DatabaseUnreadable, result.Outcome);
-        Assert.Equal(withBackup, result.CanRestoreBackup);
-        Assert.Equal(0, new FileInfo(path).Length);
-        Assert.Throws<PersistenceException>(() => SqliteLibraryHistoryAdapter.Open(directory.Path));
-        if (!withBackup) return;
-        Assert.NotNull(LibraryDatabaseBackup.RestoreLatest(directory.Path));
-        Assert.True(LibraryDatabaseStartup.Prepare(directory.Path).IsReady);
-        using var reopened = MuesliPersistenceStore.Open(path);
-        Assert.Equal("only in the backup", reopened.Dictations.Find("d")!.Text);
-        Assert.Empty(Directory.EnumerateFiles(directory.Path, "muesli.db.restoring-*"));
+        Assert.Contains("move muesli.db out of that folder", result.Message);
+        Assert.Equal(content, File.ReadAllText(path));
+
+        // The app refuses the same way, and releases the profile so a later launch is not locked out.
+        var profile = MuesliProfilePaths.Isolated(directory.File("profile"));
+        Directory.CreateDirectory(profile.DataDirectory);
+        var profileDatabase = PersistencePaths.DatabasePathFor(profile.DataDirectory);
+        File.WriteAllText(profileDatabase, content);
+        var thrown = Assert.Throws<LibraryUnavailableException>(() => new WinUiLibraryContext(profile));
+        Assert.Equal(LibraryStartupOutcome.DatabaseUnreadable, thrown.Result.Outcome);
+        File.Delete(profileDatabase);
+        using var opened = new WinUiLibraryContext(profile);
     }
 
     [Fact]
-    public void ADeletionPurgeIsRecordedAtOnceAndFinishedOnTheNextLaunchIfTheAppWasClosed()
+    public void HistoryIsHandedToTheAppInLocalTimeAndStoredAsTheSameInstant()
     {
+        // Pages group by calendar day and compare with local cut-offs. A UTC value would put an
+        // evening or early-morning recording on the wrong day for anyone not in UTC.
         using var directory = new TestDirectory();
-        var start = DateTimeOffset.UtcNow;
-        using (var store = MuesliPersistenceStore.Open(PersistencePaths.DatabasePathFor(directory.Path)))
-        {
-            store.Dictations.Upsert(new DictationRecord { Id = "d", Text = "sensitive words" });
-            store.Dictations.Upsert(new DictationRecord { Id = "keep", Text = "ordinary words" });
-            LibraryDatabaseBackup.Create(store.Database, directory.Path, now: start.AddDays(-1));
-            store.Dictations.Delete("d");
+        using var library = TestLibrary.Open(directory.Path);
+        var localEvening = new DateTime(2026, 3, 9, 23, 30, 0, DateTimeKind.Local);
+        library.AppendDictation(new PersistedDictation("d", localEvening, "late note", 1000, "model"));
+        library.SaveMeetings([new PersistedMeeting { Id = "m", Title = "Late call", CreatedAt = localEvening }]);
 
-            // What the app does before the deletion returns: no backup survives this call.
-            LibraryDatabaseBackup.RecordDeletionAndPurge(directory.Path);
-            Assert.Empty(LibraryDatabaseBackup.List(directory.Path));
-            Assert.NotNull(LibraryDatabaseBackup.PurgePendingSince(directory.Path));
+        var dictation = Assert.Single(library.LoadDictations());
+        var meeting = Assert.Single(library.LoadMeetings());
 
-            // A copy that began before the deletion lands late; it must not be kept.
-            var purgeMarker = Path.Combine(LibraryDatabaseBackup.DirectoryFor(directory.Path), "purge-pending");
-            var recordedAt = File.GetLastWriteTimeUtc(purgeMarker);
-            File.SetLastWriteTimeUtc(purgeMarker, DateTime.UtcNow.AddMinutes(1));
-            Assert.Null(LibraryDatabaseBackup.Create(store.Database, directory.Path));
-            Assert.Empty(LibraryDatabaseBackup.List(directory.Path));
-            Assert.Empty(Directory.EnumerateFiles(LibraryDatabaseBackup.DirectoryFor(directory.Path), "*.partial"));
-            File.SetLastWriteTimeUtc(purgeMarker, recordedAt);
-        }
-
-        // The app was closed before it wrote the replacement. Put a stale copy back to stand for
-        // one that slipped through, then launch again.
-        File.WriteAllText(Path.Combine(LibraryDatabaseBackup.DirectoryFor(directory.Path), "muesli-20260101-000000000.db"), "stale copy with sensitive words");
-        using (var store = MuesliPersistenceStore.Open(PersistencePaths.DatabasePathFor(directory.Path)))
-        {
-            Assert.NotNull(LibraryDatabaseBackup.CreateIfDue(store.Database, directory.Path));
-        }
-
-        var backup = Assert.Single(LibraryDatabaseBackup.List(directory.Path));
-        Assert.Null(LibraryDatabaseBackup.PurgePendingSince(directory.Path));
-        using var copy = MuesliPersistenceStore.Open(backup.Path);
-        Assert.Null(copy.Dictations.Find("d"));
-        Assert.NotNull(copy.Dictations.Find("keep"));
-    }
-
-    [Fact]
-    public void APendingPurgeIsHonouredEvenWhenABackupIsNotDue()
-    {
-        using var directory = new TestDirectory();
-        using var store = MuesliPersistenceStore.Open(PersistencePaths.DatabasePathFor(directory.Path));
-        var first = LibraryDatabaseBackup.Create(store.Database, directory.Path, now: DateTimeOffset.UtcNow.AddMinutes(-5));
-        Assert.NotNull(first);
-        Assert.Null(LibraryDatabaseBackup.CreateIfDue(store.Database, directory.Path));
-
-        Directory.CreateDirectory(LibraryDatabaseBackup.DirectoryFor(directory.Path));
-        File.WriteAllText(Path.Combine(LibraryDatabaseBackup.DirectoryFor(directory.Path), "purge-pending"), "1");
-        File.SetLastWriteTimeUtc(Path.Combine(LibraryDatabaseBackup.DirectoryFor(directory.Path), "purge-pending"), DateTime.UtcNow.AddMinutes(-1));
-
-        var replacement = LibraryDatabaseBackup.CreateIfDue(store.Database, directory.Path);
-        Assert.NotNull(replacement);
-        Assert.NotEqual(first!.Path, replacement!.Path);
-        Assert.False(File.Exists(first.Path));
-        Assert.Null(LibraryDatabaseBackup.PurgePendingSince(directory.Path));
-    }
-
-    [Fact]
-    public void ABackupIsNotOfferedForRestoreWhileADeletionPurgeIsUnfinished()
-    {
-        // The app deleted a dictation, recorded the purge, and was killed before the old copies
-        // were gone. Then the database was lost. Restoring that copy would bring the text back.
-        using var directory = new TestDirectory();
-        var path = PersistencePaths.DatabasePathFor(directory.Path);
-        using (var store = MuesliPersistenceStore.Open(path))
-        {
-            store.Dictations.Upsert(new DictationRecord { Id = "d", Text = "sensitive words" });
-            LibraryDatabaseBackup.Create(store.Database, directory.Path);
-        }
-        File.WriteAllText(Path.Combine(LibraryDatabaseBackup.DirectoryFor(directory.Path), "purge-pending"), "1");
-        File.WriteAllText(path, "broken database");
-
-        var result = LibraryDatabaseStartup.Prepare(directory.Path);
-
-        Assert.Equal(LibraryStartupOutcome.DatabaseUnreadable, result.Outcome);
-        Assert.False(result.CanRestoreBackup);
-        Assert.Empty(LibraryDatabaseBackup.List(directory.Path));
-        Assert.Null(LibraryDatabaseBackup.RestoreLatest(directory.Path));
+        Assert.Equal(DateTimeKind.Local, dictation.Timestamp.Kind);
+        Assert.Equal(localEvening, dictation.Timestamp);
+        Assert.Equal(new DateTime(2026, 3, 9), dictation.Timestamp.Date);
+        Assert.Equal(DateTimeKind.Local, meeting.CreatedAt.Kind);
+        Assert.Equal(localEvening, meeting.CreatedAt);
+        // Storage itself stays an absolute UTC instant.
+        Assert.Equal(new DateTimeOffset(localEvening).UtcTicks, library.Store.Dictations.Find("d")!.CreatedAtUtc.UtcTicks);
     }
 
     // ---- Meetings ---------------------------------------------------------------------------

@@ -14,7 +14,6 @@ namespace Muesli.Windows.WinUI.Services;
 public sealed class WinUiLibraryContext : IDisposable
 {
     private readonly IMuesliProfileLease? _profileLease;
-    private Task _backup = Task.CompletedTask;
 
     public WinUiLibraryContext(IMuesliProfilePaths paths)
     {
@@ -33,28 +32,8 @@ public sealed class WinUiLibraryContext : IDisposable
             // reads or converts JSON history from earlier development builds.
             var startup = LibraryDatabaseStartup.Prepare(paths.DataDirectory);
             if (!startup.IsReady) throw new LibraryUnavailableException(startup);
-            var history = SqliteLibraryHistoryAdapter.Open(paths.DataDirectory);
-            History = history;
+            History = SqliteLibraryHistoryAdapter.Open(paths.DataDirectory);
             Profile = paths;
-            // The database is the only copy of the history, so keep rolling copies of it. An
-            // explicit deletion replaces them: a backup must not keep text the user removed.
-            // The purge is recorded on disk and the old copies removed before the deletion returns
-            // to its caller; only writing the replacement copy is left to the background. If the
-            // app is closed first, the record makes the next launch finish the purge.
-            history.ContentDeleted += () =>
-            {
-                try
-                {
-                    LibraryDatabaseBackup.RecordDeletionAndPurge(paths.DataDirectory);
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                    new AppLogService().Error($"Library backups could not be purged after a deletion. reason={exception.GetType().Name}");
-                }
-
-                RunBackup(history, paths.DataDirectory, replaceAll: true);
-            };
-            RunBackup(history, paths.DataDirectory, replaceAll: false);
         }
         catch
         {
@@ -62,26 +41,6 @@ public sealed class WinUiLibraryContext : IDisposable
             throw;
         }
     }
-
-    // One at a time, in order, off the UI thread: copying a large library takes a moment.
-    private void RunBackup(SqliteLibraryHistoryAdapter history, string dataDirectory, bool replaceAll) =>
-        _backup = _backup.ContinueWith(_ =>
-        {
-            try
-            {
-                if (replaceAll) LibraryDatabaseBackup.ReplaceAll(history.Store.Database, dataDirectory);
-                else LibraryDatabaseBackup.CreateIfDue(history.Store.Database, dataDirectory);
-            }
-            catch (ObjectDisposedException)
-            {
-                // The app is closing; the next launch takes the backup.
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
-                                                  or PersistenceException or Microsoft.Data.Sqlite.SqliteException)
-            {
-                new AppLogService().Error($"Library backup failed. replaceAll={replaceAll}; reason={exception.GetType().Name}");
-            }
-        }, TaskScheduler.Default);
 
     public IMuesliProfilePaths Profile { get; }
 
@@ -318,10 +277,6 @@ public sealed class WinUiLibraryContext : IDisposable
 
     public void Dispose()
     {
-        // Let a backup that is being written finish: closing the database under it would leave
-        // the profile without the copy it was about to get.
-        try { _backup.Wait(TimeSpan.FromSeconds(30)); }
-        catch (AggregateException) { /* already logged by the backup itself */ }
         (History as IDisposable)?.Dispose();
         _profileLease?.Dispose();
     }

@@ -64,10 +64,26 @@ public static class MeetingFolderActions
         return null;
     }
 
-    public static void MoveToTopLevel(WinUiLibraryContext library, string id)
+    /// <summary>
+    /// Moves a nested folder to the top level. Returns null when it moved, otherwise the reason it
+    /// was refused: a top-level folder already has that name, and two identical names side by
+    /// side cannot be told apart when filing a meeting.
+    /// </summary>
+    public static string? MoveToTopLevel(WinUiLibraryContext library, string id)
     {
         ArgumentNullException.ThrowIfNull(library);
+        var stored = library.History.LoadMeetingFolders();
+        var folder = stored.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
+        if (folder is null) return "That folder no longer exists.";
+        if (string.IsNullOrWhiteSpace(folder.ParentId)) return null;
+        var clash = stored.Any(other =>
+            !string.Equals(other.Id, id, StringComparison.Ordinal) &&
+            string.IsNullOrWhiteSpace(other.ParentId) &&
+            string.Equals(other.Name, folder.Name, StringComparison.CurrentCultureIgnoreCase));
+        if (clash) return $"A folder called “{folder.Name}” already exists at the top level. Rename one of them first.";
+
         library.MoveMeetingFolder(id, null);
+        return null;
     }
 
     /// <summary>Deletes a folder. Its meetings are unfiled, never deleted.</summary>

@@ -72,7 +72,13 @@ public sealed class FolderLaunchParityTests
         var child = MeetingFolderActions.Create(library, parent.Id);
         library.SaveMeeting(new PersistedMeeting { Id = "m", Title = "Planning", FolderId = child.Id, CreatedAt = DateTime.UtcNow });
 
-        MeetingFolderActions.MoveToTopLevel(library, child.Id);
+        // Both are called "New Folder": side by side at the top level they could not be told apart
+        // when filing a meeting, so the move is refused until one is renamed.
+        Assert.Contains("already exists", MeetingFolderActions.MoveToTopLevel(library, child.Id));
+        Assert.Equal(parent.Id, library.History.LoadMeetingFolders().Single(folder => folder.Id == child.Id).ParentId);
+        Assert.Null(MeetingFolderActions.Rename(library, child.Id, "Archive"));
+
+        Assert.Null(MeetingFolderActions.MoveToTopLevel(library, child.Id));
         Assert.Null(library.History.LoadMeetingFolders().Single(folder => folder.Id == child.Id).ParentId);
 
         Assert.True(MeetingFolderActions.Delete(library, child.Id));
@@ -82,6 +88,25 @@ public sealed class FolderLaunchParityTests
         Assert.Equal("m", meeting.Id);
         Assert.Null(meeting.FolderId);
         Assert.False(MeetingFolderActions.Delete(library, child.Id));
+    }
+
+    [Fact]
+    public void SavingAMeetingThatStillNamesADeletedFolderKeepsItsNotesAndUnfilesIt()
+    {
+        // A meeting can be open while its folder is deleted from the sidebar. The page still holds
+        // the old folder; saving must not be rejected and lose what the user typed.
+        using var directory = new TestDirectory();
+        using var library = new WinUiLibraryContext(MuesliProfilePaths.Isolated(directory.Path));
+        var folder = MeetingFolderActions.Create(library, null);
+        var open = new PersistedMeeting { Id = "m", Title = "Planning", FolderId = folder.Id, CreatedAt = DateTime.UtcNow };
+        library.SaveMeeting(open);
+        Assert.True(MeetingFolderActions.Delete(library, folder.Id));
+
+        Assert.True(library.UpdateMeeting(open with { ManualNotes = "typed after the folder was deleted" }));
+
+        var stored = library.FindMeeting("m")!;
+        Assert.Equal("typed after the folder was deleted", stored.ManualNotes);
+        Assert.Null(stored.FolderId);
     }
 
     [Fact]
@@ -97,6 +122,12 @@ public sealed class FolderLaunchParityTests
         Assert.DoesNotContain("MeetingFoldersExpander", page, StringComparison.Ordinal);
         foreach (var action in new[] { "New subfolder", "Rename", "Move to top level", "Delete" })
             Assert.Contains($"Item(\"{action}\"", shell, StringComparison.Ordinal);
+
+        // The icon-only rail of a narrow window hides the folder rows, so it must keep its own way in.
+        var rail = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "MainPage.xaml"));
+        Assert.Contains("CompactMeetingFoldersButton", rail, StringComparison.Ordinal);
+        Assert.Contains("CompactFoldersButton.Visibility = compact ? Visibility.Visible", shell, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot() => TestRepositoryLayout.Root;

@@ -29,12 +29,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         return new SqliteLibraryHistoryAdapter(store, ownsStore: true, warning: warning);
     }
 
-    /// <summary>
-    /// Raised after a dictation or meeting was explicitly deleted and the deletion committed.
-    /// The host uses it to replace database backups that still contain the deleted content.
-    /// </summary>
-    public event Action? ContentDeleted;
-
     public MuesliPersistenceStore Store => _store;
 
     public IReadOnlyList<SearchHit> Search(SearchQuery query) => _store.Search.Search(query);
@@ -59,7 +53,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
     public void SaveDictations(IEnumerable<PersistedDictation> dictations, bool afterExplicitDeletion = false)
     {
         var incoming = dictations.ToList();
-        var contentDeleted = false;
         using var transaction = _store.BeginTransaction();
         if (afterExplicitDeletion)
         {
@@ -68,7 +61,7 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
             {
                 if (!keep.Contains(existing.Id))
                 {
-                    contentDeleted |= _store.Dictations.Delete(existing.Id);
+                    _store.Dictations.Delete(existing.Id);
                 }
             }
         }
@@ -87,7 +80,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         }
 
         transaction.Commit();
-        if (contentDeleted) ContentDeleted?.Invoke();
     }
 
     public bool TryUpdateDictationText(string id, string expectedText, string replacementText)
@@ -171,7 +163,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         using var transaction = _store.BeginTransaction();
         if (!_store.Dictations.Delete(id)) return false;
         transaction.Commit();
-        ContentDeleted?.Invoke();
         return true;
     }
 
@@ -182,7 +173,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
             _store.Meetings.DeleteFollowUp(link.Id);
         if (!_store.Meetings.Delete(id)) return false;
         transaction.Commit();
-        ContentDeleted?.Invoke();
         return true;
     }
 
@@ -193,7 +183,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
     public void SaveMeetings(IEnumerable<PersistedMeeting> meetings, bool afterExplicitDeletion = false)
     {
         var incoming = meetings.ToList();
-        var contentDeleted = false;
         using var transaction = _store.BeginTransaction();
         if (afterExplicitDeletion)
         {
@@ -202,13 +191,19 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
             {
                 if (!keep.Contains(existing.Id))
                 {
-                    contentDeleted |= _store.Meetings.Delete(existing.Id);
+                    _store.Meetings.Delete(existing.Id);
                 }
             }
         }
 
-        foreach (var meeting in incoming)
+        foreach (var submitted in incoming)
         {
+            // A page can still hold a folder that was deleted elsewhere (the sidebar, another
+            // page). Deleting a folder unfiles its meetings, so a save naming it means "unfiled",
+            // not a foreign-key failure that silently loses the notes being saved with it.
+            var meeting = !string.IsNullOrWhiteSpace(submitted.FolderId) && _store.Folders.Find(submitted.FolderId) is null
+                ? submitted with { FolderId = null }
+                : submitted;
             var existing = _store.Meetings.FindDetail(meeting.Id);
             if (existing is null)
             {
@@ -258,7 +253,6 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         }
 
         transaction.Commit();
-        if (contentDeleted) ContentDeleted?.Invoke();
     }
 
     public IReadOnlyList<PersistedMeetingFolder> LoadMeetingFolders() =>

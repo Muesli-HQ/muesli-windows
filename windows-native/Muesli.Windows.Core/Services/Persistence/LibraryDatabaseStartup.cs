@@ -8,7 +8,7 @@ public enum LibraryStartupOutcome
     /// <summary>The database exists (or was just created for a new profile) and can be opened.</summary>
     Ready,
 
-    /// <summary>There is no database, but backups show there used to be one.</summary>
+    /// <summary>There is no database, but parts of one (its write-ahead log) are still there.</summary>
     DatabaseMissing,
 
     /// <summary>The database file exists and SQLite cannot open it.</summary>
@@ -33,14 +33,7 @@ public sealed record LibraryStartupResult
     /// <summary>True when this call created the database for a new profile.</summary>
     public bool CreatedDatabase { get; init; }
 
-    /// <summary>The newest backup, when one exists.</summary>
-    public LibraryBackupInfo? LatestBackup { get; init; }
-
     public bool IsReady => Outcome == LibraryStartupOutcome.Ready;
-
-    /// <summary>True when restoring <see cref="LatestBackup"/> is a sensible way out.</summary>
-    public bool CanRestoreBackup => LatestBackup is not null &&
-        Outcome is LibraryStartupOutcome.DatabaseMissing or LibraryStartupOutcome.DatabaseUnreadable;
 }
 
 /// <summary>Thrown by a host that cannot open the library; carries the reason to show the user.</summary>
@@ -54,8 +47,9 @@ public sealed class LibraryUnavailableException(LibraryStartupResult result) : P
 /// <para>
 /// SQLite is the only store for history. This check either reports the database ready, creates
 /// an empty one for a profile that has none, or explains why it will not open the one it found.
-/// It never replaces a database, or the remains of one, with an empty library. JSON files left
-/// by pre-release development builds are not history to this build and are ignored.
+/// It never replaces a database, or the remains of one, with an empty library, and it never
+/// modifies a file it refuses. JSON files left by pre-release development builds are not history
+/// to this build and are ignored.
 /// </para>
 /// </summary>
 public static class LibraryDatabaseStartup
@@ -65,22 +59,6 @@ public static class LibraryDatabaseStartup
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
         var directory = Path.GetFullPath(dataDirectory);
         var databasePath = PersistencePaths.DatabasePathFor(directory);
-        // A deletion asked for every backup to go and the app closed before that finished. Finish
-        // it before a backup can be offered for restore, or the deleted content could come back.
-        var purgePending = LibraryDatabaseBackup.PurgePendingSince(directory) is not null;
-        if (purgePending)
-        {
-            try
-            {
-                LibraryDatabaseBackup.DeleteAll(directory);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                // A copy could not be removed yet. It is not offered for restore below.
-            }
-        }
-
-        var latestBackup = purgePending ? null : LibraryDatabaseBackup.List(directory).FirstOrDefault();
 
         if (!File.Exists(databasePath))
         {
@@ -97,27 +75,11 @@ public static class LibraryDatabaseStartup
                 {
                     Outcome = LibraryStartupOutcome.DatabaseMissing,
                     DatabasePath = databasePath,
-                    LatestBackup = latestBackup,
                     Message =
                         $"The Muesli library database is missing from {directory}, but part of it " +
                         $"({string.Join(", ", orphans)}) is still there and may hold recent history. " +
                         "Nothing was changed. If muesli.db was moved, put it back beside those files. " +
-                        (latestBackup is not null
-                            ? $"Otherwise a backup from {Describe(latestBackup)} is available."
-                            : "To start with an empty library instead, move those files out of the folder.")
-                };
-            }
-
-            if (latestBackup is not null)
-            {
-                return new LibraryStartupResult
-                {
-                    Outcome = LibraryStartupOutcome.DatabaseMissing,
-                    DatabasePath = databasePath,
-                    LatestBackup = latestBackup,
-                    Message =
-                        $"The Muesli library database is missing from {directory}. " +
-                        $"A backup from {Describe(latestBackup)} is available."
+                        "To start with an empty library instead, move those files out of the folder."
                 };
             }
 
@@ -142,8 +104,7 @@ public static class LibraryDatabaseStartup
             return new LibraryStartupResult
             {
                 Outcome = LibraryStartupOutcome.Ready,
-                DatabasePath = databasePath,
-                LatestBackup = latestBackup
+                DatabasePath = databasePath
             };
         }
         catch (UnsupportedDatabaseException)
@@ -175,17 +136,10 @@ public static class LibraryDatabaseStartup
             {
                 Outcome = LibraryStartupOutcome.DatabaseUnreadable,
                 DatabasePath = databasePath,
-                LatestBackup = latestBackup,
                 Message =
                     $"The Muesli library database in {directory} could not be opened and may be damaged. " +
-                    "It was not changed. " +
-                    (latestBackup is not null
-                        ? $"A backup from {Describe(latestBackup)} is available."
-                        : "No backup is available. To start with an empty library, move muesli.db out of that folder.")
+                    "It was not changed. To start with an empty library, move muesli.db out of that folder."
             };
         }
     }
-
-    private static string Describe(LibraryBackupInfo backup) =>
-        backup.CreatedAtUtc.ToLocalTime().ToString("f");
 }

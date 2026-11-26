@@ -674,6 +674,21 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Folders changed outside this page (created, renamed, moved or deleted in the sidebar).
+    /// Rebuilds the folder picker and drops a folder that no longer exists, without touching the
+    /// title, notes or transcript the user may be editing.
+    /// </summary>
+    public void RefreshFolders()
+    {
+        if (_meeting is null) return;
+        var stored = _library.FindMeeting(_meeting.Id);
+        if (stored is null) return;
+        _meeting = _meeting with { FolderId = stored.FolderId };
+        FolderOptions = BuildFolderOptions(_library.ReadSnapshot());
+        SelectedFolder = FolderOptions.FirstOrDefault(folder => folder.Id == (stored.FolderId ?? "")) ?? FolderOptions[0];
+    }
+
+    /// <summary>
     /// A routine action that worked needs no banner: the page already shows its result. Clearing
     /// also removes an earlier error that the success has made stale.
     /// </summary>
