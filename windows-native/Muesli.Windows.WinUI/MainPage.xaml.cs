@@ -78,7 +78,7 @@ public sealed partial class MainPage : Page
         App.Settings.Changed += OnSettingsChanged;
         ShellRoot.SizeChanged -= ShellRoot_SizeChanged;
         ShellRoot.SizeChanged += ShellRoot_SizeChanged;
-        _libraryActivity ??= new Services.LibraryActivityWatcher(App.Dictation, App.Meetings, App.UiDispatcher, () =>
+        _libraryActivity ??= new Services.LibraryActivityWatcher(App.Library, null, App.Meetings, App.UiDispatcher, () =>
         {
             // Rebuilding the rows would replace a folder name the user is typing; the counts are
             // refreshed when that edit ends anyway.

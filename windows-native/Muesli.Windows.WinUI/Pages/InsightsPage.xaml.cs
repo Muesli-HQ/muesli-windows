@@ -40,7 +40,7 @@ public sealed partial class InsightsPage : Page
         // Totals and the activity grid follow a dictation or meeting that finishes while this page
         // is open, without the user leaving and coming back.
         var activity = new Services.LibraryActivityWatcher(
-            App.Dictation, App.Meetings, App.UiDispatcher, ViewModel.Load);
+            App.Library, App.Dictation, App.Meetings, App.UiDispatcher, ViewModel.Load);
         Loaded += (_, _) =>
         {
             ApplyHeroTint();

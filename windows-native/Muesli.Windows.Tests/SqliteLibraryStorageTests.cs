@@ -40,6 +40,32 @@ public sealed class SqliteLibraryStorageTests
     }
 
     [Fact]
+    public void TheLibraryRevisionMovesOnlyWhenSomethingIsWritten()
+    {
+        using var directory = new TestDirectory();
+        using var context = new WinUiLibraryContext(MuesliProfilePaths.Isolated(directory.Path));
+
+        var empty = context.Revision;
+        context.ReadSnapshot();
+        Assert.Equal(empty, context.Revision);
+
+        context.History.AppendDictation(Dictation);
+        var afterDictation = context.Revision;
+        Assert.NotEqual(empty, afterDictation);
+
+        // A page that reloads on this value must not reload for a read.
+        context.ReadSnapshot();
+        Assert.Equal(afterDictation, context.Revision);
+
+        // A meeting's title arriving later changes no count, but it is a write.
+        context.SaveMeeting(new PersistedMeeting { Id = "m", Title = "", CreatedAt = DateTime.Now });
+        var afterMeeting = context.Revision;
+        context.SaveMeeting(new PersistedMeeting { Id = "m", Title = "Planning", CreatedAt = DateTime.Now });
+        Assert.NotEqual(afterDictation, afterMeeting);
+        Assert.NotEqual(afterMeeting, context.Revision);
+    }
+
+    [Fact]
     public void TheSchemaIsOneVersionStampedWithTheMuesliApplicationId()
     {
         using var directory = new TestDirectory();

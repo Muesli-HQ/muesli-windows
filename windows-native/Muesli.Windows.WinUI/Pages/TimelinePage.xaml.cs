@@ -33,7 +33,7 @@ public sealed partial class TimelinePage : Page
         // A dictation made while this page is open (Muesli is usually in the background then)
         // must appear without the user leaving the page and coming back.
         var activity = new LibraryActivityWatcher(
-            App.Dictation, App.Meetings, App.UiDispatcher, ViewModel.RefreshIfHistoryChanged);
+            App.Library, App.Dictation, App.Meetings, App.UiDispatcher, ViewModel.RefreshIfHistoryChanged);
         Loaded += (_, _) =>
         {
             UpdateEmptyState();
