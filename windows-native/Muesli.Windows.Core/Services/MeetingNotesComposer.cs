@@ -130,7 +130,7 @@ public static class MeetingNotesComposer
 
         return meeting with
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Summary = regeneratedNotes ?? "",
             // Deliberately untouched by regeneration.
             ManualNotes = meeting.ManualNotes,
@@ -144,7 +144,7 @@ public static class MeetingNotesComposer
         MeetingTitleService.IsAcceptableManualTitle(title)
             ? meeting with
             {
-                SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+                SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
                 Title = title!.Trim(),
                 TitleIsManual = true
             }
@@ -153,7 +153,7 @@ public static class MeetingNotesComposer
     public static PersistedMeeting ApplyManualNotes(PersistedMeeting meeting, string? notes) =>
         meeting with
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             ManualNotes = notes ?? ""
         };
 

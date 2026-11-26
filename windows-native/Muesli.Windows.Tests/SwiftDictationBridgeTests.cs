@@ -212,32 +212,4 @@ public sealed class SwiftDictationBridgeTests : IDisposable
         Assert.Equal("legacy row", read.ExecuteScalar() as string);
     }
 
-    /// <summary>
-    /// Parity for the supported slice: the same text, duration and instant produce the same
-    /// user-visible row whether it is written through the existing JSON history path or the shared
-    /// Swift core.
-    /// </summary>
-    [BridgeFact]
-    public void SupportedSliceMatchesExistingJsonHistoryBehavior()
-    {
-        var jsonStore = new JsonLibraryHistoryAdapter(new AppDataStore(_directory));
-        var ended = Utc(2026, 9, 18, 10, 0, 3);
-        jsonStore.SaveDictations(new[]
-        {
-            new PersistedDictation("json-1", ended.UtcDateTime, "parity text", 3500, ""),
-        });
-
-        using var swift = new SharedDictationStore(DatabasePath);
-        swift.Insert(new SharedDictationInsert(
-            Text: "parity text",
-            DurationSeconds: 3.5,
-            StartedAt: Utc(2026, 9, 18, 10, 0, 0),
-            EndedAt: ended));
-
-        var jsonRow = Assert.Single(jsonStore.LoadDictations());
-        var swiftRow = Assert.Single(swift.Recent(1));
-        Assert.Equal(jsonRow.Text, swiftRow.Text);
-        Assert.Equal(jsonRow.DurationMs, swiftRow.DurationMs);
-        Assert.Equal(jsonRow.Timestamp, swiftRow.Timestamp);
-    }
 }

@@ -9,6 +9,7 @@ using Muesli.Windows.Core.Contracts;
 using Muesli.Windows.WinUI.Services;
 using Microsoft.Windows.AppLifecycle;
 using Muesli.Windows.Services;
+using Muesli.Windows.Services.Persistence;
 using Muesli.Windows.Services.Text;
 
 namespace Muesli.Windows.WinUI;
@@ -113,6 +114,29 @@ public partial class App : Application
         eventArgs.Handled = disposition == UiExceptionDisposition.Recoverable;
     }
 
+    /// <summary>
+    /// Opens the library, or tells the user why it cannot be opened and returns null. Nothing else
+    /// in the app exists yet, so the explanation is a plain system dialog.
+    /// </summary>
+    private WinUiLibraryContext? OpenLibraryOrExplain(IMuesliProfilePaths profile)
+    {
+        try
+        {
+            return new WinUiLibraryContext(profile);
+        }
+        catch (LibraryUnavailableException unavailable)
+        {
+            _log.Error($"Library unavailable at startup. outcome={unavailable.Result.Outcome}");
+            const uint ok = 0x0, warning = 0x30, setForeground = 0x10000, topMost = 0x40000;
+            var title = MuesliDevSlot.Current is { } slot ? $"Muesli ({slot})" : "Muesli";
+            MessageBoxW(IntPtr.Zero, unavailable.Result.Message, title, ok | warning | setForeground | topMost);
+            return null;
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int MessageBoxW(IntPtr owner, string text, string caption, uint type);
+
     private static void RequestFatalShutdown()
     {
         try
@@ -173,7 +197,13 @@ public partial class App : Application
         // the application directory; falls back to the parity-tested managed implementation.
         TranscriptTextProcessingBootstrap.Initialize(_log.Info);
 
-        Library = new WinUiLibraryContext(MuesliProfilePaths.Current());
+        if (OpenLibraryOrExplain(MuesliProfilePaths.Current()) is not { } library)
+        {
+            _desktopInstance.Dispose();
+            Exit();
+            return;
+        }
+        Library = library;
         Settings = new WinUiSettingsContext(Library);
         // ChatGPT sign-in for meeting notes keeps its tokens in the Windows credential store.
         ChatGptAuthManager.Shared = new ChatGptAuthManager(new WindowsCredentialSecretStore(Library.Profile.RootDirectory));

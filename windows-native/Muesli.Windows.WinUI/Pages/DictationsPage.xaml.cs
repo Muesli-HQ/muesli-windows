@@ -3,7 +3,11 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Muesli.Windows.WinUI.ViewModels;
+using Muesli.Windows.Services;
+using Windows.System;
+using Windows.UI.Core;
 
 namespace Muesli.Windows.WinUI.Pages;
 
@@ -17,6 +21,129 @@ public sealed partial class DictationsPage : Page
         App.UiDispatcher);
 
     private bool _compact;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _selectionDelay;
+    private TextBox? _pendingCorrectionSource;
+    private Flyout? _correctionFlyout;
+    private DictationCorrectionSelection? _dismissedSelection;
+    private bool _restoringSelection;
+
+    private void DictationText_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox box) return;
+        // Replace the stock selection toolbar; keep copy and an explicit way to reopen an editor.
+        box.SelectionFlyout = null;
+        var menu = new MenuFlyout();
+        var correct = new MenuFlyoutItem { Text = "Correct text" };
+        AutomationProperties.SetAutomationId(correct, "CorrectAndRememberAction");
+        correct.Click += (_, _) => ShowCorrectionEditor(box);
+        var copy = new MenuFlyoutItem { Text = "Copy" };
+        copy.Click += (_, _) => box.CopySelectionToClipboard();
+        menu.Opening += (_, _) =>
+        {
+            _selectionDelay.Stop();
+            correct.IsEnabled = CaptureCorrection(box) is not null;
+            copy.IsEnabled = box.SelectionLength > 0;
+        };
+        menu.Items.Add(correct);
+        menu.Items.Add(copy);
+        box.ContextFlyout = menu;
+    }
+
+    private static DictationCorrectionSelection? CaptureCorrection(TextBox source)
+    {
+        if (source.Tag is not DictationListItem item) return null;
+        var selection = DictationCorrectionService.CaptureSelection(item.Id, item.Text, source.Text,
+            source.SelectionStart, source.SelectionLength);
+        return DictationCorrectionService.ValidateSelection(selection) is null ? selection : null;
+    }
+
+    private void DictationText_SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (_restoringSelection || _correctionFlyout is not null || sender is not TextBox source) return;
+        _selectionDelay.Stop();
+        _pendingCorrectionSource = null;
+        var selection = CaptureCorrection(source);
+        if (selection is null)
+        {
+            _dismissedSelection = null;
+            return;
+        }
+        if (selection == _dismissedSelection) return;
+        _pendingCorrectionSource = source;
+        _selectionDelay.Start();
+    }
+
+    private void SelectionDelay_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        var source = _pendingCorrectionSource;
+        if (_correctionFlyout is not null || source is null || !source.IsLoaded || source.FocusState == FocusState.Unfocused) return;
+        // Check only while this text box is being selected. Never take focus during a drag or
+        // a held Shift selection, even when the user pauses between arrow presses.
+        if (source.PointerCaptures?.Count > 0 ||
+            (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.LeftButton) & CoreVirtualKeyStates.Down) != 0 ||
+            (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & CoreVirtualKeyStates.Down) != 0)
+        {
+            _selectionDelay.Start();
+            return;
+        }
+        ShowCorrectionEditor(source);
+    }
+
+    private void ShowCorrectionEditor(TextBox source)
+    {
+        _selectionDelay.Stop();
+        _pendingCorrectionSource = null;
+        if (_correctionFlyout is not null || !source.IsLoaded || CaptureCorrection(source) is not { } selection) return;
+        var displayStart = source.SelectionStart;
+        var displayLength = source.SelectionLength;
+        var editor = new Controls.DictationCorrectionEditor(selection.Original,
+            (replacement, remember, conflicts) => ViewModel.Correct(selection, replacement, remember, conflicts));
+        var presenterStyle = new Style(typeof(FlyoutPresenter));
+        presenterStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(10)));
+        presenterStyle.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(10)));
+        presenterStyle.Setters.Add(new Setter(Control.BackgroundProperty, ThemeBrushes.Get("MuesliSurfaceBrush")));
+        presenterStyle.Setters.Add(new Setter(Control.BorderBrushProperty, ThemeBrushes.Get("MuesliBorderBrush")));
+        var flyout = new Flyout
+        {
+            Content = editor,
+            FlyoutPresenterStyle = presenterStyle,
+            LightDismissOverlayMode = LightDismissOverlayMode.Off,
+            ShouldConstrainToRootBounds = true
+        };
+        var restoreFocus = false;
+        editor.CloseRequested += saved =>
+        {
+            restoreFocus = !saved;
+            flyout.Hide();
+        };
+        flyout.Opened += (_, _) => editor.FocusReplacement();
+        flyout.Closed += (_, _) =>
+        {
+            if (!ReferenceEquals(_correctionFlyout, flyout)) return;
+            _restoringSelection = true;
+            try
+            {
+                _dismissedSelection = selection;
+                _correctionFlyout = null;
+                if (source.IsLoaded)
+                {
+                    source.Select(displayStart, displayLength);
+                    if (restoreFocus) source.Focus(FocusState.Programmatic);
+                }
+            }
+            finally { _restoringSelection = false; }
+        };
+        _correctionFlyout = flyout;
+        var caret = source.GetRectFromCharacterIndex(displayStart, false);
+        // Anchor next to the selected line. Native placement flips/clamps the popover at window edges.
+        flyout.ShowAt(source, new FlyoutShowOptions
+        {
+            Position = new global::Windows.Foundation.Point(caret.X, caret.Bottom + 6),
+            ExclusionRect = caret,
+            Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft,
+            ShowMode = FlyoutShowMode.Standard
+        });
+    }
 
     /// <summary>Dictation id handed over by a Timeline row click, revealed once the list is built.</summary>
     private string? _pendingRevealId;
@@ -26,6 +153,10 @@ public sealed partial class DictationsPage : Page
 
     public DictationsPage()
     {
+        _selectionDelay = DispatcherQueue.CreateTimer();
+        _selectionDelay.Interval = TimeSpan.FromMilliseconds(280);
+        _selectionDelay.IsRepeating = false;
+        _selectionDelay.Tick += SelectionDelay_Tick;
         InitializeComponent();
         // Code-set colours resolve brushes once; redo them on a theme switch.
         ActualThemeChanged += (_, _) =>
@@ -33,7 +164,13 @@ public sealed partial class DictationsPage : Page
             UpdateSortPill();
             Bindings.Update();
         };
-        Unloaded += (_, _) => ViewModel.Dispose();
+        Unloaded += (_, _) =>
+        {
+            _selectionDelay.Stop();
+            _pendingCorrectionSource = null;
+            _correctionFlyout?.Hide();
+            ViewModel.Dispose();
+        };
         ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
         Loaded += (_, _) =>
         {

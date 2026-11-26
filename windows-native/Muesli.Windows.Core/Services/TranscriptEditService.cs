@@ -1095,7 +1095,7 @@ public sealed class TranscriptEditService : IDisposable
         var aliases = CloneAliases(meeting);
         return meeting with
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Transcript = transcript,
             WordCount = CountWords(transcript) + CountWords(meeting.ManualNotes),
             Title = meeting.Title,

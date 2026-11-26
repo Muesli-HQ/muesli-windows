@@ -12,14 +12,14 @@ public sealed record SchemaMigration(int Version, string Description, Action<Sql
 /// The database schema, expressed as an ordered list of migrations.
 /// <para>
 /// Timestamps are stored as UTC ticks in INTEGER columns. Ticks rather than seconds or milliseconds
-/// because a history imported from JSON must hash identically before and after the move, and
-/// rounding a timestamp is a silent loss the verification would then have to forgive.
+/// because the app's own timestamps carry that precision, and
+/// rounding a timestamp on the way in is a silent loss.
 /// </para>
 /// </summary>
 public static class PersistenceSchema
 {
     /// <summary>The schema this build writes and expects.</summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 1;
 
     public const string DictationKind = "dictation";
     public const string MeetingKind = "meeting";
@@ -153,23 +153,6 @@ public static class PersistenceSchema
         ) STRICT;
 
         CREATE UNIQUE INDEX ux_search_documents ON search_documents (record_kind, record_id);
-
-        CREATE TABLE migration_runs (
-            id                  TEXT PRIMARY KEY NOT NULL,
-            source_fingerprint  TEXT NOT NULL,
-            state               TEXT NOT NULL
-                                CHECK (state IN ('started', 'completed', 'failed')),
-            started_at_utc      INTEGER NOT NULL,
-            completed_at_utc    INTEGER NULL,
-            dictation_count     INTEGER NOT NULL DEFAULT 0,
-            meeting_count       INTEGER NOT NULL DEFAULT 0,
-            folder_count        INTEGER NOT NULL DEFAULT 0,
-            template_count      INTEGER NOT NULL DEFAULT 0,
-            backup_path         TEXT NULL,
-            failure             TEXT NULL
-        ) STRICT;
-
-        CREATE INDEX ix_migration_runs_state ON migration_runs (state, started_at_utc DESC);
         """;
 
     /// <summary>
@@ -194,35 +177,45 @@ public static class PersistenceSchema
         );
         """;
 
-    private const string CutoverStateSchema = """
-        CREATE TABLE persistence_cutover_state (
-            id                              INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
-            authority                       TEXT NOT NULL CHECK (authority IN ('json', 'sqlite')),
-            source_fingerprint              TEXT NOT NULL DEFAULT '',
-            activated_at_utc                INTEGER NULL,
-            retained_backup_path            TEXT NULL,
-            first_post_cutover_write_at_utc INTEGER NULL,
-            first_post_cutover_write        TEXT NULL
+    /// <summary>
+    /// Custom dictionary words and remembered corrections. <c>phrase_key</c> is the matcher's own
+    /// tokenization of <c>phrase</c> (upper-cased tokens joined by one space), so two spellings the
+    /// matcher treats as the same phrase are found by one indexed lookup.
+    /// </summary>
+    private const string DictionarySchema = """
+        CREATE TABLE dictionary_entries (
+            id                  TEXT PRIMARY KEY NOT NULL,
+            phrase              TEXT NOT NULL,
+            phrase_key          TEXT NOT NULL,
+            replacement         TEXT NOT NULL,
+            matching_threshold  REAL NOT NULL,
+            sort_order          INTEGER NOT NULL
         ) STRICT;
 
-        INSERT INTO persistence_cutover_state (id, authority)
-        VALUES (1, 'json');
+        CREATE INDEX ix_dictionary_phrase ON dictionary_entries (phrase_key);
         """;
 
+    /// <summary>
+    /// The application id stamped into the database header. It tells a Muesli library apart from
+    /// any other SQLite file, and from the databases written by unreleased development builds.
+    /// </summary>
+    public const int ApplicationId = 0x4D53_4C31; // "MSL1"
+
+    // No database was ever released before this schema, so it is one version, not a history of
+    // steps. Every later change is a new numbered migration appended below; version 1 is frozen
+    // once a build carrying it ships. database-schema.md at the repository root documents it.
     public static IReadOnlyList<SchemaMigration> Migrations { get; } =
     [
         new SchemaMigration(
             1,
-            "Dictations, meetings, notes, transcripts, folders, templates, aliases, follow-ups and full-text search.",
+            "Dictations, meetings, notes, transcripts, folders, templates, aliases, follow-ups, dictionary and full-text search.",
             connection =>
             {
                 Execute(connection, InitialSchema);
                 Execute(connection, SearchIndexSchema);
-            }),
-        new SchemaMigration(
-            2,
-            "Durable JSON/SQLite cutover authority and first-write state.",
-            connection => Execute(connection, CutoverStateSchema))
+                Execute(connection, DictionarySchema);
+                Execute(connection, $"PRAGMA application_id = {ApplicationId};");
+            })
     ];
 
     internal static void Execute(SqliteConnection connection, string sql)

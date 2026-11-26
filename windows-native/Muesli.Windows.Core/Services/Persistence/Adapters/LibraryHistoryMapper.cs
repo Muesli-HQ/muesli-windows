@@ -18,7 +18,7 @@ internal static class LibraryHistoryMapper
     public static PersistedDictation ToPersisted(DictationRecord record) =>
         new(
             record.Id,
-            PersistenceTime.ToDateTime(record.CreatedAtUtc),
+            PersistenceTime.ToLocalDateTime(record.CreatedAtUtc),
             record.Text,
             record.DurationMs,
             record.ModelProfile);
@@ -50,11 +50,11 @@ internal static class LibraryHistoryMapper
         var raw = detail.Transcript(MeetingTranscriptKind.Raw);
         return new PersistedMeeting
         {
-            SchemaVersion = AppDataStore.CurrentMeetingSchemaVersion,
+            SchemaVersion = PersistedMeeting.CurrentSchemaVersion,
             Id = meeting.Id,
             Title = meeting.Title,
             TitleIsManual = meeting.TitleIsManual,
-            CreatedAt = PersistenceTime.ToDateTime(meeting.CreatedAtUtc),
+            CreatedAt = PersistenceTime.ToLocalDateTime(meeting.CreatedAtUtc),
             DurationMs = meeting.DurationMs,
             Transcript = edited ?? raw ?? "",
             Summary = detail.Note(MeetingNoteKind.Generated) ?? "",
@@ -143,10 +143,12 @@ internal static class LibraryHistoryMapper
                         : incoming.FinalTranscriptOwnerModelId,
                     GapRecoveryModelId = incoming.GapRecoveryModelId ?? meeting.Audio.GapRecoveryModelId
                 },
-            AutomationResultJson = meeting.AutomationResultJson
-                ?? (incoming.AutomationResult is null
-                    ? null
-                    : JsonSerializer.Serialize(incoming.AutomationResult, JsonOptions)),
+            // The latest run wins: resuming a meeting runs the hook or export again, and the
+            // details page must show that run's outcome. A save that carries no result (a notes
+            // edit, a list refresh) keeps the stored one.
+            AutomationResultJson = incoming.AutomationResult is null
+                ? meeting.AutomationResultJson
+                : JsonSerializer.Serialize(incoming.AutomationResult, JsonOptions),
             SourceSchemaVersion = meeting.SourceSchemaVersion,
             CreatedAtUtc = meeting.CreatedAtUtc,
             UpdatedAtUtc = DateTimeOffset.UtcNow
@@ -189,7 +191,7 @@ internal static class LibraryHistoryMapper
             AutomationResultJson = automationJson,
             SourceSchemaVersion = meeting.SchemaVersion == 0
                 ? meeting.SchemaVersion
-                : AppDataStore.CurrentMeetingSchemaVersion
+                : PersistedMeeting.CurrentSchemaVersion
         };
 
     public static PersistedMeetingFolder ToPersisted(FolderRecord folder) =>

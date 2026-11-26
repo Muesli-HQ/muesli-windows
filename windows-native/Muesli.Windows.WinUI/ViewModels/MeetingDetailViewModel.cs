@@ -266,7 +266,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         {
             _meeting = updated;
             ApplyMeeting(updated, keepTranscriptDraft: true);
-            ShowStatus("Meeting changes saved.");
+            ClearStatus();
             // A folder move changes what the rail's folder rows count.
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -296,9 +296,12 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             var result = await _runtime.GenerateSummaryAsync(_meeting, SelectedTemplate, cancellationToken);
             _meeting = _library.FindMeeting(_meeting.Id);
             if (_meeting is not null) ApplyMeeting(_meeting);
-            ShowStatus(result.UsedLocalFallback && result.SafeFailureReason is not null
-                ? $"Notes generated locally because the selected provider was unavailable ({result.SafeFailureReason})."
-                : $"Notes generated with {result.Provider}.");
+            // The notes appearing is the confirmation. Only say something when the outcome is not
+            // what the user asked for: the chosen provider failed and the local fallback wrote them.
+            if (result.UsedLocalFallback && result.SafeFailureReason is not null)
+                ShowStatus($"Notes generated locally because the selected provider was unavailable ({result.SafeFailureReason}).");
+            else
+                ClearStatus();
         }
         catch (OperationCanceledException) { ShowStatus("Summary generation cancelled."); }
         catch (Exception exception) { ShowStatus($"Could not generate notes: {exception.Message}", true); }
@@ -455,7 +458,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             AliasSource = "";
             AliasReplacement = "";
             ApplyMeeting(_meeting);
-            ShowStatus("Speaker name saved.");
+            ClearStatus();
         }
         catch (Exception exception) { ShowStatus($"Could not save speaker name: {exception.Message}", true); }
     }
@@ -466,7 +469,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         if (_meeting is null || alias is null) return;
         _meeting = _runtime.DeleteSpeakerAlias(_meeting, alias.Source);
         ApplyMeeting(_meeting);
-        ShowStatus("Speaker name removed.");
+        ClearStatus();
     }
 
     partial void OnSelectedPlaybackTrackChanged(MeetingPlaybackTrack? value)
@@ -669,6 +672,35 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         IsStatusError = isError;
         IsStatusOpen = true;
     }
+
+    /// <summary>
+    /// Folders changed outside this page (created, renamed, moved or deleted in the sidebar).
+    /// Rebuilds the folder picker and drops a folder that no longer exists, without touching the
+    /// title, notes or transcript the user may be editing.
+    /// </summary>
+    public void RefreshFolders()
+    {
+        if (_meeting is null) return;
+        var stored = _library.FindMeeting(_meeting.Id);
+        if (stored is null) return;
+        // The picker is only written when the meeting is saved, so it may hold a choice the user
+        // has made but not saved. Capture it before the options are replaced.
+        var pending = SelectedFolder?.Id;
+        var storedBefore = _meeting.FolderId;
+        _meeting = _meeting with { FolderId = stored.FolderId };
+        var options = BuildFolderOptions(_library.ReadSnapshot());
+        var wanted = Services.MeetingFolderActions.ResolvePickerSelection(
+            pending, storedBefore, stored.FolderId,
+            options.Select(option => option.Id).Where(id => id.Length > 0).ToHashSet(StringComparer.Ordinal));
+        FolderOptions = options;
+        SelectedFolder = FolderOptions.FirstOrDefault(folder => folder.Id == wanted) ?? FolderOptions[0];
+    }
+
+    /// <summary>
+    /// A routine action that worked needs no banner: the page already shows its result. Clearing
+    /// also removes an earlier error that the success has made stale.
+    /// </summary>
+    private void ClearStatus() => IsStatusOpen = false;
 
     public void Dispose()
     {

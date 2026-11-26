@@ -132,60 +132,6 @@ public sealed class AtomicPersistenceTests
             candidate => candidate.Contains(".corrupt-", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void ExplicitHistoryDeletionPurgesDeletedTranscriptsFromAllArtifacts()
-    {
-        using var directory = new TestDirectory();
-        var store = new AppDataStore(directory.Path);
-        var deletedDictation = new PersistedDictation(
-            "dictation-delete",
-            DateTime.UtcNow,
-            "private dictation transcript",
-            100,
-            "test");
-        var retainedDictation = new PersistedDictation(
-            "dictation-keep",
-            DateTime.UtcNow,
-            "retained dictation transcript",
-            100,
-            "test");
-        store.SaveDictations([deletedDictation]);
-        store.SaveDictations([deletedDictation, retainedDictation]);
-        File.WriteAllText(
-            directory.File("windows-dictations.json.corrupt-abandoned.json"),
-            deletedDictation.Text);
-
-        var deletedMeeting = new PersistedMeeting
-        {
-            Id = "meeting-delete",
-            Title = "Private meeting",
-            CreatedAt = DateTime.UtcNow,
-            Transcript = "private meeting transcript"
-        };
-        var retainedMeeting = new PersistedMeeting
-        {
-            Id = "meeting-keep",
-            Title = "Retained meeting",
-            CreatedAt = DateTime.UtcNow,
-            Transcript = "retained meeting transcript"
-        };
-        store.SaveMeetings([deletedMeeting]);
-        store.SaveMeetings([deletedMeeting, retainedMeeting]);
-        File.WriteAllText(
-            directory.File(".windows-meetings.json.abandoned.tmp"),
-            deletedMeeting.Transcript);
-
-        store.SaveDictationsAfterDeletion([retainedDictation]);
-        store.SaveMeetingsAfterDeletion([retainedMeeting]);
-
-        AssertSecretAbsentFromArtifacts(directory.Path, "windows-dictations.json", deletedDictation.Text);
-        AssertSecretAbsentFromArtifacts(directory.Path, "windows-meetings.json", deletedMeeting.Transcript);
-        Assert.Equal([retainedDictation], store.LoadDictations());
-        var loadedMeeting = Assert.Single(store.LoadMeetings());
-        Assert.Equal(retainedMeeting.Id, loadedMeeting.Id);
-        Assert.Equal(retainedMeeting.Transcript, loadedMeeting.Transcript);
-    }
-
     private static void AssertSecretAbsentFromArtifacts(string directory, string fileName, string secret)
     {
         var artifacts = Directory.EnumerateFiles(directory)

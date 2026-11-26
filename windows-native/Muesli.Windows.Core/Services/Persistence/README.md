@@ -1,88 +1,101 @@
 # Persistence
 
-The SQLite substrate for dictation and meeting history. The JSON stores in `AppDataStore` remain
-authoritative while the L27 gate is disabled; production switches the active history adapter only
-after a verified startup cutover.
+SQLite is the only store for the library: dictations, meetings, raw and edited transcripts,
+generated and manual notes, folders, templates, and dictionary entries (including remembered
+corrections). There is no JSON history mode and no flag that selects one.
+
+**Read [`database-schema.md`](../../../../database-schema.md) at the repository root before
+changing anything here.** It documents every table and column, versioning, launch behaviour,
+deletion and safe inspection. Update it in the same change as the code.
+
+Settings and in-progress recording journals stay as atomic JSON, audio and models stay as files,
+and credentials stay in Windows Credential Manager. The Windows database is its own schema; it is
+not the macOS `DictationStore` database and nothing syncs between them.
 
 ## Layout
 
 | File | Role |
 | --- | --- |
-| `MuesliDatabase.cs` | Owns the single connection, the pragmas and the transaction scope. |
-| `PersistenceSchema.cs` | The schema, as an ordered list of numbered migrations. |
+| `MuesliDatabase.cs` | Owns the single connection, the pragmas and the transaction scope. Refuses a database without Muesli's application id. |
+| `PersistenceSchema.cs` | The schema, as an ordered list of numbered migrations. Currently one: version 1. |
 | `SchemaMigrator.cs` | Applies pending migrations; refuses a database from a newer build. |
-| `I*Repository.cs` | The contracts: dictations, meetings, folders, templates, search. |
-| `Sqlite*Repository.cs` | Their implementations. |
+| `LibraryDatabaseStartup.cs` | The launch check: ready, create for a new profile, or refuse with a reason. |
+| `I*Repository.cs`, `Sqlite*Repository.cs` | Dictations, meetings, folders, templates, dictionary, search. |
 | `SearchIndexWriter.cs` | Keeps the FTS documents in step with the relational tables. |
-| `JsonHistorySnapshotReader.cs` | Reads the JSON history without modifying it. |
-| `MigrationPlan.cs` | Maps that snapshot onto records, resolving duplicates and orphans. |
-| `JsonToSqliteMigrationService.cs` | Runs the import, verifies it, and can undo it. |
-| `PersistenceDigest.cs` | Content hashes used to prove an import was faithful. |
-| `Adapters/PersistenceCutover.cs` | L27 `EnsureMigrated`: JSON snapshot, digest import, durable authority transition, fail closed. |
-| `Adapters/SqliteLibraryHistoryAdapter.cs` | SQLite-backed `ILibraryHistoryAdapter` used after the verified production cutover. Dictionary stays JSON. |
-| `Adapters/PersistenceCutoverGate.cs` | Feature flag `L27SqliteHistoryCutover`, default **off**; qualification uses `MUESLI_SQLITE_HISTORY_CUTOVER=1`. |
-| `Adapters/PersistenceCutoverState.cs` | Singleton schema-v2 authority row and first-post-cutover-write marker. |
+| `Adapters/SqliteLibraryHistoryAdapter.cs` | The app-facing library: history, dictionary and the atomic correction save. |
+| `Adapters/ILibraryHistoryAdapter.cs` and friends | The contracts the app codes against. |
 
-Start at `MuesliPersistenceStore`, which opens a database and hands back the five repositories. The
-production composition root owns the gate and selects the active adapter before history loads.
+Start at `MuesliPersistenceStore`, which opens a database and hands back the repositories. The
+app's composition root (`WinUiLibraryContext`) calls `LibraryDatabaseStartup.Prepare` and then
+opens `SqliteLibraryHistoryAdapter`.
 
 ## Decisions worth knowing before you change something
 
 **One connection, not a pool.** SQLite has a single writer anyway, and one connection makes
-`BeginTransaction` a real scope that repository calls join. The lock is re-entrant, so a transaction
-must be committed and disposed on the thread that opened it.
+`BeginTransaction` a real scope that repository calls join. The lock is re-entrant, so a
+transaction must be committed and disposed on the thread that opened it. A nested
+`BeginTransaction` joins the outer one; nothing commits until the outermost scope does.
 
-**Timestamps are UTC ticks in INTEGER columns.** Migration verification compares hashes of the
-values before and after the move, so rounding to milliseconds would turn every imported timestamp
-into either a verification failure or a silent shift.
+**Timestamps are UTC ticks in INTEGER columns.** The app's timestamps carry that precision, and
+rounding on the way in would silently shift them.
 
 **Notes and transcripts are rows keyed by kind, not columns.** A re-summarization rewrites the
-generated note and must be structurally unable to touch the manual one; an edit must not overwrite
-what the model actually produced.
+generated note and must be structurally unable to touch the manual one; an edit must not
+overwrite what the model actually produced.
 
-**Deleting a folder never deletes history.** Foreign keys use `ON DELETE SET NULL` for folder
-references, so a folder tidy-up unfiles recordings instead of destroying them.
+**Deleting a folder never deletes history.** Folder references use `ON DELETE SET NULL`, so a
+folder tidy-up unfiles recordings instead of destroying them.
 
-**Search documents are maintained in code, not triggers.** A meeting's document is assembled from
-five tables, and a trigger only ever sees its own. Indexing happens inside the writing transaction,
-so a committed record is always findable and a rolled-back one is never indexed.
+**Search documents are maintained in code, not triggers.** A meeting's document is assembled
+from five tables, and a trigger only ever sees its own. Indexing happens inside the writing
+transaction, so a committed record is always findable and a rolled-back one is never indexed.
 
 **Date-ordered search uses a two-phase query.** SQLite sorts rows together with their computed
-columns, so a single query would build a snippet for every match before discarding all but one page.
-See the comment on `SqliteSearchRepository.Sql`.
+columns, so a single query would build a snippet for every match before discarding all but one
+page. See the comment on `SqliteSearchRepository.Sql`.
 
 **Settings and in-progress meeting journals stay as atomic JSON.** They are small, single-writer
-documents rewritten constantly during a recording, and crash recovery reads them before the app has
-a database open. `AtomicJsonFile` is the better fit and this layer deliberately leaves them alone.
+documents rewritten constantly during a recording, and crash recovery reads them before the app
+has a database open.
 
-**SQLite authority is durable and one-way for normal startup.** Schema migration 2 creates a
-singleton `persistence_cutover_state` row with `json` authority. `PersistenceCutover` snapshots the
-source JSON and marks that row `sqlite` only after the import's count and digest verification has
-committed. Once it is `sqlite`, startup ignores retained-JSON fingerprint changes and never falls
-back or re-imports from that snapshot. Every adapter mutation records the first write's UTC and
-operation; JSON rollback is allowed only before that marker exists. Afterward an operator must use
-an explicit SQLite backup/restore procedure.
+**There is no JSON history.** No build was released before the SQLite library, so there is no
+migration, importer, marker or fallback. `windows-*.json` files left in a data folder by
+pre-release development builds are not read, converted or deleted; such a profile starts with an
+empty library.
 
-## Migrating from JSON
+**Launch never guesses.** An orphaned write-ahead log with no database, an unreadable or empty
+database, one from a newer build and one from a pre-release build each produce a specific outcome
+and message (`LibraryStartupOutcome`), and the file is left untouched. Only a profile with no
+database at all gets a new empty one.
 
-```csharp
-var service = new JsonToSqliteMigrationService(dataDirectory);
-var result = service.Migrate();
-if (!result.Succeeded)
-{
-    // Nothing was imported and the database is as it was.
-}
-```
+**There are no backups.** The app keeps one database and nothing else, as on macOS. A deletion
+is a plain `DELETE`; there are no copies to scrub.
 
-The guarantees the tests hold it to:
+## Corrections
 
-- the JSON files are only ever read, never renamed, restored or rewritten;
-- the import is one transaction, so an interruption leaves the database untouched;
-- the pre-migration database is copied aside first, and `Rollback` puts it back;
-- imported rows are read back and compared against a content hash of the source before commit;
-- re-running over an unchanged history is recognised by fingerprint and does nothing.
+`IAtomicDictationCorrectionStore.SaveCorrection(id, expectedText, replacementText,
+phraseToRemember, rememberedReplacement, confirmedConflicts)` returns a
+`DictationCorrectionResult`. Pass a null phrase and replacement for a one-off edit. The
+operation compares the complete expected transcript, checks the phrase for conflicting rules,
+and writes the rule, the text, the word count and the search document in one transaction. An
+exact confirmed-conflicts list is required before a conflicting rule is replaced; a stale
+confirmation is rejected. Ids, timestamps, title, folder and recording metadata are preserved.
 
-## Adding a schema change
+"Remember" is off by default in the editor: a correction changes one dictation unless the user
+asks for a rule. A remembered rule only accepts a selection of whole words separated by the
+spacing the matcher itself accepts (`DictionaryCorrectionService.CanRememberSelection`), so a
+saved rule always matches the phrase it came from.
 
-Append a new `SchemaMigration` with the next version number. Never edit a released one: a database in
-the wild has already run it, so a correction has to arrive as the next version instead.
+## Known limits
+
+Append, correction and single-record deletion are targeted writes. The dictionary list-save
+diffs rows and writes only changed entries. Dashboard snapshots and several list pages still
+load whole histories, and the meeting list still fetches details per meeting. Repository and
+search pagination exist; moving every list onto them is not done.
+
+## Tests
+
+`SqliteLibraryStorageTests` covers launch outcomes, meeting saves and the
+correction transaction. `PersistenceMigrationTests` covers the schema migrator.
+`PersistenceLargeHistoryTests` has timing budgets that are sensitive to machine load.
+Every test uses a temporary directory; none may point at a real profile.

@@ -14,9 +14,10 @@ Run only on a disposable or otherwise approved interactive desktop:
 
 The harness never terminates a pre-existing 'Muesli.exe'; it refuses to run
 when the matching executable is already running. It terminates only the primary
-and secondary processes that it started, and it can pass
-'MUESLI_SQLITE_HISTORY_CUTOVER=1' to those child processes through
-'MuesliUiSession.LaunchProduction(enableSqliteHistoryCutover: true)'.
+and secondary processes that it started. The app only opens a SQLite library, so
+fixtures authored as JSON are imported into `data\muesli.db` by the harness
+(`MuesliCleanProfile.ImportSeededHistory`, through the same adapter the app uses)
+before the app is launched.
 
 Shell navigation relies on the production controls' stable
 'AutomationProperties.Name' values, and the meeting-detail controls now expose

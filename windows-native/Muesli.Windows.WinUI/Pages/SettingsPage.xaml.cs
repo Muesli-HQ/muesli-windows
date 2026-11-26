@@ -11,6 +11,55 @@ public sealed partial class SettingsPage : Page
     /// <summary>Value controls that carry the responsive right-hand width, cached after first layout.</summary>
     private List<FrameworkElement>? _valueControls;
 
+    private bool _claudeCodeCheckHovered;
+    private bool _claudeCodeCheckFocused;
+
+    private void ClaudeCodeCheckButton_HoverChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        _claudeCodeCheckHovered = ClaudeCodeCheckButton.IsPointerOver;
+        UpdateClaudeCodeCheckButton();
+    }
+
+    private void ClaudeCodeCheckButton_FocusChanged(object sender, RoutedEventArgs e)
+    {
+        // Keyboard users get the same reveal as the pointer: focusing the button offers the check.
+        _claudeCodeCheckFocused = ClaudeCodeCheckButton.FocusState == FocusState.Keyboard;
+        UpdateClaudeCodeCheckButton();
+    }
+
+    /// <summary>
+    /// Green "Connected" while Claude Code is found and signed in; "Check again" when it is not,
+    /// or while the pointer or keyboard focus is on the button.
+    /// </summary>
+    private void UpdateClaudeCodeCheckButton()
+    {
+        if (ClaudeCodeCheckButton is null) return;
+        var showConnected = ViewModel.IsClaudeCodeConnected && !_claudeCodeCheckHovered && !_claudeCodeCheckFocused;
+        ClaudeCodeCheckLabel.Text = showConnected ? "Connected" : "Check again";
+        // Segoe Fluent CheckMark / Refresh.
+        ClaudeCodeCheckIcon.Glyph = showConnected ? "" : "";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            ClaudeCodeCheckButton,
+            ViewModel.IsClaudeCodeConnected ? "Claude Code connected. Check again" : "Check Claude Code again");
+        if (showConnected)
+        {
+            var success = Themes.ThemeBrushes.Get("MuesliSuccessTextBrush", ActualTheme);
+            ClaudeCodeCheckButton.Background = Themes.ThemeBrushes.Get("MuesliSuccessMutedBrush", ActualTheme);
+            ClaudeCodeCheckButton.BorderBrush = success;
+            ClaudeCodeCheckButton.Foreground = success;
+            ClaudeCodeCheckIcon.Foreground = success;
+            ClaudeCodeCheckLabel.Foreground = success;
+        }
+        else
+        {
+            ClaudeCodeCheckButton.ClearValue(Control.BackgroundProperty);
+            ClaudeCodeCheckButton.ClearValue(Control.BorderBrushProperty);
+            ClaudeCodeCheckButton.ClearValue(Control.ForegroundProperty);
+            ClaudeCodeCheckIcon.ClearValue(IconElement.ForegroundProperty);
+            ClaudeCodeCheckLabel.ClearValue(TextBlock.ForegroundProperty);
+        }
+    }
+
     public SettingsPageViewModel ViewModel { get; } = new(
         App.Settings,
         App.Library,
@@ -35,9 +84,16 @@ public sealed partial class SettingsPage : Page
             {
                 UpdateSections();
             }
+
+            if (args.PropertyName is nameof(ViewModel.IsClaudeCodeConnected))
+            {
+                UpdateClaudeCodeCheckButton();
+            }
         };
+        ActualThemeChanged += (_, _) => UpdateClaudeCodeCheckButton();
         Loaded += async (_, _) =>
         {
+            UpdateClaudeCodeCheckButton();
             await ViewModel.LoadAsync();
             ViewModel.ReapplyPickerSelections();
             ViewModel.BeginTracking();

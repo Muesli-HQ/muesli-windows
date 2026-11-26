@@ -82,7 +82,8 @@ public sealed class MeetingBehaviorParityTests
     public void FinalizationAndRecoveryPreserveWrittenNotesAndManualTitle()
     {
         using var directory = new TestDirectory();
-        var store = new AppDataStore(directory.Path);
+        using var store = TestLibrary.Open(directory.Path);
+        store.SaveMeetingFolders([new PersistedMeetingFolder("folder", "Folder")]);
         var notes = "    code block\n\n- follow up\n";
         var active = MeetingNotesComposer.ApplyManualNotes(new PersistedMeeting
         {
@@ -112,7 +113,7 @@ public sealed class MeetingBehaviorParityTests
     public void SavingOneMeetingLeavesTheRestOfTheSqliteLibraryAlone()
     {
         using var directory = new TestDirectory();
-        Assert.True(new PersistenceCutover(directory.Path).EnsureMigrated().Succeeded);
+        Assert.True(LibraryDatabaseStartup.Prepare(directory.Path).IsReady);
         using var history = SqliteLibraryHistoryAdapter.Open(directory.Path);
         var first = new PersistedMeeting { Id = "meet_a", Title = "A", ManualNotes = "a notes", CreatedAt = DateTime.Now };
         var second = new PersistedMeeting { Id = "meet_b", Title = "B", ManualNotes = "b notes", CreatedAt = DateTime.Now };
@@ -130,7 +131,7 @@ public sealed class MeetingBehaviorParityTests
     public void KeepingNotesAfterDiscardRoundTripsThroughWindowsSqliteWithoutInventingSpeech()
     {
         using var directory = new TestDirectory();
-        Assert.True(new PersistenceCutover(directory.Path).EnsureMigrated().Succeeded);
+        Assert.True(LibraryDatabaseStartup.Prepare(directory.Path).IsReady);
         using var history = SqliteLibraryHistoryAdapter.Open(directory.Path);
         var notesOnly = new PersistedMeeting
         {

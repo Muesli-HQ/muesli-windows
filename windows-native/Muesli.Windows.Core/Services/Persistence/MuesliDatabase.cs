@@ -25,6 +25,15 @@ public sealed class PersistenceSchemaException : PersistenceException
     }
 }
 
+/// <summary>Thrown when a database has a schema that did not come from a released Muesli build.</summary>
+public sealed class UnsupportedDatabaseException : PersistenceException
+{
+    public UnsupportedDatabaseException(string message)
+        : base(message)
+    {
+    }
+}
+
 /// <summary>
 /// A unit of work. Commit is explicit: disposing without committing rolls back, so an exception
 /// escaping a using block can never leave a half-written meeting behind.
@@ -71,7 +80,11 @@ public sealed class MuesliDatabase : IDisposable
     /// Opens (creating if needed) the database at <paramref name="databasePath"/> and brings it to
     /// the current schema.
     /// </summary>
-    public static MuesliDatabase Open(string databasePath)
+    public static MuesliDatabase Open(string databasePath) => OpenFile(databasePath, create: true);
+
+    public static MuesliDatabase OpenExisting(string databasePath) => OpenFile(databasePath, create: false);
+
+    private static MuesliDatabase OpenFile(string databasePath, bool create)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         var fullPath = Path.GetFullPath(databasePath);
@@ -82,7 +95,7 @@ public sealed class MuesliDatabase : IDisposable
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = fullPath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
+            Mode = create ? SqliteOpenMode.ReadWriteCreate : SqliteOpenMode.ReadWrite,
             Cache = SqliteCacheMode.Private,
             ForeignKeys = true,
 
@@ -91,7 +104,7 @@ public sealed class MuesliDatabase : IDisposable
             Pooling = false
         };
 
-        return Create(builder.ToString(), fullPath, isFileDatabase: true);
+        return Create(builder.ToString(), fullPath, isFileDatabase: true, mustBeInitialized: !create);
     }
 
     /// <summary>A private in-memory database that lives exactly as long as this object.</summary>
@@ -109,12 +122,28 @@ public sealed class MuesliDatabase : IDisposable
         return Create(builder.ToString(), ":memory:", isFileDatabase: false);
     }
 
-    private static MuesliDatabase Create(string connectionString, string databasePath, bool isFileDatabase)
+    private static MuesliDatabase Create(
+        string connectionString,
+        string databasePath,
+        bool isFileDatabase,
+        bool mustBeInitialized = false)
     {
         var connection = new SqliteConnection(connectionString);
         try
         {
             connection.Open();
+            // An existing file with no schema is an empty or truncated file (an interrupted copy,
+            // for example), not a library. Stamping a schema onto it would present an empty
+            // library as if nothing were wrong, so only the create path may initialize.
+            if (mustBeInitialized && SchemaMigrator.ReadVersion(connection) == 0)
+            {
+                throw new PersistenceException(
+                    "The database file exists but is empty or was never initialized.");
+            }
+
+            // Before any pragma: switching the journal mode rewrites the file header, and a
+            // database this build refuses must be left byte-for-byte as it was found.
+            RejectForeignDatabase(connection);
             Configure(connection, isFileDatabase);
             SchemaMigrator.Migrate(connection, PersistenceSchema.Migrations);
             return new MuesliDatabase(connection, databasePath, isFileDatabase);
@@ -123,6 +152,35 @@ public sealed class MuesliDatabase : IDisposable
         {
             connection.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// A database that already has a schema but not Muesli's application id was written by an
+    /// unreleased development build (their version numbers overlap this schema's) or is not a
+    /// Muesli library at all. Migrating it would be a guess, so it is refused untouched.
+    /// </summary>
+    private static void RejectForeignDatabase(SqliteConnection connection)
+    {
+        var version = SchemaMigrator.ReadVersion(connection);
+        if (version == 0) return;
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "PRAGMA application_id;";
+            if (Convert.ToInt32(command.ExecuteScalar() ?? 0) != PersistenceSchema.ApplicationId)
+            {
+                throw new UnsupportedDatabaseException(
+                    "This database was written by a pre-release Muesli build and cannot be opened by this one.");
+            }
+        }
+
+        // A newer build's database is refused here, before any pragma can alter its header,
+        // rather than later by the migrator.
+        if (version > PersistenceSchema.CurrentVersion)
+        {
+            throw new PersistenceSchemaException(
+                $"The database is at schema version {version}, which is newer than the version " +
+                $"{PersistenceSchema.CurrentVersion} this build understands. Update Muesli to open it.");
         }
     }
 
@@ -200,35 +258,6 @@ public sealed class MuesliDatabase : IDisposable
             work(connection);
             return null;
         });
-
-    /// <summary>
-    /// Writes a consistent standalone copy of the database, including anything still in the WAL.
-    /// Used to retain a rollback backup before a migration.
-    /// </summary>
-    public void BackupTo(string backupPath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(backupPath);
-        var fullPath = Path.GetFullPath(backupPath);
-        if (File.Exists(fullPath))
-        {
-            throw new PersistenceException($"The backup path '{fullPath}' already exists.");
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        lock (_gate)
-        {
-            ThrowIfDisposed();
-            if (_ambient is not null)
-            {
-                throw new PersistenceException("A backup cannot be taken inside a transaction.");
-            }
-
-            using var command = _connection.CreateCommand();
-            command.CommandText = "VACUUM INTO $path;";
-            command.Parameters.AddWithValue("$path", fullPath);
-            command.ExecuteNonQuery();
-        }
-    }
 
     /// <summary>Folds the WAL back into the database file so the file alone is complete.</summary>
     public void Checkpoint()

@@ -1,7 +1,7 @@
 namespace Muesli.Windows.Services.Persistence;
 
 /// <summary>
-/// Dashboard-sized reads. JSON loaded the entire file; the repository default
+/// Dashboard-sized reads. Pages that still load the whole history use these; the repository default
 /// <c>Limit = 100</c> would silently drop the rest. Wave 2 must keep using these (or
 /// <c>Count()</c>) until the UI pages.
 /// </summary>
