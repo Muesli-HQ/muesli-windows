@@ -24,6 +24,8 @@ public sealed partial class MainPage : Page
 
     private int _tourIndex = -1;
     private bool _meetingFoldersExpanded = true;
+    /// <summary>Keeps the rail's folder counts current when a meeting finishes while another page is open.</summary>
+    private Services.LibraryActivityWatcher? _libraryActivity;
     /// <summary>The folder whose name is being edited in place in the rail, if any.</summary>
     private string? _renamingFolderId;
     private bool _compactRail;
@@ -76,6 +78,13 @@ public sealed partial class MainPage : Page
         App.Settings.Changed += OnSettingsChanged;
         ShellRoot.SizeChanged -= ShellRoot_SizeChanged;
         ShellRoot.SizeChanged += ShellRoot_SizeChanged;
+        _libraryActivity ??= new Services.LibraryActivityWatcher(App.Dictation, App.Meetings, App.UiDispatcher, () =>
+        {
+            // Rebuilding the rows would replace a folder name the user is typing; the counts are
+            // refreshed when that edit ends anyway.
+            if (_renamingFolderId is null) RefreshMeetingFolders();
+        });
+        _libraryActivity.Start();
         ApplyResponsiveLayout(ShellRoot.ActualWidth);
         Navigate(_selectedTag);
         RefreshNavigationVisuals();
@@ -311,6 +320,7 @@ public sealed partial class MainPage : Page
     {
         App.Settings.Changed -= OnSettingsChanged;
         ShellRoot.SizeChanged -= ShellRoot_SizeChanged;
+        _libraryActivity?.Stop();
         Downloads.Stop();
     }
 

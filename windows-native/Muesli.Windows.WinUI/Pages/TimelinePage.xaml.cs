@@ -30,11 +30,19 @@ public sealed partial class TimelinePage : Page
             ThemeBrushes.Rerealize(TimelineList);
         };
         ViewModel.PropertyChanged += (_, _) => UpdateEmptyState();
+        // A dictation made while this page is open (Muesli is usually in the background then)
+        // must appear without the user leaving the page and coming back.
+        var activity = new LibraryActivityWatcher(
+            App.Dictation, App.Meetings, App.UiDispatcher, ViewModel.RefreshIfHistoryChanged);
         Loaded += (_, _) =>
         {
             UpdateEmptyState();
             UpdateSortPill();
+            // Anything recorded between this page being built and shown is picked up here.
+            ViewModel.RefreshIfHistoryChanged();
+            activity.Start();
         };
+        Unloaded += (_, _) => activity.Stop();
     }
 
     public static Visibility BoolToVisibility(bool value) =>

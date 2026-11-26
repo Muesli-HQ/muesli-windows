@@ -56,6 +56,29 @@ public partial class TimelinePageViewModel : ObservableObject
         NotifyDerived();
     }
 
+    /// <summary>
+    /// Reloads after a dictation or meeting finished elsewhere, but only republishes the list when
+    /// the history actually differs. Engines report changes that add nothing to the library (a
+    /// cancelled dictation, a status update), and rebuilding the list each time would throw away
+    /// the reader's scroll position and selection for no reason.
+    /// </summary>
+    public void RefreshIfHistoryChanged()
+    {
+        var latest = _library.ReadSnapshot();
+        if (latest.DictationCount == Snapshot.DictationCount &&
+            latest.MeetingCount == Snapshot.MeetingCount &&
+            latest.TotalWords == Snapshot.TotalWords &&
+            latest.TotalDurationMs == Snapshot.TotalDurationMs &&
+            latest.Timeline.Count == Snapshot.Timeline.Count)
+        {
+            return;
+        }
+
+        Snapshot = latest;
+        ApplyFilterAndSort();
+        NotifyDerived();
+    }
+
     partial void OnSnapshotChanged(WinUiLibrarySnapshot value) => NotifyDerived();
 
     partial void OnSortIndexChanged(int value) => ApplyFilterAndSort();
