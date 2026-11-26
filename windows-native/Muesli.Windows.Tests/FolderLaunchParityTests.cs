@@ -109,6 +109,23 @@ public sealed class FolderLaunchParityTests
         Assert.Null(stored.FolderId);
     }
 
+    [Theory]
+    // pending, stored before, stored now, expected. "" is "No folder".
+    [InlineData("projects", "inbox", "inbox", "projects")]   // unsaved pick survives a rename elsewhere
+    [InlineData("", "inbox", "inbox", "")]                    // an unsaved "No folder" is a choice too
+    [InlineData("inbox", "inbox", "inbox", "inbox")]          // nothing pending: follow what is stored
+    [InlineData("inbox", "inbox", "", "")]                    // its folder was deleted: now unfiled
+    [InlineData("gone", "inbox", "inbox", "inbox")]           // the unsaved pick itself was deleted
+    [InlineData("gone", "inbox", "", "")]                     // both were deleted
+    public void AMeetingsUnsavedFolderChoiceSurvivesFolderChangesElsewhere(
+        string pending, string storedBefore, string storedNow, string expected)
+    {
+        var existing = new HashSet<string>(StringComparer.Ordinal) { "inbox", "projects" };
+        if (storedNow.Length == 0) existing.Remove(storedBefore);
+
+        Assert.Equal(expected, MeetingFolderActions.ResolvePickerSelection(pending, storedBefore, storedNow, existing));
+    }
+
     [Fact]
     public void TheMeetingsPageNoLongerCarriesAFolderEditor()
     {

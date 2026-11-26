@@ -86,6 +86,25 @@ public static class MeetingFolderActions
         return null;
     }
 
+    /// <summary>
+    /// Which folder a meeting's picker should show after folders changed elsewhere. A choice the
+    /// user made but has not saved yet is kept as long as that folder still exists (including an
+    /// explicit "no folder"); otherwise the picker follows what is stored. Ids use "" for no folder.
+    /// </summary>
+    public static string ResolvePickerSelection(
+        string? pendingId,
+        string? storedBeforeId,
+        string? storedNowId,
+        IReadOnlyCollection<string> existingFolderIds)
+    {
+        ArgumentNullException.ThrowIfNull(existingFolderIds);
+        var pending = pendingId ?? "";
+        var storedNow = storedNowId ?? "";
+        var userChangedIt = !string.Equals(pending, storedBeforeId ?? "", StringComparison.Ordinal);
+        if (userChangedIt && (pending.Length == 0 || existingFolderIds.Contains(pending))) return pending;
+        return storedNow.Length == 0 || existingFolderIds.Contains(storedNow) ? storedNow : "";
+    }
+
     /// <summary>Deletes a folder. Its meetings are unfiled, never deleted.</summary>
     public static bool Delete(WinUiLibraryContext library, string id)
     {

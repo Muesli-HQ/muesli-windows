@@ -683,9 +683,17 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         if (_meeting is null) return;
         var stored = _library.FindMeeting(_meeting.Id);
         if (stored is null) return;
+        // The picker is only written when the meeting is saved, so it may hold a choice the user
+        // has made but not saved. Capture it before the options are replaced.
+        var pending = SelectedFolder?.Id;
+        var storedBefore = _meeting.FolderId;
         _meeting = _meeting with { FolderId = stored.FolderId };
-        FolderOptions = BuildFolderOptions(_library.ReadSnapshot());
-        SelectedFolder = FolderOptions.FirstOrDefault(folder => folder.Id == (stored.FolderId ?? "")) ?? FolderOptions[0];
+        var options = BuildFolderOptions(_library.ReadSnapshot());
+        var wanted = Services.MeetingFolderActions.ResolvePickerSelection(
+            pending, storedBefore, stored.FolderId,
+            options.Select(option => option.Id).Where(id => id.Length > 0).ToHashSet(StringComparer.Ordinal));
+        FolderOptions = options;
+        SelectedFolder = FolderOptions.FirstOrDefault(folder => folder.Id == wanted) ?? FolderOptions[0];
     }
 
     /// <summary>
