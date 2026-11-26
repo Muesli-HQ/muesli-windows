@@ -65,11 +65,12 @@ public partial class TimelinePageViewModel : ObservableObject
     public void RefreshIfHistoryChanged()
     {
         var latest = _library.ReadSnapshot();
-        if (latest.DictationCount == Snapshot.DictationCount &&
-            latest.MeetingCount == Snapshot.MeetingCount &&
-            latest.TotalWords == Snapshot.TotalWords &&
+        // Rows are compared by what they show (title, summary line, state, time), not only by
+        // totals: a meeting is saved as soon as it is transcribed and gets its title and notes
+        // minutes later, which changes the row without changing any count.
+        if (latest.TotalWords == Snapshot.TotalWords &&
             latest.TotalDurationMs == Snapshot.TotalDurationMs &&
-            latest.Timeline.Count == Snapshot.Timeline.Count)
+            latest.Timeline.SequenceEqual(Snapshot.Timeline))
         {
             return;
         }

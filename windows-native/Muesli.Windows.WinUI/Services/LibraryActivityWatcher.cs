@@ -24,6 +24,7 @@ public sealed class LibraryActivityWatcher(
     Action onSettled)
 {
     private bool _running;
+    private int _checkQueued;
 
     public void Start()
     {
@@ -41,11 +42,21 @@ public sealed class LibraryActivityWatcher(
         meetings.Changed -= OnChanged;
     }
 
-    private void OnChanged(object? sender, EventArgs args) => dispatcher.TryEnqueue(() =>
+    private void OnChanged(object? sender, EventArgs args)
     {
+        // An engine reports several changes in a row as it finishes (stage cleared, busy flag
+        // released). One queued check covers the whole burst: it runs after them and reads the
+        // state as it is then, so the page reloads once per finish, not once per notification.
+        if (Interlocked.Exchange(ref _checkQueued, 1) != 0) return;
+        if (!dispatcher.TryEnqueue(CheckSettled)) Volatile.Write(ref _checkQueued, 0);
+    }
+
+    private void CheckSettled()
+    {
+        Volatile.Write(ref _checkQueued, 0);
         if (!_running) return;
         if (dictation.IsRecording || dictation.IsBusy) return;
         if (meetings.IsRecording || meetings.IsPaused || meetings.IsBusy) return;
         onSettled();
-    });
+    }
 }
