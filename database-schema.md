@@ -126,7 +126,7 @@ child rows so a history list never loads megabytes of transcript.
 | `live_transcript_ownership` | TEXT | Which pipeline owned the live transcript; `off` when there was none. |
 | `final_transcript_owner_model_id` | TEXT | Model that owns the final transcript. |
 | `gap_recovery_model_id` | TEXT NULL | Model used to fill capture gaps, if any. |
-| `automation_result_json` | TEXT NULL | Post-meeting automation outcome, stored verbatim so unknown fields round-trip. |
+| `automation_result_json` | TEXT NULL | Outcome of the most recent post-meeting hook or export run, stored verbatim so unknown fields round-trip. A save that carries a result replaces it; a save without one keeps it. |
 | `source_schema_version` | INTEGER | Meeting record schema the row was written with (`PersistedMeeting.CurrentSchemaVersion` for new rows). |
 
 Indexes: `ix_meetings_created`, `ix_meetings_folder`, `ix_meetings_state`.
@@ -154,6 +154,12 @@ the row, which is how a user clears notes.
 
 Primary key `(meeting_id, kind)`. The app shows `edited` when it exists and `raw` otherwise.
 A UI save never destroys the `raw` row; clearing the edit reveals it again.
+
+The first non-empty transcript saved for a meeting is always `raw`, even when the meeting row
+already existed (notes typed while recording, or a follow-up draft, save the row before any
+speech is recognized). Every later, different transcript is `edited`. macOS keeps one transcript
+column that finalization fills and edits overwrite; Windows shows the same single transcript and
+additionally keeps the recognizer's original.
 
 ### `speaker_aliases`
 
@@ -328,7 +334,8 @@ copies in `data\backups\muesli-<UTC yyyyMMdd-HHmmssfff>.db`.
   runs in the background. If the app closes first, the next launch sees the record and finishes
   the purge whatever the age of the newest backup. A copy that started before the deletion and
   finishes after it is discarded, not kept. The record is removed once a clean replacement
-  exists.
+  exists. While the record exists no backup is offered for restore, so a lost database cannot
+  bring deleted content back.
 - `RestoreLatest` picks the newest backup that passes `PRAGMA quick_check`, renames the current
   `muesli.db` (and its `-wal` and `-shm`) to `muesli.db.replaced-<timestamp>`, copies the backup
   to `muesli.db.restoring-<timestamp>` and renames it into place, so an interrupted restore

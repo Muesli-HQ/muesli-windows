@@ -371,6 +371,85 @@ public sealed class SqliteLibraryStorageTests
         Assert.Null(LibraryDatabaseBackup.PurgePendingSince(directory.Path));
     }
 
+    [Fact]
+    public void ABackupIsNotOfferedForRestoreWhileADeletionPurgeIsUnfinished()
+    {
+        // The app deleted a dictation, recorded the purge, and was killed before the old copies
+        // were gone. Then the database was lost. Restoring that copy would bring the text back.
+        using var directory = new TestDirectory();
+        var path = PersistencePaths.DatabasePathFor(directory.Path);
+        using (var store = MuesliPersistenceStore.Open(path))
+        {
+            store.Dictations.Upsert(new DictationRecord { Id = "d", Text = "sensitive words" });
+            LibraryDatabaseBackup.Create(store.Database, directory.Path);
+        }
+        File.WriteAllText(Path.Combine(LibraryDatabaseBackup.DirectoryFor(directory.Path), "purge-pending"), "1");
+        File.WriteAllText(path, "broken database");
+
+        var result = LibraryDatabaseStartup.Prepare(directory.Path);
+
+        Assert.Equal(LibraryStartupOutcome.DatabaseUnreadable, result.Outcome);
+        Assert.False(result.CanRestoreBackup);
+        Assert.Empty(LibraryDatabaseBackup.List(directory.Path));
+        Assert.Null(LibraryDatabaseBackup.RestoreLatest(directory.Path));
+    }
+
+    // ---- Meetings ---------------------------------------------------------------------------
+
+    [Fact]
+    public void TheFirstTranscriptOfADraftMeetingIsKeptAsTheRecognizersOutput()
+    {
+        // Typing notes while recording saves the meeting before any speech is recognized. As on
+        // macOS, finalization then fills in that row's transcript; a later cleanup or user edit
+        // must not be the only copy.
+        using var directory = new TestDirectory();
+        using var library = TestLibrary.Open(directory.Path);
+        var draft = new PersistedMeeting { Id = "m", Title = "Planning", ManualNotes = "typed while recording", CreatedAt = DateTime.UtcNow };
+        library.SaveMeetings([draft]);
+
+        library.SaveMeetings([draft with { Transcript = "what the recognizer heard" }]);
+
+        var stored = library.Store.Meetings.FindDetail("m")!;
+        Assert.Equal("what the recognizer heard", stored.Transcript(MeetingTranscriptKind.Raw));
+        Assert.Null(stored.Transcript(MeetingTranscriptKind.Edited));
+
+        library.SaveMeetings([draft with { Transcript = "What the recognizer heard, cleaned up." }]);
+
+        stored = library.Store.Meetings.FindDetail("m")!;
+        Assert.Equal("what the recognizer heard", stored.Transcript(MeetingTranscriptKind.Raw));
+        Assert.Equal("What the recognizer heard, cleaned up.", stored.Transcript(MeetingTranscriptKind.Edited));
+        var shown = library.FindMeeting("m")!;
+        Assert.Equal("What the recognizer heard, cleaned up.", shown.Transcript);
+        Assert.Equal("typed while recording", shown.ManualNotes);
+        Assert.Single(library.Search(new SearchQuery { Text = "cleaned" }));
+    }
+
+    [Fact]
+    public void ANewAutomationRunReplacesTheStoredResultAndOtherSavesKeepIt()
+    {
+        using var directory = new TestDirectory();
+        using var library = TestLibrary.Open(directory.Path);
+        var first = AutomationResult(PostMeetingAutomationStatus.Failed, directory.File("first.md"));
+        var second = AutomationResult(PostMeetingAutomationStatus.Succeeded, directory.File("second.md"));
+        var meeting = new PersistedMeeting { Id = "m", Title = "Planning", Transcript = "spoken", CreatedAt = DateTime.UtcNow };
+        library.SaveMeetings([meeting with { AutomationResult = first }]);
+
+        // A save that carries no result, such as a notes edit, keeps the stored one.
+        library.SaveMeetings([meeting with { ManualNotes = "added later" }]);
+        Assert.Equal(first, library.FindMeeting("m")!.AutomationResult);
+
+        // The meeting was resumed and the hook ran again: the details must show this run.
+        library.SaveMeetings([meeting with { AutomationResult = second }]);
+        Assert.Equal(second, library.FindMeeting("m")!.AutomationResult);
+    }
+
+    private static PostMeetingAutomationResult AutomationResult(PostMeetingAutomationStatus status, string exportPath) =>
+        new(Guid.NewGuid(), status, DateTimeOffset.UtcNow.AddSeconds(-1), DateTimeOffset.UtcNow, 1,
+            status == PostMeetingAutomationStatus.Succeeded ? 0 : 17, "out", "err", false, false,
+            status == PostMeetingAutomationStatus.Succeeded ? null : "Hook exited with code 17.",
+            new PostMeetingExportDiagnostic(true, true, exportPath,
+                AutomationDestinationOwnership.UserSelectedDestination, null, 1));
+
     // ---- Corrections commit as one unit ------------------------------------------------------
 
     [Fact]

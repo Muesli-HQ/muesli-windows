@@ -143,10 +143,12 @@ internal static class LibraryHistoryMapper
                         : incoming.FinalTranscriptOwnerModelId,
                     GapRecoveryModelId = incoming.GapRecoveryModelId ?? meeting.Audio.GapRecoveryModelId
                 },
-            AutomationResultJson = meeting.AutomationResultJson
-                ?? (incoming.AutomationResult is null
-                    ? null
-                    : JsonSerializer.Serialize(incoming.AutomationResult, JsonOptions)),
+            // The latest run wins: resuming a meeting runs the hook or export again, and the
+            // details page must show that run's outcome. A save that carries no result (a notes
+            // edit, a list refresh) keeps the stored one.
+            AutomationResultJson = incoming.AutomationResult is null
+                ? meeting.AutomationResultJson
+                : JsonSerializer.Serialize(incoming.AutomationResult, JsonOptions),
             SourceSchemaVersion = meeting.SourceSchemaVersion,
             CreatedAtUtc = meeting.CreatedAtUtc,
             UpdatedAtUtc = DateTimeOffset.UtcNow

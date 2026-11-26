@@ -226,7 +226,17 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
             _store.Meetings.SetNote(meeting.Id, MeetingNoteKind.Manual, meeting.ManualNotes ?? "");
             _store.Meetings.ReplaceSpeakerAliases(meeting.Id, meeting.SpeakerAliases);
 
-            if (string.IsNullOrEmpty(meeting.Transcript) ||
+            if (!string.IsNullOrEmpty(meeting.Transcript) &&
+                string.IsNullOrEmpty(existing.Transcript(MeetingTranscriptKind.Raw)) &&
+                string.IsNullOrEmpty(existing.Transcript(MeetingTranscriptKind.Edited)))
+            {
+                // The row was created before any speech was recognized (notes typed while
+                // recording, or a follow-up draft). Its first transcript is the recognizer's
+                // output, as on macOS where finalization fills the transcript of the row
+                // inserted at the start of the meeting. Later saves are edits of it.
+                _store.Meetings.SetTranscript(meeting.Id, MeetingTranscriptKind.Raw, meeting.Transcript);
+            }
+            else if (string.IsNullOrEmpty(meeting.Transcript) ||
                 string.Equals(
                     meeting.Transcript,
                     existing.Transcript(MeetingTranscriptKind.Raw),

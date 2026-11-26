@@ -65,7 +65,22 @@ public static class LibraryDatabaseStartup
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
         var directory = Path.GetFullPath(dataDirectory);
         var databasePath = PersistencePaths.DatabasePathFor(directory);
-        var latestBackup = LibraryDatabaseBackup.List(directory).FirstOrDefault();
+        // A deletion asked for every backup to go and the app closed before that finished. Finish
+        // it before a backup can be offered for restore, or the deleted content could come back.
+        var purgePending = LibraryDatabaseBackup.PurgePendingSince(directory) is not null;
+        if (purgePending)
+        {
+            try
+            {
+                LibraryDatabaseBackup.DeleteAll(directory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // A copy could not be removed yet. It is not offered for restore below.
+            }
+        }
+
+        var latestBackup = purgePending ? null : LibraryDatabaseBackup.List(directory).FirstOrDefault();
 
         if (!File.Exists(databasePath))
         {
