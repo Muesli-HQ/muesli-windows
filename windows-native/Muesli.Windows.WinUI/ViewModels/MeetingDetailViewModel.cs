@@ -266,7 +266,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         {
             _meeting = updated;
             ApplyMeeting(updated, keepTranscriptDraft: true);
-            ShowStatus("Meeting changes saved.");
+            ClearStatus();
             // A folder move changes what the rail's folder rows count.
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -296,9 +296,12 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             var result = await _runtime.GenerateSummaryAsync(_meeting, SelectedTemplate, cancellationToken);
             _meeting = _library.FindMeeting(_meeting.Id);
             if (_meeting is not null) ApplyMeeting(_meeting);
-            ShowStatus(result.UsedLocalFallback && result.SafeFailureReason is not null
-                ? $"Notes generated locally because the selected provider was unavailable ({result.SafeFailureReason})."
-                : $"Notes generated with {result.Provider}.");
+            // The notes appearing is the confirmation. Only say something when the outcome is not
+            // what the user asked for: the chosen provider failed and the local fallback wrote them.
+            if (result.UsedLocalFallback && result.SafeFailureReason is not null)
+                ShowStatus($"Notes generated locally because the selected provider was unavailable ({result.SafeFailureReason}).");
+            else
+                ClearStatus();
         }
         catch (OperationCanceledException) { ShowStatus("Summary generation cancelled."); }
         catch (Exception exception) { ShowStatus($"Could not generate notes: {exception.Message}", true); }
@@ -455,7 +458,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             AliasSource = "";
             AliasReplacement = "";
             ApplyMeeting(_meeting);
-            ShowStatus("Speaker name saved.");
+            ClearStatus();
         }
         catch (Exception exception) { ShowStatus($"Could not save speaker name: {exception.Message}", true); }
     }
@@ -466,7 +469,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         if (_meeting is null || alias is null) return;
         _meeting = _runtime.DeleteSpeakerAlias(_meeting, alias.Source);
         ApplyMeeting(_meeting);
-        ShowStatus("Speaker name removed.");
+        ClearStatus();
     }
 
     partial void OnSelectedPlaybackTrackChanged(MeetingPlaybackTrack? value)
@@ -669,6 +672,12 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         IsStatusError = isError;
         IsStatusOpen = true;
     }
+
+    /// <summary>
+    /// A routine action that worked needs no banner: the page already shows its result. Clearing
+    /// also removes an earlier error that the success has made stale.
+    /// </summary>
+    private void ClearStatus() => IsStatusOpen = false;
 
     public void Dispose()
     {

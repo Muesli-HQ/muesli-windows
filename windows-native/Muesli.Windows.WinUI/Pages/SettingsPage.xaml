@@ -848,9 +848,27 @@
                                     <TextBlock Text="{x:Bind ViewModel.ClaudeCodeAccountStatus, Mode=OneWay}" Style="{StaticResource RowHelpStyle}"
                                                AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="ClaudeCodeAccountStatus" />
                                 </StackPanel>
-                                <Button Grid.Column="1" Content="Check again" Style="{StaticResource MuesliSecondaryButtonStyle}" VerticalAlignment="Center"
+                                <!--
+                                    Reads "Connected" in green once Claude Code is found and signed
+                                    in. Pointing at it (or focusing it) turns it back into "Check
+                                    again", so a re-check stays one click away without a second button.
+                                -->
+                                <Button x:Name="ClaudeCodeCheckButton" Grid.Column="1" Style="{StaticResource MuesliSecondaryButtonStyle}" VerticalAlignment="Center"
+                                        MinWidth="118"
                                         Command="{x:Bind ViewModel.CheckClaudeCodeCommand}"
-                                        AutomationProperties.AutomationId="ClaudeCodeCheckButton" />
+                                        PointerEntered="ClaudeCodeCheckButton_HoverChanged"
+                                        PointerExited="ClaudeCodeCheckButton_HoverChanged"
+                                        PointerCanceled="ClaudeCodeCheckButton_HoverChanged"
+                                        PointerCaptureLost="ClaudeCodeCheckButton_HoverChanged"
+                                        GotFocus="ClaudeCodeCheckButton_FocusChanged"
+                                        LostFocus="ClaudeCodeCheckButton_FocusChanged"
+                                        ToolTipService.ToolTip="Check Claude Code again"
+                                        AutomationProperties.AutomationId="ClaudeCodeCheckButton">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                        <FontIcon x:Name="ClaudeCodeCheckIcon" Glyph="&#xE73E;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="12" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="ClaudeCodeCheckLabel" Text="Check again" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowClaudeCodeSettings), Mode=OneWay}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16" Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.ShowClaudeCodeSettings), Mode=OneWay}">

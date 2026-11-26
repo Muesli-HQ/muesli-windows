@@ -894,6 +894,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string ChatGptAccountStatus { get; private set; } = "Not signed in";
     [ObservableProperty] public partial string ClaudeCodeAccountStatus { get; private set; } = "Checking Claude Code…";
 
+    /// <summary>True once the last check found Claude Code installed and signed in.</summary>
+    [ObservableProperty] public partial bool IsClaudeCodeConnected { get; private set; }
+
     public bool IsChatGptSignedOut => !IsChatGptSignedIn;
 
     private CancellationTokenSource? _chatGptSignIn;
@@ -942,8 +945,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private async Task CheckClaudeCodeAsync()
     {
         ClaudeCodeAccountStatus = "Checking Claude Code…";
+        IsClaudeCodeConnected = false;
         var path = ClaudeCodeExecutablePath;
         var status = await Task.Run(() => ClaudeCodeSummarizer.CheckStatusAsync(path));
+        IsClaudeCodeConnected = status == ClaudeCodeStatus.SignedIn;
         ClaudeCodeAccountStatus = status switch
         {
             ClaudeCodeStatus.SignedIn => "Connected to Claude Code",
