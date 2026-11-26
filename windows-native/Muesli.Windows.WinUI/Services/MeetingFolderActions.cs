@@ -1,0 +1,79 @@
+using Muesli.Windows.Services;
+
+namespace Muesli.Windows.WinUI.Services;
+
+/// <summary>
+/// The folder operations the sidebar offers, as on macOS: create (then rename in place), rename,
+/// new subfolder, move to top level and delete. They live here rather than in a page so the rail
+/// and its tests share one set of rules.
+/// </summary>
+public static class MeetingFolderActions
+{
+    public const string DefaultName = "New Folder";
+    public const string AllMeetingsName = "All Meetings";
+
+    /// <summary>
+    /// Creates a folder under <paramref name="parentId"/> (null for the top level) with a name
+    /// that is free among its siblings: "New Folder", then "New Folder 2", and so on.
+    /// </summary>
+    public static PersistedMeetingFolder Create(WinUiLibraryContext library, string? parentId)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+        var parent = string.IsNullOrWhiteSpace(parentId) ? null : parentId;
+        var siblings = library.History.LoadMeetingFolders()
+            .Where(folder => string.Equals(folder.ParentId ?? "", parent ?? "", StringComparison.Ordinal))
+            .Select(folder => folder.Name)
+            .ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+        var name = DefaultName;
+        for (var suffix = 2; siblings.Contains(name); suffix++)
+        {
+            name = $"{DefaultName} {suffix}";
+        }
+
+        var created = library.SaveMeetingFolder(null, name, parent);
+        if (parent is not null) library.MoveMeetingFolder(created.Id, parent);
+        return created with { ParentId = parent };
+    }
+
+    /// <summary>
+    /// Renames a folder. Returns null when the name was saved (or was unchanged), otherwise the
+    /// reason it was refused, worded for the user.
+    /// </summary>
+    public static string? Rename(WinUiLibraryContext library, string id, string? name)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+        var trimmed = name?.Trim() ?? "";
+        if (trimmed.Length == 0) return "Enter a folder name.";
+        if (string.Equals(trimmed, AllMeetingsName, StringComparison.CurrentCultureIgnoreCase))
+            return $"“{AllMeetingsName}” is the name of the whole library. Choose another name.";
+
+        var stored = library.History.LoadMeetingFolders();
+        var folder = stored.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
+        if (folder is null) return "That folder no longer exists.";
+        if (string.Equals(folder.Name, trimmed, StringComparison.Ordinal)) return null;
+
+        // Names only have to be unique among siblings: two folders may both be called "Notes"
+        // under different parents, which is the point of nesting.
+        var duplicate = stored.Any(other =>
+            !string.Equals(other.Id, id, StringComparison.Ordinal) &&
+            string.Equals(other.ParentId ?? "", folder.ParentId ?? "", StringComparison.Ordinal) &&
+            string.Equals(other.Name, trimmed, StringComparison.CurrentCultureIgnoreCase));
+        if (duplicate) return $"A folder called “{trimmed}” already exists here.";
+
+        library.SaveMeetingFolder(id, trimmed, folder.ParentId);
+        return null;
+    }
+
+    public static void MoveToTopLevel(WinUiLibraryContext library, string id)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+        library.MoveMeetingFolder(id, null);
+    }
+
+    /// <summary>Deletes a folder. Its meetings are unfiled, never deleted.</summary>
+    public static bool Delete(WinUiLibraryContext library, string id)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+        return library.DeleteMeetingFolder(id);
+    }
+}

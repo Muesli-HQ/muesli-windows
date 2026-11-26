@@ -24,6 +24,8 @@ public sealed partial class MainPage : Page
 
     private int _tourIndex = -1;
     private bool _meetingFoldersExpanded = true;
+    /// <summary>The folder whose name is being edited in place in the rail, if any.</summary>
+    private string? _renamingFolderId;
     private bool _compactRail;
     /// <summary>
     /// User-requested rail collapse (the macOS sidebar toggle). Session-scoped on purpose: the
@@ -582,17 +584,191 @@ public sealed partial class MainPage : Page
         MeetingChevronIcon.Glyph = _meetingFoldersExpanded ? "\uE96E" : "\uE970";
     }
 
-    private void CreateMeetingFolder_Click(object sender, RoutedEventArgs e)
+    // macOS SidebarView: the "+" creates "New Folder" and puts its name straight into edit, and
+    // every other folder action is on the folder's own context menu. There is no folder editor.
+    private void CreateMeetingFolder_Click(object sender, RoutedEventArgs e) => BeginFolderCreate(null);
+
+    private void BeginFolderCreate(string? parentId)
     {
-        // Folder create/rename/validation lives on the Meetings page. The rail control opens that
-        // page instead of inventing a second persistence path with no name prompt, and then opens
-        // the folder editor on it — the editor is collapsed by default since P3-02, so navigating
-        // alone would leave the "+" pointing at nothing the user can see.
-        NavigateTo("meetings");
+        Muesli.Windows.Services.PersistedMeetingFolder created;
+        try
+        {
+            created = Services.MeetingFolderActions.Create(App.Library, parentId);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException
+                                              or Muesli.Windows.Services.Persistence.PersistenceException)
+        {
+            _ = App.Dialogs.ConfirmAsync("The folder could not be created.", "Meeting folders");
+            return;
+        }
+
+        if (!_meetingFoldersExpanded)
+        {
+            ToggleMeetingFolders_Click(this, new RoutedEventArgs());
+        }
+
+        // Tell the open page first: its refresh rebuilds the rail, which would otherwise replace
+        // the name field the user is about to type in.
+        NotifyFoldersChanged();
+        _renamingFolderId = created.Id;
+        RebuildMeetingFolders();
+        RefreshNavigationVisuals();
+    }
+
+    private void BeginFolderRename(string folderId)
+    {
+        _renamingFolderId = folderId;
+        RebuildMeetingFolders();
+        RefreshNavigationVisuals();
+    }
+
+    /// <summary>
+    /// Ends an in-place rename. A refused name keeps the field open with the reason under it when
+    /// the user pressed Enter; when focus simply moved away the folder keeps the name it had.
+    /// </summary>
+    private void EndFolderRename(string folderId, string? newName, bool keepOpenOnError, TextBlock error)
+    {
+        if (!string.Equals(_renamingFolderId, folderId, StringComparison.Ordinal)) return;
+        if (newName is not null)
+        {
+            string? refusal;
+            try
+            {
+                refusal = Services.MeetingFolderActions.Rename(App.Library, folderId, newName);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or IOException
+                                                  or Muesli.Windows.Services.Persistence.PersistenceException)
+            {
+                refusal = "The folder could not be renamed.";
+            }
+
+            if (refusal is not null && keepOpenOnError)
+            {
+                error.Text = refusal;
+                error.Visibility = Visibility.Visible;
+                return;
+            }
+        }
+
+        _renamingFolderId = null;
+        RebuildMeetingFolders();
+        NotifyFoldersChanged();
+        RefreshNavigationVisuals();
+    }
+
+    private async void DeleteFolder_Click(MeetingFolderListItem folder)
+    {
+        var choice = await App.Dialogs.ConfirmAsync(
+            $"Delete the folder “{folder.Name}”? Its meetings will remain in All Meetings.",
+            "Delete meeting folder");
+        if (choice != Muesli.Windows.Core.Contracts.AppDialogChoice.Primary) return;
+
+        // A subfolder of the deleted one may be what the Meetings page is showing; after the
+        // delete it has moved up a level, so its tag is still valid. Only the deleted folder's own
+        // tag stops existing.
+        var wasSelected = string.Equals(_selectedTag, $"meetings:{folder.Id}", StringComparison.OrdinalIgnoreCase);
+        if (!Services.MeetingFolderActions.Delete(App.Library, folder.Id)) return;
+        RebuildMeetingFolders();
+        if (wasSelected)
+        {
+            NavigateTo("meetings");
+            return;
+        }
+
+        NotifyFoldersChanged();
+        RefreshNavigationVisuals();
+    }
+
+    /// <summary>Lets the Meetings page, when it is the one showing, pick up a folder change made in the rail.</summary>
+    private void NotifyFoldersChanged()
+    {
         if (ContentFrame.Content is Pages.MeetingsPage page)
         {
-            page.RevealFolderEditor();
+            page.ViewModel.RefreshCommand.Execute(null);
         }
+    }
+
+    private MenuFlyout BuildFolderMenu(MeetingFolderListItem folder)
+    {
+        var menu = new MenuFlyout();
+        MenuFlyoutItem Item(string text, string automationId, Action action)
+        {
+            var item = new MenuFlyoutItem { Text = text };
+            AutomationProperties.SetAutomationId(item, automationId);
+            item.Click += (_, _) => action();
+            return item;
+        }
+
+        menu.Items.Add(Item("New subfolder", "MeetingFolderNewSubfolder", () => BeginFolderCreate(folder.Id)));
+        menu.Items.Add(Item("Rename", "MeetingFolderRename", () => BeginFolderRename(folder.Id)));
+        if (folder.Depth > 0)
+        {
+            menu.Items.Add(Item("Move to top level", "MeetingFolderMoveToTop", () =>
+            {
+                Services.MeetingFolderActions.MoveToTopLevel(App.Library, folder.Id);
+                RebuildMeetingFolders();
+                NotifyFoldersChanged();
+                RefreshNavigationVisuals();
+            }));
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(Item("Delete", "MeetingFolderDelete", () => DeleteFolder_Click(folder)));
+        return menu;
+    }
+
+    /// <summary>The row a folder shows while its name is being edited in place.</summary>
+    private FrameworkElement CreateFolderRenameRow(MeetingFolderListItem folder)
+    {
+        var box = new TextBox
+        {
+            Text = folder.Name,
+            FontSize = 13,
+            MinHeight = 30,
+            Padding = new Thickness(8, 4, 8, 4),
+            MaxLength = 80,
+            IsSpellCheckEnabled = false
+        };
+        AutomationProperties.SetName(box, "Folder name");
+        AutomationProperties.SetAutomationId(box, "MeetingFolderRenameBox");
+        var error = new TextBlock
+        {
+            Visibility = Visibility.Collapsed,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = Brush("MuesliDestructiveTextBrush")
+        };
+        AutomationProperties.SetLiveSetting(error, AutomationLiveSetting.Assertive);
+        AutomationProperties.SetAutomationId(error, "MeetingFolderRenameError");
+
+        box.Loaded += (_, _) =>
+        {
+            box.Focus(FocusState.Programmatic);
+            box.SelectAll();
+        };
+        box.KeyDown += (_, args) =>
+        {
+            if (args.Key == VirtualKey.Enter)
+            {
+                args.Handled = true;
+                EndFolderRename(folder.Id, box.Text, keepOpenOnError: true, error);
+            }
+            else if (args.Key == VirtualKey.Escape)
+            {
+                args.Handled = true;
+                EndFolderRename(folder.Id, null, keepOpenOnError: false, error);
+            }
+        };
+        box.LostFocus += (_, _) => EndFolderRename(folder.Id, box.Text, keepOpenOnError: false, error);
+
+        var row = new StackPanel
+        {
+            Spacing = 2,
+            Margin = new Thickness(8 + Math.Min(folder.Depth, 8) * 16, 0, 8, 0)
+        };
+        row.Children.Add(box);
+        row.Children.Add(error);
+        return row;
     }
 
     private void TourNext_Click(object sender, RoutedEventArgs e)
@@ -716,7 +892,19 @@ public sealed partial class MainPage : Page
         foreach (var folder in MeetingFolderListItem.BuildTree(App.Library.ReadSnapshot()))
         {
             var tag = folder.IsAllMeetings ? "meetings" : $"meetings:{folder.Id}";
-            MeetingChildrenHost.Children.Add(CreateFolderButton(folder, tag));
+            if (!folder.IsAllMeetings && string.Equals(folder.Id, _renamingFolderId, StringComparison.Ordinal))
+            {
+                MeetingChildrenHost.Children.Add(CreateFolderRenameRow(folder));
+                continue;
+            }
+
+            var button = CreateFolderButton(folder, tag);
+            if (!folder.IsAllMeetings)
+            {
+                button.ContextFlyout = BuildFolderMenu(folder);
+            }
+
+            MeetingChildrenHost.Children.Add(button);
         }
 
         foreach (var child in MeetingChildrenHost.Children.OfType<Button>())

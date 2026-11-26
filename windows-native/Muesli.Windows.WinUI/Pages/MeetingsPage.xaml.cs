@@ -10,10 +10,6 @@ namespace Muesli.Windows.WinUI.Pages;
 
 public sealed partial class MeetingsPage : Page
 {
-    /// <summary>Set while this page pushes a selection into the folder list, so restoring the
-    /// selection after a reload does not re-enter <see cref="ViewModel"/>'s folder filter.</summary>
-    private bool _syncingFolderSelection;
-
     public MeetingsPageViewModel ViewModel { get; } = new(
         App.Library,
         App.Meetings,
@@ -37,13 +33,10 @@ public sealed partial class MeetingsPage : Page
         {
             UpdateEmptyState();
 
-            // A reload republishes the folder list, which drops the ListView's SelectedItem because
-            // it is a different instance. Without this, refreshing or saving a folder silently
-            // returned the in-page list to "All Meetings" while the page kept filtering by the
-            // folder the user had chosen.
+            // Folders are managed in the shell rail. Keep its rows and highlight in step with the
+            // folder this page is filtering by.
             if (args.PropertyName is nameof(ViewModel.Folders) or nameof(ViewModel.SelectedFolderId))
             {
-                RestoreFolderSelection();
                 SyncShellFolders();
             }
 
@@ -77,8 +70,7 @@ public sealed partial class MeetingsPage : Page
 
     /// <summary>
     /// The shell already owns the rail breakpoints. This page follows content width: gutters use
-    /// the frozen page tokens, the action row stacks when it cannot sit on one line, and the
-    /// folder editor becomes a single column so the list and name field are not clipped.
+    /// the frozen page tokens, and the action row stacks when it cannot sit on one line.
     /// </summary>
     private void OnPageSizeChanged(object sender, SizeChangedEventArgs e) =>
         ApplyResponsiveLayout(e.NewSize.Width);
@@ -105,10 +97,6 @@ public sealed partial class MeetingsPage : Page
             Grid.SetColumn(SearchWell, 0);
             Grid.SetColumnSpan(SearchWell, 2);
 
-            FolderListColumn.Width = new GridLength(1, GridUnitType.Star);
-            Grid.SetRow(FolderEditorFields, 1);
-            Grid.SetColumn(FolderEditorFields, 0);
-
             Grid.SetRow(ActiveMeetingActions, 1);
             Grid.SetColumn(ActiveMeetingActions, 1);
         }
@@ -122,10 +110,6 @@ public sealed partial class MeetingsPage : Page
             Grid.SetRow(SearchWell, 0);
             Grid.SetColumn(SearchWell, 1);
             Grid.SetColumnSpan(SearchWell, 1);
-
-            FolderListColumn.Width = new GridLength(220);
-            Grid.SetRow(FolderEditorFields, 0);
-            Grid.SetColumn(FolderEditorFields, 1);
 
             Grid.SetRow(ActiveMeetingActions, 0);
             Grid.SetColumn(ActiveMeetingActions, 2);
@@ -144,33 +128,7 @@ public sealed partial class MeetingsPage : Page
         {
             ViewModel.SelectFolder("");
         }
-        RestoreFolderSelection();
         UpdateEmptyState();
-    }
-
-    /// <summary>
-    /// Points the in-page folder list at whichever folder the view model is actually filtering by.
-    /// Called after navigation and after every reload so the sidebar, the page subtitle, the folder
-    /// list selection and the filtered meetings always name the same folder.
-    /// </summary>
-    private void RestoreFolderSelection()
-    {
-        var match = ViewModel.Folders.FirstOrDefault(folder =>
-            string.Equals(folder.Id, ViewModel.SelectedFolderId, StringComparison.Ordinal));
-        if (ReferenceEquals(MeetingFolderList.SelectedItem, match))
-        {
-            return;
-        }
-
-        _syncingFolderSelection = true;
-        try
-        {
-            MeetingFolderList.SelectedItem = match;
-        }
-        finally
-        {
-            _syncingFolderSelection = false;
-        }
     }
 
     /// <summary>
@@ -198,26 +156,6 @@ public sealed partial class MeetingsPage : Page
         AutomationProperties.SetName(args.ItemContainer, meeting.AccessibleName);
     }
 
-    private void MeetingFolderList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
-    {
-        if (args.InRecycleQueue || args.Item is not MeetingFolderListItem folder)
-        {
-            AutomationProperties.SetName(args.ItemContainer, string.Empty);
-            return;
-        }
-
-        AutomationProperties.SetName(args.ItemContainer, folder.AccessibleName);
-    }
-
-    /// <summary>Opens the folder editor and puts the caret in the name field, so the shell rail's
-    /// "+" reaches a usable control rather than a collapsed expander (P3-02).</summary>
-    public void RevealFolderEditor()
-    {
-        FolderEditorExpander.IsExpanded = true;
-        ViewModel.NewFolderCommand.Execute(null);
-        DispatcherQueue.TryEnqueue(() => MeetingFolderNameBox.Focus(FocusState.Programmatic));
-    }
-
     private void UpdateEmptyState()
     {
         EmptyState.Visibility = ViewModel.HasItems ? Visibility.Collapsed : Visibility.Visible;
@@ -226,22 +164,6 @@ public sealed partial class MeetingsPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
         RecoveryPanel.Visibility = ViewModel.HasRecoverable ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void MeetingFolder_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_syncingFolderSelection)
-        {
-            return;
-        }
-
-        // SelectFolder raises SelectedFolderId, which syncs the rail highlight through
-        // SyncShellFolders — picking a folder here and picking it in the sidebar end in the
-        // same shell state.
-        if (sender is ListView { SelectedItem: MeetingFolderListItem folder })
-        {
-            ViewModel.SelectFolder(folder.Id);
-        }
     }
 
     /// <summary>

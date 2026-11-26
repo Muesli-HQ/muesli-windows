@@ -436,19 +436,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial IReadOnlyList<MeetingFolderListItem> Folders { get; private set; } = [];
-    /// <summary>
-    /// The parent picker binds <c>SelectedItem</c>, not <c>SelectedValue</c>. A ComboBox resolves
-    /// <c>SelectedValue</c> against its items only while the item set is stable, and this list is
-    /// rebuilt on every reload and on every folder selection — which is why the control rendered
-    /// blank even though a valid parent was selected. The id stays the value the save path reads.
-    /// </summary>
-    [ObservableProperty] public partial MeetingFolderListItem? SelectedParentFolder { get; set; }
-    [ObservableProperty] public partial IReadOnlyList<MeetingFolderListItem> ParentFolders { get; private set; } = [];
-
-    public string SelectedParentFolderId => SelectedParentFolder?.Id ?? "";
-
-    partial void OnSelectedParentFolderChanged(MeetingFolderListItem? value) =>
-        OnPropertyChanged(nameof(SelectedParentFolderId));
 
     /// <summary>
     /// P3-06. A ComboBox clears its own selection when <c>ItemsSource</c> is replaced, and it does
@@ -466,17 +453,7 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         }
 
         OnPropertyChanged(nameof(TimeRangeIndex));
-        OnPropertyChanged(nameof(SelectedParentFolder));
     });
-
-    /// <summary>Points the parent picker at <paramref name="folderId"/>, defaulting to top level.</summary>
-    private void SetParentSelection(string? folderId)
-    {
-        SelectedParentFolder =
-            ParentFolders.FirstOrDefault(folder => string.Equals(folder.Id, folderId ?? "", StringComparison.Ordinal))
-            ?? ParentFolders.FirstOrDefault(folder => folder.IsAllMeetings);
-        RepublishPickerSelections();
-    }
 
     [ObservableProperty]
     public partial bool IsRecording { get; private set; }
@@ -522,22 +499,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial string SelectedFolderId { get; private set; } = "";
-
-    [ObservableProperty]
-    public partial string FolderName { get; set; } = "";
-
-    /// <summary>
-    /// Validation and confirmation for the folder editor, rendered next to the editor's own
-    /// controls. Folder problems used to be written to <see cref="MeetingStatus"/>, which surfaces
-    /// in the recording InfoBar at the top of the page — a duplicate-name refusal appeared far away
-    /// from the field that caused it, or not at all.
-    /// </summary>
-    [ObservableProperty]
-    public partial string FolderEditorStatus { get; private set; } = "";
-
-    public bool HasFolderEditorStatus => !string.IsNullOrWhiteSpace(FolderEditorStatus);
-
-    partial void OnFolderEditorStatusChanged(string value) => OnPropertyChanged(nameof(HasFolderEditorStatus));
 
     public bool IsActive => IsRecording || IsBusy || IsPaused;
     public bool CanStart => !IsActive && !IsImporting;
@@ -829,13 +790,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
     public void SelectFolder(string? folderId)
     {
         SelectedFolderId = folderId ?? "";
-        FolderEditorStatus = "";
-        FolderName = Folders.FirstOrDefault(folder => folder.Id == SelectedFolderId)?.Name ?? "";
-        var folders = _library.History.LoadMeetingFolders();
-        var excluded = MeetingFolderHierarchy.Subtree(folders, SelectedFolderId);
-        // A folder may not be moved inside itself or one of its own descendants.
-        ParentFolders = Folders.Where(folder => folder.Id.Length == 0 || !excluded.Contains(folder.Id)).ToList();
-        SetParentSelection(folders.FirstOrDefault(folder => folder.Id == SelectedFolderId)?.ParentId);
         UpdateFolderContext();
         ApplyFilterAndSort();
     }
@@ -846,102 +800,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CurrentFolderLabel));
         OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(EmptyStateInstruction));
-    }
-
-    [RelayCommand]
-    private void NewFolder()
-    {
-        SelectedFolderId = "";
-        FolderName = "";
-        ParentFolders = Folders;
-        SetParentSelection(null);
-        FolderEditorStatus = "";
-        UpdateFolderContext();
-    }
-
-    /// <summary>
-    /// Abandons an in-progress rename or move. Nothing has been written yet — the editor is a
-    /// staging area — so this just puts the fields back to what is stored for the selected folder
-    /// and says so, which is what makes "cancel a rename" observable rather than implicit.
-    /// </summary>
-    [RelayCommand]
-    private void CancelFolderEdit()
-    {
-        if (string.IsNullOrWhiteSpace(SelectedFolderId))
-        {
-            NewFolder();
-            FolderEditorStatus = "Cleared.";
-            return;
-        }
-
-        SelectFolder(SelectedFolderId);
-        FolderEditorStatus = "Edit cancelled; the folder is unchanged.";
-    }
-
-    [RelayCommand]
-    private void SaveFolder()
-    {
-        var name = FolderName.Trim();
-        if (name.Length == 0)
-        {
-            FolderEditorStatus = "Enter a folder name.";
-            return;
-        }
-
-        if (string.Equals(name, "All Meetings", StringComparison.CurrentCultureIgnoreCase))
-        {
-            FolderEditorStatus = "“All Meetings” is the name of the whole library. Choose another name.";
-            return;
-        }
-
-        // Duplicate names are rejected among siblings only: two folders may both be called "Notes"
-        // as long as they sit under different parents, which is the point of nesting. A clash with
-        // a folder somewhere else in the tree is not a clash the user can see.
-        var stored = _library.History.LoadMeetingFolders();
-        var parentId = string.IsNullOrWhiteSpace(SelectedParentFolderId) ? null : SelectedParentFolderId;
-        var duplicate = stored.Any(folder =>
-            !string.Equals(folder.Id, SelectedFolderId, StringComparison.Ordinal) &&
-            string.Equals(folder.ParentId ?? "", parentId ?? "", StringComparison.Ordinal) &&
-            string.Equals(folder.Name, name, StringComparison.CurrentCultureIgnoreCase));
-        if (duplicate)
-        {
-            var where = parentId is null
-                ? "at the top level"
-                : $"inside “{stored.FirstOrDefault(folder => folder.Id == parentId)?.Name ?? "that folder"}”";
-            FolderEditorStatus = $"A folder called “{name}” already exists {where}.";
-            return;
-        }
-
-        try
-        {
-            var saved = _library.SaveMeetingFolder(
-                string.IsNullOrWhiteSpace(SelectedFolderId) ? null : SelectedFolderId,
-                name, parentId);
-            _library.MoveMeetingFolder(saved.Id, SelectedParentFolderId);
-            Reload();
-            SelectFolder(saved.Id);
-            FolderEditorStatus = $"Saved “{saved.Name}”.";
-        }
-        catch (Exception exception) { FolderEditorStatus = $"Could not save folder: {exception.Message}"; }
-    }
-
-    [RelayCommand]
-    private async Task DeleteFolderAsync(CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(SelectedFolderId)) return;
-        var folder = Folders.FirstOrDefault(item => item.Id == SelectedFolderId);
-        if (folder is null) return;
-        var choice = await _dialogs.ConfirmAsync(
-            $"Delete the folder “{folder.Name}”? Its meetings will remain in All Meetings.",
-            "Delete meeting folder", cancellationToken);
-        if (choice != AppDialogChoice.Primary) return;
-        if (_library.DeleteMeetingFolder(folder.Id))
-        {
-            Reload();
-            SelectFolder("");
-            FolderEditorStatus = $"Deleted “{folder.Name}”; its meetings remain in All Meetings.";
-        }
-        else FolderEditorStatus = $"“{folder.Name}” could not be deleted.";
     }
 
     private void Reload()
@@ -961,7 +819,6 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
         // writes that -1 straight back here. Capture the intent first and restore it after the new
         // list has been published, so a refresh cannot leave the filter rendering blank.
         var desiredTimeRange = TimeRangeIndex < 0 ? 0 : TimeRangeIndex;
-        var desiredParent = SelectedParentFolderId;
 
         // Only republish the range options when they actually changed. Handing a ComboBox an equal
         // but new list is what made it drop its selection on every refresh in the first place.
@@ -971,9 +828,8 @@ public partial class MeetingsPageViewModel : ObservableObject, IDisposable
             TimeRangeOptions = options;
         }
 
-        ParentFolders = Folders;
         TimeRangeIndex = desiredTimeRange >= TimeRangeOptions.Count ? 0 : desiredTimeRange;
-        SetParentSelection(desiredParent);
+        RepublishPickerSelections();
         ApplyFilterAndSort();
         UpdateFolderContext();
     }
