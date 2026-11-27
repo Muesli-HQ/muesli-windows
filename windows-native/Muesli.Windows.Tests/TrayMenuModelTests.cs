@@ -45,6 +45,19 @@ public sealed class TrayMenuModelTests
         Assert.DoesNotContain(entries, entry => entry.Command == TrayCommand.PauseMeeting);
     }
 
+    [Theory]
+    [InlineData(nameof(TrayCommand.None), true)]
+    [InlineData(nameof(TrayCommand.ToggleDictation), true)]
+    [InlineData(nameof(TrayCommand.PauseMeeting), true)]
+    [InlineData(nameof(TrayCommand.ResumeMeeting), true)]
+    [InlineData(nameof(TrayCommand.ToggleMeeting), false)]
+    [InlineData(nameof(TrayCommand.Open), false)]
+    [InlineData(nameof(TrayCommand.Settings), false)]
+    [InlineData(nameof(TrayCommand.ResumeSetup), false)]
+    [InlineData(nameof(TrayCommand.Quit), false)]
+    public void OnlyCancelAndCaptureOnlyCommandsReturnFocusToTheTray(string command, bool expected) =>
+        Assert.Equal(expected, TrayMenuModel.LeavesFocusInTray(Enum.Parse<TrayCommand>(command)));
+
     [Fact]
     public void OptionalEntriesAppearOnlyWhenAvailableAndCommandsAreUnique()
     {

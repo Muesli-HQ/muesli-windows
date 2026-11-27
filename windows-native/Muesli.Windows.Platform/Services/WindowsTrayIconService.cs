@@ -33,6 +33,15 @@ internal readonly record struct TrayMenuEntry(TrayCommand Command, string Label)
 /// <summary>What the tray menu offers for a given capture state, independent of how it is drawn.</summary>
 internal static class TrayMenuModel
 {
+    /// <summary>
+    /// True when nothing takes the foreground after the menu closes: it was cancelled, or the
+    /// command only changes capture state. Starting or stopping a meeting is excluded because
+    /// starting one opens the recording page.
+    /// </summary>
+    public static bool LeavesFocusInTray(TrayCommand command) =>
+        command is TrayCommand.None or TrayCommand.ToggleDictation
+            or TrayCommand.PauseMeeting or TrayCommand.ResumeMeeting;
+
     public static IReadOnlyList<TrayMenuEntry> Build(
         bool dictationRecording,
         bool meetingRecording,
@@ -317,15 +326,15 @@ public sealed class WindowsTrayIconService : IDisposable
                 NativeMethods.TPM_RIGHTBUTTON | NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_NONOTIFY,
                 x, y, _window, 0);
             NativeMethods.PostMessageW(_window, NativeMethods.WM_NULL, 0, 0);
-            if (chosen != 0)
+            var command = (TrayCommand)chosen;
+            if (command != TrayCommand.None) Run(command);
+            // Hand keyboard focus back to the notification area, as the shell contract asks, when
+            // the menu was cancelled with Escape or the command opens no window. Commands that
+            // show a window must keep the foreground or that window could not come to the front.
+            // If the user dismissed the menu by clicking another window, that window is already
+            // in the foreground and keeps the focus.
+            if (TrayMenuModel.LeavesFocusInTray(command) && NativeMethods.GetForegroundWindow() == _window)
             {
-                Run((TrayCommand)chosen);
-            }
-            else if (NativeMethods.GetForegroundWindow() == _window)
-            {
-                // Cancelled with Escape: hand keyboard focus back to the notification area, as the
-                // shell contract asks. If the user dismissed the menu by clicking another window,
-                // that window is already in the foreground and must keep the focus.
                 var data = NewIconData(0);
                 NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_SETFOCUS, ref data);
             }
