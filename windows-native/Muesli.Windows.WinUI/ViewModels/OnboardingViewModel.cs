@@ -493,6 +493,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             try { await _startup.SetEnabledAsync(StartAtLogin); }
             catch (Exception exception) { ApplyStatus(exception.Message, isError: true); }
         }
+        _ = App.Telemetry?.SignalAsync(ProductEvent.OnboardingCompleted);
         Completed?.Invoke(this, true);
     }
 

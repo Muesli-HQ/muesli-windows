@@ -90,6 +90,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool RemoveFillerWords { get; set; }
     [ObservableProperty] public partial bool EnableLocalCleanup { get; set; }
     [ObservableProperty] public partial bool ComputerUseEnabled { get; set; }
+    [ObservableProperty] public partial bool ShareUsageAnalytics { get; set; }
     [ObservableProperty] public partial bool ShowFloatingIndicator { get; set; }
     [ObservableProperty] public partial bool SoundEnabled { get; set; }
     [ObservableProperty] public partial bool ShowLiveWaveformOnHover { get; set; }
@@ -457,6 +458,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             settings with { MeetingSummaryTemplate = MeetingSummaryTemplate },
         nameof(RemoveFillerWords) => settings with { RemoveFillerWords = RemoveFillerWords },
         nameof(EnableLocalCleanup) => settings with { EnableLocalCleanup = EnableLocalCleanup },
+        nameof(ShareUsageAnalytics) => settings with { ShareUsageAnalytics = ShareUsageAnalytics },
         nameof(ShowFloatingIndicator) => settings with { ShowFloatingIndicator = ShowFloatingIndicator },
         nameof(SoundEnabled) => settings with { SoundEnabled = SoundEnabled },
         nameof(ShowLiveWaveformOnHover) => settings with { ShowLiveWaveformOnHover = ShowLiveWaveformOnHover },
@@ -651,6 +653,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         RemoveFillerWords = settings.RemoveFillerWords;
         EnableLocalCleanup = settings.EnableLocalCleanup;
         ComputerUseEnabled = settings.ComputerUseEnabled;
+        ShareUsageAnalytics = settings.ShareUsageAnalytics;
         ShowFloatingIndicator = settings.ShowFloatingIndicator;
         SoundEnabled = settings.SoundEnabled;
         ShowLiveWaveformOnHover = settings.ShowLiveWaveformOnHover;

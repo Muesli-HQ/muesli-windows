@@ -1,6 +1,10 @@
 # Muesli for Windows — Privacy
 
-Muesli is a local-first dictation and meeting-transcription application. It does not include product telemetry or analytics in the current Windows build.
+Muesli is a local-first dictation and meeting-transcription application.
+
+## Usage analytics
+
+Usage analytics are enabled by default. Turn off **Settings → General → Share usage analytics** to stop sending new events. Muesli remembers this choice across restarts. When enabled, Muesli sends event names for launches, completed setup, saved dictations, completed meeting recordings and successful media imports to TelemetryDeck. Each event includes the Windows platform, app version, release channel, a fresh session ID and a hash of a random installation ID stored in the Muesli profile. Audio, text, titles, file paths and account details are excluded. Debug builds, development slots and isolated profiles use the development TelemetryDeck app in test mode. Events are best effort and are never queued to disk.
 
 ## Audio and transcripts
 

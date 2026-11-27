@@ -528,6 +528,7 @@ public sealed record MuesliSettings
     public bool ComputerUseIncludeBrowserPageText { get; init; }
     public string ComputerUseBrowserInterface { get; init; } = "none";
     public string ComputerUseBrowserEndpoint { get; init; } = "http://127.0.0.1:9222";
+    public bool ShareUsageAnalytics { get; init; } = true;
     public bool ShowFloatingIndicator { get; init; } = true;
     public bool SoundEnabled { get; init; } = true;
     public string IndicatorAnchor { get; init; } = "Middle Right";
