@@ -88,16 +88,16 @@ public sealed class WinUiMigrationFoundationTests
             foreach (var source in sources)
             {
                 var text = File.ReadAllText(source);
-                // WinForms is an acceptable platform adapter dependency (for example, NotifyIcon);
-                // it is not WPF. Continue rejecting every other System.Windows namespace.
-                var withoutWinForms = text.Replace("System.Windows.Forms", "", StringComparison.Ordinal);
-                Assert.DoesNotContain("System.Windows", withoutWinForms, StringComparison.Ordinal);
+                // Neither WPF nor Windows Forms: the tray icon talks to the shell directly, so the
+                // package no longer carries the desktop framework for it.
+                Assert.DoesNotContain("System.Windows", text, StringComparison.Ordinal);
                 Assert.DoesNotContain("PresentationFramework", text, StringComparison.Ordinal);
                 Assert.DoesNotContain("PresentationCore", text, StringComparison.Ordinal);
             }
 
             var project = File.ReadAllText(Path.Combine(projectRoot, $"{projectName}.csproj"));
             Assert.DoesNotContain("<UseWPF>true</UseWPF>", project, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("<UseWindowsForms>true</UseWindowsForms>", project, StringComparison.OrdinalIgnoreCase);
         }
     }
 

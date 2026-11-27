@@ -20,6 +20,9 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Keeps the Windows Forms desktop runtime (about 40 MB) out of the package: FlaUI.Core and
+         NAudio.WinForms declare it, but nothing Muesli runs needs it. See Muesli.Windows.Platform. -->
+    <DisableTransitiveFrameworkReferences>true</DisableTransitiveFrameworkReferences>
   </PropertyGroup>
 
   <!-- Select the temporary Partner Center manifest before resource compilation and packaging.
