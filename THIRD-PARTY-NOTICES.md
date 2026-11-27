@@ -182,7 +182,7 @@ download.
 
 ### Local cleanup models (opt-in)
 
-- Muesli Cleanup, `phequals/qwen35-postproc-v3-gguf`: first-party Muesli model derived from Qwen3.5
+- Muesli Cleanup, `Muesli-HQ/qwen35-postproc-v3-gguf`: first-party Muesli model derived from Qwen3.5
   (Apache-2.0 base).
 - S1-mini by Superwhisper, `superwhisper/s1-mini-GGUF`: the terms on its model card
   (https://huggingface.co/superwhisper/s1-mini-GGUF); derivative of Qwen3-0.6B (Apache-2.0).

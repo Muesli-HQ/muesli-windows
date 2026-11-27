@@ -170,6 +170,31 @@ public sealed class WinUiPackagingContractTests
         Assert.Contains("NormalizeLLamaSharpNativeRuntimes", project, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TheMultimodalLlamaLibraryIsLeftOutAndNeverCalled()
+    {
+        var root = RepositoryRoot();
+        var project = File.ReadAllText(Path.Combine(
+            root, "windows-native", "Muesli.Windows.Core", "Muesli.Windows.Core.csproj"));
+        Assert.Contains("== 'mtmd.dll'", project, StringComparison.Ordinal);
+
+        var catalog = File.ReadAllText(Path.Combine(
+            root, "windows-native", "Muesli.Windows.Core", "NativeRuntime", "public-cpu-native-catalog.json"));
+        Assert.DoesNotContain("mtmd.dll", catalog, StringComparison.OrdinalIgnoreCase);
+
+        // mtmd.dll is not shipped, so a call into LLamaSharp's multimodal API would fail at run time.
+        foreach (var projectName in new[] { "Muesli.Windows.Core", "Muesli.Windows.Platform", "Muesli.Windows.WinUI" })
+        {
+            foreach (var source in TestRepositoryLayout.EnumerateSourceFiles(Path.Combine("windows-native", projectName)))
+            {
+                if (!source.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) continue;
+                var text = File.ReadAllText(source);
+                Assert.DoesNotContain("Mtmd", text, StringComparison.Ordinal);
+                Assert.DoesNotContain("LLava", text, StringComparison.Ordinal);
+            }
+        }
+    }
+
     private static string WinUiPath(string relativePath) =>
         Path.Combine(RepositoryRoot(), "windows-native", "Muesli.Windows.WinUI", relativePath);
 
