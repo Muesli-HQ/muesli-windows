@@ -104,6 +104,9 @@ public static class MeetingDocumentWriter
                 "Markdown export remains available.");
         }
 
+        if (!UseLegacyQuestPdf)
+            return Pdf.MarkdownPdf.Render(markdown, createdAt);
+
         return CreatePdfDocument(markdown).WithMetadata(new DocumentMetadata
         {
             CreationDate = createdAt,
@@ -111,8 +114,21 @@ public static class MeetingDocumentWriter
         }).GeneratePdf();
     }
 
+    /// <summary>
+    /// PDF is rendered by the in-house DirectWrite engine (<see cref="Pdf.MarkdownPdf"/>).
+    /// <c>MUESLI_PDF_ENGINE=questpdf</c> switches back to the QuestPDF renderer so the two can be compared
+    /// while both are still in the package.
+    /// </summary>
+    public static bool UseLegacyQuestPdf { get; set; } =
+        string.Equals(Environment.GetEnvironmentVariable("MUESLI_PDF_ENGINE"), "questpdf", StringComparison.OrdinalIgnoreCase);
+
     private static void GeneratePdf(string markdown, string outputPath)
-        => CreatePdfDocument(markdown).GeneratePdf(outputPath);
+    {
+        if (UseLegacyQuestPdf)
+            CreatePdfDocument(markdown).GeneratePdf(outputPath);
+        else
+            File.WriteAllBytes(outputPath, Pdf.MarkdownPdf.Render(markdown, DateTimeOffset.Now));
+    }
 
     private static Document CreatePdfDocument(string markdown)
     {

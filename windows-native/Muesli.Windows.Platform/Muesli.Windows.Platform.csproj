@@ -7,7 +7,12 @@
     <AssemblyName>Muesli.Windows.Platform</AssemblyName>
     <IsPackable>false</IsPackable>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- Services/Pdf calls DirectWrite through raw vtables. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\muesli-export-logo.png" LogicalName="Muesli.Windows.Platform.Assets.muesli-export-logo.png" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
     <ProjectReference Include="..\Muesli.Windows.Core\Muesli.Windows.Core.csproj" />
