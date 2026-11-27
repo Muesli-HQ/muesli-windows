@@ -52,15 +52,15 @@ public static class CleanupModelCatalog
         new CleanupModelDefinition(
             MuesliCleanupId,
             "Muesli Cleanup",
-            "phequals/qwen35-postproc-v3-gguf",
+            "Muesli-HQ/qwen35-postproc-v3-gguf",
             "qwen35-postproc-v3-Q4_K_M.gguf",
-            "https://huggingface.co/phequals/qwen35-postproc-v3-gguf/resolve/main/qwen35-postproc-v3-Q4_K_M.gguf",
+            "https://huggingface.co/Muesli-HQ/qwen35-postproc-v3-gguf/resolve/main/qwen35-postproc-v3-Q4_K_M.gguf",
             529_296_768,
             "DD44D9F850B9BE16565456523535ADDDE907148922F7CD3578651B09AA230703",
             "First-party Muesli cleanup model (no separate license file published by the host)",
             "English-first; configurable cleanup instructions",
             "The default Muesli cleanup model. Removes filler words, resolves \"scratch that\", fixes punctuation, and formats lists.",
-            "phequals/qwen35-postproc-v3-gguf@main"),
+            "Muesli-HQ/qwen35-postproc-v3-gguf@main"),
         new CleanupModelDefinition(
             S1MiniId,
             "S1-mini by Superwhisper",

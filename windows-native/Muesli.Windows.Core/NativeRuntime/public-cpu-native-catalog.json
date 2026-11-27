@@ -62,8 +62,7 @@
         "llama.dll",
         "ggml.dll",
         "ggml-base.dll",
-        "ggml-cpu.dll",
-        "mtmd.dll"
+        "ggml-cpu.dll"
       ]
     },
     {

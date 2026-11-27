@@ -34,12 +34,18 @@
     relative package path, which blocks MSIX packaging for every consumer, and the linux/osx/musl
     binaries can never load on Windows. Keep only the Windows natives and give them a valid
     relative path. Runs before AssignTargetPaths so referencing projects inherit the repair.
+
+    mtmd.dll is llama.cpp's multimodal (image and audio input) library. Muesli runs text-only
+    cleanup models, never calls LLamaSharp's multimodal API, and LLamaSharp loads the library
+    only on such a call, so every copy is left out.
   -->
   <Target Name="NormalizeLLamaSharpNativeRuntimes" BeforeTargets="AssignTargetPaths">
     <ItemGroup>
       <LLamaSharpMislinkedNative Include="@(Content)"
                                  Condition="$([System.String]::Copy('%(Content.Link)').StartsWith('runtimes\\'))" />
       <Content Remove="@(LLamaSharpMislinkedNative)" />
+      <LLamaSharpMislinkedNative Remove="@(LLamaSharpMislinkedNative)"
+                                 Condition="'%(Filename)%(Extension)' == 'mtmd.dll'" />
       <Content Include="@(LLamaSharpMislinkedNative)"
                Condition="$([System.String]::Copy('%(LLamaSharpMislinkedNative.Link)').StartsWith('runtimes\\win-'))">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
