@@ -35,8 +35,20 @@ other build through `%USERPROFILE%\.cache\muesli`.
 .\scripts\package-windows-v1.ps1
 ```
 
-That compatibility command routes to the WinUI MSIX packager. Signed distribution and Store
-submission remain release gates.
+That compatibility command routes to the WinUI MSIX packager and produces an unsigned package.
+
+## Release
+
+```powershell
+.\scripts\release-windows.ps1 -Version 0.1.0 -DryRun
+.\scripts\release-windows.ps1 -Version 0.1.0
+```
+
+The release is built by the `Windows release` GitHub Actions workflow, not locally; the script
+checks preconditions, starts the workflow, verifies the draft's assets and publishes. GitHub
+Releases carries the unsigned developer build as a pre-release; signed distribution is through the
+Microsoft Store. Read `docs/WINDOWS_RELEASE.md` before changing the release path. Never publish,
+tag or submit to the Store without the owner's explicit go-ahead.
 
 ## Product rules
 

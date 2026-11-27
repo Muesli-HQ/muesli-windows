@@ -677,3 +677,87 @@ function Get-MuesliDirectoryContentInventory {
         }
     }
 }
+
+# ---- GitHub release of the unsigned developer build (scripts/release-windows.ps1) ----
+
+function Get-MuesliReleaseAssetNames {
+    param([Parameter(Mandatory = $true)][string]$Version)
+    return [pscustomobject]@{
+        Msix = "Muesli-Windows-$Version-x64-unsigned.msix"
+        Installer = "Install-MuesliDeveloperBuild.ps1"
+        Checksums = "SHA256SUMS.txt"
+        Notes = "RELEASE-NOTES.md"
+    }
+}
+
+function Get-MuesliReleaseNotesPath {
+    param([Parameter(Mandatory = $true)][string]$Root, [Parameter(Mandatory = $true)][string]$Version)
+    return Join-Path $Root "docs\release-notes\$Version.md"
+}
+
+# Release notes are hand-written, as on macOS. A release without them does not go out.
+function Assert-MuesliReleaseNotes {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Release notes were not found at '$Path'. Write them before releasing."
+    }
+    if (([IO.File]::ReadAllText($Path)).Trim().Length -lt 20) {
+        throw "Release notes at '$Path' are empty or too short to publish."
+    }
+}
+
+# The unsigned channel ships exactly the development package: never a development-slot identity,
+# never the Store identity, and never a production publisher without the signature that goes with it.
+function Assert-MuesliUnsignedReleasePackage {
+    param(
+        [Parameter(Mandatory = $true)][string]$MsixPath,
+        [Parameter(Mandatory = $true)][string]$Version
+    )
+    $identity = Get-MuesliMsixManifestIdentity -MsixPath $MsixPath
+    if ($identity.Name -like 'MuesliDev*') {
+        throw "The package carries the development-slot identity '$($identity.Name)'. A release must never ship a development slot."
+    }
+    if ($identity.Name -cne 'Muesli.Windows') {
+        throw "The package identity is '$($identity.Name)'; the unsigned release channel ships 'Muesli.Windows' only."
+    }
+    if ($identity.Version -ne "$Version.0") {
+        throw "The package version is '$($identity.Version)'; expected '$Version.0'. Rebuild after setting the version."
+    }
+    if ($identity.Publisher -cne 'CN=AppPublisher') {
+        throw "The package publisher is '$($identity.Publisher)'. A package with a production publisher must be signed and released through the signed path, not the unsigned channel."
+    }
+    return $identity
+}
+
+# Verifies every file named in a sha256sum-style checksum file. Returns the verified entries.
+function Assert-MuesliReleaseChecksums {
+    param(
+        [Parameter(Mandatory = $true)][string]$Directory,
+        [string]$ChecksumsFileName = "SHA256SUMS.txt",
+        [string[]]$RequiredFiles = @()
+    )
+    $checksumsPath = Join-Path $Directory $ChecksumsFileName
+    if (-not (Test-Path -LiteralPath $checksumsPath -PathType Leaf)) {
+        throw "Checksum file was not found: $checksumsPath"
+    }
+    $verified = @()
+    foreach ($line in [IO.File]::ReadAllLines($checksumsPath)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        if ($line -notmatch '^([0-9a-fA-F]{64}) [ *](.+)$') { throw "Unreadable checksum line in ${ChecksumsFileName}: $line" }
+        $expected = $Matches[1].ToLowerInvariant()
+        $name = $Matches[2].Trim()
+        if ($name -ne [IO.Path]::GetFileName($name)) { throw "Checksum entry '$name' is not a plain file name." }
+        $path = Join-Path $Directory $name
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "A file named in $ChecksumsFileName is missing: $name" }
+        $actual = Get-Sha256HexFromFile -Path $path
+        if ($actual -ne $expected) { throw "SHA-256 mismatch for ${name}: expected $expected, got $actual." }
+        $verified += [pscustomobject]@{ Name = $name; Sha256 = $actual; Bytes = (Get-Item -LiteralPath $path).Length }
+    }
+    foreach ($required in $RequiredFiles) {
+        if (@($verified | Where-Object { $_.Name -eq $required }).Count -ne 1) {
+            throw "$ChecksumsFileName does not cover the required file '$required'."
+        }
+    }
+    if ($verified.Count -eq 0) { throw "$ChecksumsFileName lists no files." }
+    return $verified
+}
