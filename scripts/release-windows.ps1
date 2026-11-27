@@ -101,14 +101,16 @@ function Confirm-Step {
 # Replaces one value in a tracked file, keeping its encoding (the manifest has a UTF-8 BOM) and
 # line endings exactly as they are.
 function Set-FileText {
-    param([string]$Path, [string]$Pattern, [string]$Replacement)
+    param([string]$Path, [string]$Pattern, [string]$Replacement, [switch]$AnyCount)
     $bytes = [IO.File]::ReadAllBytes($Path)
     $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
     $encoding = New-Object System.Text.UTF8Encoding $hasBom
     $text = if ($hasBom) { $encoding.GetString($bytes, 3, $bytes.Length - 3) } else { $encoding.GetString($bytes) }
     $regex = New-Object System.Text.RegularExpressions.Regex $Pattern
-    if ($regex.Matches($text).Count -ne 1) { throw "Expected exactly one match for '$Pattern' in $Path." }
-    [IO.File]::WriteAllText($Path, $regex.Replace($text, $Replacement), $encoding)
+    $count = $regex.Matches($text).Count
+    if (-not $AnyCount -and $count -ne 1) { throw "Expected exactly one match for '$Pattern' in $Path." }
+    if ($count -gt 0) { [IO.File]::WriteAllText($Path, $regex.Replace($text, $Replacement), $encoding) }
+    return $count
 }
 
 $propsPath = Join-Path $root "Directory.Build.props"
@@ -116,9 +118,26 @@ $manifestPath = Join-Path $root "windows-native\Muesli.Windows.WinUI\Package.app
 $notesPath = Get-MuesliReleaseNotesPath -Root $root -Version $Version
 
 if ($SetVersion) {
-    Set-FileText -Path $propsPath -Pattern '(?<=<MuesliVersion>)[^<]*(?=</MuesliVersion>)' -Replacement $Version
-    Set-FileText -Path $manifestPath -Pattern '(?<=<Identity\b[^>]*?\bVersion=")[^"]*(?=")' -Replacement "$Version.0"
-    Write-Host "Set the version to $Version in Directory.Build.props and Package.appxmanifest."
+    # Check every pattern matches before writing anything, so a failure cannot leave the two
+    # version sources disagreeing.
+    $propsPattern = '(?<=<MuesliVersion>)[^<]*(?=</MuesliVersion>)'
+    $manifestPattern = '(?<=<Identity\b[^>]*?\bVersion=")[^"]*(?=")'
+    foreach ($check in @(@($propsPath, $propsPattern), @($manifestPath, $manifestPattern))) {
+        if ([regex]::Matches([IO.File]::ReadAllText($check[0]), $check[1]).Count -ne 1) {
+            throw "Expected exactly one version in $($check[0]). Nothing was changed."
+        }
+    }
+    Set-FileText -Path $propsPath -Pattern $propsPattern -Replacement $Version | Out-Null
+    Set-FileText -Path $manifestPath -Pattern $manifestPattern -Replacement "$Version.0" | Out-Null
+
+    # NuGet lock files record each referenced Muesli project at the product version, and CI
+    # restores in locked mode, so a bump that leaves them behind fails restore with NU1004.
+    $lockPattern = '(?<="Muesli\.Windows\.[A-Za-z.]+": "\[)\d+\.\d+\.\d+(?=, \)")'
+    $lockEntries = 0
+    foreach ($relative in @(Invoke-Tool -Tool git -Arguments @('ls-files', '--', '*packages.lock.json'))) {
+        $lockEntries += Set-FileText -Path (Join-Path $root $relative) -Pattern $lockPattern -Replacement $Version -AnyCount
+    }
+    Write-Host "Set the version to $Version in Directory.Build.props, Package.appxmanifest and $lockEntries lock-file project reference(s)."
     if (-not (Test-Path -LiteralPath $notesPath)) {
         Write-Host "Next: write the release notes at docs\release-notes\$Version.md."
     }
@@ -235,6 +254,27 @@ if ($null -eq $resumeDraft) {
         throw "The release workflow failed: $runUrl`nNothing was published. Fix the failure it reports, merge the fix, and run this command again."
     }
     Write-Host "Workflow succeeded."
+} else {
+    # The draft is created before the Microsoft Store jobs run, so a draft can exist for a run
+    # that then failed. Never publish on top of a failed or unfinished run.
+    Write-Step "Check the workflow run that created the draft"
+    $runs = @(Invoke-GhJson -Arguments @('run', 'list', '--workflow', $workflowFile, '--event', 'workflow_dispatch', '--limit', '50',
+            '--json', 'databaseId,headSha,url,status,conclusion,createdAt') -Failure "Could not list workflow runs")
+    $run = @($runs | Where-Object { $_.headSha -eq $head } | Sort-Object { $_.createdAt } -Descending | Select-Object -First 1)
+    if ($run.Count -ne 1) {
+        throw "No release workflow run was found for $($head.Substring(0, 9)), so the draft for $tag cannot be traced to a build. Delete the draft on https://github.com/$repo/releases and run this again."
+    }
+    $runId = $run[0].databaseId
+    $runUrl = [string]$run[0].url
+    if ($run[0].status -ne 'completed') {
+        Write-Host "The run is still going; waiting for it: $runUrl"
+        & gh run watch $runId --exit-status --interval 30 | Out-Null
+        $run = @(Invoke-GhJson -Arguments @('run', 'view', "$runId", '--json', 'databaseId,url,status,conclusion'))
+    }
+    if ($run[0].conclusion -ne 'success') {
+        throw "The workflow run that created the draft did not succeed ($($run[0].conclusion)): $runUrl`nThe draft exists, so the part that failed is the Microsoft Store step. Nothing was published. Fix the cause, rerun only the failed jobs with 'gh run rerun $runId --failed', wait for them, then run this command again."
+    }
+    Write-Host "The run succeeded: $runUrl"
 }
 
 # ---------------------------------------------------------------- 3. Verify what was built
@@ -283,6 +323,8 @@ Write-Host "Kind:     unsigned developer build, marked as a pre-release"
 Write-Host "Assets:"
 foreach ($file in $verified) { Write-Host ("  {0}  {1}  ({2:N1} MB)" -f $file.Sha256, $file.Name, ($file.Bytes / 1MB)) }
 if ($runUrl) { Write-Host "Workflow: $runUrl" }
-if ($StoreSubmission -ne 'none') {
+if ($null -ne $resumeDraft) {
+    Write-Host "Microsoft Store: this run resumed an existing draft and started no Store step. Whatever the original run was asked to do is in the workflow run above."
+} elseif ($StoreSubmission -ne 'none') {
     Write-Host "Microsoft Store: the workflow handled the '$StoreSubmission' step; follow certification in Partner Center."
 }

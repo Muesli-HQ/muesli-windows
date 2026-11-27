@@ -73,6 +73,12 @@ try {
     $name = [string]$manifest.Package.Identity.Name
     $version = [string]$manifest.Package.Identity.Version
     if ($name -cne $packageName) { throw "This script installs '$packageName' only; the package is '$name'." }
+    # Unpacking drops the signature, so a signed production package must never go through here:
+    # it would be registered as a different, unsigned package family.
+    $publisher = [string]$manifest.Package.Identity.Publisher
+    if ($publisher -cne "CN=AppPublisher") {
+        throw "This script installs the unsigned developer build only (publisher 'CN=AppPublisher'); the package publisher is '$publisher'. Install a signed package by opening it."
+    }
     if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$') { throw "Unexpected package version '$version'." }
 
     $developerMode = $false

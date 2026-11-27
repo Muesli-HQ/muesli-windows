@@ -36,7 +36,8 @@ pre-release. Until then the release script refuses a package that carries a prod
 
 ## Setting the version
 
-The version lives in `Directory.Build.props` (`MuesliVersion`) and the manifest. `main` is
+The version lives in `Directory.Build.props` (`MuesliVersion`), the manifest, and the project
+references recorded in the NuGet lock files; `-SetVersion` updates all three. `main` is
 protected, so the bump goes through a pull request:
 
 ```powershell
@@ -87,16 +88,18 @@ existing Store workflow and hands it over with the Microsoft Store Developer CLI
 
 This path needs, once:
 
-- The first submission made by hand in Partner Center (listing, screenshots, age rating, pricing,
-  and the justification for `runFullTrust` and `unvirtualizedResources`). The API only updates a
-  product that already has one.
+- The app already **published** in the Store once, by hand through Partner Center: the listing,
+  screenshots, age rating, pricing and the justification for `runFullTrust` and
+  `unvirtualizedResources`, submitted, certified and live. Microsoft's CLI cannot make the first
+  publication; it only publishes updates to an app that is already in the Store. Until then every
+  `-StoreSubmission` run fails at the Store step.
 - A Microsoft Entra app registration linked to the Partner Center account, with these repository
   secrets: `PARTNER_CENTER_TENANT_ID`, `PARTNER_CENTER_SELLER_ID`, `PARTNER_CENTER_CLIENT_ID`,
   `PARTNER_CENTER_CLIENT_SECRET`.
 
-The Store jobs have not been run yet: no secrets or first submission existed when they were
-written. Use `draft` the first time. Certification takes hours to days and is followed in
-Partner Center, not by this script. See [the Store package guide](WINDOWS_STORE_RELEASE.md).
+The Store jobs have not been run yet: the app is reserved but not published, and no secrets
+existed when they were written. Use `draft` for the first update after the app is live.
+Certification takes hours to days and is followed in Partner Center, not by this script. See [the Store package guide](WINDOWS_STORE_RELEASE.md).
 
 ## Recovering from a failed release
 
@@ -106,6 +109,7 @@ Partner Center, not by this script. See [the Store package guide](WINDOWS_STORE_
 | Workflow failed | No draft, no tag | Open the run it links, fix and merge, run again |
 | Draft created, verification failed | Draft exists, not public | Delete the draft on the Releases page, then run again |
 | Draft created, script interrupted | Draft exists, not public | Run the same command again: it finds the draft for this commit, verifies and publishes it |
+| Draft created, Store step failed | Draft exists, not public | Fix the cause, run `gh run rerun <run id> --failed`, wait for it, then run the same command again. The script refuses to publish while that run is failed |
 | Published | Public release and tag | Do not move the tag. Fix forward with the next version |
 
 A draft for the version that the release did not create (different commit or different assets)

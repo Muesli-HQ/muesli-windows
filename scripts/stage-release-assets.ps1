@@ -37,10 +37,27 @@ Assert-MuesliReleaseNotes -Path $notesPath
 
 $identity = Assert-MuesliUnsignedReleasePackage -MsixPath $MsixPath -Version $Version
 
-if (Test-Path -LiteralPath $OutputDirectory) { Remove-Item -LiteralPath $OutputDirectory -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
-
 $names = Get-MuesliReleaseAssetNames -Version $Version
+
+# Only ever clear files this script staged. A caller-chosen folder holding anything else (the
+# repository, the folder the package is in) is refused rather than emptied.
+$MsixPath = [IO.Path]::GetFullPath($MsixPath)
+$outputPrefix = $OutputDirectory.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+if ($MsixPath.StartsWith($outputPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "The package '$MsixPath' is inside the output directory '$OutputDirectory'. Choose a separate output directory."
+}
+if (Test-Path -LiteralPath $OutputDirectory -PathType Leaf) { throw "Output directory '$OutputDirectory' is a file." }
+if (Test-Path -LiteralPath $OutputDirectory) {
+    $stagedPatterns = @('Muesli-Windows-*-x64-unsigned.msix', $names.Installer, $names.Checksums, $names.Notes)
+    foreach ($item in @(Get-ChildItem -LiteralPath $OutputDirectory -Force)) {
+        $isStaged = -not $item.PSIsContainer -and @($stagedPatterns | Where-Object { $item.Name -like $_ }).Count -gt 0
+        if (-not $isStaged) {
+            throw "Output directory '$OutputDirectory' contains '$($item.Name)', which this script did not stage. Choose an empty or dedicated directory; nothing was deleted."
+        }
+    }
+    Get-ChildItem -LiteralPath $OutputDirectory -Force | Remove-Item -Force
+}
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $stagedMsix = Join-Path $OutputDirectory $names.Msix
 $stagedInstaller = Join-Path $OutputDirectory $names.Installer
 Copy-Item -LiteralPath $MsixPath -Destination $stagedMsix

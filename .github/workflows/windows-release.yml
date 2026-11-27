@@ -34,6 +34,8 @@ on:
       - scripts/release-windows.ps1
       - scripts/stage-release-assets.ps1
       - scripts/install-developer-build.ps1
+      - scripts/release-common.ps1
+      - scripts/read-release-properties.ps1
 
 permissions:
   contents: read
@@ -183,7 +185,7 @@ jobs:
   # Reuses the Store package workflow, then hands the verified package to Partner Center with the
   # Microsoft Store Developer CLI. Needs the repository secrets PARTNER_CENTER_TENANT_ID,
   # PARTNER_CENTER_SELLER_ID, PARTNER_CENTER_CLIENT_ID and PARTNER_CENTER_CLIENT_SECRET, and a
-  # product whose first submission was already made by hand in Partner Center.
+  # product already published once through Partner Center: the CLI cannot make the first publication.
   store-package:
     name: store package
     needs: build
@@ -230,8 +232,9 @@ jobs:
           if ($packages.Count -ne 1) { throw "Expected one Store package, found $($packages.Count)." }
           msstore reconfigure --tenantId $env:PARTNER_CENTER_TENANT_ID --sellerId $env:PARTNER_CENTER_SELLER_ID --clientId $env:PARTNER_CENTER_CLIENT_ID --clientSecret $env:PARTNER_CENTER_CLIENT_SECRET
           if ($LASTEXITCODE -ne 0) { throw 'Could not sign in to Partner Center.' }
-          $arguments = @('publish', '-i', $packages[0].DirectoryName, '-id', $identity.storeId)
-          if ($env:STORE_SUBMISSION -eq 'draft') { $arguments += '-nc' }
+          # --inputFile takes the package file itself, not its folder.
+          $arguments = @('publish', '--inputFile', $packages[0].FullName, '--appId', $identity.storeId)
+          if ($env:STORE_SUBMISSION -eq 'draft') { $arguments += '--noCommit' }
           msstore @arguments
           if ($LASTEXITCODE -ne 0) { throw 'The Store submission failed.' }
           "Store package $($packages[0].Name) handed to Partner Center ($env:STORE_SUBMISSION) for $($identity.storeId)." >> $env:GITHUB_STEP_SUMMARY

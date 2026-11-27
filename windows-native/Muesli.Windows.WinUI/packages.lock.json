@@ -428,7 +428,7 @@
         "type": "Project",
         "dependencies": {
           "FlaUI.UIA3": "[5.0.0, )",
-          "Muesli.Windows.Core": "[0.3.0, )",
+          "Muesli.Windows.Core": "[0.1.0, )",
           "NAudio": "[2.2.1, )",
           "System.Drawing.Common": "[10.0.11, )"
         }
