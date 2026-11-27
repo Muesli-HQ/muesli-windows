@@ -183,6 +183,10 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
     {
         if (_fontsByFace.TryGetValue((nint)face, out var cached)) return cached;
         var key = DW.FaceKey(face);
+        // One variable font file holds every weight and width, so the file key cannot tell a bold heading from
+        // regular body text. Outline fonts are drawn from the face object itself, and DirectWrite hands out one
+        // face object per instance, so each face of a variable font is its own PDF font.
+        if (DW.FontTable(face, "fvar") is not null) key += "@" + ((nint)face).ToString("X");
         if (!_fontsByKey.TryGetValue(key, out var f))
         {
             DW.AddRef(face);
@@ -446,13 +450,19 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
 
     /// <summary>Places a block at a fixed position without pagination (table cells, list markers, footers).</summary>
     private void PlaceAll(LaidOut lo, PageBuf pg, float x, float yTop, Rgb color)
+        => PlaceLines(lo, pg, x, yTop, color, 0, lo.Lines.Length);
+
+    /// <summary>Places lines [first, end) of a block so that line <paramref name="first"/> starts at <paramref name="yTop"/>.</summary>
+    private void PlaceLines(LaidOut lo, PageBuf pg, float x, float yTop, Rgb color, int first, int end)
     {
         var tops = new float[lo.Lines.Length];
         for (int i = 1; i < tops.Length; i++) tops[i] = tops[i - 1] + lo.Lines[i - 1].Height;
+        float shift = first > 0 && first < tops.Length ? yTop - tops[first] : yTop;
         foreach (var r in lo.Runs)
         {
             int i = LineOf(lo, r.Y);
-            PlaceRun(pg, lo, r, x, yTop, color, yTop + tops[i], lo.Lines[i].Height);
+            if (i < first || i >= end) continue;
+            PlaceRun(pg, lo, r, x, shift, color, shift + tops[i], lo.Lines[i].Height);
         }
     }
 
@@ -567,16 +577,59 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
                 rowH = Math.Max(rowH, cells[ci].Height);
             }
             rowH += 2 * pad;
-            if (_y + rowH > Bottom && _y > Top) NewPage();
-            for (int ci = 0; ci < columns; ci++)
+            bool header = ri == 0;
+
+            void Box(int ci, float height)
             {
                 float x = Left + ci * colW;
                 _pg.Ops.Append("q ");
-                if (ri == 0) _pg.Ops.Append("0.95 g ").Append(N(x)).Append(' ').Append(N(PageH - _y - rowH)).Append(' ').Append(N(colW)).Append(' ').Append(N(rowH)).Append(" re f ");
-                _pg.Ops.Append("0.75 G 0.5 w ").Append(N(x)).Append(' ').Append(N(PageH - _y - rowH)).Append(' ').Append(N(colW)).Append(' ').Append(N(rowH)).Append(" re S Q\n");
-                PlaceAll(cells[ci], _pg, x + pad, _y + pad, Rgb.Black);
+                if (header) _pg.Ops.Append("0.95 g ").Append(N(x)).Append(' ').Append(N(PageH - _y - height)).Append(' ').Append(N(colW)).Append(' ').Append(N(height)).Append(" re f ");
+                _pg.Ops.Append("0.75 G 0.5 w ").Append(N(x)).Append(' ').Append(N(PageH - _y - height)).Append(' ').Append(N(colW)).Append(' ').Append(N(height)).Append(" re S Q\n");
             }
-            _y += rowH;
+
+            if (rowH <= Bottom - Top)
+            {
+                if (_y + rowH > Bottom && _y > Top) NewPage();
+                for (int ci = 0; ci < columns; ci++)
+                {
+                    Box(ci, rowH);
+                    PlaceAll(cells[ci], _pg, Left + ci * colW + pad, _y + pad, Rgb.Black);
+                }
+                _y += rowH;
+                continue;
+            }
+
+            // A row taller than a whole page cannot be moved to a fresh page and drawn in one piece: its text
+            // would run off the bottom and be lost. Draw it in page-sized slices, breaking between lines.
+            var next = new int[columns];
+            bool Remaining()
+            {
+                for (int ci = 0; ci < columns; ci++) if (next[ci] < cells[ci].Lines.Length) return true;
+                return false;
+            }
+            while (Remaining())
+            {
+                if (_y > Top && Bottom - _y - 2 * pad < 16) NewPage();
+                float available = Bottom - _y - 2 * pad, sliceH = 0;
+                var end = new int[columns];
+                for (int ci = 0; ci < columns; ci++)
+                {
+                    var cellLines = cells[ci].Lines;
+                    int n = next[ci]; float h = 0;
+                    while (n < cellLines.Length && h + cellLines[n].Height <= available + 0.01f) h += cellLines[n++].Height;
+                    if (n == next[ci] && n < cellLines.Length) h += cellLines[n++].Height; // one line taller than the page
+                    end[ci] = n; sliceH = Math.Max(sliceH, h);
+                }
+                sliceH += 2 * pad;
+                for (int ci = 0; ci < columns; ci++)
+                {
+                    Box(ci, sliceH);
+                    PlaceLines(cells[ci], _pg, Left + ci * colW + pad, _y + pad, Rgb.Black, next[ci], end[ci]);
+                    next[ci] = end[ci];
+                }
+                _y += sliceH;
+                if (Remaining()) NewPage();
+            }
         }
         _y += 4;
     }
@@ -795,6 +848,34 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
         }
     }
 
+    /// <summary>
+    /// A link target as the ASCII URI a PDF annotation requires. PDF objects here are written as Latin-1, so a
+    /// raw "https://example.com/会议" would reach the file as "??". A non-ASCII host becomes its IDN (punycode)
+    /// form and every other non-ASCII character, space or control character is percent-encoded as UTF-8.
+    /// </summary>
+    internal static string AsciiUri(string url)
+    {
+        if (url.Any(c => c > 0x7E) && Uri.TryCreate(url, UriKind.Absolute, out var parsed) && parsed.Scheme is "http" or "https")
+        {
+            try
+            {
+                var host = parsed.Host;
+                if (host.Any(c => c > 0x7E)) url = url.Replace(host, parsed.IdnHost, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is UriFormatException or InvalidOperationException or ArgumentException) { }
+        }
+
+        var ascii = new StringBuilder(url.Length);
+        Span<byte> utf8 = stackalloc byte[4];
+        foreach (var rune in url.EnumerateRunes())
+        {
+            if (rune.Value is > 0x20 and < 0x7F) { ascii.Append((char)rune.Value); continue; }
+            int n = rune.EncodeToUtf8(utf8);
+            for (int i = 0; i < n; i++) ascii.Append('%').Append(utf8[i].ToString("X2"));
+        }
+        return ascii.ToString();
+    }
+
     private byte[] Assemble(DateTimeOffset createdAt)
     {
         var objects = new List<byte[]?>();
@@ -876,7 +957,7 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
             var annots = new StringBuilder();
             foreach (var l in pg.Links)
             {
-                var uri = l.Url.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+                var uri = AsciiUri(l.Url).Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
                 annots.Append($"<< /Type /Annot /Subtype /Link /Rect [{N(l.X0)} {N(l.Y0)} {N(l.X1)} {N(l.Y1)}] /Border [0 0 0] /A << /S /URI /URI ({uri}) >> >> ");
             }
             int page = New();

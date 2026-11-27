@@ -116,6 +116,48 @@ public sealed class MarkdownPdfEngineTests
         Assert.True(Regex.Matches(pdf, "/Subtype /Type3").Count >= 3, "600 distinct glyphs need at least three one-byte fonts.");
     }
 
+    [Theory]
+    [InlineData("https://muesli.works", "https://muesli.works")]
+    [InlineData("https://example.com/会议?q=é x", "https://example.com/%E4%BC%9A%E8%AE%AE?q=%C3%A9%20x")]
+    [InlineData("https://münchen.example/a", "https://xn--mnchen-3ya.example/a")]
+    [InlineData("mailto:名前@example.com", "mailto:%E5%90%8D%E5%89%8D@example.com")]
+    public void LinkTargetsAreWrittenAsAsciiUris(string url, string expected)
+    {
+        Assert.Equal(expected, MarkdownPdfEngine.AsciiUri(url));
+
+        var pdf = Latin1(MarkdownPdf.Render($"See [the notes]({url}) today", Created, new PdfOptions(PageNumbers: false)));
+        Assert.Contains($"/URI ({expected})", pdf, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ATableRowTallerThanAPageContinuesOnTheNextPageInsteadOfBeingClipped()
+    {
+        var longCell = string.Join(" ", Enumerable.Range(1, 900).Select(i => $"word{i}"));
+        var options = new PdfOptions(PageNumbers: false); // 108 pt margins, no footer
+        var bytes = MarkdownPdf.Render($"| Topic | Notes |\n|---|---|\n| Long | {longCell} |\n| After | done |", Created, options);
+
+        Assert.True(Regex.Matches(Latin1(bytes), @"/Type /Page[^s]").Count > 1, "The tall row should spill onto further pages.");
+        var baselines = InflatedStreams(bytes)
+            .SelectMany(s => Regex.Matches(s, @" ([\d.]+) Tm").Select(m => double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)))
+            .ToList();
+        Assert.NotEmpty(baselines);
+        // Every line of text sits inside the page's content area: nothing is drawn into or below the bottom margin.
+        Assert.All(baselines, y => Assert.InRange(y, 108, 792 - 108));
+    }
+
+    [Fact]
+    public void TwoWeightsOfOneVariableFontAreSeparateFonts()
+    {
+        if (!File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "bahnschrift.ttf"))) return;
+
+        var options = new PdfOptions(PageNumbers: false, Family: "Bahnschrift");
+        var bytes = MarkdownPdf.Render("# Heading in bold\n\nBody in regular", Created, options);
+
+        // Bold and regular come from the same font file; sharing one PDF font would draw both with one weight.
+        Assert.True(Regex.Matches(Latin1(bytes), "/Subtype /Type3").Count >= 2);
+        Assert.Equal(bytes, MarkdownPdf.Render("# Heading in bold\n\nBody in regular", Created, options));
+    }
+
     private static string Latin1(byte[] bytes) => Encoding.Latin1.GetString(bytes);
 
     private static IEnumerable<string> InflatedStreams(byte[] pdf)
