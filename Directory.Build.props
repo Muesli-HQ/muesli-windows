@@ -4,7 +4,7 @@
       This is the single release identity source. Packaging scripts read these
       properties directly so assembly metadata and release artifacts cannot drift.
     -->
-    <MuesliVersion>0.1.0</MuesliVersion>
+    <MuesliVersion>0.1.1</MuesliVersion>
     <MuesliReleaseChannel>v1</MuesliReleaseChannel>
     <!--
       Clearly named development publisher used by local builds and the unsigned rehearsal. The
