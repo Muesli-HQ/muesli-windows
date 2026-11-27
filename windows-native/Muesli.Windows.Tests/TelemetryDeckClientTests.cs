@@ -252,6 +252,15 @@ public sealed class TelemetryDeckClientTests
         File.WriteAllText(path, "{ this is not json");
         Assert.False(new SettingsStore(path, new InMemorySecretStore()).Load().ShareUsageAnalytics);
 
+        // The backup is the save before the latest one, so it can predate an opt-out.
+        var store = new SettingsStore(path, new InMemorySecretStore());
+        File.Delete(path);
+        store.Save(store.Load() with { UserName = "first save" });
+        store.Save(store.Load() with { ShareUsageAnalytics = false });
+        File.WriteAllText(path, "{ damaged after the opt-out");
+        var recovered = new SettingsStore(path, new InMemorySecretStore()).Load();
+        Assert.False(recovered.ShareUsageAnalytics);
+
         File.WriteAllText(path, $$"""{"schemaVersion":{{MuesliSettings.CurrentSchemaVersion + 1}},"shareUsageAnalytics":false}""");
         Assert.False(new SettingsStore(path, new InMemorySecretStore()).Load().ShareUsageAnalytics);
     }

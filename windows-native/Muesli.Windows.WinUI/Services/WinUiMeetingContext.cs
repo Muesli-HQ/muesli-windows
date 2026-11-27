@@ -274,10 +274,23 @@ public sealed class WinUiMeetingContext : IDisposable
     }
 
     public Task<PersistedMeeting> StopAndSaveAsync(CancellationToken cancellationToken = default) =>
-        RunOperationAsync(() => ReportAsync(
-            TakeRecordingAttempt(),
-            () => StopAndSaveCoreAsync(cancellationToken),
-            (AnalyticsField.Saved, AnalyticsValue.Yes)));
+        RunOperationAsync(async () =>
+        {
+            var attempt = TakeRecordingAttempt();
+            try
+            {
+                return await ReportAsync(
+                    attempt,
+                    () => StopAndSaveCoreAsync(cancellationToken),
+                    (AnalyticsField.Saved, AnalyticsValue.Yes));
+            }
+            catch (MeetingSessionRecoverableException)
+            {
+                // Not an outcome yet: the recording is kept and the user can stop it again.
+                _analytics = attempt;
+                throw;
+            }
+        });
 
     private async Task<PersistedMeeting> StopAndSaveCoreAsync(CancellationToken cancellationToken)
     {
@@ -340,7 +353,11 @@ public sealed class WinUiMeetingContext : IDisposable
         if (keepNotes) SaveManualNotesCore();
         var resumed = IsResumingFinishedMeeting;
         await _coordinator.CancelAsync();
-        _ = TakeRecordingAttempt()?.Finish(AnalyticsOutcome.Discarded);
+        // Saved when something of the meeting remains: its written notes, or the meeting a resumed
+        // recording was added to.
+        _ = TakeRecordingAttempt()?.Finish(
+            AnalyticsOutcome.Discarded,
+            (AnalyticsField.Saved, keepNotes || resumed ? AnalyticsValue.Yes : AnalyticsValue.No));
         FinalizationFailed = false;
         if (ActiveMeetingId is { } id)
         {
@@ -465,6 +482,10 @@ public sealed class WinUiMeetingContext : IDisposable
             var meeting = await operation();
             _ = attempt?.Finish(AnalyticsOutcome.Success, successFields);
             return meeting;
+        }
+        catch (MeetingSessionRecoverableException)
+        {
+            throw;
         }
         catch (OperationCanceledException)
         {
