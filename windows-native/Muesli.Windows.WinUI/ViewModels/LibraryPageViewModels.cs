@@ -9,10 +9,13 @@ namespace Muesli.Windows.WinUI.ViewModels;
 public partial class TimelinePageViewModel : ObservableObject
 {
     private readonly WinUiLibraryContext _library;
+    /// <summary>The library's revision when <see cref="Snapshot"/> was read.</summary>
+    private long _snapshotRevision;
 
     public TimelinePageViewModel(WinUiLibraryContext library)
     {
         _library = library;
+        _snapshotRevision = library.Revision;
         Snapshot = library.ReadSnapshot();
         ApplyFilterAndSort();
     }
@@ -51,7 +54,38 @@ public partial class TimelinePageViewModel : ObservableObject
     [RelayCommand]
     private void Refresh()
     {
+        _snapshotRevision = _library.Revision;
         Snapshot = _library.ReadSnapshot();
+        ApplyFilterAndSort();
+        NotifyDerived();
+    }
+
+    /// <summary>
+    /// Reloads after a dictation or meeting finished elsewhere, but only republishes the list when
+    /// the history actually differs. Engines report changes that add nothing to the library (a
+    /// cancelled dictation, a status update), and rebuilding the list each time would throw away
+    /// the reader's scroll position and selection for no reason.
+    /// </summary>
+    public void RefreshIfHistoryChanged()
+    {
+        // Nothing written since the last read: no query at all. The revision is taken before
+        // the read, so a write that lands during it is picked up by the next call.
+        var revision = _library.Revision;
+        if (revision == _snapshotRevision) return;
+        _snapshotRevision = revision;
+
+        var latest = _library.ReadSnapshot();
+        // Rows are compared by what they show (title, summary line, state, time), not only by
+        // totals: a meeting is saved as soon as it is transcribed and gets its title and notes
+        // minutes later, which changes the row without changing any count.
+        if (latest.TotalWords == Snapshot.TotalWords &&
+            latest.TotalDurationMs == Snapshot.TotalDurationMs &&
+            latest.Timeline.SequenceEqual(Snapshot.Timeline))
+        {
+            return;
+        }
+
+        Snapshot = latest;
         ApplyFilterAndSort();
         NotifyDerived();
     }

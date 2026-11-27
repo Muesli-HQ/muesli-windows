@@ -46,6 +46,18 @@ public sealed class WinUiLibraryContext : IDisposable
 
     public ILibraryHistoryAdapter History { get; }
 
+    private long _untrackedRevision;
+
+    /// <summary>
+    /// Changes whenever anything is written to the library, and is free to read. Pages compare it
+    /// with the value they last loaded at, so a notification that saved nothing costs no query and
+    /// no reload. A store that cannot count its writes reports a new value every time, which makes
+    /// callers reload as they did before.
+    /// </summary>
+    public long Revision => History is SqliteLibraryHistoryAdapter sqlite
+        ? sqlite.Store.Database.ChangeCount
+        : Interlocked.Increment(ref _untrackedRevision);
+
     public DictationCorrectionResult CorrectDictation(DictationCorrectionSelection selection, string replacement,
         bool remember, IReadOnlyList<DictionaryEntryRecord>? confirmedConflicts = null) =>
         new DictationCorrectionService(History).Save(selection, replacement, remember, confirmedConflicts);

@@ -222,6 +222,19 @@ public sealed class MuesliDatabase : IDisposable
         }
     }
 
+    /// <summary>
+    /// How many rows this connection has inserted, updated or deleted since it was opened. It only
+    /// ever grows, and reading it touches no table, so "has anything been written since I last
+    /// looked?" costs nothing however large the library is. Every write in the app goes through
+    /// this one connection.
+    /// </summary>
+    public long ChangeCount => Read(connection =>
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT total_changes()";
+        return Convert.ToInt64(command.ExecuteScalar());
+    });
+
     internal T Read<T>(Func<SqliteConnection, T> work)
     {
         lock (_gate)
