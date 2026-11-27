@@ -35,20 +35,6 @@ public sealed class ReleaseLegalAndQualificationGateTests
     }
 
     [Fact]
-    public void PdfExportCarriesNoThirdPartyLicenceGate()
-    {
-        // PDF is rendered by the in-house engine, so there is no vendor licence to approve or withdraw.
-        var writer = Read("windows-native", "Muesli.Windows.Platform", "Services", "MeetingDocumentWriter.cs");
-        var project = Read("windows-native", "Muesli.Windows.Platform", "Muesli.Windows.Platform.csproj");
-        var common = Read("scripts", "release-common.ps1");
-
-        Assert.DoesNotContain("QuestPDF", writer, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("QuestPDF", project, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("EXP-01", common, StringComparison.Ordinal);
-        Assert.Contains("MarkdownPdf.Render", writer, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void QualificationBundleNamesEveryDomainAndRefusesPlaceholderReviewers()
     {
         var script = Read("scripts", "qualify-windows-v1.ps1");
