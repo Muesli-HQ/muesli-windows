@@ -113,7 +113,7 @@ internal class GlyphsRec
     public FontRes Font = null!; public float Size, X, Y; public ushort[] Gids = []; public float[] Adv = [];
     public GlyphOffset[]? Off; public bool Rtl; public int Sim;
 }
-internal sealed class LayerRec : GlyphsRec { public Rgb Color; public bool UseForeground; }
+internal sealed class LayerRec : GlyphsRec { public Rgb Color; public float Alpha = 1; public bool UseForeground; }
 internal sealed class RunRec : GlyphsRec
 {
     public string Text = ""; public ushort[] Cluster = []; public int TextPos; public List<LayerRec>? Layers;
@@ -143,6 +143,7 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
     private const float PageW = 612, PageH = 792;
     private readonly float Top, Bottom, Left, ContentW;
     private readonly List<ImageRes> _images = new();
+    private readonly SortedSet<int> _layerOpacities = new(); // percent opacities used by translucent colour-glyph layers
     private static readonly object LogoLock = new();
     private static byte[]? _logoSource;
     private static ImageRes? _logoDecoded;
@@ -226,7 +227,8 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
             while (DW.ColorMoveNext(layers))
             {
                 var c = DW.ColorCurrent(layers);
-                var layer = new LayerRec { Color = new Rgb(c->R, c->G, c->B), UseForeground = c->PaletteIndex == 0xFFFF };
+                bool foreground = c->PaletteIndex == 0xFFFF;
+                var layer = new LayerRec { Color = new Rgb(c->R, c->G, c->B), Alpha = foreground ? 1 : Math.Clamp(c->A, 0, 1), UseForeground = foreground };
                 Fill(layer, c->X, c->Y, &c->Run);
                 rec.Layers.Add(layer);
             }
@@ -306,7 +308,16 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
         {
             // Colour glyph layers carry no text of their own; the whole run is one ActualText span.
             pg.Ops.Append("/Span <</ActualText ").Append(HexText(r.Text)).Append(">> BDC\n");
-            foreach (var l in layers) EmitGlyphs(pg, l, dx, dy, l.UseForeground ? color : l.Color, null, null);
+            foreach (var l in layers)
+            {
+                // Palette colours carry straight alpha: a translucent layer is drawn through a graphics state
+                // with that opacity, and a fully transparent one is not drawn at all.
+                int opacity = (int)MathF.Round(l.Alpha * 100);
+                if (opacity <= 0) continue;
+                if (opacity < 100) { _layerOpacities.Add(opacity); pg.Ops.Append("q /GA").Append(opacity).Append(" gs\n"); }
+                EmitGlyphs(pg, l, dx, dy, l.UseForeground ? color : l.Color, null, null);
+                if (opacity < 100) pg.Ops.Append("Q\n");
+            }
             pg.Ops.Append("EMC\n");
         }
         else EmitGlyphs(pg, r, dx, dy, color, r.Text, r.Cluster);
@@ -368,12 +379,17 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
         }
         else
         {
+            // A cluster's glyphs run from its own first-glyph index up to the next higher first-glyph index in
+            // the run. Taking "the next higher" rather than "the next cluster's" value keeps the spans right
+            // whichever way a shaper orders the map; DirectWrite's is ascending for both directions.
+            var starts = cluster.Distinct().Order().ToArray();
             int ti = 0;
             while (ti < text.Length)
             {
-                int g0 = cluster[ti], tj = ti + 1;
-                while (tj < text.Length && cluster[tj] == g0) tj++;
-                int g1 = tj < text.Length ? cluster[tj] : n;
+                int g0 = Math.Min(cluster[ti], n - 1), tj = ti + 1;
+                while (tj < text.Length && cluster[tj] == cluster[ti]) tj++;
+                int at = Array.BinarySearch(starts, cluster[ti]);
+                int g1 = at >= 0 && at + 1 < starts.Length ? Math.Min(starts[at + 1], n) : n;
                 if (g1 <= g0) g1 = Math.Min(g0 + 1, n);
                 var ct = text.Substring(ti, tj - ti);
                 ushort first = r.Gids[g0];
@@ -471,6 +487,44 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
     [GeneratedRegex(@"^(\s*)([-*+]|\d{1,9}[.)])\s+(.+)$")] private static partial Regex ListItem();
     [GeneratedRegex(@"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")] private static partial Regex TableSeparator();
 
+    /// <summary>
+    /// The index of the ")" that closes a link target starting at <paramref name="start"/>. Parentheses inside
+    /// the target must balance or be escaped, so "https://en.wikipedia.org/wiki/Function_(mathematics)" is one
+    /// target. When they do not balance, the first ")" closes it.
+    /// </summary>
+    private static int LinkEnd(string s, int start)
+    {
+        int depth = 0;
+        for (int p = start; p < s.Length; p++)
+        {
+            char c = s[p];
+            if (c == '\\' && p + 1 < s.Length) { p++; continue; }
+            if (c == '(') depth++;
+            else if (c == ')') { if (depth == 0) return p; depth--; }
+        }
+        return s.IndexOf(')', start);
+    }
+
+    /// <summary>
+    /// Splits a table row into cells. A pipe that is escaped ("\|") belongs to its cell, including inside a
+    /// code span, which is how GitHub-flavoured Markdown writes a literal pipe in a table.
+    /// </summary>
+    internal static string[] SplitTableRow(string line)
+    {
+        var cells = new List<string>(); var cell = new StringBuilder();
+        var row = line.Trim();
+        int from = row.StartsWith('|') ? 1 : 0;
+        int to = row.Length > from && row.EndsWith('|') && !row.EndsWith("\\|", StringComparison.Ordinal) ? row.Length - 1 : row.Length;
+        for (int p = from; p < to; p++)
+        {
+            if (row[p] == '\\' && p + 1 < to && row[p + 1] == '|') { cell.Append('|'); p++; }
+            else if (row[p] == '|') { cells.Add(cell.ToString().Trim()); cell.Clear(); }
+            else cell.Append(row[p]);
+        }
+        cells.Add(cell.ToString().Trim());
+        return cells.ToArray();
+    }
+
     internal static List<Span> ParseInline(string s)
     {
         var spans = new List<Span>(); var sb = new StringBuilder(); bool bold = false, italic = false;
@@ -492,10 +546,11 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
             if (c == '[')
             {
                 int j = s.IndexOf("](", i + 1, StringComparison.Ordinal);
-                int k = j > i ? s.IndexOf(')', j + 2) : -1;
+                int k = j > i ? LinkEnd(s, j + 2) : -1;
                 if (k > j + 2 && s.AsSpan(i + 1, j - i - 1).IndexOfAny('[', ']') < 0)
                 {
-                    Flush(); sb.Append(s, i + 1, j - i - 1); Flush(link: s.Substring(j + 2, k - j - 2)); i = k + 1; continue;
+                    var target = s.Substring(j + 2, k - j - 2).Replace("\\(", "(").Replace("\\)", ")");
+                    Flush(); sb.Append(s, i + 1, j - i - 1); Flush(link: target); i = k + 1; continue;
                 }
             }
             if (c == '*' && i + 1 < s.Length && s[i + 1] == '*')
@@ -659,7 +714,7 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
                 int first = i;
                 for (int j = first; j < lines.Length && lines[j].TrimStart().StartsWith('|'); j++)
                 {
-                    if (j != first + 1) rows.Add(lines[j].Trim().Trim('|').Split('|').Select(c => c.Trim()).ToArray());
+                    if (j != first + 1) rows.Add(SplitTableRow(lines[j]));
                     i = j;
                 }
                 Table(rows);
@@ -743,11 +798,28 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
             }
             return Assemble(createdAt);
         }
-        finally
+        finally { ReleaseFonts(); }
+    }
+
+    private void ReleaseFonts()
+    {
+        foreach (var face in _fontsByFace.Keys) DW.Release((void*)face);
+        foreach (var f in _fonts) if (!_fontsByFace.ContainsKey((nint)f.Face)) DW.Release(f.Face);
+    }
+
+    /// <summary>
+    /// The glyph runs DirectWrite produces for one paragraph, for tests that pin down what the engine relies
+    /// on from the shaper (run direction, cluster-map order, glyph counts).
+    /// </summary>
+    internal static IReadOnlyList<(bool Rtl, string Text, ushort[] ClusterMap, int GlyphCount)> ShapeForInspection(string text)
+    {
+        var engine = new MarkdownPdfEngine(new PdfOptions(PageNumbers: false));
+        try
         {
-            foreach (var face in _fontsByFace.Keys) DW.Release((void*)face);
-            foreach (var f in _fonts) if (!_fontsByFace.ContainsKey((nint)f.Face)) DW.Release(f.Face);
+            return engine.Layout([new Span(text)], 11, 400).Runs
+                .Select(r => (r.Rtl, r.Text, r.Cluster, r.Gids.Length)).ToList();
         }
+        finally { engine.ReleaseFonts(); }
     }
 
     private static byte[] Deflate(byte[] data)
@@ -948,7 +1020,8 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
             objects[imageObject - 1] = image.IsJpeg ? StreamObject(dict, image.Data, "/DCTDecode") : StreamObject(dict, image.Data);
             imageRefs.Append($"/Im{image.Index} {imageObject} 0 R ");
         }
-        Set(resources, $"<< /Font << {fontRefs}>> /XObject << {imageRefs}>> /ExtGState << /GS0 << /ca 0.7 /CA 0.7 >> >> >>");
+        var layerStates = string.Concat(_layerOpacities.Select(o => $"/GA{o} << /ca {N(o / 100f)} /CA {N(o / 100f)} >> "));
+        Set(resources, $"<< /Font << {fontRefs}>> /XObject << {imageRefs}>> /ExtGState << /GS0 << /ca 0.7 /CA 0.7 >> {layerStates}>> >>");
 
         var kids = new StringBuilder();
         foreach (var pg in _pages)

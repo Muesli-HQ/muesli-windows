@@ -158,6 +158,72 @@ public sealed class MarkdownPdfEngineTests
         Assert.Equal(bytes, MarkdownPdf.Render("# Heading in bold\n\nBody in regular", Created, options));
     }
 
+    [Theory]
+    [InlineData("وافق الفريق على إصدار النسخة الجديدة يوم الجمعة، لا إله إلا الله")]
+    [InlineData("הצוות הסכים לשחרר את הגרסה החדשה ביום שישי")]
+    [InlineData("Mixed العربية and עברית with 2026 inside")]
+    public void RightToLeftRunsKeepAnAscendingClusterMap(string text)
+    {
+        // The engine derives each cluster's glyphs from the cluster map. DirectWrite numbers glyphs in
+        // logical order for both directions, so the map never descends; this pins that down.
+        var runs = MarkdownPdfEngine.ShapeForInspection(text);
+
+        Assert.Contains(runs, r => r.Rtl);
+        foreach (var run in runs)
+        {
+            Assert.Equal(run.Text.Length, run.ClusterMap.Length);
+            for (int i = 1; i < run.ClusterMap.Length; i++)
+                Assert.True(run.ClusterMap[i] >= run.ClusterMap[i - 1], $"Cluster map descends at {i} in an {(run.Rtl ? "RTL" : "LTR")} run.");
+            Assert.All(run.ClusterMap, glyph => Assert.InRange(glyph, 0, run.GlyphCount - 1));
+        }
+    }
+
+    [Fact]
+    public void RightToLeftTextCarriesItsSourceTextInLogicalOrder()
+    {
+        // Lam + alef (U+0644 U+0627). A font may draw them as one ligature glyph, which needs an ActualText span
+        // holding both letters in logical order, or as two contextual glyphs, each mapped to its own letter.
+        var content = string.Concat(InflatedStreams(MarkdownPdf.Render("لا إله", Created, new PdfOptions(PageNumbers: false))));
+
+        bool ligature = content.Contains("/ActualText <FEFF06440627>", StringComparison.Ordinal);
+        bool separate = Regex.IsMatch(content, @"<[0-9A-F]{4}> <0644>") && Regex.IsMatch(content, @"<[0-9A-F]{4}> <0627>");
+        Assert.True(ligature || separate, "Neither a lam-alef ActualText span nor per-letter ToUnicode entries were written.");
+        Assert.DoesNotContain("<FEFF06270644>", content, StringComparison.Ordinal); // never reversed
+    }
+
+    [Theory]
+    [InlineData("See [docs](https://en.wikipedia.org/wiki/Function_(mathematics)) now", "https://en.wikipedia.org/wiki/Function_(mathematics)", " now")]
+    [InlineData("See [docs](https://example.com/a) (later)", "https://example.com/a", " (later)")]
+    [InlineData(@"See [docs](https://example.com/a\)b) now", "https://example.com/a)b", " now")]
+    public void LinkTargetsMayContainBalancedOrEscapedParentheses(string markdown, string target, string after)
+    {
+        var spans = MarkdownPdfEngine.ParseInline(markdown);
+
+        Assert.Contains(spans, s => s.Text == "docs" && s.Link == target);
+        Assert.Equal(after, spans[^1].Text);
+    }
+
+    [Fact]
+    public void AnEscapedPipeStaysInsideItsTableCell()
+    {
+        Assert.Equal(["Command", "`a|b`", "x | y"], MarkdownPdfEngine.SplitTableRow(@"| Command | `a\|b` | x \| y |"));
+        Assert.Equal(["a", "", "c"], MarkdownPdfEngine.SplitTableRow("| a |  | c |"));
+        Assert.Equal(["a", "b"], MarkdownPdfEngine.SplitTableRow("a | b"));
+    }
+
+    [Fact]
+    public void ColourEmojiLayersAreDrawnInsideOneTextSpan()
+    {
+        var bytes = MarkdownPdf.Render("Party 🎉 time", Created, new PdfOptions(PageNumbers: false));
+        var content = string.Concat(InflatedStreams(bytes));
+
+        // U+1F389 as a surrogate pair; its colour layers are glyph runs inside that span.
+        Assert.Contains("/ActualText <FEFFD83CDF89>", content, StringComparison.Ordinal);
+        // Any translucent layer must have a matching graphics state; opaque-only emoji declare none.
+        foreach (Match m in Regex.Matches(content, @"/GA(\d+) gs"))
+            Assert.Contains($"/GA{m.Groups[1].Value} << /ca", Latin1(bytes), StringComparison.Ordinal);
+    }
+
     private static string Latin1(byte[] bytes) => Encoding.Latin1.GetString(bytes);
 
     private static IEnumerable<string> InflatedStreams(byte[] pdf)
