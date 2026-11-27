@@ -1143,7 +1143,6 @@
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1" Style="{StaticResource SettingsToggleStyle}"
                                               IsOn="{x:Bind ViewModel.AutoExportPdfEnabled, Mode=TwoWay}"
-                                              IsEnabled="{x:Bind ViewModel.PdfAutoExportAvailable, Mode=OneWay}"
                                               AutomationProperties.Name="Also export PDF"
                                               AutomationProperties.AutomationId="AutoExportPdfToggle" />
                             </Grid>

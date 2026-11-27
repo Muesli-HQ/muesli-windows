@@ -373,16 +373,33 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             var model = ToMeetingItem(_meeting);
             var suggestedName = Path.ChangeExtension(
                 MeetingExportFormatter.SuggestFilename(model, MeetingExportMode.FullMeeting), ".md");
-            // PDF is offered only while the QuestPDF Community-license eligibility gate is approved.
             var picked = await _filePickers.PickSaveFileAsync(
-                new FilePickerRequest("Export meeting", MeetingDocumentWriter.ApprovedExportExtensions, suggestedName), cancellationToken);
+                new FilePickerRequest("Export meeting", MeetingDocumentWriter.ExportExtensions, suggestedName), cancellationToken);
             if (picked is null) return;
             var markdown = MeetingExportFormatter.BuildMarkdown(model, MeetingExportMode.FullMeeting, _meeting.SpeakerAliases);
             await Task.Run(() => MeetingDocumentWriter.Write(markdown, picked.Path), cancellationToken);
-            ShowStatus($"Meeting exported to {picked.DisplayName}.");
+            // Like macOS, the export opens in the user's default app; that is the confirmation. The
+            // status line is only the fallback for when nothing on this PC can open the file.
+            if (!TryOpenExportedFile(picked.Path))
+                ShowStatus($"Meeting exported to {picked.DisplayName}.");
         }
         catch (OperationCanceledException) { }
         catch (Exception exception) { ShowStatus($"Could not export the meeting: {exception.Message}", true); }
+    }
+
+    private static bool TryOpenExportedFile(string path)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo { FileName = path, UseShellExecute = true });
+            return true;
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            // No app is associated with the file type, or the shell refused: the file is still saved.
+            return false;
+        }
     }
 
     [RelayCommand]

@@ -77,9 +77,7 @@ public sealed record PostMeetingAutomationOptions
     public bool AutoExportEnabled { get; init; }
 
     /// <summary>
-    /// Asks for an additional automatic PDF alongside the Markdown export. PDF still respects
-    /// <see cref="MeetingDocumentWriter.PdfExportApproved"/> (EXP-01): when that release gate is
-    /// closed the request is reported as failed-closed rather than silently skipped.
+    /// Asks for an additional automatic PDF alongside the Markdown export.
     /// </summary>
     public bool AutoExportPdfEnabled { get; init; }
 

@@ -128,42 +128,6 @@
       "nativeFiles": [ "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll", "vcomp140.dll" ]
     },
     {
-      "id": "questpdf-native-win-x64",
-      "source": "NuGet QuestPDF 2026.5.0 win-x64 native assets",
-      "version": "2026.5.0",
-      "license": "QuestPDF package license plus redistributed native licenses",
-      "licenseFile": "licenses/QuestPDF-2026.5.0.md",
-      "additionalLicenseFiles": [
-        "licenses/Zlib.txt",
-        "licenses/Apache-2.0.txt",
-        "licenses/BSD-3-Clause.txt",
-        "licenses/MinGW-w64-winpthread-MIT.txt",
-        "licenses/GCC-Runtime-Library-Exception-3.1.txt"
-      ],
-      "noticesHeading": "QuestPDF 2026.5.0",
-      "allowedInPublicWinX64": true,
-      "requiredInPublicWinX64": true,
-      "nativeFiles": [
-        "QuestPdfSkia.dll",
-        "qpdf.dll",
-        "zlib1.dll",
-        "libgcc_s_seh-1.dll",
-        "libstdc++-6.dll",
-        "libwinpthread-1.dll"
-      ]
-    },
-    {
-      "id": "questpdf-native-win-x86-not-public",
-      "source": "NuGet QuestPDF 2026.5.0 win-x86 native assets (debug/RID extra; forbidden in public win-x64 zip)",
-      "version": "2026.5.0",
-      "license": "QuestPDF package license plus redistributed native licenses",
-      "licenseFile": "licenses/QuestPDF-2026.5.0.md",
-      "noticesHeading": "QuestPDF 2026.5.0",
-      "allowedInPublicWinX64": false,
-      "requiredInPublicWinX64": false,
-      "nativeFiles": [ "libgcc_s_dw2-1.dll" ]
-    },
-    {
       "id": "dotnet-windows-runtime",
       "source": "Microsoft .NET 10 Windows App Host / WinUI package runtime",
       "version": "net10.0-windows",

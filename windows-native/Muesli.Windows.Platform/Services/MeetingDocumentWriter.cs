@@ -1,36 +1,18 @@
 using System.IO;
 using System.Text.RegularExpressions;
-using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
+using Muesli.Windows.Services.Pdf;
 namespace Muesli.Windows.Services;
 public static class MeetingDocumentWriter
 {
-    /// <summary>
-    /// Release gate for the QuestPDF-backed PDF export (EXP-01). Approved 2026-10-11: Muesli is an
-    /// open-source project, which QuestPDF's Community license covers. Kept as a switch so PDF can be
-    /// withdrawn without removing the exporter; <c>MUESLI_PDF_EXPORT_APPROVED=0</c> turns it off.
-    /// </summary>
-    public static bool PdfExportApproved { get; set; } =
-        !string.Equals(Environment.GetEnvironmentVariable("MUESLI_PDF_EXPORT_APPROVED"), "0", StringComparison.Ordinal);
-
-    /// <summary>Save formats the export picker may offer, in order.</summary>
-    public static string[] ApprovedExportExtensions =>
-        PdfExportApproved ? [".md", ".pdf"] : [".md"];
+    /// <summary>Save formats the export picker offers, in order.</summary>
+    public static string[] ExportExtensions => [".md", ".pdf"];
 
     /// <summary>Writes the chosen save format. PDF when the picker selected .pdf, Markdown otherwise.</summary>
     public static void Write(string markdown, string path)
     {
         if (string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase))
         {
-            if (!PdfExportApproved)
-            {
-                throw new InvalidOperationException(
-                    "PDF export is disabled until QuestPDF Community-license eligibility is approved (EXP-01). " +
-                    "Markdown export remains available.");
-            }
-
-            GeneratePdf(markdown, path);
+            File.WriteAllBytes(path, MarkdownPdf.Render(markdown, DateTimeOffset.Now));
         }
         else
         {
@@ -91,99 +73,14 @@ public static class MeetingDocumentWriter
     }
 
     /// <summary>
-    /// Renders deterministic Markdown to PDF bytes for callers that own their own atomic write
-    /// (for example the automatic exporter). Honors the same EXP-01 release gate as
-    /// <see cref="Write"/>.
+    /// Renders Markdown to PDF bytes for callers that own their own atomic write (for example the
+    /// automatic exporter). The same Markdown and <paramref name="createdAt"/> give the same bytes,
+    /// which is what lets the automatic exporter recognise an export it has already published.
+    /// Rendering is done by the in-house DirectWrite engine (<see cref="MarkdownPdf"/>): no native
+    /// PDF library and no bundled fonts.
     /// </summary>
     public static byte[] GeneratePdfBytes(string markdown, DateTimeOffset createdAt)
-    {
-        if (!PdfExportApproved)
-        {
-            throw new InvalidOperationException(
-                "PDF export is disabled until QuestPDF Community-license eligibility is approved (EXP-01). " +
-                "Markdown export remains available.");
-        }
-
-        return CreatePdfDocument(markdown).WithMetadata(new DocumentMetadata
-        {
-            CreationDate = createdAt,
-            ModifiedDate = createdAt
-        }).GeneratePdf();
-    }
-
-    private static void GeneratePdf(string markdown, string outputPath)
-        => CreatePdfDocument(markdown).GeneratePdf(outputPath);
-
-    private static Document CreatePdfDocument(string markdown)
-    {
-        // QuestPDF's Community license: Muesli is open source (EXP-01, approved 2026-10-11).
-        QuestPDF.Settings.License = LicenseType.Community;
-
-        var lines = markdown.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
-
-        return Document.Create(container =>
-        {
-            container.Page(page =>
-            {
-                page.Size(PageSizes.Letter);
-                page.Margin(1.5f, Unit.Inch);
-                page.DefaultTextStyle(TextStyle.Default.FontSize(11).FontFamily("Inter"));
-
-                page.Content().PaddingVertical(20).Column(column =>
-                {
-                    foreach (var rawLine in lines)
-                    {
-                        var line = rawLine.TrimEnd();
-                        if (string.IsNullOrWhiteSpace(line))
-                        {
-                            column.Item().Height(8);
-                            continue;
-                        }
-
-                        if (line.StartsWith("# "))
-                        {
-                            column.Item().Text(line.Substring(2)).FontSize(22).Bold();
-                        }
-                        else if (line.StartsWith("## "))
-                        {
-                            column.Item().PaddingTop(12).Text(line.Substring(3)).FontSize(17).Bold();
-                        }
-                        else if (line.StartsWith("**") && line.EndsWith("**"))
-                        {
-                            // Bold metadata line
-                            var text = line.Trim('*');
-                            var parts = text.Split(new[] { ": " }, 2, StringSplitOptions.None);
-                            if (parts.Length == 2)
-                            {
-                                column.Item().Row(row =>
-                                {
-                                    row.AutoItem().Text(parts[0] + ": ").Bold();
-                                    row.RelativeItem().Text(parts[1]);
-                                });
-                            }
-                            else
-                            {
-                                column.Item().Text(text).Bold();
-                            }
-                        }
-                        else if (line.StartsWith("---"))
-                        {
-                            column.Item().PaddingVertical(8).LineHorizontal(1).LineColor(Colors.Grey.Medium);
-                        }
-                        else if (line.StartsWith("*") && line.EndsWith("*"))
-                        {
-                            // Italic (placeholder text)
-                            column.Item().Text(line.Trim('*')).Italic().FontColor(Colors.Grey.Medium);
-                        }
-                        else
-                        {
-                            column.Item().Text(line);
-                        }
-                    }
-                });
-            });
-        });
-    }
+        => MarkdownPdf.Render(markdown, createdAt);
 
     internal static string SuggestFilename(MeetingItem meeting, MeetingExportMode mode)
         => MeetingExportFormatter.SuggestFilename(meeting, mode);

@@ -49,13 +49,13 @@ public sealed class PostMeetingAutomationDiagnosticsTests
                 true, false, null, AutomationDestinationOwnership.None, "disk full", 0),
             pdfExport: new PostMeetingExportDiagnostic(
                 true, false, null, AutomationDestinationOwnership.None,
-                "PDF export is disabled until QuestPDF Community-license eligibility is approved (EXP-01).", 0));
+                "The automatic PDF could not be rendered.", 0));
 
         var text = PostMeetingAutomationDiagnostics.Format(result);
 
         Assert.Equal("Failed", PostMeetingAutomationDiagnostics.StatusLabel(result));
         Assert.Contains("Markdown export: failed (disk full)", text, StringComparison.Ordinal);
-        Assert.Contains("PDF export: failed (PDF export is disabled until QuestPDF", text, StringComparison.Ordinal);
+        Assert.Contains("PDF export: failed (The automatic PDF could not be rendered", text, StringComparison.Ordinal);
         Assert.Contains("Attempts: 3", text, StringComparison.Ordinal);
     }
 

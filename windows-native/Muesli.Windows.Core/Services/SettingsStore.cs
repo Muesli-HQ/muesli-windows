@@ -518,8 +518,7 @@ public sealed record MuesliSettings
     public string AutoExportMarkdownContent { get; init; } = "notes";
 
     /// <summary>
-    /// Asks for an automatic PDF beside the Markdown copy. PDF still honors the EXP-01 QuestPDF
-    /// release gate, so enabling this while the gate is closed fails closed and reports why.
+    /// Asks for an automatic PDF beside the Markdown copy.
     /// </summary>
     public bool AutoExportPdfEnabled { get; init; }
     public bool ComputerUseEnabled { get; init; }

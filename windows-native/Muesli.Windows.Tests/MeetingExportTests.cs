@@ -3,13 +3,11 @@ using Muesli.Windows.Services;
 namespace Muesli.Windows.Tests;
 
 /// <summary>
-/// Restores the manual export content/format safety net (EXP-01) that was retired with the WPF test
+/// Restores the manual export content/format safety net that was retired with the WPF test
 /// project. Exercises the shared deterministic Markdown renderer and the Markdown/PDF writer on the
-/// active tree, including the EXP-01 PDF release gate.
+/// active tree.
 /// </summary>
 
-// Both classes flip the static PDF gate; running them in parallel made each see the other's value.
-[Collection("PdfExportGate")]
 public sealed class MeetingExportTests
 {
     private static MeetingItem Meeting(string summary = "## Summary\n- shipped the release", string manual = "") =>
@@ -141,51 +139,19 @@ public sealed class MeetingExportTests
     }
 
     [Fact]
-    public void PdfSaveFormatIsRejectedWhileTheReleaseGateIsClosed()
+    public void PdfSaveFormatWritesARealPdfFile()
     {
-        var original = MeetingDocumentWriter.PdfExportApproved;
-        MeetingDocumentWriter.PdfExportApproved = false;
-        try
-        {
-            using var directory = new TestDirectory();
-            var path = directory.File("export.pdf");
+        using var directory = new TestDirectory();
+        var path = directory.File("export.pdf");
 
-            var failure = Assert.Throws<InvalidOperationException>(() =>
-                MeetingDocumentWriter.Write(
-                    MeetingExportFormatter.BuildMarkdown(Meeting(), MeetingExportMode.FullMeeting, null), path));
+        MeetingDocumentWriter.Write(
+            MeetingExportFormatter.BuildMarkdown(Meeting(), MeetingExportMode.FullMeeting, null), path);
 
-            Assert.Contains("EXP-01", failure.Message, StringComparison.Ordinal);
-            Assert.False(File.Exists(path));
-        }
-        finally
-        {
-            MeetingDocumentWriter.PdfExportApproved = original;
-        }
-    }
-
-    [Fact]
-    public void PdfSaveFormatWritesARealPdfFileWhenApproved()
-    {
-        var original = MeetingDocumentWriter.PdfExportApproved;
-        MeetingDocumentWriter.PdfExportApproved = true;
-        try
-        {
-            using var directory = new TestDirectory();
-            var path = directory.File("export.pdf");
-
-            MeetingDocumentWriter.Write(
-                MeetingExportFormatter.BuildMarkdown(Meeting(), MeetingExportMode.FullMeeting, null), path);
-
-            Assert.True(File.Exists(path));
-            var header = new byte[5];
-            using (var stream = File.OpenRead(path)) { _ = stream.Read(header, 0, header.Length); }
-            Assert.Equal("%PDF-", Encoding.ASCII.GetString(header));
-            Assert.True(new FileInfo(path).Length > 1000, "A paginated PDF should not be near-empty.");
-        }
-        finally
-        {
-            MeetingDocumentWriter.PdfExportApproved = original;
-        }
+        Assert.True(File.Exists(path));
+        var header = new byte[5];
+        using (var stream = File.OpenRead(path)) { _ = stream.Read(header, 0, header.Length); }
+        Assert.Equal("%PDF-", Encoding.ASCII.GetString(header));
+        Assert.True(new FileInfo(path).Length > 1000, "A paginated PDF should not be near-empty.");
     }
 
     [Fact]

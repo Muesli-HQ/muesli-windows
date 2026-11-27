@@ -10,7 +10,12 @@
          about 40 MB of desktop runtime. NAudio's own assemblies never touch it and FlaUI uses it
          only for its debug highlight overlay (DrawHighlight), which Muesli must not call. -->
     <DisableTransitiveFrameworkReferences>true</DisableTransitiveFrameworkReferences>
+    <!-- Services/Pdf calls DirectWrite through raw vtables. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\muesli-export-logo.png" LogicalName="Muesli.Windows.Platform.Assets.muesli-export-logo.png" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
     <ProjectReference Include="..\Muesli.Windows.Core\Muesli.Windows.Core.csproj" />
@@ -20,7 +25,6 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Muesli.Windows.Tests</_Parameter1>
     </AssemblyAttribute>
-    <PackageReference Include="QuestPDF" Version="2026.5.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <!-- GDI+ drawing for the insights share image. Referenced as a package so the project does not
          need the Windows Forms framework (about 40 MB installed) to get System.Drawing. -->

@@ -19,7 +19,7 @@ public sealed class ReleaseLegalAndQualificationGateTests
     {
         var common = Read("scripts", "release-common.ps1");
         Assert.Contains("function Get-MuesliReleaseLegalProductGates", common, StringComparison.Ordinal);
-        foreach (var id in new[] { "EXP-01", "SIGN-02", "IDENT-01", "UPD-01", "SUP-01", "AUD-03" })
+        foreach (var id in new[] { "SIGN-02", "IDENT-01", "UPD-01", "SUP-01", "AUD-03" })
         {
             Assert.Contains(id, common, StringComparison.Ordinal);
         }
@@ -32,19 +32,6 @@ public sealed class ReleaseLegalAndQualificationGateTests
     {
         Assert.Contains("legalProductGates", Read("scripts", "rehearse-windows-release.ps1"), StringComparison.Ordinal);
         Assert.Contains("legalProductGates", Read("scripts", "qualify-windows-release.ps1"), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void PdfExportKeepsAWithdrawalSwitch()
-    {
-        var writer = Read("windows-native", "Muesli.Windows.Platform", "Services", "MeetingDocumentWriter.cs");
-        var viewModel = Read("windows-native", "Muesli.Windows.WinUI", "ViewModels", "MeetingDetailViewModel.cs");
-
-        Assert.Contains("PdfExportApproved", writer, StringComparison.Ordinal);
-        Assert.Contains("MUESLI_PDF_EXPORT_APPROVED", writer, StringComparison.Ordinal);
-        Assert.Contains("ApprovedExportExtensions", writer, StringComparison.Ordinal);
-        Assert.Contains("PDF export is disabled until QuestPDF", writer, StringComparison.Ordinal);
-        Assert.Contains("MeetingDocumentWriter.ApprovedExportExtensions", viewModel, StringComparison.Ordinal);
     }
 
     [Fact]
