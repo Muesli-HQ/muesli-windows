@@ -46,17 +46,19 @@ public sealed class TrayMenuModelTests
     }
 
     [Theory]
-    [InlineData(nameof(TrayCommand.None), true)]
-    [InlineData(nameof(TrayCommand.ToggleDictation), true)]
-    [InlineData(nameof(TrayCommand.PauseMeeting), true)]
-    [InlineData(nameof(TrayCommand.ResumeMeeting), true)]
-    [InlineData(nameof(TrayCommand.ToggleMeeting), false)]
-    [InlineData(nameof(TrayCommand.Open), false)]
-    [InlineData(nameof(TrayCommand.Settings), false)]
-    [InlineData(nameof(TrayCommand.ResumeSetup), false)]
-    [InlineData(nameof(TrayCommand.Quit), false)]
-    public void OnlyCancelAndCaptureOnlyCommandsReturnFocusToTheTray(string command, bool expected) =>
-        Assert.Equal(expected, TrayMenuModel.LeavesFocusInTray(Enum.Parse<TrayCommand>(command)));
+    [InlineData(nameof(TrayCommand.None), false, true)]
+    [InlineData(nameof(TrayCommand.ToggleDictation), false, true)]
+    [InlineData(nameof(TrayCommand.PauseMeeting), false, true)]
+    [InlineData(nameof(TrayCommand.ResumeMeeting), false, true)]
+    [InlineData(nameof(TrayCommand.ToggleMeeting), false, false)]
+    [InlineData(nameof(TrayCommand.ToggleMeeting), true, true)]
+    [InlineData(nameof(TrayCommand.Open), true, false)]
+    [InlineData(nameof(TrayCommand.Open), false, false)]
+    [InlineData(nameof(TrayCommand.Settings), false, false)]
+    [InlineData(nameof(TrayCommand.ResumeSetup), false, false)]
+    [InlineData(nameof(TrayCommand.Quit), false, false)]
+    public void OnlyCancelAndCaptureOnlyCommandsReturnFocusToTheTray(string command, bool meetingActive, bool expected) =>
+        Assert.Equal(expected, TrayMenuModel.LeavesFocusInTray(Enum.Parse<TrayCommand>(command), meetingActive));
 
     [Fact]
     public void OptionalEntriesAppearOnlyWhenAvailableAndCommandsAreUnique()

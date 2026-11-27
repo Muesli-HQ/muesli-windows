@@ -35,12 +35,14 @@ internal static class TrayMenuModel
 {
     /// <summary>
     /// True when nothing takes the foreground after the menu closes: it was cancelled, or the
-    /// command only changes capture state. Starting or stopping a meeting is excluded because
-    /// starting one opens the recording page.
+    /// command only changes capture state. The meeting toggle counts only when a meeting was
+    /// active, because then it stops and saves; when none was, it starts one and opens the
+    /// recording page.
     /// </summary>
-    public static bool LeavesFocusInTray(TrayCommand command) =>
+    public static bool LeavesFocusInTray(TrayCommand command, bool meetingActive) =>
         command is TrayCommand.None or TrayCommand.ToggleDictation
-            or TrayCommand.PauseMeeting or TrayCommand.ResumeMeeting;
+            or TrayCommand.PauseMeeting or TrayCommand.ResumeMeeting
+        || (command == TrayCommand.ToggleMeeting && meetingActive);
 
     public static IReadOnlyList<TrayMenuEntry> Build(
         bool dictationRecording,
@@ -305,10 +307,12 @@ public sealed class WindowsTrayIconService : IDisposable
     // The menu is built when it is opened, so it always reflects the capture state at that moment.
     private void ShowMenu(int x, int y)
     {
+        var meetingRecording = _meetingRecording();
+        var meetingPaused = _meetingPaused?.Invoke() == true;
         var entries = TrayMenuModel.Build(
             _dictationRecording(),
-            _meetingRecording(),
-            _meetingPaused?.Invoke() == true,
+            meetingRecording,
+            meetingPaused,
             _resumeSetup is not null,
             _featureTour is not null);
         var menu = NativeMethods.CreatePopupMenu();
@@ -334,7 +338,9 @@ public sealed class WindowsTrayIconService : IDisposable
             // show a window must keep the foreground or that window could not come to the front.
             // If the user dismissed the menu by clicking another window, that window is already
             // in the foreground and keeps the focus.
-            if (TrayMenuModel.LeavesFocusInTray(command) && NativeMethods.GetForegroundWindow() == _window)
+            // The meeting state is the one the menu was built from, so it matches the row chosen.
+            if (TrayMenuModel.LeavesFocusInTray(command, meetingRecording || meetingPaused)
+                && NativeMethods.GetForegroundWindow() == _window)
             {
                 var data = NewIconData(0);
                 NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_SETFOCUS, ref data);
