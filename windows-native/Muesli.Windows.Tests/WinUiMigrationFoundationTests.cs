@@ -91,6 +91,10 @@ public sealed class WinUiMigrationFoundationTests
                 // Neither WPF nor Windows Forms: the tray icon talks to the shell directly, so the
                 // package no longer carries the desktop framework for it.
                 Assert.DoesNotContain("System.Windows", text, StringComparison.Ordinal);
+                // FlaUI's highlight overlay is its one Windows Forms code path; with the framework
+                // gone from the package, calling it would fail at run time.
+                if (source.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    Assert.DoesNotContain("DrawHighlight", text, StringComparison.Ordinal);
                 Assert.DoesNotContain("PresentationFramework", text, StringComparison.Ordinal);
                 Assert.DoesNotContain("PresentationCore", text, StringComparison.Ordinal);
             }

@@ -143,8 +143,9 @@ public sealed class WindowsTrayIconService : IDisposable
         _lightTaskbarIconPath = lightTaskbarIconPath;
         _tip = AppName;
         _ownerThreadId = NativeMethods.GetCurrentThreadId();
-        (_icon, _ownsIcon) = LoadThemedIcon();
+        // Window first: if creating it throws, there is no loaded icon to leak.
         _window = CreateHiddenWindow();
+        (_icon, _ownsIcon) = LoadThemedIcon();
         Instances[_window] = this;
         AddIcon();
     }
@@ -163,6 +164,7 @@ public sealed class WindowsTrayIconService : IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         var data = NewIconData(0);
+        // Harmless if the icon was never added (Explorer was not running): the call just fails.
         NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_DELETE, ref data);
         // A window can only be destroyed by the thread that created it.
         if (NativeMethods.GetCurrentThreadId() == _ownerThreadId) NativeMethods.DestroyWindow(_window);
@@ -227,8 +229,10 @@ public sealed class WindowsTrayIconService : IDisposable
                     var packed = wParam.ToInt64();
                     ShowMenu((short)(packed & 0xFFFF), (short)((packed >> 16) & 0xFFFF));
                 }
-                else if (notification == NativeMethods.WM_LBUTTONDBLCLK)
+                else if (notification is NativeMethods.WM_LBUTTONDBLCLK or NativeMethods.NIN_KEYSELECT)
                 {
+                    // Double-click, or Enter/Space on the keyboard-focused icon. The shell may send
+                    // the key notification twice for Enter; opening the window twice is harmless.
                     Run(TrayCommand.Open);
                 }
                 return true;
@@ -399,6 +403,7 @@ public sealed class WindowsTrayIconService : IDisposable
         public const uint NIF_TIP = 0x04;
         public const uint NIF_SHOWTIP = 0x80;
         public const uint NOTIFYICON_VERSION_4 = 4;
+        public const uint NIN_KEYSELECT = 0x0401; // NIN_SELECT | NINF_KEY
 
         public const uint MF_STRING = 0x0000;
         public const uint MF_SEPARATOR = 0x0800;
