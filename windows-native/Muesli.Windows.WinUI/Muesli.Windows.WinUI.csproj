@@ -84,7 +84,16 @@
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+    <!-- The components of Windows App SDK 2.4.0 that Muesli uses, referenced one by one. The
+         Microsoft.WindowsAppSDK metapackage also brings Windows ML (DirectML), the Windows AI
+         APIs, Search and Widgets: about 30 MB that nothing here calls. Keep these versions in
+         step with the metapackage release named above when upgrading. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.Base" Version="2.0.4" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.4.0" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" Version="2.3.9" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.6" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.DWrite" Version="2.1.0" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.3.6" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.6.1" />
   </ItemGroup>
