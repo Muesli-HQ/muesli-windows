@@ -591,7 +591,7 @@ public sealed class WindowsUiAutomationObservationSource : IComputerUseObservati
             .Where(group => group.Count() == 1).Select(group => group.Single())
             .OrderBy(e => e.AutomationId, StringComparer.Ordinal).ToArray();
         var fingerprintBytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(string.Join("|", ordered.Select(e => $"{e.AutomationId}:{e.IsEnabled}:{e.Left}:{e.Top}:{e.Width}:{e.Height}"))));
-        var bounds = System.Windows.Forms.SystemInformation.VirtualScreen;
+        var bounds = VirtualScreenMetrics.Bounds();
         if (_approvedTarget() is not { } reboundTarget || reboundTarget != target || !target.IsCurrentOwner())
             throw new InvalidOperationException("Approved window ownership changed during observation.");
         // No screenshot, window text, field values, Credential Manager, or clipboard history is acquired here.

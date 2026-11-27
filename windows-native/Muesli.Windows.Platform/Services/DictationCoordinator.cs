@@ -619,9 +619,27 @@ public sealed class DictationCoordinator : IDisposable
     /// <summary>Null when Windows would not report it; callers must not invent a value.</summary>
     private static ulong? AvailablePhysicalMemory()
     {
-        try { return new Microsoft.VisualBasic.Devices.ComputerInfo().AvailablePhysicalMemory; }
-        catch { return null; }
+        var status = new MemoryStatusEx { Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf<MemoryStatusEx>() };
+        return GlobalMemoryStatusEx(ref status) ? status.AvailablePhysical : null;
     }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MemoryStatusEx
+    {
+        public uint Length;
+        public uint MemoryLoad;
+        public ulong TotalPhysical;
+        public ulong AvailablePhysical;
+        public ulong TotalPageFile;
+        public ulong AvailablePageFile;
+        public ulong TotalVirtual;
+        public ulong AvailableVirtual;
+        public ulong AvailableExtendedVirtual;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", ExactSpelling = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx status);
 
     // ponytail: English Cohere only; qualify other languages/models before extending this fallback.
     internal static bool ShouldUseParakeetFallback(

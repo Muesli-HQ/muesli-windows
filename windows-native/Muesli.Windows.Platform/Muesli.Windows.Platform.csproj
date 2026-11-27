@@ -6,7 +6,10 @@
     <RootNamespace>Muesli.Windows.Platform</RootNamespace>
     <AssemblyName>Muesli.Windows.Platform</AssemblyName>
     <IsPackable>false</IsPackable>
-    <UseWindowsForms>true</UseWindowsForms>
+    <!-- FlaUI.Core and NAudio.WinForms each declare the Windows Forms framework, which would ship
+         about 40 MB of desktop runtime. NAudio's own assemblies never touch it and FlaUI uses it
+         only for its debug highlight overlay (DrawHighlight), which Muesli must not call. -->
+    <DisableTransitiveFrameworkReferences>true</DisableTransitiveFrameworkReferences>
     <!-- Services/Pdf calls DirectWrite through raw vtables. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -23,5 +26,8 @@
       <_Parameter1>Muesli.Windows.Tests</_Parameter1>
     </AssemblyAttribute>
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- GDI+ drawing for the insights share image. Referenced as a package so the project does not
+         need the Windows Forms framework (about 40 MB installed) to get System.Drawing. -->
+    <PackageReference Include="System.Drawing.Common" Version="10.0.11" />
   </ItemGroup>
 </Project>
