@@ -187,15 +187,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     /// blank box. An empty directory makes the exporter fail with "Select a rooted auto-export
     /// directory." (Muesli.Windows.Platform/Services/PostMeetingAutomationService.cs:423-424).
     /// </summary>
-    /// <summary>
-    /// PDF auto-export is real but release-gated (EXP-01). The control stays disabled until the
-    /// QuestPDF Community-license decision is recorded, so the UI never promises a PDF it cannot
-    /// write.
-    /// </summary>
-    public bool PdfAutoExportAvailable => MeetingDocumentWriter.PdfExportApproved;
-    public string PdfAutoExportHelp => PdfAutoExportAvailable
-        ? "Save a PDF copy beside the Markdown file. Existing edited files are kept."
-        : "Not available yet.";
+    public string PdfAutoExportHelp => "Save a PDF copy beside the Markdown file. Existing edited files are kept.";
 
     public string AutoExportFolderHelp =>
         !AutoExportMarkdownEnabled

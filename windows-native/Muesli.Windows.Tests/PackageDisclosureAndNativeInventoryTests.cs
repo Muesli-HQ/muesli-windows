@@ -76,7 +76,6 @@ public sealed class PackageDisclosureAndNativeInventoryTests
         Assert.Contains(inventory.Files, file => file.FileName.Equals("onnxruntime.dll", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(inventory.Files, file => file.FileName.Equals("llama.dll", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(inventory.Files, file => file.FileName.Equals("e_sqlite3.dll", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(inventory.Files, file => file.FileName.Equals("QuestPdfSkia.dll", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -166,13 +165,14 @@ public sealed class PackageDisclosureAndNativeInventoryTests
     }
 
     [Fact]
-    public void QuestPDFCommunityLicenseEligibilityIsRecorded()
+    public void PdfExportShipsNoThirdPartyPdfLibrary()
     {
         var exporter = Read("windows-native/Muesli.Windows.Platform/Services/MeetingDocumentWriter.cs");
         var notices = Read("THIRD-PARTY-NOTICES.md");
-        Assert.Contains("QuestPDF.Settings.License = LicenseType.Community", exporter, StringComparison.Ordinal);
-        Assert.Contains("QuestPDF 2026.5.0", notices, StringComparison.Ordinal);
-        Assert.Contains("Muesli is an open-source project", notices, StringComparison.Ordinal);
+        var catalog = Read("windows-native/Muesli.Windows.Core/NativeRuntime/public-cpu-native-catalog.json");
+        Assert.DoesNotContain("QuestPDF", exporter, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("QuestPDF", notices, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("QuestPdf", catalog, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

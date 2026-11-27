@@ -26,12 +26,6 @@
           "NAudio.WinMM": "2.2.1"
         }
       },
-      "QuestPDF": {
-        "type": "Direct",
-        "requested": "[2026.5.0, )",
-        "resolved": "2026.5.0",
-        "contentHash": "QddELSgpJ7YFrNaqlqUik/OOhK2/yVDqdqGjtdH+V3nxml2cvjUorFp2yiK8xnTLLvR139SXpVt3G/0oVCynig=="
-      },
       "CommunityToolkit.HighPerformance": {
         "type": "Transitive",
         "resolved": "8.4.2",

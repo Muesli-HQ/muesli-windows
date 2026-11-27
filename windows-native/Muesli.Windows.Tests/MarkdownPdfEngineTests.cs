@@ -9,7 +9,6 @@ namespace Muesli.Windows.Tests;
 /// The in-house PDF engine: DirectWrite shapes the text, the engine writes the PDF. These tests read the
 /// produced file directly (page objects, link annotations, inflated content streams) rather than trusting size.
 /// </summary>
-[Collection("PdfExportGate")]
 public sealed class MarkdownPdfEngineTests
 {
     private static readonly DateTimeOffset Created = new(2026, 9, 26, 9, 0, 0, TimeSpan.Zero);
@@ -63,30 +62,6 @@ public sealed class MarkdownPdfEngineTests
         Assert.Contains(spans, s => s is { Text: "clean", Italic: true });
         Assert.Contains(spans, s => s is { Text: "the list", Link: "https://example.com" });
         Assert.Contains(spans, s => s.Text.Contains("2 * 3 = 6", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void TheWriterUsesTheInHouseEngineUnlessQuestPdfIsRequested()
-    {
-        var approved = MeetingDocumentWriter.PdfExportApproved;
-        var legacy = MeetingDocumentWriter.UseLegacyQuestPdf;
-        MeetingDocumentWriter.PdfExportApproved = true;
-        try
-        {
-            MeetingDocumentWriter.UseLegacyQuestPdf = false;
-            var ours = Latin1(MeetingDocumentWriter.GeneratePdfBytes(Sample, Created));
-            Assert.Contains("/Producer (Muesli)", ours, StringComparison.Ordinal);
-            Assert.Contains("/URI (https://muesli.works)", ours, StringComparison.Ordinal);
-
-            MeetingDocumentWriter.UseLegacyQuestPdf = true;
-            var quest = Latin1(MeetingDocumentWriter.GeneratePdfBytes(Sample, Created));
-            Assert.DoesNotContain("/Producer (Muesli)", quest, StringComparison.Ordinal);
-        }
-        finally
-        {
-            MeetingDocumentWriter.PdfExportApproved = approved;
-            MeetingDocumentWriter.UseLegacyQuestPdf = legacy;
-        }
     }
 
     [Fact]

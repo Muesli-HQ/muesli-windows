@@ -19,7 +19,7 @@ public sealed class ReleaseLegalAndQualificationGateTests
     {
         var common = Read("scripts", "release-common.ps1");
         Assert.Contains("function Get-MuesliReleaseLegalProductGates", common, StringComparison.Ordinal);
-        foreach (var id in new[] { "EXP-01", "SIGN-02", "IDENT-01", "UPD-01", "SUP-01", "AUD-03" })
+        foreach (var id in new[] { "SIGN-02", "IDENT-01", "UPD-01", "SUP-01", "AUD-03" })
         {
             Assert.Contains(id, common, StringComparison.Ordinal);
         }
@@ -35,16 +35,17 @@ public sealed class ReleaseLegalAndQualificationGateTests
     }
 
     [Fact]
-    public void PdfExportKeepsAWithdrawalSwitch()
+    public void PdfExportCarriesNoThirdPartyLicenceGate()
     {
+        // PDF is rendered by the in-house engine, so there is no vendor licence to approve or withdraw.
         var writer = Read("windows-native", "Muesli.Windows.Platform", "Services", "MeetingDocumentWriter.cs");
-        var viewModel = Read("windows-native", "Muesli.Windows.WinUI", "ViewModels", "MeetingDetailViewModel.cs");
+        var project = Read("windows-native", "Muesli.Windows.Platform", "Muesli.Windows.Platform.csproj");
+        var common = Read("scripts", "release-common.ps1");
 
-        Assert.Contains("PdfExportApproved", writer, StringComparison.Ordinal);
-        Assert.Contains("MUESLI_PDF_EXPORT_APPROVED", writer, StringComparison.Ordinal);
-        Assert.Contains("ApprovedExportExtensions", writer, StringComparison.Ordinal);
-        Assert.Contains("PDF export is disabled until QuestPDF", writer, StringComparison.Ordinal);
-        Assert.Contains("MeetingDocumentWriter.ApprovedExportExtensions", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("QuestPDF", writer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("QuestPDF", project, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("EXP-01", common, StringComparison.Ordinal);
+        Assert.Contains("MarkdownPdf.Render", writer, StringComparison.Ordinal);
     }
 
     [Fact]

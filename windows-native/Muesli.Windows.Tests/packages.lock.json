@@ -260,11 +260,6 @@
         "resolved": "1.13.4",
         "contentHash": "/sl2z1Tvhvated2kS9KWV4GBEv0tgW6F/2t+3HAYJzO0cWNs7onCQHpuc/egxsFQHYo7G8DVWyQWtsfICkDFaQ=="
       },
-      "QuestPDF": {
-        "type": "Transitive",
-        "resolved": "2026.5.0",
-        "contentHash": "QddELSgpJ7YFrNaqlqUik/OOhK2/yVDqdqGjtdH+V3nxml2cvjUorFp2yiK8xnTLLvR139SXpVt3G/0oVCynig=="
-      },
       "SharpCompress": {
         "type": "Transitive",
         "resolved": "0.48.1",
@@ -432,8 +427,7 @@
         "dependencies": {
           "FlaUI.UIA3": "[5.0.0, )",
           "Muesli.Windows.Core": "[0.3.0, )",
-          "NAudio": "[2.2.1, )",
-          "QuestPDF": "[2026.5.0, )"
+          "NAudio": "[2.2.1, )"
         }
       }
     }

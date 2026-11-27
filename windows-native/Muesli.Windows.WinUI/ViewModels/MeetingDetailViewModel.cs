@@ -373,9 +373,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
             var model = ToMeetingItem(_meeting);
             var suggestedName = Path.ChangeExtension(
                 MeetingExportFormatter.SuggestFilename(model, MeetingExportMode.FullMeeting), ".md");
-            // PDF is offered only while the QuestPDF Community-license eligibility gate is approved.
             var picked = await _filePickers.PickSaveFileAsync(
-                new FilePickerRequest("Export meeting", MeetingDocumentWriter.ApprovedExportExtensions, suggestedName), cancellationToken);
+                new FilePickerRequest("Export meeting", MeetingDocumentWriter.ExportExtensions, suggestedName), cancellationToken);
             if (picked is null) return;
             var markdown = MeetingExportFormatter.BuildMarkdown(model, MeetingExportMode.FullMeeting, _meeting.SpeakerAliases);
             await Task.Run(() => MeetingDocumentWriter.Write(markdown, picked.Path), cancellationToken);

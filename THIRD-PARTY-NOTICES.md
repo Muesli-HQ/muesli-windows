@@ -5,41 +5,6 @@ does not replace the applicable license texts in `licenses/` or upstream terms.
 
 ## Application libraries and runtimes
 
-### QuestPDF 2026.5.0
-
-- Copyright: Marcin Ziabek / QuestPDF contributors.
-- Source: https://github.com/QuestPDF/QuestPDF
-- License: the license shipped in the 2026.5.0 NuGet package; this build selects
-  `LicenseType.Community`.
-- Use: PDF meeting export.
-- Eligibility: Muesli is an open-source project, which QuestPDF's Community license covers
-  (confirmed by the release owner on 2026-10-11).
-- Included text: `licenses/QuestPDF-2026.5.0.md`.
-
-QuestPDF's redistributed native/content dependencies in this package include:
-
-- Skia: Copyright Google Inc. and contributors; BSD 3-Clause license;
-  https://skia.org/; text in `licenses/BSD-3-Clause.txt` and
-  `licenses/QuestPDF-native/skia.txt`.
-- qpdf: Copyright Jay Berkenbilt and contributors; Apache License 2.0;
-  https://github.com/qpdf/qpdf; text in `licenses/Apache-2.0.txt` and
-  `licenses/QuestPDF-native/qpdf.txt`.
-- zlib: Copyright Jean-loup Gailly and Mark Adler; zlib license;
-  text in `licenses/Zlib.txt`.
-- MinGW-w64 winpthread (`libwinpthread-1.dll`): MIT;
-  text in `licenses/MinGW-w64-winpthread-MIT.txt`.
-- GCC runtime support (`libgcc_s_seh-1.dll`, `libstdc++-6.dll`): GPLv3 with
-  the GCC Runtime Library Exception 3.1;
-  text in `licenses/GCC-Runtime-Library-Exception-3.1.txt`.
-- Additional Skia/qpdf bundled notices (harfbuzz, libpng, libjpeg-turbo,
-  libwebp, expat, wuffs, libgrapheme, emsdk): `licenses/QuestPDF-native/`.
-- Lato font: Copyright 2010-2014 Łukasz Dziedzic and contributors; SIL Open Font
-  License 1.1; https://www.latofonts.com/; the upstream `LatoFont/OFL.txt` is
-  also retained verbatim in the published package.
-
-The build selects `LicenseType.Community`; the release owner confirmed eligibility
-(EXP-01) on 2026-10-11 because Muesli is an open-source project.
-
 ### NAudio 2.2.1
 
 - Copyright: Mark Heath and contributors.

@@ -22,7 +22,6 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Muesli.Windows.Tests</_Parameter1>
     </AssemblyAttribute>
-    <PackageReference Include="QuestPDF" Version="2026.5.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 </Project>

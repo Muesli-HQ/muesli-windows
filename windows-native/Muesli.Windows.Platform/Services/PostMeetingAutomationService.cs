@@ -128,7 +128,7 @@ public sealed class PostMeetingAutomationService
 
     /// <summary>
     /// Runs the optional automatic PDF beside the Markdown export. Null when PDF auto-export was
-    /// not requested; a fail-closed diagnostic when requested but the EXP-01 license gate is shut.
+    /// not requested.
     /// </summary>
     private static async Task<PostMeetingExportDiagnostic?> ExportPdfIfRequestedAsync(
         MeetingItem meeting,
@@ -139,17 +139,6 @@ public sealed class PostMeetingAutomationService
         if (!options.AutoExportPdfEnabled)
         {
             return null;
-        }
-
-        if (!MeetingDocumentWriter.PdfExportApproved)
-        {
-            return new PostMeetingExportDiagnostic(
-                Requested: true,
-                Completed: false,
-                DestinationPath: null,
-                DestinationOwnership: AutomationDestinationOwnership.None,
-                Error: "PDF export is disabled until QuestPDF Community-license eligibility is approved (EXP-01).",
-                Attempts: 0);
         }
 
         return await PostMeetingMarkdownAutoExporter.ExportPdfAsync(
@@ -503,7 +492,7 @@ internal static class PostMeetingMarkdownAutoExporter
 
     /// <summary>
     /// Publishes an automatic PDF using the same atomic, collision-safe, manifest-backed machinery
-    /// as Markdown. Fails closed without creating anything when the EXP-01 license gate is closed.
+    /// as Markdown.
     /// </summary>
     public static Task<PostMeetingExportDiagnostic> ExportPdfAsync(
         MeetingItem meeting,
@@ -559,13 +548,6 @@ internal static class PostMeetingMarkdownAutoExporter
     {
         if (string.IsNullOrWhiteSpace(selectedDirectory) || !Path.IsPathRooted(selectedDirectory))
             return Failure("Select a rooted auto-export directory.", 0);
-
-        if (format == PostMeetingExportFormat.Pdf && !MeetingDocumentWriter.PdfExportApproved)
-        {
-            return Failure(
-                "PDF export is disabled until QuestPDF Community-license eligibility is approved (EXP-01).",
-                0);
-        }
 
         string directory;
         try

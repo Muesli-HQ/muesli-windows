@@ -231,7 +231,6 @@ $report = [ordered]@{
         if ($Store) { 'Microsoft Store certification and signing after submission' }
         else { "SIGN-01 Authenticode/MSIX signing (L05 / D5)" }
         "PKG-01 clean-VM install/upgrade/uninstall (L07)"
-        "QuestPDF EXP-01 community-license eligibility (release owner)"
         if ($Store) { 'Store-delivered update qualification' } else { "UPD-01 v1 manual update policy or app-side updater" }
         "AUD-03 audio-interference policy decision"
     )

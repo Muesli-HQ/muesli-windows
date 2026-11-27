@@ -166,7 +166,7 @@ Muesli for Windows is **0.3.0 beta**. Local development and unsigned packaging a
 
 - Updates are manual: Muesli does not check for, download, or install updates automatically.
 - Muesli does not pause or duck unrelated media while recording ("no interference").
-- Meetings export as Markdown or PDF (QuestPDF Community license; Muesli is open source).
+- Meetings export as Markdown or PDF. PDF is rendered in-app with DirectWrite and system fonts; no PDF library is bundled.
 - The Store publisher identity is reserved and recorded in `windows-native/store-identity.json`; public support/privacy URLs and certification are still outstanding. See the [Store release guide](docs/WINDOWS_STORE_RELEASE.md).
 
 ### Current limitations
