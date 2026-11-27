@@ -317,7 +317,18 @@ public sealed class WindowsTrayIconService : IDisposable
                 NativeMethods.TPM_RIGHTBUTTON | NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_NONOTIFY,
                 x, y, _window, 0);
             NativeMethods.PostMessageW(_window, NativeMethods.WM_NULL, 0, 0);
-            if (chosen != 0) Run((TrayCommand)chosen);
+            if (chosen != 0)
+            {
+                Run((TrayCommand)chosen);
+            }
+            else if (NativeMethods.GetForegroundWindow() == _window)
+            {
+                // Cancelled with Escape: hand keyboard focus back to the notification area, as the
+                // shell contract asks. If the user dismissed the menu by clicking another window,
+                // that window is already in the foreground and must keep the focus.
+                var data = NewIconData(0);
+                NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_SETFOCUS, ref data);
+            }
         }
         finally
         {
@@ -397,6 +408,7 @@ public sealed class WindowsTrayIconService : IDisposable
         public const uint NIM_ADD = 0;
         public const uint NIM_MODIFY = 1;
         public const uint NIM_DELETE = 2;
+        public const uint NIM_SETFOCUS = 3;
         public const uint NIM_SETVERSION = 4;
         public const uint NIF_MESSAGE = 0x01;
         public const uint NIF_ICON = 0x02;
@@ -487,6 +499,9 @@ public sealed class WindowsTrayIconService : IDisposable
         [DllImport("user32.dll", ExactSpelling = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetForegroundWindow(nint window);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        public static extern nint GetForegroundWindow();
 
         [DllImport("user32.dll", ExactSpelling = true)]
         public static extern nint CreatePopupMenu();
