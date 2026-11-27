@@ -13,7 +13,7 @@
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://github.com/Muesli-HQ/muesli-windows/actions/workflows/windows-ci.yml"><img src="https://github.com/Muesli-HQ/muesli-windows/actions/workflows/windows-ci.yml/badge.svg" alt="Windows CI" /></a>
   <img src="https://img.shields.io/badge/platform-Windows%20x64-lightgrey" alt="Windows x64" />
-  <img src="https://img.shields.io/badge/status-0.3.0%20beta-orange" alt="0.3.0 beta" />
+  <img src="https://img.shields.io/badge/status-0.1.0%20beta-orange" alt="0.1.0 beta" />
 </p>
 
 <p align="center">
@@ -162,7 +162,7 @@ Dictation owns one warm recognizer. Recorded meetings and audio imports share an
 
 ## Repository Status
 
-Muesli for Windows is **0.3.0 beta**. Local development and unsigned packaging are available; signed public distribution and physical-device qualification remain active release work.
+Muesli for Windows is **0.1.0 beta**. Local development and unsigned packaging are available; signed public distribution and physical-device qualification remain active release work.
 
 - Updates are manual: Muesli does not check for, download, or install updates automatically.
 - Muesli does not pause or duck unrelated media while recording ("no interference").

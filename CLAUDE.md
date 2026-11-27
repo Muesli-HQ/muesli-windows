@@ -40,8 +40,8 @@ That compatibility command routes to the WinUI MSIX packager and produces an uns
 ## Release
 
 ```powershell
-.\scripts\release-windows.ps1 -Version 0.3.0 -DryRun
-.\scripts\release-windows.ps1 -Version 0.3.0
+.\scripts\release-windows.ps1 -Version 0.1.0 -DryRun
+.\scripts\release-windows.ps1 -Version 0.1.0
 ```
 
 The release is built by the `Windows release` GitHub Actions workflow, not locally; the script

@@ -3,7 +3,7 @@
 One command releases Muesli for Windows:
 
 ```powershell
-.\scripts\release-windows.ps1 -Version 0.3.0
+.\scripts\release-windows.ps1 -Version 0.1.0
 ```
 
 It checks the repository, has GitHub Actions build and verify the package, verifies what GitHub
@@ -40,16 +40,16 @@ The version lives in `Directory.Build.props` (`MuesliVersion`) and the manifest.
 protected, so the bump goes through a pull request:
 
 ```powershell
-.\scripts\release-windows.ps1 -Version 0.3.1 -SetVersion
+.\scripts\release-windows.ps1 -Version 0.1.1 -SetVersion
 ```
 
-Write `docs/release-notes/0.3.1.md`, commit both on a branch, and merge the pull request. Tags
+Write `docs/release-notes/0.1.1.md`, commit both on a branch, and merge the pull request. Tags
 are `v<version>`.
 
 ## Rehearsing
 
 ```powershell
-.\scripts\release-windows.ps1 -Version 0.3.0 -DryRun
+.\scripts\release-windows.ps1 -Version 0.1.0 -DryRun
 ```
 
 A dry run does everything except create a tag or a release: preconditions, the full build and
@@ -78,7 +78,7 @@ anything public.
 ## Microsoft Store
 
 ```powershell
-.\scripts\release-windows.ps1 -Version 0.3.0 -StoreSubmission draft
+.\scripts\release-windows.ps1 -Version 0.1.0 -StoreSubmission draft
 ```
 
 `draft` uploads the Store package to a draft submission in Partner Center for you to submit by
