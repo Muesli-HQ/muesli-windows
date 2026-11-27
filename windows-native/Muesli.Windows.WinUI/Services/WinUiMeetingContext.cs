@@ -21,6 +21,8 @@ public sealed class WinUiMeetingContext : IDisposable
     private MuesliSettings _settings;
     private string _title = "";
     private DateTime _startedAt;
+    // The recording in progress, from capture start to its save, discard or failure.
+    private AnalyticsAttempt? _analytics;
     private int _operationBusy;
     private int _startingOperation;
     private int _disposed;
@@ -226,6 +228,7 @@ public sealed class WinUiMeetingContext : IDisposable
         catch
         {
             await _coordinator.CancelAsync();
+            _ = TakeRecordingAttempt()?.Finish(AnalyticsOutcome.Failed);
             if (ActiveMeetingId is { } id) _library.DeleteMeeting(id);
             ActiveMeetingId = null;
             throw;
@@ -264,12 +267,17 @@ public sealed class WinUiMeetingContext : IDisposable
             resumedMeeting: resumedMeeting);
         ActiveMeetingId = resumedMeeting?.Id ?? start.MeetingId;
         if (resumedMeeting is not null) ManualNotes = resumedMeeting.ManualNotes;
+        _ = TakeRecordingAttempt()?.Finish(AnalyticsOutcome.Cancelled);
+        _analytics = App.Telemetry?.Begin(AnalyticsFeature.Meeting);
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
         RaiseChanged();
     }
 
     public Task<PersistedMeeting> StopAndSaveAsync(CancellationToken cancellationToken = default) =>
-        RunOperationAsync(() => StopAndSaveCoreAsync(cancellationToken));
+        RunOperationAsync(() => ReportAsync(
+            TakeRecordingAttempt(),
+            () => StopAndSaveCoreAsync(cancellationToken),
+            (AnalyticsField.Saved, AnalyticsValue.Yes)));
 
     private async Task<PersistedMeeting> StopAndSaveCoreAsync(CancellationToken cancellationToken)
     {
@@ -297,8 +305,6 @@ public sealed class WinUiMeetingContext : IDisposable
         ActiveMeetingId = null;
         IsSourceMissing = false;
         var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
-        if (!unchangedSpeech && meeting.SessionState == MeetingSessionState.Completed)
-            _ = App.Telemetry?.SignalAsync(ProductEvent.MeetingCompleted);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -334,6 +340,7 @@ public sealed class WinUiMeetingContext : IDisposable
         if (keepNotes) SaveManualNotesCore();
         var resumed = IsResumingFinishedMeeting;
         await _coordinator.CancelAsync();
+        _ = TakeRecordingAttempt()?.Finish(AnalyticsOutcome.Discarded);
         FinalizationFailed = false;
         if (ActiveMeetingId is { } id)
         {
@@ -442,8 +449,41 @@ public sealed class WinUiMeetingContext : IDisposable
         {
             if (IsRecording || IsPaused) throw new InvalidOperationException("Finish the active meeting before importing media.");
             await RefreshSettingsAsync(cancellationToken);
-            return await ImportCoreAsync(sourcePath, progress, cancellationToken);
+            return await ReportAsync(
+                App.Telemetry?.Begin(AnalyticsFeature.Workflow, (AnalyticsField.Feature, AnalyticsValue.Imported)),
+                () => ImportCoreAsync(sourcePath, progress, cancellationToken));
         });
+
+    /// <summary>Reports the one terminal outcome of a recording or an import. Never the content.</summary>
+    private static async Task<PersistedMeeting> ReportAsync(
+        AnalyticsAttempt? attempt,
+        Func<Task<PersistedMeeting>> operation,
+        params (AnalyticsField Field, AnalyticsValue Value)[] successFields)
+    {
+        try
+        {
+            var meeting = await operation();
+            _ = attempt?.Finish(AnalyticsOutcome.Success, successFields);
+            return meeting;
+        }
+        catch (OperationCanceledException)
+        {
+            _ = attempt?.Finish(AnalyticsOutcome.Cancelled);
+            throw;
+        }
+        catch
+        {
+            _ = attempt?.Finish(AnalyticsOutcome.Failed);
+            throw;
+        }
+    }
+
+    private AnalyticsAttempt? TakeRecordingAttempt()
+    {
+        var attempt = _analytics;
+        _analytics = null;
+        return attempt;
+    }
 
     private async Task<PersistedMeeting> ImportCoreAsync(
         string sourcePath,
@@ -482,7 +522,6 @@ public sealed class WinUiMeetingContext : IDisposable
         };
         SaveMeeting(meeting);
         meeting = await FinalizeMeetingAsync(meeting, cancellationToken);
-        _ = App.Telemetry?.SignalAsync(ProductEvent.MeetingImported);
         RaiseChanged();
         return meeting;
     }

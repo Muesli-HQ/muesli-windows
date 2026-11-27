@@ -214,14 +214,26 @@ public partial class App : Application
         // is created: the packaged CPU and the optional CUDA sherpa builds cannot be mixed inside
         // one process, so a provider change is applied on the next launch.
         var startupSettings = Settings.Load();
-        var testTelemetry = MuesliDevSlot.Current != null ||
-            !string.Equals(Library.Profile.RootDirectory, MuesliProfilePaths.Production().RootDirectory, StringComparison.OrdinalIgnoreCase);
+        // The channel is stamped at build time by the release packager. A build without a stamp,
+        // which is every local, development-slot and CI build, sends no analytics at all.
+        var debugBuild = false;
 #if DEBUG
-        testTelemetry = true;
+        debugBuild = true;
 #endif
-        var telemetry = new TelemetryDeckClient(Library.Profile.RootDirectory,
-            typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown", testTelemetry,
-            () => Settings.Load().ShareUsageAnalytics, TelemetryHttp);
+        var stampedChannel = typeof(App).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+            .OfType<System.Reflection.AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == "MuesliTelemetryChannel")?.Value;
+        var productionProfile = string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(Library.Profile.RootDirectory)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(MuesliProfilePaths.Production().RootDirectory)),
+            StringComparison.OrdinalIgnoreCase);
+        var telemetry = new TelemetryDeckClient(
+            Library.Profile.RootDirectory,
+            typeof(App).Assembly.GetName().Version?.ToString(3) ?? "unknown",
+            TelemetryChannelResolver.Resolve(stampedChannel, debugBuild, MuesliDevSlot.Current != null, productionProfile),
+            () => Settings.Load().ShareUsageAnalytics,
+            TelemetryHttp);
         Telemetry = telemetry;
         ExecutionProviderService.Configure(startupSettings.ExecutionProvider);
         NativeTextCleanupService.Configure(startupSettings.CleanupModelId);
@@ -391,7 +403,7 @@ public partial class App : Application
                 _desktopInstance?.Dispose();
         };
         Window.Activate();
-        _ = telemetry.SignalAsync(ProductEvent.AppLaunched);
+        _ = telemetry.SessionStarted();
         _log.Info($"Muesli WinUI starting. AppVersion={typeof(App).Assembly.GetName().Version}. Profile={Library.Profile.RootDirectory}.");
         Dictation.RegisterHotkey();
         ApplyMeetingDetection(Settings.Load().AutoMeetingDetectionEnabled);

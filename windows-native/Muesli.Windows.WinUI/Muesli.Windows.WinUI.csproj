@@ -95,6 +95,15 @@
     <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
   </PropertyGroup>
 
+  <!--
+    Usage analytics channel, read at startup (App.xaml.cs). Only the release packager stamps
+    "production"; pass -p:MuesliTelemetryChannel=dev to exercise analytics against the development
+    TelemetryDeck app. Left empty, the build sends no analytics.
+  -->
+  <ItemGroup>
+    <AssemblyMetadata Include="MuesliTelemetryChannel" Value="$(MuesliTelemetryChannel)" />
+  </ItemGroup>
+
   <!-- Publish Properties -->
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>

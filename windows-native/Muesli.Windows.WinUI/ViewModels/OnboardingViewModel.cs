@@ -364,7 +364,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         if (next == UseCase) return;
         UseCase = next;
         _draft = _draft with { OnboardingUseCase = next };
-        _settings.Save(_draft);
+        SaveDraft();
         Render();
     }
     /// <summary>
@@ -493,7 +493,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             try { await _startup.SetEnabledAsync(StartAtLogin); }
             catch (Exception exception) { ApplyStatus(exception.Message, isError: true); }
         }
-        _ = App.Telemetry?.SignalAsync(ProductEvent.OnboardingCompleted);
+        _ = App.Telemetry?.OnboardingCompleted();
         Completed?.Invoke(this, true);
     }
 
@@ -849,7 +849,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     {
         SelectedIndicatorPosition = "Middle Right";
         _draft = _draft with { IndicatorAnchor = "Middle Right", IndicatorLeft = null, IndicatorTop = null };
-        _settings.Save(_draft);
+        SaveDraft();
         ApplyStatus("");
     }
 
@@ -913,7 +913,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     {
         if (_isRendering || value is null) return;
         _draft = _draft with { MeetingSummaryProvider = value.Id };
-        _settings.Save(_draft);
+        SaveDraft();
         OnPropertyChanged(nameof(SummaryDisclosure));
         RefreshCloudKeyStatus();
     }
@@ -922,28 +922,28 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
     {
         if (_isRendering || string.IsNullOrWhiteSpace(value)) return;
         _draft = _draft with { IndicatorAnchor = value };
-        _settings.Save(_draft);
+        SaveDraft();
     }
 
     partial void OnStartAtLoginChanged(bool value)
     {
         if (_isRendering) return;
         _draft = _draft with { StartAtLogin = value };
-        _settings.Save(_draft);
+        SaveDraft();
     }
 
     partial void OnShowIndicatorChanged(bool value)
     {
         if (_isRendering) return;
         _draft = _draft with { ShowFloatingIndicator = value };
-        _settings.Save(_draft);
+        SaveDraft();
     }
 
     partial void OnUserNameChanged(string value)
     {
         if (_isRendering) return;
         _draft = _draft with { UserName = value.Trim() };
-        _settings.Save(_draft);
+        SaveDraft();
     }
 
     private void ApplyDraftToFields()
@@ -989,6 +989,16 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
             IndicatorAnchor = SelectedIndicatorPosition,
             MeetingSummaryProvider = SelectedSummaryProvider?.Id ?? _draft.MeetingSummaryProvider
         };
+        SaveDraft();
+    }
+
+    /// <summary>
+    /// Saves the setup draft. The draft was copied when setup opened, so the analytics choice is
+    /// re-read first: an opt-out made in Settings while setup is open must never be undone here.
+    /// </summary>
+    private void SaveDraft()
+    {
+        _draft = _draft with { ShareUsageAnalytics = _settings.Load().ShareUsageAnalytics };
         _settings.Save(_draft);
     }
 
@@ -1065,7 +1075,7 @@ public partial class OnboardingViewModel : ObservableObject, IDisposable
         var after = ToSelection(draft);
         if (before == after) return;
         _draft = draft;
-        _settings.Save(_draft);
+        SaveDraft();
         _progress = OnboardingProgressReconciler.InvalidateForSelectionChange(_progress, before, after);
         PersistProgress();
         RefreshModelRoles();

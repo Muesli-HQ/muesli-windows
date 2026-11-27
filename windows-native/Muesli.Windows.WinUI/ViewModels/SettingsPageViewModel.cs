@@ -220,6 +220,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly HashSet<string> _pendingText = [];
     private CancellationTokenSource? _debounce;
     private bool _tracking;
+    private bool _fillingAnalyticsChoice;
     private string? _errorField;
 
     /// <summary>Starts saving edits. Called once the initial load has filled every field.</summary>
@@ -228,7 +229,17 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
-        if (!_tracking || e.PropertyName is not { } name) return;
+        if (!_tracking)
+        {
+            // Edits made before the page has finished loading are normally ignored. The analytics
+            // choice is the exception: a switch that reads Off must mean nothing is being sent.
+            if (e.PropertyName == nameof(ShareUsageAnalytics) && !_fillingAnalyticsChoice)
+            {
+                CommitChoice(nameof(ShareUsageAnalytics));
+            }
+            return;
+        }
+        if (e.PropertyName is not { } name) return;
         if (TextFields.ContainsKey(name))
         {
             _pendingText.Add(name);
@@ -653,7 +664,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         RemoveFillerWords = settings.RemoveFillerWords;
         EnableLocalCleanup = settings.EnableLocalCleanup;
         ComputerUseEnabled = settings.ComputerUseEnabled;
-        ShareUsageAnalytics = settings.ShareUsageAnalytics;
+        _fillingAnalyticsChoice = true;
+        try { ShareUsageAnalytics = settings.ShareUsageAnalytics; }
+        finally { _fillingAnalyticsChoice = false; }
         ShowFloatingIndicator = settings.ShowFloatingIndicator;
         SoundEnabled = settings.SoundEnabled;
         ShowLiveWaveformOnHover = settings.ShowLiveWaveformOnHover;
