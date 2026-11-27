@@ -14,7 +14,7 @@ internal sealed record PdfOptions(
     float H1Size = 22, float H2Size = 17, float H3Size = 13, int H3Weight = 700,
     float H1Before = 0, float H2Before = 12, float H3Before = 8, float BlankLine = 8, bool DrawRules = true,
     byte[]? BrandLogo = null, string BrandText = "Exported with muesli", string BrandUrl = "https://muesli.works",
-    Func<string, byte[]?>? ImageResolver = null)
+    Func<string, byte[]?>? ImageResolver = null, bool ForceOutlineFonts = false)
 {
     /// <summary>
     /// The macOS exporter's layout (MeetingExporter.writePDF + MeetingExportBranding.writeBrandedPDF): US Letter,
@@ -46,9 +46,24 @@ internal static class MarkdownPdf
     /// </summary>
     public static byte[] Render(string markdown, DateTimeOffset createdAt, PdfOptions? options = null)
     {
+        options ??= MeetingExportOptions;
         try
         {
-            return new MarkdownPdfEngine(options ?? MeetingExportOptions).Run(markdown, createdAt);
+            return new MarkdownPdfEngine(options).Run(markdown, createdAt);
+        }
+        catch (Exception first) when (first is not OutOfMemoryException && !options.ForceOutlineFonts)
+        {
+            // Fonts are the one input this engine does not control: any installed font can be picked by
+            // fallback. If embedding one of them went wrong, draw every font as outlines instead, which
+            // needs nothing from the font file beyond what DirectWrite already rasterises.
+            try
+            {
+                return new MarkdownPdfEngine(options with { ForceOutlineFonts = true }).Run(markdown, createdAt);
+            }
+            catch (Exception second) when (second is not OutOfMemoryException)
+            {
+                throw new InvalidOperationException("The PDF could not be rendered.", new AggregateException(first, second));
+            }
         }
         catch (Exception ex) when (ex is not (InvalidOperationException or IOException or NotSupportedException or OutOfMemoryException))
         {
@@ -70,6 +85,21 @@ internal sealed unsafe class FontRes
     public readonly SortedSet<ushort> Used = new() { 0 };
     public readonly Dictionary<ushort, string> ToUnicode = new();
     private readonly Dictionary<ushort, int> _widths = new();
+
+    /// <summary>
+    /// True when the face cannot be embedded as a TrueType subset (see <see cref="FontSubset.CanEmbed"/>). Its glyphs
+    /// are then written as vector outlines in Type 3 fonts, which address glyphs with one byte: each glyph gets a
+    /// slot in order of first use, and every 256 slots form one PDF font.
+    /// </summary>
+    public bool Outline;
+    public readonly List<ushort> SlotGlyphs = new();
+    private readonly Dictionary<ushort, int> _slots = new();
+    public int Slot(ushort gid)
+    {
+        if (!_slots.TryGetValue(gid, out var slot)) { _slots[gid] = slot = SlotGlyphs.Count; SlotGlyphs.Add(gid); }
+        return slot;
+    }
+
     public int Width1000(ushort gid)
     {
         if (!_widths.TryGetValue(gid, out var w))
@@ -157,6 +187,7 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
         {
             DW.AddRef(face);
             f = new FontRes { Index = _fonts.Count, Face = face, Metrics = DW.FaceMetrics(face) };
+            f.Outline = _o.ForceOutlineFonts || !FontSubset.CanEmbed(face);
             _fonts.Add(f);
             _fontsByKey[key] = f;
         }
@@ -291,7 +322,10 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
 
         bool bold = (r.Sim & 1) != 0, oblique = (r.Sim & 2) != 0;
         string rgb = N(c.R) + " " + N(c.G) + " " + N(c.B);
-        sb.Append("BT\n/F").Append(f.Index).Append(' ').Append(N(size)).Append(" Tf\n").Append(rgb).Append(" rg\n");
+        sb.Append("BT\n");
+        if (!f.Outline) sb.Append("/F").Append(f.Index).Append(' ').Append(N(size)).Append(" Tf\n");
+        sb.Append(rgb).Append(" rg\n");
+        int outlineFont = -1; // which 256-glyph Type 3 font of an outline face is currently selected
         if (bold) sb.Append("2 Tr ").Append(N(size * 0.035f)).Append(" w ").Append(rgb).Append(" RG\n");
         string skew = oblique ? "0.33" : "0";
         bool open = false; float penX = 0, curY = float.NaN;
@@ -301,6 +335,13 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
         {
             ushort g = r.Gids[i];
             f.Used.Add(g);
+            int slot = f.Outline ? f.Slot(g) : 0;
+            if (f.Outline && slot >> 8 != outlineFont)
+            {
+                Flush();
+                outlineFont = slot >> 8;
+                sb.Append("/F").Append(f.Index).Append('_').Append(outlineFont).Append(' ').Append(N(size)).Append(" Tf\n");
+            }
             if (!open || MathF.Abs(py[i] - curY) > 0.004f)
             {
                 Flush();
@@ -313,7 +354,7 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
                 float adj = MathF.Round((penX - px[i]) / size * 1000f);
                 if (adj != 0) { sb.Append(N(adj)).Append(' '); penX -= adj * size / 1000f; }
             }
-            sb.Append('<').Append(g.ToString("X4")).Append('>');
+            sb.Append('<').Append(f.Outline ? (slot & 0xFF).ToString("X2") : g.ToString("X4")).Append('>');
             penX += f.Width1000(g) * size / 1000f;
         }
 
@@ -687,6 +728,73 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
         return new string(t);
     }
 
+    /// <summary>
+    /// Writes a face that cannot be embedded as TrueType (CFF, variable, embedding-restricted) as Type 3
+    /// fonts whose glyph procedures are the outlines DirectWrite reports. Text stays real text: it is
+    /// selectable and searchable through the same ToUnicode and ActualText data as embedded fonts.
+    /// </summary>
+    private static void WriteOutlineFonts(FontRes f, StringBuilder fontRefs, Func<int> newObject, List<byte[]?> objects)
+    {
+        for (int first = 0, part = 0; first < f.SlotGlyphs.Count; first += 256, part++)
+        {
+            int count = Math.Min(256, f.SlotGlyphs.Count - first);
+            var procs = new StringBuilder(); var names = new StringBuilder(); var widths = new StringBuilder();
+            int minX = 0, minY = 0, maxX = 0, maxY = 0;
+            for (int code = 0; code < count; code++)
+            {
+                ushort gid = f.SlotGlyphs[first + code];
+                int width = f.Width1000(gid);
+                var outline = DW.Outline(f.Face, gid);
+                // d1 declares an uncoloured glyph, so the text colour set on the page applies to it.
+                var proc = outline.IsEmpty
+                    ? $"{width} 0 0 0 0 0 d1\n"
+                    : $"{width} 0 {outline.MinX} {outline.MinY} {outline.MaxX} {outline.MaxY} d1\n{outline.Path}{(outline.Winding ? "f" : "f*")}\n";
+                if (!outline.IsEmpty)
+                {
+                    minX = Math.Min(minX, outline.MinX); minY = Math.Min(minY, outline.MinY);
+                    maxX = Math.Max(maxX, outline.MaxX); maxY = Math.Max(maxY, outline.MaxY);
+                }
+                int procObject = newObject();
+                objects[procObject - 1] = StreamObject("", Latin1.GetBytes(proc));
+                procs.Append($"/g{code} {procObject} 0 R ");
+                names.Append($"/g{code} ");
+                widths.Append(width).Append(' ');
+            }
+
+            var cmap = new StringBuilder();
+            cmap.Append("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n")
+                .Append("/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<00> <FF>\nendcodespacerange\n");
+            foreach (var block in OutlineCMapBlocks(f, first, count)) cmap.Append(block);
+            cmap.Append("endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
+            int toUnicode = newObject();
+            objects[toUnicode - 1] = StreamObject("", Latin1.GetBytes(cmap.ToString()));
+
+            int font = newObject();
+            objects[font - 1] = Latin1.GetBytes(
+                $"<< /Type /Font /Subtype /Type3 /FontBBox [{minX} {minY} {maxX} {maxY}] /FontMatrix [0.001 0 0 0.001 0 0] " +
+                $"/CharProcs << {procs}>> /Encoding << /Type /Encoding /Differences [0 {names}] >> /FirstChar 0 /LastChar {count - 1} " +
+                $"/Widths [{widths}] /Resources << >> /ToUnicode {toUnicode} 0 R >>");
+            fontRefs.Append($"/F{f.Index}_{part} {font} 0 R ");
+        }
+    }
+
+    private static IEnumerable<string> OutlineCMapBlocks(FontRes f, int first, int count)
+    {
+        var entries = new List<string>();
+        for (int code = 0; code < count; code++)
+        {
+            if (!f.ToUnicode.TryGetValue(f.SlotGlyphs[first + code], out var text)) continue;
+            var entry = new StringBuilder().Append('<').Append(code.ToString("X2")).Append("> <");
+            foreach (var ch in text) entry.Append(((int)ch).ToString("X4"));
+            entries.Add(entry.Append(">\n").ToString());
+        }
+        for (int i = 0; i < entries.Count; i += 100)
+        {
+            int n = Math.Min(100, entries.Count - i);
+            yield return n + " beginbfchar\n" + string.Concat(entries.Skip(i).Take(n)) + "endbfchar\n";
+        }
+    }
+
     private byte[] Assemble(DateTimeOffset createdAt)
     {
         var objects = new List<byte[]?>();
@@ -698,8 +806,9 @@ internal sealed unsafe partial class MarkdownPdfEngine : IGlyphSink
         var fontRefs = new StringBuilder();
         foreach (var f in _fonts)
         {
+            if (f.Outline) { WriteOutlineFonts(f, fontRefs, New, objects); continue; }
             var sfnt = FontSubset.Build(f.Face, f.Used, out var bbox)
-                ?? throw new NotSupportedException("A fallback font without TrueType outlines (CFF or bitmap) was selected and cannot be embedded yet.");
+                ?? throw new NotSupportedException("A font that was expected to embed as TrueType could not be subsetted.");
             var name = SubsetTag(f.Index) + "+" + (FontSubset.PostScriptName(f.Face) ?? "Font" + f.Index);
             float k = 1000f / f.Metrics.UnitsPerEm;
             int file = New(); objects[file - 1] = StreamObject($"/Length1 {sfnt.Length} ", sfnt);

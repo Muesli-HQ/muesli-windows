@@ -9,7 +9,35 @@ internal static unsafe class FontSubset
     private static ushort U16(byte[] b, int o) => BinaryPrimitives.ReadUInt16BigEndian(b.AsSpan(o));
     private static uint U32(byte[] b, int o) => BinaryPrimitives.ReadUInt32BigEndian(b.AsSpan(o));
 
-    /// <summary>Returns null when the face has no 'glyf' outlines (CFF, bitmap), which this prototype does not embed.</summary>
+    /// <summary>
+    /// Whether the face can go into the PDF as an embedded TrueType subset. It cannot when it has no
+    /// 'glyf' outlines (CFF OpenType, bitmap fonts), when it is a variable font (the file holds only the
+    /// default instance, while DirectWrite shaped with the selected one), or when its OS/2 fsType bits
+    /// forbid embedding or subsetting. Such faces are drawn as outline (Type 3) fonts instead.
+    /// </summary>
+    public static bool CanEmbed(void* face)
+    {
+        try
+        {
+            if (DW.FontTable(face, "fvar") is not null) return false;
+            if (DW.FontTable(face, "OS/2") is { Length: >= 10 } os2)
+            {
+                int fsType = U16(os2, 8);
+                if ((fsType & 0x0002) != 0 || (fsType & 0x0100) != 0 || (fsType & 0x0200) != 0) return false;
+            }
+            var head = DW.FontTable(face, "head"); var maxp = DW.FontTable(face, "maxp");
+            var hhea = DW.FontTable(face, "hhea"); var hmtx = DW.FontTable(face, "hmtx");
+            if (head is not { Length: >= 54 } || maxp is not { Length: >= 6 } || hhea is not { Length: >= 36 } || hmtx is null) return false;
+            if (!DW.BorrowTable(face, "glyf", out _, out _, out var glyfCtx)) return false;
+            DW.ReleaseTable(face, glyfCtx);
+            if (!DW.BorrowTable(face, "loca", out _, out var locaLength, out var locaCtx)) return false;
+            DW.ReleaseTable(face, locaCtx);
+            return locaLength >= (U16(maxp, 4) + 1) * (U16(head, 50) != 0 ? 4 : 2);
+        }
+        catch (InvalidOperationException) { return false; }
+    }
+
+    /// <summary>Returns null when the face has no usable 'glyf' outlines; <see cref="CanEmbed"/> predicts that.</summary>
     public static byte[]? Build(void* face, SortedSet<ushort> used, out int[] bbox)
     {
         bbox = [0, 0, 0, 0];

@@ -75,6 +75,47 @@ public sealed class MarkdownPdfEngineTests
         Assert.Matches(@"/ActualText <FEFF(?:[0-9A-F]{4})*094D(?:[0-9A-F]{4})*>", content);
     }
 
+    [Fact]
+    public void FontsThatCannotBeEmbeddedAreDrawnAsOutlinesAndStayRealText()
+    {
+        // ForceOutlineFonts sends every font down the path taken by CFF, variable and
+        // embedding-restricted fonts, so that path is covered whatever fonts this PC has.
+        var options = new PdfOptions(PageNumbers: false, ForceOutlineFonts: true);
+        var bytes = MarkdownPdf.Render(Sample, Created, options);
+        var pdf = Latin1(bytes);
+
+        Assert.Contains("/Subtype /Type3", pdf, StringComparison.Ordinal);
+        Assert.DoesNotContain("/FontFile2", pdf, StringComparison.Ordinal);
+        Assert.Contains("/ToUnicode", pdf, StringComparison.Ordinal);
+        Assert.Equal(bytes, MarkdownPdf.Render(Sample, Created, options));
+
+        var streams = InflatedStreams(bytes).ToList();
+        // Glyph procedures are filled paths; the page still shows text operators and conjunct text.
+        Assert.Contains(streams, s => s.Contains(" d1\n", StringComparison.Ordinal) && s.TrimEnd().EndsWith('f'));
+        Assert.Contains(streams, s => s.Contains(" Tf\n", StringComparison.Ordinal) && s.Contains("/ActualText", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AVariableFontExportsInsteadOfFailing()
+    {
+        // Bahnschrift ships with Windows as a variable font; its file only holds the default instance, so
+        // it must not be embedded as TrueType. Where it is missing, DirectWrite substitutes another font.
+        var bytes = MarkdownPdf.Render("# Variable\n\nBody **bold** text", Created, new PdfOptions(PageNumbers: false, Family: "Bahnschrift"));
+
+        Assert.Equal("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
+        var installed = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "bahnschrift.ttf"));
+        if (installed) Assert.Contains("/Subtype /Type3", Latin1(bytes), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AMoreThan256GlyphOutlineFontIsSplitAcrossSeveralFonts()
+    {
+        var text = string.Concat(Enumerable.Range(0x4E00, 600).Select(c => (char)c));
+        var pdf = Latin1(MarkdownPdf.Render(text, Created, new PdfOptions(PageNumbers: false, ForceOutlineFonts: true)));
+
+        Assert.True(Regex.Matches(pdf, "/Subtype /Type3").Count >= 3, "600 distinct glyphs need at least three one-byte fonts.");
+    }
+
     private static string Latin1(byte[] bytes) => Encoding.Latin1.GetString(bytes);
 
     private static IEnumerable<string> InflatedStreams(byte[] pdf)

@@ -41,6 +41,28 @@ internal struct DFontMetrics
 }
 internal struct DGlyphMetrics { public int Lsb; public uint AdvanceWidth; public int Rsb, Tsb; public uint AdvanceHeight; public int Bsb, VertOriginY; }
 
+internal struct Point2F { public float X, Y; }
+
+/// <summary>A glyph outline collected from DirectWrite: PDF path operators plus its bounding box, y up.</summary>
+internal sealed class GlyphOutline
+{
+    public readonly System.Text.StringBuilder Path = new();
+    public bool Winding = true;
+    public int MinX = int.MaxValue, MinY = int.MaxValue, MaxX = int.MinValue, MaxY = int.MinValue;
+    public bool IsEmpty => Path.Length == 0 || MinX > MaxX;
+
+    private void Point(Point2F p)
+    {
+        // DirectWrite's y axis points down; PDF glyph space points up.
+        int x = (int)MathF.Round(p.X), y = (int)MathF.Round(-p.Y);
+        if (x < MinX) MinX = x; if (x > MaxX) MaxX = x; if (y < MinY) MinY = y; if (y > MaxY) MaxY = y;
+        Path.Append(x).Append(' ').Append(y).Append(' ');
+    }
+    public void Move(Point2F p) { Point(p); Path.Append("m\n"); }
+    public void Line(Point2F p) { Point(p); Path.Append("l\n"); }
+    public void Curve(Point2F a, Point2F b, Point2F c) { Point(a); Point(b); Point(c); Path.Append("c\n"); }
+}
+
 internal interface IGlyphSink
 {
     unsafe void OnGlyphRun(float x, float y, DGlyphRun* run, DGlyphRunDesc* desc);
@@ -222,6 +244,75 @@ internal static unsafe class DW
         return exists != 0;
     }
     public static void ReleaseTable(void* face, void* ctx) => ((delegate* unmanaged<void*, void*, void>)VT(face)[13])(face, ctx);
+
+    // ---- Glyph outlines (IDWriteFontFace::GetGlyphRunOutline into an ID2D1SimplifiedGeometrySink) ----
+
+    private static readonly Guid IidGeometrySink = new("2cd9069e-12e2-11dc-9fed-001143a055f9");
+    private static void** _sinkObject;
+    [ThreadStatic] private static GlyphOutline? t_outline;
+
+    private static void** SinkObject()
+    {
+        if (_sinkObject != null) return _sinkObject;
+        var vt = (void**)NativeMemory.Alloc((nuint)(sizeof(void*) * 10));
+        vt[0] = (delegate* unmanaged<void*, Guid*, void**, int>)&SinkQueryInterface;
+        vt[1] = (delegate* unmanaged<void*, uint>)&AddRefRelease;
+        vt[2] = (delegate* unmanaged<void*, uint>)&AddRefRelease;
+        vt[3] = (delegate* unmanaged<void*, int, void>)&SinkSetFillMode;
+        vt[4] = (delegate* unmanaged<void*, int, void>)&SinkIgnore;
+        vt[5] = (delegate* unmanaged<void*, Point2F, int, void>)&SinkBeginFigure;
+        vt[6] = (delegate* unmanaged<void*, Point2F*, uint, void>)&SinkAddLines;
+        vt[7] = (delegate* unmanaged<void*, Point2F*, uint, void>)&SinkAddBeziers;
+        vt[8] = (delegate* unmanaged<void*, int, void>)&SinkEndFigure;
+        vt[9] = (delegate* unmanaged<void*, int>)&SinkClose;
+        var obj = (void**)NativeMemory.Alloc((nuint)sizeof(void*));
+        obj[0] = vt;
+        return _sinkObject = obj;
+    }
+
+    /// <summary>
+    /// One glyph's outline at 1000 units per em, y up, as PDF path operators. Works for every outline
+    /// format DirectWrite can rasterise (TrueType, CFF, a variable font's selected instance).
+    /// </summary>
+    public static GlyphOutline Outline(void* face, ushort gid)
+    {
+        var outline = new GlyphOutline();
+        var sink = SinkObject();
+        t_outline = outline;
+        try
+        {
+            int hr = ((delegate* unmanaged<void*, float, ushort*, float*, GlyphOffset*, uint, int, int, void*, int>)VT(face)[14])(
+                face, 1000f, &gid, null, null, 1, 0, 0, sink);
+            if (hr < 0) outline.Path.Clear(); // a glyph that cannot be outlined is drawn empty rather than failing the export
+        }
+        finally { t_outline = null; }
+        return outline;
+    }
+
+    [UnmanagedCallersOnly]
+    private static int SinkQueryInterface(void* self, Guid* iid, void** result)
+    {
+        if (*iid == IidUnknown || *iid == IidGeometrySink) { *result = self; return 0; }
+        *result = null;
+        return unchecked((int)0x80004002);
+    }
+    [UnmanagedCallersOnly] private static void SinkSetFillMode(void* self, int mode) { if (t_outline is { } o) o.Winding = mode == 1; }
+    [UnmanagedCallersOnly] private static void SinkIgnore(void* self, int value) { }
+    [UnmanagedCallersOnly] private static void SinkBeginFigure(void* self, Point2F start, int figureBegin) => t_outline?.Move(start);
+    [UnmanagedCallersOnly]
+    private static void SinkAddLines(void* self, Point2F* points, uint count)
+    {
+        if (t_outline is not { } o) return;
+        for (uint i = 0; i < count; i++) o.Line(points[i]);
+    }
+    [UnmanagedCallersOnly]
+    private static void SinkAddBeziers(void* self, Point2F* points, uint count)
+    {
+        if (t_outline is not { } o) return;
+        for (uint i = 0; i < count; i++) o.Curve(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]);
+    }
+    [UnmanagedCallersOnly] private static void SinkEndFigure(void* self, int figureEnd) => t_outline?.Path.Append("h\n");
+    [UnmanagedCallersOnly] private static int SinkClose(void* self) => 0;
 
     // ---- IDWriteTextRenderer implementation ----
     [UnmanagedCallersOnly]
