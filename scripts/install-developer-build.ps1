@@ -92,7 +92,7 @@ try {
     $existing = @(Get-AppxPackage -Name $packageName)
     if ($existing.Count -gt 0 -and -not $Force) {
         Write-Host "Muesli $($existing[0].Version) is already registered from: $($existing[0].InstallLocation)"
-        $answer = Read-Host "Replace it with $version? Your history and settings are kept. [y/N]"
+        $answer = Read-Host "Replace it with ${version}? Your history and settings are kept. [y/N]"
         if ($answer -notmatch '^(y|yes)$') { Write-Host "Nothing was changed."; return }
     }
     if (@(Get-Process -Name "Muesli.Windows.WinUI" -ErrorAction SilentlyContinue).Count -gt 0) {
