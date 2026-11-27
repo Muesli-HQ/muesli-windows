@@ -34,6 +34,8 @@ public sealed class WinUiDictationContext : IDisposable
     // a lock reproduces that: work starts in the order the hook delivered it and each item
     // completes before the next begins, with no async void and no unobserved task.
     private readonly object _hotkeyChainGate = new();
+    // The interactive dictation in progress. Setup tests and Computer Use captures are not reported.
+    private AnalyticsAttempt? _analytics;
     private Task _hotkeyChain = Task.CompletedTask;
 
     public WinUiDictationContext(
@@ -300,6 +302,8 @@ public sealed class WinUiDictationContext : IDisposable
         RequestCancellation();
         ReleaseHostedSession();
         await _coordinator.CancelAsync();
+        _ = _analytics?.Finish(AnalyticsOutcome.Cancelled);
+        _analytics = null;
         _hotkeyState.Reset();
         _pasteTarget = IntPtr.Zero;
         Status = "Dictation cancelled";
@@ -567,6 +571,11 @@ public sealed class WinUiDictationContext : IDisposable
 
         _log.Info($"Dictation capture start result. trace={_captureTraceId}; recording={_coordinator.IsRecording}; model={_coordinator.ModelId}; provider={provider}");
         if (!_coordinator.IsRecording) ReleaseHostedSession();
+        else
+        {
+            _ = _analytics?.Finish(AnalyticsOutcome.Cancelled);
+            _analytics = App.Telemetry?.Begin(AnalyticsFeature.Dictation);
+        }
         Status = !_coordinator.IsRecording ? "Ready" :
             _hostedSession is not null ? $"Listening · audio goes to {DictationProviders.Label(provider)}" :
             _coordinator.ModelId == current.DictationModelId ? "Listening" : "Listening with Parakeet (low memory)";
@@ -591,6 +600,9 @@ public sealed class WinUiDictationContext : IDisposable
         var deliveryInputMs = 0L;
         var deliveryClipboardMs = 0L;
         var persisted = false;
+        // Anything that leaves this method without setting an outcome was an unexpected failure.
+        var analyticsOutcome = AnalyticsOutcome.Failed;
+        var analyticsDelivery = AnalyticsValue.None;
         var asrPath = "unavailable";
         var audioDurationMs = 0L;
         // What the latency log records when the status shown to the user carries provider text.
@@ -630,6 +642,7 @@ public sealed class WinUiDictationContext : IDisposable
                 Status = result.DurationMs < HotkeyTriggerTiming.ShortDiscardMilliseconds
                     ? "Ready"
                     : "No speech detected";
+                analyticsOutcome = AnalyticsOutcome.Discarded;
                 return;
             }
 
@@ -647,6 +660,7 @@ public sealed class WinUiDictationContext : IDisposable
             if (string.IsNullOrWhiteSpace(text))
             {
                 Status = "No text remained after cleanup";
+                analyticsOutcome = AnalyticsOutcome.Discarded;
                 return;
             }
 
@@ -658,6 +672,7 @@ public sealed class WinUiDictationContext : IDisposable
                 result.DurationMs,
                 hostedText ? HostedDictationTranscriber.ModelLabel(result) : _coordinator.ModelId));
             persisted = true;
+            analyticsOutcome = AnalyticsOutcome.Success;
             persistenceMs = stageStarted.ElapsedMilliseconds;
 
             if (_pasteTarget != IntPtr.Zero)
@@ -673,6 +688,7 @@ public sealed class WinUiDictationContext : IDisposable
                     deliveryInputMs = paste.InputMs;
                     deliveryClipboardMs = paste.ClipboardMs;
                     Status = fellBack ? "Dictation inserted (transcribed on this PC)" : "Dictation inserted";
+                    analyticsDelivery = AnalyticsValue.Success;
                 }
                 catch (OperationCanceledException) when (_operationCancellation.IsCancellationRequested)
                 {
@@ -683,6 +699,8 @@ public sealed class WinUiDictationContext : IDisposable
                     await _paste.CopyTextAsync(text, CancellationToken.None);
                     deliveryMs = stageStarted.ElapsedMilliseconds;
                     Status = "Paste failed; transcript saved and copied";
+                    analyticsOutcome = AnalyticsOutcome.Partial;
+                    analyticsDelivery = AnalyticsValue.Failed;
                     _log.Error("WinUI active-app paste failed after dictation persistence.", pasteException);
                 }
             }
@@ -694,6 +712,7 @@ public sealed class WinUiDictationContext : IDisposable
         catch (OperationCanceledException)
         {
             Status = persisted ? "Dictation saved; insertion cancelled" : "Dictation cancelled";
+            analyticsOutcome = persisted ? AnalyticsOutcome.Partial : AnalyticsOutcome.Cancelled;
         }
         catch (HostedDictationException exception)
         {
@@ -732,6 +751,11 @@ public sealed class WinUiDictationContext : IDisposable
             // After the log, so the recorded outcome stays the real one. The text has already
             // been delivered; this only replaces the status the pill and dashboard show.
             if (slowNotice is not null) Status = slowNotice;
+            _ = _analytics?.Finish(
+                analyticsOutcome,
+                (AnalyticsField.Saved, persisted ? AnalyticsValue.Yes : AnalyticsValue.No),
+                (AnalyticsField.Delivery, analyticsDelivery));
+            _analytics = null;
             ReleaseHostedSession();
             _pasteTarget = IntPtr.Zero;
             _delivering = false;

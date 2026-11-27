@@ -85,6 +85,13 @@ if ($env:MUESLI_SHARED_CORE_MODE -eq 'managed-fallback') {
 
 $arguments += '-p:AppxPackageSigningEnabled=false'
 
+# Usage analytics report as production only from a package built for the public: the Store
+# package, or a release given its production publisher. Every other package, including local,
+# rehearsal and CI builds, carries no channel and sends no analytics.
+if ($Store -or $Publisher) {
+    $arguments += '-p:MuesliTelemetryChannel=production'
+}
+
 Write-Host "Packaging Muesli ($Configuration, x64)..." -ForegroundColor Cyan
 # Compile resources against the Store identity, rather than renaming only the final manifest.
 # The tracked development manifest is never edited. A unique temporary copy also avoids carrying

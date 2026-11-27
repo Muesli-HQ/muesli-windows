@@ -42,7 +42,14 @@ public sealed class SettingsStore
             _saveSuppressedToPreserveUnreadableOrFutureData = true;
             LastWarning =
                 $"Settings schema {settings.SchemaVersion} is newer than this app supports. The file was left unchanged and settings changes will not be saved by this version.";
-            return new MuesliSettings();
+            // The saved analytics choice cannot be read, so it must not default back to sharing.
+            return new MuesliSettings { ShareUsageAnalytics = false };
+        }
+        if (result.HadCorruption)
+        {
+            // The file that held the current choice is unreadable. Defaults would turn analytics
+            // back on, and so could the backup: it is the previous save, from before an opt-out.
+            settings = settings with { ShareUsageAnalytics = false };
         }
         // Single normalization boundary: explicit JSON nulls, wrong-typed enum-like strings, invalid
         // colours/endpoints and null nested collections must never leak into the product object.
@@ -528,6 +535,7 @@ public sealed record MuesliSettings
     public bool ComputerUseIncludeBrowserPageText { get; init; }
     public string ComputerUseBrowserInterface { get; init; } = "none";
     public string ComputerUseBrowserEndpoint { get; init; } = "http://127.0.0.1:9222";
+    public bool ShareUsageAnalytics { get; init; } = true;
     public bool ShowFloatingIndicator { get; init; } = true;
     public bool SoundEnabled { get; init; } = true;
     public string IndicatorAnchor { get; init; } = "Middle Right";

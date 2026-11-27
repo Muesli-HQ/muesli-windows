@@ -229,6 +229,18 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10">
                                 <StackPanel MinWidth="0">
+                                    <TextBlock Text="Share usage analytics" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Send feature usage to TelemetryDeck. Audio and transcripts stay out of analytics." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.ShareUsageAnalytics, Mode=TwoWay}"
+                                              AutomationProperties.Name="Share usage analytics"
+                                              AutomationProperties.AutomationId="ShareUsageAnalyticsToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                <StackPanel MinWidth="0">
                                     <TextBlock Text="Launch at login" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Start Muesli after you sign in to Windows." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>

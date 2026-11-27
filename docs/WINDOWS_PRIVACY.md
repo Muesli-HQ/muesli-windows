@@ -1,6 +1,26 @@
 # Muesli for Windows — Privacy
 
-Muesli is a local-first dictation and meeting-transcription application. It does not include product telemetry or analytics in the current Windows build.
+Muesli is a local-first dictation and meeting-transcription application.
+
+## Usage analytics
+
+Usage analytics are enabled by default in released builds. Turn off **Settings → General → Share usage analytics** to stop sending events. The choice takes effect immediately and is remembered across restarts. If Muesli cannot read its settings file, it treats analytics as turned off.
+
+When enabled, Muesli sends these events to TelemetryDeck, using the same names as Muesli for macOS:
+
+| Event | When | Extra fields |
+| --- | --- | --- |
+| `TelemetryDeck.Session.started` | The app is launched | none |
+| `onboarding.completed` | Setup is finished | none |
+| `dictation.started`, `dictation.finished` | A dictation starts recording and ends | `outcome`, `saved` (yes/no), `delivery` (success/failed/none) |
+| `meeting.started`, `meeting.finished` | A meeting recording starts and is saved, discarded or fails | `outcome`, `saved` |
+| `workflow.started`, `workflow.finished` | A media file import starts and ends | `feature` (imported), `outcome` |
+
+`outcome` is one of success, cancelled, failed, discarded or partial. Every event also carries the platform (Windows), the app version, the release channel, a session ID that is new on each launch, and a hash of a random installation ID stored in the Muesli profile. That ID is not derived from the PC, the Windows account or anything you entered. As with any request, TelemetryDeck's server sees the sending IP address; TelemetryDeck states that it does not store it.
+
+Audio, transcripts, notes, titles, file paths, window and app names, microphone names, model names, API keys, account details and error messages are never part of an event: the code that builds events accepts only the fixed values listed above.
+
+Only a release package reports to the production TelemetryDeck app. Builds made from source, development slots and CI builds carry no analytics channel and send nothing unless a developer opts a build into the separate development app. Events are best effort: they are never queued to disk or retried, and an event still waiting when you opt out is dropped.
 
 ## Audio and transcripts
 
