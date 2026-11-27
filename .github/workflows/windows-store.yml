@@ -5,12 +5,16 @@ on:
     branches: [main, codex/windows-store-release]
   pull_request:
   workflow_dispatch:
+  # Called by the release workflow (windows-release.yml) to build the package it submits.
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-store-${{ github.ref }}
+  # github.workflow is the calling workflow's name when this runs as a reusable workflow, so a
+  # release never cancels, or is cancelled by, the package build of a push to the same branch.
+  group: windows-store-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

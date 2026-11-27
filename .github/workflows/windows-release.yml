@@ -1,0 +1,237 @@
+name: Windows release
+
+# Builds, verifies and drafts a Muesli for Windows release. Started by
+# scripts/release-windows.ps1, which checks the preconditions first, verifies the draft's assets
+# afterwards and only then publishes it. See docs/WINDOWS_RELEASE.md.
+#
+# What ships on GitHub Releases is the UNSIGNED developer build (development identity, no
+# analytics). There is no code-signing certificate, so this workflow never signs. A signed build
+# reaches ordinary users through the Microsoft Store: the optional store jobs below hand the
+# Store package to Partner Center, and Microsoft signs it after certification.
+#
+# A pull request that changes the release tooling runs the build job as a dry run, so the
+# workflow is exercised before it is ever used for a real release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, for example 0.3.0. Must equal MuesliVersion.
+        required: true
+        type: string
+      dry_run:
+        description: Build and verify only. No tag, no release, no Store submission.
+        type: boolean
+        default: true
+      store_submission:
+        description: "Microsoft Store: none, draft (upload, do not submit) or submit for certification."
+        type: choice
+        options: [none, draft, submit]
+        default: none
+  pull_request:
+    paths:
+      - .github/workflows/windows-release.yml
+      - scripts/release-windows.ps1
+      - scripts/stage-release-assets.ps1
+      - scripts/install-developer-build.ps1
+
+permissions:
+  contents: read
+
+# One real release at a time, never cancelled half way. Pull-request dry runs supersede each other.
+concurrency:
+  group: windows-release-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build and verify
+    runs-on: windows-latest
+    timeout-minutes: 90
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      publish: ${{ steps.plan.outputs.publish }}
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      DOTNET_MULTILEVEL_LOOKUP: "0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check the release request
+        id: plan
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./scripts/read-release-properties.ps1
+          . ./scripts/release-common.ps1
+          $release = Get-MuesliReleaseProperties -Root $PWD.Path
+          $dispatch = $env:EVENT_NAME -eq 'workflow_dispatch'
+          $version = if ($dispatch) { $env:REQUESTED_VERSION.Trim().TrimStart('v') } else { $release.Version }
+          $publish = $dispatch -and $env:DRY_RUN -eq 'false'
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Version '$version' must be three numbers, for example 0.3.0." }
+          if ($version -ne $release.Version) {
+            throw "Requested version $version does not match MuesliVersion $($release.Version). Run scripts/release-windows.ps1 -SetVersion and merge that change first."
+          }
+          Assert-MuesliReleaseNotes -Path (Get-MuesliReleaseNotesPath -Root $PWD.Path -Version $version)
+          if ($publish) {
+            if ($env:GITHUB_REF -ne 'refs/heads/main') { throw "Releases are cut from main, not $env:GITHUB_REF. Use a dry run on other branches." }
+            $tags = @(gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/v$version" | ConvertFrom-Json)
+            if ($LASTEXITCODE -ne 0) { throw 'Could not look up existing tags.' }
+            if (@($tags | Where-Object { $_.ref -eq "refs/tags/v$version" }).Count -gt 0) { throw "Tag v$version already exists. Choose the next version." }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "publish=$($publish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          Write-Host "Release $version (publish=$publish) from $env:GITHUB_SHA"
+
+      - uses: ./.github/actions/prepare-windows-build
+        with:
+          shared-repo-token: ${{ secrets.MUESLI_SHARED_REPO_TOKEN }}
+
+      # The same rehearsal CI runs on every pull request, here with the unit tests included:
+      # tests, Release x64 MSIX, payload normalisation, smoke checks and inventories.
+      - name: Test, build and smoke-check the package
+        shell: pwsh
+        run: ./scripts/rehearse-windows-release.ps1 -SkipTwoBuildCompare
+
+      - name: Release qualification gate
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: ./scripts/qualify-windows-release.ps1 -MsixPath "artifacts/msix/Muesli.Windows.WinUI_${env:VERSION}_x64.msix"
+
+      - name: Check the package identity and stage the release assets
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: ./scripts/stage-release-assets.ps1 -Version $env:VERSION
+
+      - name: Upload the staged release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-release-${{ steps.plan.outputs.version }}
+          if-no-files-found: error
+          retention-days: 30
+          path: artifacts/release/
+
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-release-evidence-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            artifacts/test-results/*.trx
+            artifacts/msix-smoke-report.json
+            artifacts/release-hashes.json
+            artifacts/release-rehearsal-report.json
+            artifacts/native-runtime-inventory.json
+            artifacts/package-content-inventory.json
+            artifacts/qualification/msix/release-qualification.json
+
+  release:
+    name: draft GitHub release
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-release-${{ needs.build.outputs.version }}
+          path: release
+
+      # The release stays a draft. scripts/release-windows.ps1 downloads these assets, verifies
+      # them again and publishes; publishing is what creates the tag.
+      - name: Create the draft release
+        working-directory: release
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          sha256sum --check --strict SHA256SUMS.txt
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate --jq ".[] | select(.tag_name == \"${tag}\") | .id" | wc -l)
+          if [ "${existing}" -ne 0 ]; then
+            echo "::error::A release or draft for ${tag} already exists. Delete it or choose the next version."
+            exit 1
+          fi
+          gh release create "${tag}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft \
+            --prerelease \
+            --target "${GITHUB_SHA}" \
+            --title "Muesli for Windows ${VERSION} (unsigned developer build)" \
+            --notes-file RELEASE-NOTES.md \
+            "Muesli-Windows-${VERSION}-x64-unsigned.msix" \
+            Install-MuesliDeveloperBuild.ps1 \
+            SHA256SUMS.txt
+          echo "Draft release ${tag} created for ${GITHUB_SHA}." >> "${GITHUB_STEP_SUMMARY}"
+
+  # ---- Microsoft Store (optional, off by default) ----
+  # Reuses the Store package workflow, then hands the verified package to Partner Center with the
+  # Microsoft Store Developer CLI. Needs the repository secrets PARTNER_CENTER_TENANT_ID,
+  # PARTNER_CENTER_SELLER_ID, PARTNER_CENTER_CLIENT_ID and PARTNER_CENTER_CLIENT_SECRET, and a
+  # product whose first submission was already made by hand in Partner Center.
+  store-package:
+    name: store package
+    needs: build
+    if: needs.build.outputs.publish == 'true' && inputs.store_submission != 'none'
+    uses: ./.github/workflows/windows-store.yml
+    secrets: inherit
+
+  store-submit:
+    name: submit to Microsoft Store
+    needs: [build, release, store-package]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: windows-native/store-identity.json
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-store-package-${{ github.sha }}
+          path: store-package
+
+      - uses: microsoft/setup-msstore-cli@3b2ec9136230357ce9abc02b9d056626fb248d3f # v1
+
+      - name: Hand the package to Partner Center
+        shell: pwsh
+        env:
+          STORE_SUBMISSION: ${{ inputs.store_submission }}
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in 'PARTNER_CENTER_TENANT_ID', 'PARTNER_CENTER_SELLER_ID', 'PARTNER_CENTER_CLIENT_ID', 'PARTNER_CENTER_CLIENT_SECRET') {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Repository secret $name is not set. See docs/WINDOWS_RELEASE.md."
+            }
+          }
+          $identity = Get-Content windows-native/store-identity.json -Raw | ConvertFrom-Json
+          $packages = @(Get-ChildItem store-package -Recurse -File -Filter '*.msix')
+          if ($packages.Count -ne 1) { throw "Expected one Store package, found $($packages.Count)." }
+          msstore reconfigure --tenantId $env:PARTNER_CENTER_TENANT_ID --sellerId $env:PARTNER_CENTER_SELLER_ID --clientId $env:PARTNER_CENTER_CLIENT_ID --clientSecret $env:PARTNER_CENTER_CLIENT_SECRET
+          if ($LASTEXITCODE -ne 0) { throw 'Could not sign in to Partner Center.' }
+          $arguments = @('publish', '-i', $packages[0].DirectoryName, '-id', $identity.storeId)
+          if ($env:STORE_SUBMISSION -eq 'draft') { $arguments += '-nc' }
+          msstore @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'The Store submission failed.' }
+          "Store package $($packages[0].Name) handed to Partner Center ($env:STORE_SUBMISSION) for $($identity.storeId)." >> $env:GITHUB_STEP_SUMMARY
