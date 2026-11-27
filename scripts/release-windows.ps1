@@ -310,7 +310,7 @@ if ($draftNow.Count -ne 1 -or -not $draftNow[0].draft) {
 if ($draftNow[0].target_commitish -ne $head) {
     throw "The draft release for $tag targets '$($draftNow[0].target_commitish)', not this commit $head. Nothing was published."
 }
-Confirm-Step -Question "Publish the verified draft as pre-release $tag? This makes it public and creates the tag."
+Confirm-Step -Question "Publish the verified draft as pre-release ${tag}? This makes it public and creates the tag."
 Invoke-Tool -Tool gh -Arguments @('release', 'edit', $tag, '--draft=false', '--prerelease') -Failure "Could not publish the draft. It is still a draft; rerun this command to try again" | Out-Null
 
 $final = Invoke-GhJson -Arguments @('release', 'view', $tag, '--json', 'url,isDraft,isPrerelease,tagName,targetCommitish')
