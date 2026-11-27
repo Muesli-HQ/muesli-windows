@@ -90,6 +90,7 @@ internal static class TrayMenuModel
 public sealed class WindowsTrayIconService : IDisposable
 {
     private const uint IconId = 1;
+    private const int TrayIconSourceSize = 32;
     private const string WindowClassName = "MuesliTrayIconWindow";
 
     private static readonly ConcurrentDictionary<nint, WindowsTrayIconService> Instances = new();
@@ -393,10 +394,11 @@ public sealed class WindowsTrayIconService : IDisposable
     {
         if (!string.IsNullOrWhiteSpace(iconPath) && File.Exists(iconPath))
         {
+            // Always the 32-pixel image, which the shell scales to the tray size. That is what the
+            // Windows Forms icon did, so the mark keeps the weight users already see. The file's
+            // 16/20/24-pixel images are drawn with thinner bars and look visibly different.
             var icon = NativeMethods.LoadImageW(
-                0, iconPath, NativeMethods.IMAGE_ICON,
-                NativeMethods.GetSystemMetrics(NativeMethods.SM_CXSMICON),
-                NativeMethods.GetSystemMetrics(NativeMethods.SM_CYSMICON),
+                0, iconPath, NativeMethods.IMAGE_ICON, TrayIconSourceSize, TrayIconSourceSize,
                 NativeMethods.LR_LOADFROMFILE);
             if (icon != 0) return (icon, true);
         }
@@ -435,8 +437,6 @@ public sealed class WindowsTrayIconService : IDisposable
         public const uint WS_EX_TOOLWINDOW = 0x00000080;
         public const uint IMAGE_ICON = 1;
         public const uint LR_LOADFROMFILE = 0x0010;
-        public const int SM_CXSMICON = 49;
-        public const int SM_CYSMICON = 50;
         public const nint IDI_APPLICATION = 32512;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -535,9 +535,6 @@ public sealed class WindowsTrayIconService : IDisposable
         [DllImport("user32.dll", ExactSpelling = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool DestroyIcon(nint icon);
-
-        [DllImport("user32.dll", ExactSpelling = true)]
-        public static extern int GetSystemMetrics(int index);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         public static extern nint GetModuleHandleW(string? moduleName);
