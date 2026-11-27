@@ -37,6 +37,33 @@ public enum MeetingExportMode
     FullMeeting
 }
 
+/// <summary>
+/// The auto-export file format, with the macOS ids (<c>MeetingAutoExportFileFormat</c>).
+/// </summary>
+public static class AutoExportFileFormats
+{
+    public const string Markdown = "markdown";
+    public const string Pdf = "pdf";
+    public const string MarkdownAndPdf = "markdown_and_pdf";
+
+    public static string Resolve(MuesliSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings.AutoExportFileFormat?.Trim().ToLowerInvariant() switch
+        {
+            Markdown => Markdown,
+            Pdf => Pdf,
+            MarkdownAndPdf => MarkdownAndPdf,
+            // Files from before the picker: the old "Also export PDF" switch added a PDF beside
+            // the Markdown copy.
+            _ => settings.AutoExportPdfEnabled ? MarkdownAndPdf : Markdown
+        };
+    }
+
+    public static bool IncludesMarkdown(string format) => format is Markdown or MarkdownAndPdf;
+    public static bool IncludesPdf(string format) => format is Pdf or MarkdownAndPdf;
+}
+
 public sealed record PostMeetingRetryPolicy
 {
     public int MaxAttempts { get; init; } = 1;
@@ -49,8 +76,11 @@ public sealed record PostMeetingAutomationOptions
     {
         HookEnabled = settings.PostMeetingHookEnabled,
         HookExecutablePath = settings.PostMeetingHookExecutablePath,
-        AutoExportEnabled = settings.AutoExportMarkdownEnabled,
-        AutoExportPdfEnabled = settings.AutoExportPdfEnabled,
+        // "Auto-export meetings" is the master switch; the file format says which files it writes.
+        AutoExportEnabled = settings.AutoExportMarkdownEnabled &&
+                            AutoExportFileFormats.IncludesMarkdown(AutoExportFileFormats.Resolve(settings)),
+        AutoExportPdfEnabled = settings.AutoExportMarkdownEnabled &&
+                               AutoExportFileFormats.IncludesPdf(AutoExportFileFormats.Resolve(settings)),
         AutoExportDirectory = settings.AutoExportMarkdownDirectory,
         AutoExportMode = settings.AutoExportMarkdownContent switch
         {

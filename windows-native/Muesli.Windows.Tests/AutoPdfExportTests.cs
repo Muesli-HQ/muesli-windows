@@ -9,19 +9,79 @@ namespace Muesli.Windows.Tests;
 
 public sealed class AutoPdfExportTests
 {
-    [Fact]
-    public void SettingsMapIntoLmStudioAndPdfAutomationOptions()
+    [Theory]
+    [InlineData("markdown", true, false)]
+    [InlineData("pdf", false, true)]
+    [InlineData("markdown_and_pdf", true, true)]
+    public void AutoExportMeetingsWritesTheChosenFileFormats(string format, bool markdown, bool pdf)
+    {
+        var options = PostMeetingAutomationOptions.FromSettings(new MuesliSettings
+        {
+            AutoExportMarkdownEnabled = true,
+            AutoExportFileFormat = format,
+            AutoExportMarkdownDirectory = @"C:\exports"
+        });
+
+        Assert.Equal(markdown, options.AutoExportEnabled);
+        Assert.Equal(pdf, options.AutoExportPdfEnabled);
+        Assert.Equal(@"C:\exports", options.AutoExportDirectory);
+    }
+
+    [Theory]
+    [InlineData("markdown")]
+    [InlineData("pdf")]
+    [InlineData("markdown_and_pdf")]
+    public void NothingIsExportedWhileAutoExportMeetingsIsOff(string format)
     {
         var options = PostMeetingAutomationOptions.FromSettings(new MuesliSettings
         {
             AutoExportMarkdownEnabled = false,
             AutoExportPdfEnabled = true,
-            AutoExportMarkdownDirectory = @"C:\exports"
+            AutoExportFileFormat = format
         });
 
         Assert.False(options.AutoExportEnabled);
-        Assert.True(options.AutoExportPdfEnabled);
-        Assert.Equal(@"C:\exports", options.AutoExportDirectory);
+        Assert.False(options.AutoExportPdfEnabled);
+    }
+
+    [Theory]
+    [InlineData(false, "markdown")]
+    [InlineData(true, "markdown_and_pdf")]
+    public void SettingsFromBeforeTheFormatPickerKeepTheirPdfChoice(bool legacyPdf, string expected)
+    {
+        var settings = new MuesliSettings { AutoExportMarkdownEnabled = true, AutoExportPdfEnabled = legacyPdf };
+
+        Assert.Null(settings.AutoExportFileFormat);
+        Assert.Equal(expected, AutoExportFileFormats.Resolve(settings));
+    }
+
+    [Fact]
+    public void TheFileFormatSurvivesASaveAndLoad()
+    {
+        using var directory = new TestDirectory();
+        var store = new SettingsStore(Path.Combine(directory.Path, "settings.json"), new InMemorySecretStore());
+        store.Save(store.Load() with { AutoExportFileFormat = AutoExportFileFormats.Pdf, AutoExportMarkdownContent = "transcript" });
+
+        var loaded = store.Load();
+
+        Assert.Equal(AutoExportFileFormats.Pdf, AutoExportFileFormats.Resolve(loaded));
+        Assert.Equal("transcript", loaded.AutoExportMarkdownContent);
+    }
+
+    [Theory]
+    [InlineData(MeetingExportMode.Notes, "Decisions", "## Raw Transcript")]
+    [InlineData(MeetingExportMode.Transcript, "## Raw Transcript", "Decisions")]
+    public void NotesAndTranscriptExportsCarryOnlyTheirOwnDocument(MeetingExportMode mode, string present, string absent)
+    {
+        var markdown = MeetingExportFormatter.BuildMarkdown(Meeting("separate") with
+        {
+            Summary = "## Decisions\n- Ship it",
+            Transcript = "[10:00:00] You: hello"
+        }, mode);
+
+        Assert.Contains("# Release sync", markdown);
+        Assert.Contains(present, markdown);
+        Assert.DoesNotContain(absent, markdown);
     }
 
     [Fact]

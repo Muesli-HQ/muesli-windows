@@ -195,7 +195,18 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     partial void OnHasMeetingChanged(bool value) => NotifyPresentation();
 
-    partial void OnShowNotesTabChanged(bool value) => NotifyPresentation();
+    partial void OnShowNotesTabChanged(bool value)
+    {
+        NotifyPresentation();
+        OnPropertyChanged(nameof(CopyHint));
+        OnPropertyChanged(nameof(ExportCurrentLabel));
+    }
+
+    /// <summary>macOS "Copy" copies whichever document is showing, Notes or Transcript.</summary>
+    public string CopyHint => ShowNotesTab ? "Copy notes" : "Copy transcript";
+
+    /// <summary>macOS names the first Export item after the document that is showing.</summary>
+    public string ExportCurrentLabel => ShowNotesTab ? "Export Notes" : "Export Transcript";
 
     partial void OnManualNotesChanged(string value)
     {
@@ -349,42 +360,77 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         ShowStatus(result.Status, !result.Succeeded);
     }
 
+    /// <summary>The document that is showing: Notes (generated notes and My notes) or Transcript.</summary>
+    private MeetingExportMode CurrentDocument => ShowNotesTab ? MeetingExportMode.Notes : MeetingExportMode.Transcript;
+
     [RelayCommand]
-    private async Task CopyTranscriptAsync(CancellationToken cancellationToken)
+    private async Task CopyAsync(CancellationToken cancellationToken)
     {
         if (_meeting is null) return;
+        var mode = CurrentDocument;
+        var what = mode == MeetingExportMode.Notes ? "notes" : "transcript";
         try
         {
-            // macOS copies with the export metadata header (title, date, duration, words).
+            // macOS copies the showing document, unsaved edits included, under the export metadata
+            // header (title, date, duration, words).
             await _clipboard.SetTextAsync(MeetingExportFormatter.BuildMarkdown(
-                ToMeetingItem(_meeting), MeetingExportMode.Transcript, _meeting.SpeakerAliases), cancellationToken);
-            ShowStatus("Transcript copied to the clipboard.");
+                CurrentExportItem(), mode, _meeting.SpeakerAliases), cancellationToken);
+            ShowStatus(mode == MeetingExportMode.Notes ? "Notes copied to the clipboard." : "Transcript copied to the clipboard.");
         }
         catch (OperationCanceledException) { }
-        catch (Exception exception) { ShowStatus($"Could not copy the transcript: {WinUiClipboardService.DescribeFailure(exception)}", true); }
+        catch (Exception exception) { ShowStatus($"Could not copy the {what}: {WinUiClipboardService.DescribeFailure(exception)}", true); }
     }
 
     [RelayCommand]
-    private async Task ExportMarkdownAsync(CancellationToken cancellationToken)
+    private Task ExportCurrentAsync(CancellationToken cancellationToken) => ExportAsync(CurrentDocument, cancellationToken);
+
+    [RelayCommand]
+    private Task ExportFullMeetingAsync(CancellationToken cancellationToken) => ExportAsync(MeetingExportMode.FullMeeting, cancellationToken);
+
+    private async Task ExportAsync(MeetingExportMode mode, CancellationToken cancellationToken)
     {
         if (_meeting is null) return;
         try
         {
-            var model = ToMeetingItem(_meeting);
-            var suggestedName = Path.ChangeExtension(
-                MeetingExportFormatter.SuggestFilename(model, MeetingExportMode.FullMeeting), ".md");
+            var model = CurrentExportItem();
+            var suggestedName = Path.ChangeExtension(MeetingExportFormatter.SuggestFilename(model, mode), ".md");
+            var pickerTitle = mode switch
+            {
+                MeetingExportMode.Notes => "Export notes",
+                MeetingExportMode.Transcript => "Export transcript",
+                _ => "Export meeting"
+            };
             var picked = await _filePickers.PickSaveFileAsync(
-                new FilePickerRequest("Export meeting", MeetingDocumentWriter.ExportExtensions, suggestedName), cancellationToken);
+                new FilePickerRequest(pickerTitle, MeetingDocumentWriter.ExportExtensions, suggestedName), cancellationToken);
             if (picked is null) return;
-            var markdown = MeetingExportFormatter.BuildMarkdown(model, MeetingExportMode.FullMeeting, _meeting.SpeakerAliases);
+            var markdown = MeetingExportFormatter.BuildMarkdown(model, mode, _meeting.SpeakerAliases);
             await Task.Run(() => MeetingDocumentWriter.Write(markdown, picked.Path), cancellationToken);
             // Like macOS, the export opens in the user's default app; that is the confirmation. The
             // status line is only the fallback for when nothing on this PC can open the file.
             if (!TryOpenExportedFile(picked.Path))
-                ShowStatus($"Meeting exported to {picked.DisplayName}.");
+                ShowStatus($"Exported to {picked.DisplayName}.");
         }
         catch (OperationCanceledException) { }
-        catch (Exception exception) { ShowStatus($"Could not export the meeting: {exception.Message}", true); }
+        catch (Exception exception) { ShowStatus($"Could not export: {exception.Message}", true); }
+    }
+
+    /// <summary>
+    /// The saved meeting with the title, transcript and My notes as they are in the editors now,
+    /// so Copy and Export match what is on screen even before Save (macOS does the same).
+    /// </summary>
+    private Muesli.Windows.MeetingItem CurrentExportItem()
+    {
+        var item = ToMeetingItem(_meeting!);
+        // The editor shows the transcript with speaker names applied; keep the saved text when it
+        // is unchanged so the exporter does not apply the names a second time.
+        var unchanged = string.Equals(Transcript,
+            SpeakerAliasService.Apply(_meeting!.Transcript, _meeting.SpeakerAliases), StringComparison.Ordinal);
+        return item with
+        {
+            Title = string.IsNullOrWhiteSpace(Title) ? item.Title : Title.Trim(),
+            Transcript = unchanged ? item.Transcript : Transcript ?? "",
+            ManualNotes = ManualNotes ?? ""
+        };
     }
 
     private static bool TryOpenExportedFile(string path)

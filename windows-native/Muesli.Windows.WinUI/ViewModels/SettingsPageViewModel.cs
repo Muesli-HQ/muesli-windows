@@ -81,7 +81,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool SaveMeetingRecordings { get; set; }
     [ObservableProperty] public partial bool AutoExportMarkdownEnabled { get; set; }
     [ObservableProperty] public partial string AutoExportMarkdownDirectory { get; set; } = "";
-    [ObservableProperty] public partial bool AutoExportPdfEnabled { get; set; }
+    [ObservableProperty] public partial SettingsChoice? SelectedAutoExportContent { get; set; }
+    [ObservableProperty] public partial SettingsChoice? SelectedAutoExportFileFormat { get; set; }
     [ObservableProperty] public partial bool PostMeetingHookEnabled { get; set; }
     [ObservableProperty] public partial string PostMeetingHookExecutablePath { get; set; } = "";
     [ObservableProperty] public partial int PostMeetingHookTimeoutSeconds { get; set; } = 30;
@@ -187,14 +188,28 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     /// blank box. An empty directory makes the exporter fail with "Select a rooted auto-export
     /// directory." (Muesli.Windows.Platform/Services/PostMeetingAutomationService.cs:423-424).
     /// </summary>
-    public string PdfAutoExportHelp => "Save a PDF copy beside the Markdown file. Existing edited files are kept.";
+    /// <summary>macOS <c>MeetingExportContent</c>, with the ids Windows already stores.</summary>
+    public IReadOnlyList<SettingsChoice> AutoExportContentChoices { get; } =
+    [
+        new("notes", "Notes"),
+        new("transcript", "Transcript"),
+        new("full-meeting", "Full Meeting")
+    ];
+
+    /// <summary>macOS <c>MeetingAutoExportFileFormat</c>.</summary>
+    public IReadOnlyList<SettingsChoice> AutoExportFileFormatChoices { get; } =
+    [
+        new(AutoExportFileFormats.Markdown, "Markdown"),
+        new(AutoExportFileFormats.Pdf, "PDF"),
+        new(AutoExportFileFormats.MarkdownAndPdf, "Markdown and PDF")
+    ];
 
     public string AutoExportFolderHelp =>
         !AutoExportMarkdownEnabled
-            ? "Turn on automatic export to choose where the Markdown copy is written."
+            ? "Turn on Auto-export meetings to choose where copies are written."
             : string.IsNullOrWhiteSpace(AutoExportMarkdownDirectory)
                 ? "Nothing is exported until you choose a folder on this PC."
-                : "A Markdown copy of each completed meeting is written here.";
+                : "A copy of each completed meeting is written here.";
 
     public void ReportFolderPickerFailure(string message) =>
         ShowStatus($"The folder could not be chosen: {message}", isError: true);
@@ -298,7 +313,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         [nameof(UserName)] = new("Your name",
             vm => vm.UserName, (vm, value) => vm.UserName = value,
             settings => settings.UserName, (settings, value) => settings with { UserName = value }),
-        [nameof(AutoExportMarkdownDirectory)] = new("Export folder",
+        [nameof(AutoExportMarkdownDirectory)] = new("Destination folder",
             vm => vm.AutoExportMarkdownDirectory, (vm, value) => vm.AutoExportMarkdownDirectory = value,
             settings => settings.AutoExportMarkdownDirectory,
             (settings, value) => settings with { AutoExportMarkdownDirectory = value },
@@ -453,7 +468,15 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(AutoMeetingDetectionEnabled) => settings with { AutoMeetingDetectionEnabled = AutoMeetingDetectionEnabled },
         nameof(SaveMeetingRecordings) => settings with { SaveMeetingRecordings = SaveMeetingRecordings },
         nameof(AutoExportMarkdownEnabled) => settings with { AutoExportMarkdownEnabled = AutoExportMarkdownEnabled },
-        nameof(AutoExportPdfEnabled) => settings with { AutoExportPdfEnabled = AutoExportPdfEnabled },
+        nameof(SelectedAutoExportContent) when SelectedAutoExportContent is { } content =>
+            settings with { AutoExportMarkdownContent = content.Id },
+        // The legacy PDF switch is kept in step so an older build reading this file agrees.
+        nameof(SelectedAutoExportFileFormat) when SelectedAutoExportFileFormat is { } format =>
+            settings with
+            {
+                AutoExportFileFormat = format.Id,
+                AutoExportPdfEnabled = AutoExportFileFormats.IncludesPdf(format.Id)
+            },
         nameof(PostMeetingHookEnabled) => settings with { PostMeetingHookEnabled = PostMeetingHookEnabled },
         nameof(PostMeetingHookTimeoutSeconds) =>
             settings with { PostMeetingHookTimeoutSeconds = Math.Clamp(PostMeetingHookTimeoutSeconds, 1, 600) },
@@ -647,7 +670,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         SaveMeetingRecordings = settings.SaveMeetingRecordings;
         AutoExportMarkdownEnabled = settings.AutoExportMarkdownEnabled;
         AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory;
-        AutoExportPdfEnabled = settings.AutoExportPdfEnabled;
+        SelectedAutoExportContent = AutoExportContentChoices.FirstOrDefault(choice => choice.Id == settings.AutoExportMarkdownContent)
+            ?? AutoExportContentChoices[0];
+        var autoExportFormat = AutoExportFileFormats.Resolve(settings);
+        SelectedAutoExportFileFormat = AutoExportFileFormatChoices.First(choice => choice.Id == autoExportFormat);
         PostMeetingHookEnabled = settings.PostMeetingHookEnabled;
         PostMeetingHookExecutablePath = settings.PostMeetingHookExecutablePath;
         PostMeetingHookTimeoutSeconds = settings.PostMeetingHookTimeoutSeconds;

@@ -518,9 +518,18 @@ public sealed record MuesliSettings
     public string AutoExportMarkdownContent { get; init; } = "notes";
 
     /// <summary>
-    /// Asks for an automatic PDF beside the Markdown copy.
+    /// Legacy "Also export PDF" switch. Still written alongside <see cref="AutoExportFileFormat"/>
+    /// so an older build reading this file keeps exporting PDFs, and read only when that field is
+    /// absent.
     /// </summary>
     public bool AutoExportPdfEnabled { get; init; }
+
+    /// <summary>
+    /// The macOS auto-export file format: "markdown", "pdf" or "markdown_and_pdf". Null in files
+    /// written before the format picker; <see cref="AutoExportFileFormats.Resolve"/> then derives
+    /// it from <see cref="AutoExportPdfEnabled"/>.
+    /// </summary>
+    public string? AutoExportFileFormat { get; init; }
     public bool ComputerUseEnabled { get; init; }
     public string ComputerUsePlannerProvider { get; init; } = "none";
     public string ComputerUsePlannerModel { get; init; } = "";

@@ -646,8 +646,9 @@ public sealed class WinUiMeetingContext : IDisposable
             _settings.MeetingSummaryTemplate,
             generatedTitle);
         SaveMeeting(finalized);
+        var automationOptions = PostMeetingAutomationOptions.FromSettings(_settings);
         if (finalized.SessionState == MeetingSessionState.Completed &&
-            (_settings.PostMeetingHookEnabled || _settings.AutoExportMarkdownEnabled))
+            (automationOptions.HookEnabled || automationOptions.AutoExportEnabled || automationOptions.AutoExportPdfEnabled))
         {
             var item = new MeetingItem(finalized.Id, finalized.Title, finalized.CreatedAt, finalized.Transcript,
                 finalized.Summary, finalized.SourcePath, finalized.ModelProfile, finalized.DurationMs, finalized.FolderId,
@@ -656,7 +657,7 @@ public sealed class WinUiMeetingContext : IDisposable
                 finalized.SystemCaptureMode, finalized.RecoveredFromInterruption,
                 ManualNotes: finalized.ManualNotes, TitleIsManual: finalized.TitleIsManual, AutomationResult: finalized.AutomationResult);
             var automation = await new PostMeetingAutomationService().RunAsync(item,
-                PostMeetingAutomationOptions.FromSettings(_settings),
+                automationOptions,
                 finalized.RecoveredFromInterruption ? PostMeetingCompletionEvent.RecoveryCompleted : PostMeetingCompletionEvent.RecordingCompleted,
                 cancellationToken);
             finalized = (_library.FindMeeting(finalized.Id) ?? finalized) with { AutomationResult = automation };

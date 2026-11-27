@@ -1103,18 +1103,18 @@
                         <StackPanel>
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Automatically export Markdown" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Save a copy of completed notes. Existing edited files are kept." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Auto-export meetings" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Save a copy of each completed meeting. Existing edited files are kept." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1" Style="{StaticResource SettingsToggleStyle}"
                                               IsOn="{x:Bind ViewModel.AutoExportMarkdownEnabled, Mode=TwoWay}"
-                                              AutomationProperties.Name="Automatically export Markdown"
+                                              AutomationProperties.Name="Auto-export meetings"
                                               AutomationProperties.AutomationId="AutoExportMarkdownToggle" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Export folder" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Destination folder" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="{x:Bind ViewModel.AutoExportFolderHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <StackPanel x:Name="ExportFolderHost" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Right">
@@ -1122,8 +1122,8 @@
                                              Text="{x:Bind ViewModel.AutoExportMarkdownDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                              IsEnabled="{x:Bind ViewModel.AutoExportMarkdownEnabled, Mode=OneWay}"
                                              PlaceholderText="Choose a folder"
-                                             AutomationProperties.Name="Export folder"
-                                             AutomationProperties.HelpText="Enable Automatically export Markdown to change this folder."
+                                             AutomationProperties.Name="Destination folder"
+                                             AutomationProperties.HelpText="Turn on Auto-export meetings to change this folder."
                                              AutomationProperties.AutomationId="AutoExportMarkdownDirectory" />
                                     <Button Content="Browse…"
                                             Style="{StaticResource CompactActionStyle}"
@@ -1131,20 +1131,37 @@
                                             IsEnabled="{x:Bind ViewModel.AutoExportMarkdownEnabled, Mode=OneWay}"
                                             Click="BrowseExportFolder_Click"
                                             AutomationProperties.Name="Browse for an export folder"
-                                            AutomationProperties.HelpText="Enable Automatically export Markdown to choose a folder."
+                                            AutomationProperties.HelpText="Turn on Auto-export meetings to choose a folder."
                                             AutomationProperties.AutomationId="AutoExportMarkdownBrowseButton" />
                                 </StackPanel>
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
-                                    <TextBlock Text="Also export PDF" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="{x:Bind ViewModel.PdfAutoExportHelp, Mode=OneWay}" Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Content" Style="{StaticResource RowTitleStyle}" />
                                 </StackPanel>
-                                <ToggleSwitch Grid.Column="1" Style="{StaticResource SettingsToggleStyle}"
-                                              IsOn="{x:Bind ViewModel.AutoExportPdfEnabled, Mode=TwoWay}"
-                                              AutomationProperties.Name="Also export PDF"
-                                              AutomationProperties.AutomationId="AutoExportPdfToggle" />
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.AutoExportContentChoices}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedAutoExportContent, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          IsEnabled="{x:Bind ViewModel.AutoExportMarkdownEnabled, Mode=OneWay}"
+                                          AutomationProperties.Name="Auto-export content"
+                                          AutomationProperties.AutomationId="AutoExportContentBox" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="File format" Style="{StaticResource RowTitleStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.AutoExportFileFormatChoices}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedAutoExportFileFormat, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          IsEnabled="{x:Bind ViewModel.AutoExportMarkdownEnabled, Mode=OneWay}"
+                                          AutomationProperties.Name="Auto-export file format"
+                                          AutomationProperties.AutomationId="AutoExportFileFormatBox" />
                             </Grid>
                         </StackPanel>
                     </Border>
