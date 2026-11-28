@@ -600,7 +600,23 @@ public sealed class WinUiMeetingContext : IDisposable
 
     private void SaveMeeting(PersistedMeeting meeting) => _library.SaveMeeting(meeting);
 
+    /// <summary>
+    /// Raised on the UI thread when a stopped, recovered or imported meeting has been transcribed
+    /// and its notes saved (macOS "Transcription complete" notification).
+    /// </summary>
+    public event EventHandler<PersistedMeeting>? MeetingCompleted;
+
     private async Task<PersistedMeeting> FinalizeMeetingAsync(
+        PersistedMeeting meeting,
+        CancellationToken cancellationToken)
+    {
+        var finalized = await FinalizeMeetingCoreAsync(meeting, cancellationToken);
+        if (_dispatcher is null) MeetingCompleted?.Invoke(this, finalized);
+        else _dispatcher.TryEnqueue(() => MeetingCompleted?.Invoke(this, finalized));
+        return finalized;
+    }
+
+    private async Task<PersistedMeeting> FinalizeMeetingCoreAsync(
         PersistedMeeting meeting,
         CancellationToken cancellationToken)
     {
