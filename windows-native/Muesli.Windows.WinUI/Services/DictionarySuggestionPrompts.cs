@@ -12,6 +12,8 @@ namespace Muesli.Windows.WinUI.Services;
 public sealed class DictionarySuggestionPrompts : IDisposable
 {
     private const int MaxQueuedPrompts = 10;
+    private const int MaxReadRetries = 3;
+    private int _readFailures;
     private static readonly TimeSpan PromptAdvanceDelay = TimeSpan.FromMilliseconds(150);
 
     private readonly WinUiDictationContext _dictation;
@@ -126,10 +128,27 @@ public sealed class DictionarySuggestionPrompts : IDisposable
 
     private void PresentNext()
     {
-        if (_disposed || _activeKey is not null || _advancePending) return;
-        var settings = _settings.Load();
+        if (_disposed || _activeKey is not null || _advancePending || _queue.Count == 0) return;
+        MuesliSettings settings;
+        IReadOnlyList<DictionaryEntryRecord> dictionary;
+        try
+        {
+            settings = _settings.Load();
+            dictionary = _library.LoadDictionary();
+            _readFailures = 0;
+        }
+        catch (Exception exception)
+        {
+            // A transient read failure (database briefly unavailable) must not strand the cards
+            // already waiting. Retry a few times, a little later each time; after that the queue
+            // waits for the next correction rather than retrying forever.
+            _log.Error("Dictionary suggestions could not be read to show the next card.", exception);
+            if (++_readFailures <= MaxReadRetries) ScheduleNext(TimeSpan.FromSeconds(_readFailures));
+            else _readFailures = 0;
+            return;
+        }
+
         if (!settings.EnableDictionaryCorrectionPrompts) return;
-        var dictionary = _library.LoadDictionary();
         while (_queue.Count > 0)
         {
             var key = _queue[0];
@@ -197,11 +216,11 @@ public sealed class DictionarySuggestionPrompts : IDisposable
     }
 
     /// <summary>Shows the next queued card 150 ms from now, as macOS does between cards.</summary>
-    private void ScheduleNext()
+    private void ScheduleNext(TimeSpan? delay = null)
     {
         if (_advancePending) return;
         _advancePending = true;
-        _ = Task.Delay(PromptAdvanceDelay).ContinueWith(_ => _dispatcher.TryEnqueue(() =>
+        _ = Task.Delay(delay ?? PromptAdvanceDelay).ContinueWith(_ => _dispatcher.TryEnqueue(() =>
         {
             _advancePending = false;
             try
