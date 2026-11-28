@@ -305,26 +305,14 @@ public static class FloatingIndicatorLayout
 
     /// <summary>
     /// macOS meeting pill: a 22-point Discard button at x=1 and a Stop button 23 points from the
-    /// right edge. The waveform body has no command so dragging can never end a meeting.
+    /// right edge. The waveform body has no command so dragging can never end a meeting; pause and
+    /// resume live in the floating transcript header.
     /// </summary>
     public const double MeetingButtonRegionDip = 23;
-
-    /// <summary>
-    /// Windows adds a Pause/Resume button just left of Stop. macOS keeps pause in the hover
-    /// transcript header and the notch menu; the Windows pill has no notch, so it gets a button.
-    /// </summary>
-    public const double MeetingPauseButtonDip = 22;
-
-    /// <summary>The live meeting pill: the dictation pill widened by the Pause/Resume button.</summary>
-    public const double MeetingLiveWidth = LiveWidth + MeetingPauseButtonDip;
-
-    public const string MeetingPauseGlyph = "⏸";
-    public const string MeetingResumeGlyph = "▶";
 
     public static FloatingIndicatorAction MeetingActionForClick(double xDip, double widthDip) =>
         xDip < MeetingButtonRegionDip ? FloatingIndicatorAction.Cancel
         : xDip >= widthDip - MeetingButtonRegionDip ? FloatingIndicatorAction.Stop
-        : xDip >= widthDip - MeetingButtonRegionDip - MeetingPauseButtonDip ? FloatingIndicatorAction.TogglePause
         : FloatingIndicatorAction.None;
 
     /// <summary>
@@ -431,6 +419,5 @@ public enum FloatingIndicatorAction
 {
     None,
     Cancel,
-    Stop,
-    TogglePause
+    Stop
 }

@@ -55,9 +55,6 @@ internal sealed class FloatingIndicatorWindow : Window
     private IndicatorSnapshot? _applied;
     private FloatingIndicatorState _state = FloatingIndicatorState.Idle;
     private string _owner = IndicatorOwnerKind.None;
-    private bool _meetingPaused;
-
-    private bool IsLiveMeeting => _owner == IndicatorOwnerKind.Meeting && _state == FloatingIndicatorState.Recording;
     private bool _visible;
     private bool _shown;
     private bool _hovered;
@@ -279,7 +276,6 @@ internal sealed class FloatingIndicatorWindow : Window
         var previousState = _state;
         _state = StateFromName(snapshot.State);
         _owner = snapshot.Owner;
-        _meetingPaused = snapshot.MeetingPaused;
         _visible = snapshot.Visible;
         _handsFree = snapshot.HandsFree;
         _minimalStyle = string.Equals(snapshot.IndicatorStyle, "minimal", StringComparison.OrdinalIgnoreCase);
@@ -335,7 +331,6 @@ internal sealed class FloatingIndicatorWindow : Window
         var size = MinimalResting
             ? FloatingIndicatorLayout.MinimalRestingSize(_indicatorAnchor)
             : FloatingIndicatorLayout.SizeFor(_state, _hovered, _message);
-        if (IsLiveMeeting) size = size with { Width = FloatingIndicatorLayout.MeetingLiveWidth };
         _widthDip = size.Width;
         _heightDip = size.Height;
         _cornerRadiusDip = size.CornerRadius;
@@ -474,30 +469,7 @@ internal sealed class FloatingIndicatorWindow : Window
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center
         });
-        var bars = WaveformBars(brush);
-        if (isMeeting)
-        {
-            // The bars stay centred in the space left of the Pause/Resume button.
-            bars.Margin = new Thickness(0, 0, FloatingIndicatorLayout.MeetingPauseButtonDip, 0);
-            grid.Children.Add(new TextBlock
-            {
-                Text = _meetingPaused ? FloatingIndicatorLayout.MeetingResumeGlyph : FloatingIndicatorLayout.MeetingPauseGlyph,
-                FontSize = FloatingIndicatorLayout.MeetingControlFontSize + 1,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = _highContrast ? brush : Solid(FloatingIndicatorLayout.MeetingControlAlpha, 0xFF, 0xFF, 0xFF),
-                Width = FloatingIndicatorLayout.MeetingPauseButtonDip,
-                TextAlignment = TextAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, FloatingIndicatorLayout.MeetingButtonRegionDip, 0)
-            });
-            ToolTipService.SetToolTip(_pill, _meetingPaused ? "Resume meeting" : "Pause meeting");
-        }
-        else
-        {
-            ToolTipService.SetToolTip(_pill, null);
-        }
-        grid.Children.Add(bars);
+        grid.Children.Add(WaveformBars(brush));
         grid.Children.Add(new Border
         {
             Width = FloatingIndicatorLayout.StopSquareSize,
@@ -925,12 +897,7 @@ internal sealed class FloatingIndicatorWindow : Window
         _sendCommand(new IndicatorCommand
         {
             SessionId = _sessionId,
-            Type = action switch
-            {
-                FloatingIndicatorAction.Cancel => IndicatorCommandType.Cancel,
-                FloatingIndicatorAction.TogglePause => _meetingPaused ? IndicatorCommandType.Resume : IndicatorCommandType.Pause,
-                _ => IndicatorCommandType.Stop
-            }
+            Type = action == FloatingIndicatorAction.Cancel ? IndicatorCommandType.Cancel : IndicatorCommandType.Stop
         });
     }
 
