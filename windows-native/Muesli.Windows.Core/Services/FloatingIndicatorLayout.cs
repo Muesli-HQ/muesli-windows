@@ -318,9 +318,6 @@ public static class FloatingIndicatorLayout
     /// <summary>The live meeting pill: the dictation pill widened by the Pause/Resume button.</summary>
     public const double MeetingLiveWidth = LiveWidth + MeetingPauseButtonDip;
 
-    public const string MeetingPauseGlyph = "⏸";
-    public const string MeetingResumeGlyph = "▶";
-
     public static FloatingIndicatorAction MeetingActionForClick(double xDip, double widthDip) =>
         xDip < MeetingButtonRegionDip ? FloatingIndicatorAction.Cancel
         : xDip >= widthDip - MeetingButtonRegionDip ? FloatingIndicatorAction.Stop
