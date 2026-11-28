@@ -240,6 +240,20 @@ public sealed class DictationCorrectionBaselineTests
     }
 
     [Fact]
+    public void A_short_dictation_corrected_inside_an_existing_document_is_found()
+    {
+        const string pasted = "buy museli";
+        const string box = "Notes from the weekly planning call. Remember to buy museli";
+        const string edited = "Notes from the weekly planning call. Remember to buy muesli";
+        var baseline = new DictationCorrectionBaseline(pasted);
+        Assert.Empty(baseline.EditedSnapshots([box]));
+
+        var snapshot = Assert.Single(baseline.EditedSnapshots([edited]));
+        var suggestion = Assert.Single(DictionaryCorrectionDetector.Suggestions(pasted, baseline.Before, snapshot, 3, null));
+        Assert.Equal(("museli", "muesli"), (suggestion.Observed, suggestion.Replacement));
+    }
+
+    [Fact]
     public void Unrelated_text_never_becomes_the_baseline()
     {
         var baseline = new DictationCorrectionBaseline(Pasted);
@@ -349,6 +363,20 @@ public sealed class DictionarySuggestionLedgerTests
 
         var (_, again) = DictionarySuggestionLedger.Accept(saved, Museli, dictionary!);
         Assert.Null(again);
+    }
+
+    [Fact]
+    public void Accepting_a_correction_of_a_rules_output_retargets_that_rule()
+    {
+        var rule = new DictionaryEntryRecord { Id = "d1", Phrase = "museli", Replacement = "Musli", MatchingThreshold = 0.85 };
+        var (_, dictionary) = DictionarySuggestionLedger.Accept(Enabled, new DictionarySuggestion("Musli", "Muesli"), [rule]);
+
+        Assert.NotNull(dictionary);
+        var retargeted = Assert.Single(dictionary!, entry => entry.Id == "d1");
+        Assert.Equal(("museli", "Muesli", 0.85), (retargeted.Phrase, retargeted.Replacement, retargeted.MatchingThreshold));
+        Assert.Contains(dictionary!, entry => entry.Phrase == "Musli" && entry.Replacement == "Muesli");
+        // What the prompt promised: the next dictation of the misheard word comes out corrected.
+        Assert.Equal("I like Muesli", DictionaryCorrectionService.Apply("I like museli", dictionary!));
     }
 
     [Fact]

@@ -116,7 +116,11 @@ public static class DictionaryCorrectionDetector
         if (maxSuggestions <= 0) return false;
         if (string.IsNullOrWhiteSpace(originalText)) return false;
         if (string.Equals(baselineText, currentText, StringComparison.Ordinal)) return false;
-        return HasSufficientSharedContext(originalText, currentText);
+        // Windows passes the box as pasted for baselineText; an edit that removed a short dictation's
+        // only distinctive word still shares the rest of that box. With baselineText equal to the
+        // dictation this is exactly the macOS rule.
+        return HasSufficientSharedContext(originalText, currentText) ||
+               (!string.Equals(baselineText, originalText, StringComparison.Ordinal) && HasSufficientSharedContext(baselineText, currentText));
     }
 
     private static List<Candidate> ExtractCandidateCorrections(

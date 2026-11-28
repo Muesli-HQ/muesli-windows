@@ -854,6 +854,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             var dictationProvider = SelectedDictationProvider;
             var openAIDictationModel = SelectedOpenAIDictationModel;
             var anthropicModel = SelectedAnthropicModel;
+            var indicatorPosition = IndicatorPosition;
+            IndicatorPosition = "";
+            IndicatorPosition = IndicatorPositionChoices.Contains(indicatorPosition) ? indicatorPosition : "Middle Right";
             SelectedLiveModel = "";
             SelectedMicrophone = "";
             SelectedDictationModel = "";

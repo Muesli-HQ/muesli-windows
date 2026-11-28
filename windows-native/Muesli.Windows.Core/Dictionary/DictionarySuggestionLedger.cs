@@ -53,17 +53,38 @@ public static class DictionarySuggestionLedger
         IReadOnlyList<DictionaryEntryRecord> dictionary)
     {
         var key = Key(suggestion.Observed, suggestion.Replacement);
-        IReadOnlyList<DictionaryEntryRecord>? updated = null;
-        if (!dictionary.Any(entry => Key(entry.Phrase, entry.Replacement) == key))
+        var replacement = suggestion.Replacement.Trim();
+        var observed = Normalize(suggestion.Observed);
+        var entries = dictionary.ToList();
+        var changed = false;
+
+        // The pasted word may itself be a rule's output (museli -> Musli, then Musli corrected to
+        // Muesli). The dictionary pass does not chain rules, so a new Musli -> Muesli rule would never
+        // fire; the rule that produced the word is pointed at the correction instead.
+        for (var index = 0; index < entries.Count; index++)
         {
-            updated = dictionary.Append(new DictionaryEntryRecord
+            var entry = entries[index];
+            if (Normalize(entry.Replacement) == observed && Normalize(entry.Phrase) != Normalize(replacement))
+            {
+                entries[index] = entry with { Replacement = replacement };
+                changed = true;
+            }
+        }
+
+        // The word can also come straight from speech recognition, so it gets its own rule as well.
+        if (!entries.Any(entry => Key(entry.Phrase, entry.Replacement) == key))
+        {
+            entries.Add(new DictionaryEntryRecord
             {
                 Id = $"dict_{Guid.NewGuid():N}",
                 Phrase = suggestion.Observed.Trim(),
-                Replacement = suggestion.Replacement.Trim(),
+                Replacement = replacement,
                 MatchingThreshold = AcceptedMatchingThreshold
-            }).ToArray();
+            });
+            changed = true;
         }
+
+        IReadOnlyList<DictionaryEntryRecord>? updated = changed ? entries : null;
 
         return (settings with
         {
@@ -181,7 +202,9 @@ public sealed class DictationCorrectionBaseline
 
     /// <summary>
     /// Takes one poll's raw reads and returns the ones that are edits worth judging. The first read
-    /// that shares the dictation's context becomes the baseline; later reads equal to it are not edits.
+    /// that shares the dictation's context becomes the baseline. Later reads are related to the
+    /// baseline, not to the dictation alone: correcting the only distinctive word of a short
+    /// dictation leaves nothing of it to match, yet the rest of the box still matches the baseline.
     /// </summary>
     public IReadOnlyList<string> EditedSnapshots(IEnumerable<string> reads)
     {
@@ -190,10 +213,18 @@ public sealed class DictationCorrectionBaseline
         {
             var collapsed = DictationCorrectionMonitorPolicy.CollapsedWhitespace(read);
             if (collapsed.Length == 0 || collapsed.Length > DictationCorrectionMonitorPolicy.MaxCandidateCharacters) continue;
-            if (!DictionaryCorrectionDetector.HasSufficientSharedContext(_original, collapsed)) continue;
-            Text ??= collapsed;
+            if (Text is null)
+            {
+                if (DictionaryCorrectionDetector.HasSufficientSharedContext(_original, collapsed)) Text = collapsed;
+                continue;
+            }
+
             if (collapsed == Text || edited.Contains(collapsed)) continue;
-            if (DictationCorrectionMonitorPolicy.NormalizedSnapshot(read, _original) is not null) edited.Add(collapsed);
+            if (!DictionaryCorrectionDetector.HasSufficientSharedContext(_original, collapsed) &&
+                !DictionaryCorrectionDetector.HasSufficientSharedContext(Text, collapsed)) continue;
+            // Length rules are measured against the box as pasted, so an unrelated, much longer or
+            // much shorter read is still not taken for an edit.
+            if (DictationCorrectionMonitorPolicy.NormalizedSnapshot(read, Text) is not null) edited.Add(collapsed);
         }
         return edited;
     }

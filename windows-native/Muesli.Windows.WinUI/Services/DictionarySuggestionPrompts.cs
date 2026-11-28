@@ -56,12 +56,34 @@ public sealed class DictionarySuggestionPrompts : IDisposable
     /// <summary>Turning the setting off stops watching and closes any card, as on macOS.</summary>
     private void OnSettingsChanged(object? sender, MuesliSettings settings)
     {
-        if (settings.EnableDictionaryCorrectionPrompts) return;
+        if (settings.EnableDictionaryCorrectionPrompts)
+        {
+            _dispatcher.TryEnqueue(() => CloseIfAnsweredElsewhere(settings));
+            return;
+        }
+
         _monitor.Cancel();
         _queue.Clear();
         _activeKey = null;
         _prompt?.CloseQuietly();
         _prompt = null;
+    }
+
+    /// <summary>
+    /// The Dictionary page added or dismissed the suggestion whose card is still showing. The card
+    /// closes without an answer, so a late Add or Ignore cannot contradict the page, and the queue moves on.
+    /// </summary>
+    private void CloseIfAnsweredElsewhere(MuesliSettings settings)
+    {
+        if (_disposed || _activeKey is not { } key) return;
+        var stillPending = (settings.DictionarySuggestions ?? []).Any(item => DictionarySuggestionLedger.Key(item.Observed, item.Replacement) == key) &&
+                           !(settings.DismissedDictionarySuggestionKeys ?? []).Contains(key);
+        if (stillPending) return;
+        _log.Info("Dictionary suggestion card closed: answered on the Dictionary page.");
+        _activeKey = null;
+        _prompt?.CloseQuietly();
+        _prompt = null;
+        ScheduleNext();
     }
 
     private void Record(DictionarySuggestion suggestion)
