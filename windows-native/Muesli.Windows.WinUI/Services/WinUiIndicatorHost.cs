@@ -86,7 +86,15 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void OnStateSourceChanged(object? sender, EventArgs e) => _dispatcher.TryEnqueue(UpdateState);
 
-    private void OnSettingsChanged(object? sender, MuesliSettings settings) => _dispatcher.TryEnqueue(UpdateState);
+    /// <summary>
+    /// A position picked in Settings moves the pill at once. A drag saves the position it already
+    /// holds, so reloading it here changes nothing.
+    /// </summary>
+    private void OnSettingsChanged(object? sender, MuesliSettings settings) => _dispatcher.TryEnqueue(() =>
+    {
+        LoadPosition();
+        UpdateState();
+    });
 
     private void OnRecordingLevel(object? sender, float peak) => Volatile.Write(ref _amplitude, Math.Clamp(peak, 0f, 1f));
 

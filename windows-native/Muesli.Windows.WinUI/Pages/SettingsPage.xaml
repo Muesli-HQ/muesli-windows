@@ -1231,6 +1231,19 @@
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
+                                    <TextBlock Text="Position" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Where the indicator sits on screen. Dragging it sets Custom." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.IndicatorPositionChoices, Mode=OneWay}"
+                                          SelectedItem="{x:Bind ViewModel.IndicatorPosition, Mode=TwoWay}"
+                                          AutomationProperties.Name="Indicator position"
+                                          AutomationProperties.AutomationId="IndicatorPositionPicker" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
                                     <TextBlock Text="Indicator style" Style="{StaticResource RowTitleStyle}" />
                                     <TextBlock Text="Classic is a compact pill. Minimal is a quiet bar until you hover it." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>

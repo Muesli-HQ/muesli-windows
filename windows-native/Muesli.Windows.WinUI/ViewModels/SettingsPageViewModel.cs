@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Muesli.Windows.Services;
 using Muesli.Windows.WinUI.Services;
 using Muesli.Windows.Core.Contracts;
+using Muesli.Windows.Core.Services;
 
 namespace Muesli.Windows.WinUI.ViewModels;
 
@@ -49,6 +50,27 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         _dictation = dictation;
         _applyDetection = applyDetection;
         _computerUse.Changed += OnComputerUseChanged;
+        _settingsContext.Changed += OnSettingsChanged;
+    }
+
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _uiQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+
+    /// <summary>
+    /// Dragging the pill saves a Custom position while this page may be open; the picker follows it.
+    /// Showing the saved value writes nothing, because autosave skips a record that did not change.
+    /// </summary>
+    private void OnSettingsChanged(object? sender, MuesliSettings settings)
+    {
+        void Follow()
+        {
+            var choices = FloatingIndicatorLayout.PositionChoices(settings);
+            if (!choices.SequenceEqual(IndicatorPositionChoices)) IndicatorPositionChoices = choices;
+            var choice = FloatingIndicatorLayout.PositionChoice(settings);
+            if (choice != IndicatorPosition) IndicatorPosition = choice;
+        }
+
+        if (_uiQueue is null || _uiQueue.HasThreadAccess) Follow();
+        else _uiQueue.TryEnqueue(Follow);
     }
 
     private void OnComputerUseChanged(object? sender, EventArgs args)
@@ -62,6 +84,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _computerUse.Changed -= OnComputerUseChanged;
+        _settingsContext.Changed -= OnSettingsChanged;
         // Its local callback listener would otherwise outlive the page, and a late approval would
         // save a key from a view model that is gone.
         try { _openRouterSignIn?.Cancel(); }
@@ -100,6 +123,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial int ThemeIndex { get; set; }
     [ObservableProperty] public partial int RecordingColorIndex { get; set; }
     [ObservableProperty] public partial int IndicatorStyleIndex { get; set; }
+    [ObservableProperty] public partial IReadOnlyList<string> IndicatorPositionChoices { get; private set; } = FloatingIndicatorLayout.PositionPresets;
+    [ObservableProperty] public partial string IndicatorPosition { get; set; } = "Middle Right";
 
     /// <summary>
     /// The recording pill's accent presets, in macOS order. "1e1e2e" is the shared stored value for
@@ -471,6 +496,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             settings with { HotkeyTriggerThresholdMs = HotkeyTriggerTiming.ClampMilliseconds(HotkeyTriggerThresholdMs) },
         nameof(ThemeIndex) when ThemeIndex >= 0 =>
             settings with { Theme = ThemeIndex switch { 1 => "light", 2 => "dark", _ => "system" } },
+        // A preset moves the pill; the dragged spot stays saved so Custom can return to it.
+        nameof(IndicatorPosition) when IndicatorPositionChoices.Contains(IndicatorPosition) =>
+            settings with { IndicatorAnchor = IndicatorPosition },
         nameof(IndicatorStyleIndex) when IndicatorStyleIndex >= 0 =>
             settings with { IndicatorStyle = IndicatorStyleIndex == 1 ? "minimal" : "classic" },
         nameof(RecordingColorIndex) when RecordingColorIndex >= 0 && RecordingColorIndex < RecordingColors.Length =>
@@ -669,6 +697,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         Hotkey = settings.Hotkey;
         ThemeIndex = settings.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
         IndicatorStyleIndex = settings.IndicatorStyle == "minimal" ? 1 : 0;
+        IndicatorPositionChoices = FloatingIndicatorLayout.PositionChoices(settings);
+        IndicatorPosition = FloatingIndicatorLayout.PositionChoice(settings);
         RecordingColorIndex = Array.FindIndex(RecordingColors, color => color.Hex == settings.RecordingColorHex);
         Microphones = new[] { "Automatic" }.Concat(_dictation.ListMicrophones()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         SelectedMicrophone = string.IsNullOrWhiteSpace(settings.MicrophoneName) ? "Automatic" : settings.MicrophoneName;

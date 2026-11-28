@@ -1,3 +1,5 @@
+using Muesli.Windows.Services;
+
 namespace Muesli.Windows.Core.Services;
 
 /// <summary>A size plus corner radius, in DIPs, for the floating indicator pill.</summary>
@@ -317,6 +319,30 @@ public static class FloatingIndicatorLayout
     /// Top-left position for an anchored indicator, following the eight supported anchors inside
     /// <paramref name="workArea"/>. The default anchor is "Middle Right".
     /// </summary>
+    /// <summary>
+    /// The positions offered in Settings, in macOS <c>IndicatorAnchor</c> order and labels. Notch is
+    /// Apple-only; Custom is what dragging the pill sets, so it is offered only once a dragged
+    /// position has been saved.
+    /// </summary>
+    public static readonly IReadOnlyList<string> PositionPresets =
+    [
+        "Top Left", "Top Center", "Top Right",
+        "Middle Left", "Middle Right",
+        "Bottom Left", "Bottom Center", "Bottom Right"
+    ];
+
+    public const string CustomPosition = "Custom";
+
+    /// <summary>The Settings position choices for these saved settings.</summary>
+    public static IReadOnlyList<string> PositionChoices(MuesliSettings settings) =>
+        settings.IndicatorLeft is not null && settings.IndicatorTop is not null
+            ? [.. PositionPresets, CustomPosition]
+            : PositionPresets;
+
+    /// <summary>The choice that shows the saved position; unknown values read as the default.</summary>
+    public static string PositionChoice(MuesliSettings settings) =>
+        PositionChoices(settings).Contains(settings.IndicatorAnchor) ? settings.IndicatorAnchor : "Middle Right";
+
     public static DipPoint AnchorTopLeft(string anchor, DipSize size, DipRect workArea)
     {
         var anchorName = string.IsNullOrWhiteSpace(anchor) ? "Middle Right" : anchor;
