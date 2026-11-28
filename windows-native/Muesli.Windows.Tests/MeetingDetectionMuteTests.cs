@@ -10,6 +10,10 @@ public sealed class MeetingDetectionMuteTests
     [InlineData("ms-teams", "teams")]
     [InlineData("CptHost", "zoom")]
     [InlineData("Zoom", "zoom")]
+    [InlineData("webexmta", "webex")]
+    [InlineData("CiscoCollabHost", "webex")]
+    [InlineData("atmgr", "webex")]
+    [InlineData("Amazon Chime", "chime")]
     public void DetectedProcessesMapToTheirListedApp(string process, string app)
     {
         Assert.Equal(app, MeetingDetectionApps.ForProcess(process)?.Id);

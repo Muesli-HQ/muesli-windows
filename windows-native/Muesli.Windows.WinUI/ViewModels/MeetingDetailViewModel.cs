@@ -392,7 +392,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         {
             // macOS copies the showing document, unsaved edits included, under the export metadata
             // header (title, date, duration, words).
-            await _clipboard.SetTextAsync(MeetingExportFormatter.BuildMarkdown(
+            await _clipboard.SetTextAsync(MeetingExportFormatter.BuildVisibleDocument(
                 CurrentExportItem(), mode, _meeting.SpeakerAliases), cancellationToken);
             ShowStatus(mode == MeetingExportMode.Notes ? "Notes copied to the clipboard." : "Transcript copied to the clipboard.");
         }

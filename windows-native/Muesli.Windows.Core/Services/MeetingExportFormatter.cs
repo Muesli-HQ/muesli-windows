@@ -8,7 +8,18 @@ namespace Muesli.Windows.Services;
 /// </summary>
 public static class MeetingExportFormatter
 {
-    public static string BuildMarkdown(MeetingItem meeting, MeetingExportMode mode, Dictionary<string, string>? aliases = null)
+    /// <summary>
+    /// The document as Copy takes it from the meeting page: what the showing tab holds and nothing
+    /// else. Unlike an export, Notes without generated notes is My notes alone, never the raw
+    /// transcript, which is not on screen.
+    /// </summary>
+    public static string BuildVisibleDocument(MeetingItem meeting, MeetingExportMode mode, Dictionary<string, string>? aliases = null) =>
+        BuildMarkdown(meeting, mode, aliases, transcriptFallback: false);
+
+    public static string BuildMarkdown(MeetingItem meeting, MeetingExportMode mode, Dictionary<string, string>? aliases = null) =>
+        BuildMarkdown(meeting, mode, aliases, transcriptFallback: true);
+
+    private static string BuildMarkdown(MeetingItem meeting, MeetingExportMode mode, Dictionary<string, string>? aliases, bool transcriptFallback)
     {
         ArgumentNullException.ThrowIfNull(meeting);
         var summary = ApplyAliasesToNotes(meeting.Summary ?? "", aliases);
@@ -39,6 +50,10 @@ public static class MeetingExportFormatter
                 if (!string.IsNullOrWhiteSpace(summary))
                 {
                     parts.Add(summary);
+                    AppendManualNotes(parts, meeting);
+                }
+                else if (!transcriptFallback)
+                {
                     AppendManualNotes(parts, meeting);
                 }
                 else

@@ -20,7 +20,11 @@ public static class MeetingDetectionApps
         new("slack", "Slack", Is("slack")),
         new("zoom", "Zoom", name => Is("zoom")(name) || Is("CptHost")(name) || Is("Zoom Workplace")(name)),
         new("teams", "Teams", name => name.Contains("teams", StringComparison.OrdinalIgnoreCase)),
-        new("webex", "Webex", name => name.Contains("webex", StringComparison.OrdinalIgnoreCase)),
+        // Webex calls can surface through its helper processes, which detection also treats as
+        // Webex (MeetingPresenceSignals): CiscoCollabHost and the atmgr meeting manager.
+        new("webex", "Webex", name => name.Contains("webex", StringComparison.OrdinalIgnoreCase) ||
+                                      Is("CiscoCollabHost")(name) || Is("atmgr")(name)),
+        new("chime", "Amazon Chime", name => name.Contains("chime", StringComparison.OrdinalIgnoreCase)),
         new("whatsapp", "WhatsApp", Is("WhatsApp")),
         new("discord", "Discord", Is("Discord"))
     ];
