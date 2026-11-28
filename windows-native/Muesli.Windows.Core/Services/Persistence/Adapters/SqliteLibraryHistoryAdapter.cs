@@ -176,6 +176,23 @@ public sealed class SqliteLibraryHistoryAdapter : ILibraryHistoryAdapter, ILibra
         return true;
     }
 
+    /// <summary>
+    /// Forgets a meeting's recording: source, microphone and system-audio paths. A normal save
+    /// cannot do this, because <see cref="LibraryHistoryMapper.MergeHead"/> reads empty audio
+    /// fields as "unchanged" so list-shaped saves never drop a recording by accident.
+    /// </summary>
+    public bool ClearMeetingAudio(string id)
+    {
+        using var transaction = _store.BeginTransaction();
+        if (_store.Meetings.FindDetail(id) is not { } existing) return false;
+        _store.Meetings.Upsert(existing.Meeting with
+        {
+            Audio = existing.Meeting.Audio with { SourcePath = "", MicrophoneAudioPath = null, SystemAudioPath = null }
+        });
+        transaction.Commit();
+        return true;
+    }
+
     /// <summary>One meeting by id, without loading the whole library.</summary>
     public PersistedMeeting? FindMeeting(string id) =>
         _store.Meetings.FindDetail(id) is { } detail ? LibraryHistoryMapper.ToPersisted(detail) : null;

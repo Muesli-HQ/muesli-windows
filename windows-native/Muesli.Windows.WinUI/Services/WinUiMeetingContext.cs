@@ -318,13 +318,7 @@ public sealed class WinUiMeetingContext : IDisposable
         _coordinator.AcknowledgePersisted(result.MeetingId);
         ActiveMeetingId = null;
         IsSourceMissing = false;
-        // macOS asks "Keep meeting audio?" as soon as the recording stops. The answer is applied
-        // after the notes are made, because gap repair and speaker naming still read the files.
-        var keepAudio = savePolicy == MeetingRecordingSavePolicies.Prompt && HasOwnAudio(persisted) && AskToKeepRecordingAsync is { } ask
-            ? ask(persisted.Title)
-            : null;
-        var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
-        if (keepAudio is not null && !await keepAudio) meeting = DropOwnAudio(meeting);
+        var meeting = await FinalizeWithRecordingChoiceAsync(persisted, savePolicy, unchangedSpeech, cancellationToken);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -342,17 +336,45 @@ public sealed class WinUiMeetingContext : IDisposable
         !string.IsNullOrWhiteSpace(meeting.MicrophoneAudioPath) || !string.IsNullOrWhiteSpace(meeting.SystemAudioPath);
 
     /// <summary>
-    /// Deletes this meeting's Muesli-owned recording files (never an imported original) and saves
-    /// the meeting without them. Notes and transcript are kept.
+    /// Makes the notes for a stopped or recovered recording. Under "Ask every time" it also asks
+    /// macOS's "Keep meeting audio?" straight away. The answer never holds up the notes or the
+    /// app: it is applied once the notes are saved or have failed, on every outcome.
     /// </summary>
-    private PersistedMeeting DropOwnAudio(PersistedMeeting meeting)
+    private Task<PersistedMeeting> FinalizeWithRecordingChoiceAsync(
+        PersistedMeeting persisted,
+        string savePolicy,
+        bool unchangedSpeech,
+        CancellationToken cancellationToken)
     {
-        var latest = _library.FindMeeting(meeting.Id) ?? meeting;
-        var cleanup = _library.DeleteOwnedMeetingAudio(latest);
-        var updated = latest with { MicrophoneAudioPath = null, SystemAudioPath = null };
-        SaveMeeting(updated);
-        _log.Info($"Meeting audio not kept, as answered. failed={cleanup}");
-        return updated;
+        // A resume that recorded no new speech has nothing new to ask about.
+        var keepAudio = savePolicy == MeetingRecordingSavePolicies.Prompt && !unchangedSpeech &&
+                        HasOwnAudio(persisted) && AskToKeepRecordingAsync is { } ask
+            ? ask(persisted.Title)
+            : null;
+        var finalizing = unchangedSpeech ? Task.FromResult(persisted) : FinalizeMeetingAsync(persisted, cancellationToken);
+        if (keepAudio is not null) _ = ApplyRecordingChoiceAsync(persisted.Id, keepAudio, finalizing);
+        return finalizing;
+    }
+
+    private async Task ApplyRecordingChoiceAsync(string meetingId, Task<bool> keepAudio, Task finalizing)
+    {
+        bool keep;
+        try { keep = await keepAudio; }
+        catch { keep = true; }
+        // The hook may still be handed the files; delete only after notes and automation are done.
+        try { await finalizing; }
+        catch { /* the notes failed; the answer still stands */ }
+        if (keep) return;
+        try
+        {
+            var (_, failed) = _library.RemoveMeetingAudio(meetingId);
+            _log.Info($"Meeting audio not kept, as answered. failedFiles={failed}");
+            RaiseChanged();
+        }
+        catch (Exception exception)
+        {
+            _log.Error("Meeting audio could not be removed after the user chose not to keep it.", exception);
+        }
     }
 
     /// <summary>
@@ -466,7 +488,9 @@ public sealed class WinUiMeetingContext : IDisposable
         var persisted = Persist(result);
         var unchangedSpeech = IsResumingFinishedMeeting && string.IsNullOrWhiteSpace(result.Transcript);
         _coordinator.AcknowledgePersisted(result.MeetingId);
-        var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
+        // A recovered recording gets the same "Keep meeting audio?" question as a stopped one.
+        var meeting = await FinalizeWithRecordingChoiceAsync(
+            persisted, MeetingRecordingSavePolicies.Resolve(_settings), unchangedSpeech, cancellationToken);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
@@ -632,27 +656,25 @@ public sealed class WinUiMeetingContext : IDisposable
 
     /// <summary>
     /// Raised on the UI thread when a stopped, recovered or imported meeting has been transcribed
-    /// and its notes saved (macOS "Transcription complete" notification).
+    /// and its notes saved (macOS "Transcription complete" notification). It does not wait for
+    /// auto-export or the post-meeting program, which can take minutes.
     /// </summary>
     public event EventHandler<PersistedMeeting>? MeetingCompleted;
 
-    private async Task<PersistedMeeting> FinalizeMeetingAsync(
-        PersistedMeeting meeting,
-        CancellationToken cancellationToken)
+    private void RaiseMeetingCompleted(PersistedMeeting meeting)
     {
-        var finalized = await FinalizeMeetingCoreAsync(meeting, cancellationToken);
-        if (_dispatcher is null) MeetingCompleted?.Invoke(this, finalized);
-        else _dispatcher.TryEnqueue(() => MeetingCompleted?.Invoke(this, finalized));
-        return finalized;
+        if (_dispatcher is null) MeetingCompleted?.Invoke(this, meeting);
+        else _dispatcher.TryEnqueue(() => MeetingCompleted?.Invoke(this, meeting));
     }
 
-    private async Task<PersistedMeeting> FinalizeMeetingCoreAsync(
+    private async Task<PersistedMeeting> FinalizeMeetingAsync(
         PersistedMeeting meeting,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(meeting.Transcript))
         {
             SaveMeeting(meeting);
+            RaiseMeetingCompleted(meeting);
             return meeting;
         }
 
@@ -692,6 +714,7 @@ public sealed class WinUiMeetingContext : IDisposable
             _settings.MeetingSummaryTemplate,
             generatedTitle);
         SaveMeeting(finalized);
+        RaiseMeetingCompleted(finalized);
         var automationOptions = PostMeetingAutomationOptions.FromSettings(_settings);
         if (finalized.SessionState == MeetingSessionState.Completed &&
             (automationOptions.HookEnabled || automationOptions.AutoExportEnabled || automationOptions.AutoExportPdfEnabled))

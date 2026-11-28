@@ -138,15 +138,20 @@ public sealed class WinUiLibraryContext : IDisposable
     }
 
     /// <summary>
-    /// Deletes a meeting's Muesli-owned recording files under recordings/&lt;id&gt;, leaving the meeting
-    /// itself alone. Returns how many files could not be removed.
+    /// Removes a recorded meeting's audio: the meeting stops referring to it first, so a file that
+    /// cannot be deleted is no longer offered for playback, then the Muesli-owned files under
+    /// recordings/&lt;id&gt; are deleted (never an imported original). Notes and transcript are kept.
+    /// Returns the meeting as saved and how many files could not be removed.
     /// </summary>
-    public int DeleteOwnedMeetingAudio(PersistedMeeting meeting)
+    public (PersistedMeeting? Meeting, int FailedFiles) RemoveMeetingAudio(string id)
     {
-        ArgumentNullException.ThrowIfNull(meeting);
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        if (FindMeeting(id) is not { } meeting) return (null, 0);
+        if (History is SqliteLibraryHistoryAdapter sqlite) sqlite.ClearMeetingAudio(id);
+        else SaveMeeting(meeting with { SourcePath = "", MicrophoneAudioPath = null, SystemAudioPath = null });
         var cleanup = new CaptureStorageService(Profile.CaptureDirectory).DeleteOwnedMeetingAudio(
-            meeting.Id, new[] { meeting.MicrophoneAudioPath, meeting.SystemAudioPath }.OfType<string>());
-        return cleanup.FailedPaths.Count;
+            id, new[] { meeting.MicrophoneAudioPath, meeting.SystemAudioPath }.OfType<string>());
+        return (FindMeeting(id), cleanup.FailedPaths.Count);
     }
 
     public bool SupportsMeetingThreads => History is SqliteLibraryHistoryAdapter;
