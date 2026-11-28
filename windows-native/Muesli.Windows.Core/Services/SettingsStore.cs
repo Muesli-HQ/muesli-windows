@@ -482,7 +482,12 @@ public sealed record MuesliSettings
     /// <summary>Selected local cleanup model id, or empty when none is chosen.</summary>
     public string CleanupModelId { get; init; } = "";
 
-    public bool ShowLiveWaveformOnHover { get; init; }
+    /// <summary>
+    /// "Show transcript on hover": hovering the meeting pill opens the live transcript, whose header
+    /// holds Pause/Resume, as on macOS (<c>showMeetingTranscriptOnIndicatorHover</c>, default on).
+    /// Saved files always carry this key, so the default only reaches new installs.
+    /// </summary>
+    public bool ShowLiveWaveformOnHover { get; init; } = true;
     [JsonPropertyName("TranscriptionModelId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string? LegacyTranscriptionModelIdForMigration { get; init; }
