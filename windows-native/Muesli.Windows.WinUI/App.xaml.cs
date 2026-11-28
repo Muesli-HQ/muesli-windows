@@ -305,6 +305,7 @@ public partial class App : Application
             _ownAudioActive = ownAudio;
         };
         Meetings.MeetingCompleted += (_, meeting) => PresentMeetingCompleted(meeting);
+        Meetings.AskToKeepRecordingAsync = AskToKeepRecordingAsync;
         Meetings.Changed += (_, _) =>
         {
             Tray.Refresh();
@@ -460,6 +461,36 @@ public partial class App : Application
             },
             OnDismiss: () => { },
             OnAutoDismiss: () => { }), bypassSuppression: true);
+    }
+
+    /// <summary>
+    /// macOS promptToSaveMeetingRecording, worded the same. The window is shown so the dialog is
+    /// visible; if it cannot be shown the audio is kept, as on macOS.
+    /// </summary>
+    private Task<bool> AskToKeepRecordingAsync(string title)
+    {
+        var answer = new TaskCompletionSource<bool>();
+        if (!UiDispatcher.TryEnqueue(async () =>
+            {
+                try
+                {
+                    if (Window is MainWindow main) { main.AppWindow.Show(true); main.Activate(); }
+                    var name = string.IsNullOrWhiteSpace(title) ? "this meeting" : $"“{title.Trim()}”";
+                    var choice = await Dialogs.ConfirmAsync(
+                        $"Save an audio file for {name} for playback and re-transcription. Your notes and transcript are saved either way.",
+                        "Keep meeting audio?", "Keep Audio", "Don't Keep Audio");
+                    answer.TrySetResult(choice == AppDialogChoice.Primary);
+                }
+                catch (Exception exception)
+                {
+                    _log.Error("The keep-audio question could not be shown; the audio is kept.", exception);
+                    answer.TrySetResult(true);
+                }
+            }))
+        {
+            answer.TrySetResult(true);
+        }
+        return answer.Task;
     }
 
     private DispatcherTimer CreateCompletionRetryTimer()

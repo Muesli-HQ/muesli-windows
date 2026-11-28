@@ -1084,16 +1084,18 @@
                     <TextBlock Text="RECORDING" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Save meeting recordings" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Keep source audio for playback and retranscription." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Keep the audio for playback and re-transcription. Notes and transcript are saved either way." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
-                                <ToggleSwitch Grid.Column="1"
-                                              Style="{StaticResource SettingsToggleStyle}"
-                                              IsOn="{x:Bind ViewModel.SaveMeetingRecordings, Mode=TwoWay}"
-                                              AutomationProperties.Name="Save meeting recordings"
-                                              AutomationProperties.AutomationId="SaveMeetingRecordingsToggle" />
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.MeetingRecordingSavePolicyChoices}"
+                                          SelectedItem="{x:Bind ViewModel.SelectedMeetingRecordingSavePolicy, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          AutomationProperties.Name="Save meeting recordings"
+                                          AutomationProperties.AutomationId="MeetingRecordingSavePolicyBox" />
                             </Grid>
                         </StackPanel>
                     </Border>

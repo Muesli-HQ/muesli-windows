@@ -64,6 +64,32 @@ public static class AutoExportFileFormats
     public static bool IncludesPdf(string format) => format is Pdf or MarkdownAndPdf;
 }
 
+/// <summary>macOS <c>MeetingRecordingSavePolicy</c>: whether a meeting's audio is kept after Stop.</summary>
+public static class MeetingRecordingSavePolicies
+{
+    public const string Never = "never";
+    public const string Prompt = "prompt";
+    public const string Always = "always";
+
+    public static string Resolve(MuesliSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings.MeetingRecordingSavePolicy?.Trim().ToLowerInvariant() switch
+        {
+            Never => Never,
+            Prompt => Prompt,
+            Always => Always,
+            _ => settings.SaveMeetingRecordings ? Always : Never
+        };
+    }
+
+    /// <summary>
+    /// Whether capture keeps its audio files at Stop. "Ask" keeps them until the user answers, so
+    /// a "Keep Audio" answer has something to keep.
+    /// </summary>
+    public static bool RetainsAtStop(string policy) => policy != Never;
+}
+
 public sealed record PostMeetingRetryPolicy
 {
     public int MaxAttempts { get; init; } = 1;

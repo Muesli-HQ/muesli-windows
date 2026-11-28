@@ -507,7 +507,19 @@ public sealed record MuesliSettings
     public string MeetingSummaryTemplate { get; init; } = "standard";
     public string MeetingSummaryPromptOverride { get; init; } = "";
     public bool OpenDashboardOnLaunch { get; init; } = true;
-    public bool SaveMeetingRecordings { get; init; } = true;
+    /// <summary>
+    /// Legacy keep/delete switch. Every saved settings file carries it, so its default only reaches
+    /// new installs: false, which makes their recording policy macOS's default, Never. Still written
+    /// beside <see cref="MeetingRecordingSavePolicy"/> for older builds.
+    /// </summary>
+    public bool SaveMeetingRecordings { get; init; }
+
+    /// <summary>
+    /// macOS "Save meeting recordings": "never", "prompt" (Ask every time) or "always". Null in files
+    /// written before the choice; <see cref="MeetingRecordingSavePolicies.Resolve"/> then derives it
+    /// from <see cref="SaveMeetingRecordings"/>.
+    /// </summary>
+    public string? MeetingRecordingSavePolicy { get; init; }
     public bool PostMeetingHookEnabled { get; init; }
     public string PostMeetingHookExecutablePath { get; init; } = "";
     public string PostMeetingHookTranscriptPolicy { get; init; } = "metadata-only";

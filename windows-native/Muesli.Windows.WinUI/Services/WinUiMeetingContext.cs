@@ -260,7 +260,7 @@ public sealed class WinUiMeetingContext : IDisposable
         var start = await _coordinator.StartAsync(
             microphoneName: _settings.MicrophoneName,
             title: _title,
-            retainRecording: _settings.SaveMeetingRecordings,
+            retainRecording: MeetingRecordingSavePolicies.RetainsAtStop(MeetingRecordingSavePolicies.Resolve(_settings)),
             targetProcessId: processId,
             cancellationToken: cancellationToken,
             liveConfiguration: liveConfiguration,
@@ -298,11 +298,12 @@ public sealed class WinUiMeetingContext : IDisposable
         // Retry a failed autosave before stopping capture. A storage error must not lose writing.
         if (!AreNotesSaved) SaveManualNotesCore();
         RecordedMeetingResult result;
+        var savePolicy = MeetingRecordingSavePolicies.Resolve(_settings);
         try
         {
             result = await _coordinator.StopAsync(
                 _title,
-                _settings.SaveMeetingRecordings,
+                MeetingRecordingSavePolicies.RetainsAtStop(savePolicy),
                 cancellationToken);
         }
         catch (MeetingSessionRecoverableException)
@@ -317,12 +318,41 @@ public sealed class WinUiMeetingContext : IDisposable
         _coordinator.AcknowledgePersisted(result.MeetingId);
         ActiveMeetingId = null;
         IsSourceMissing = false;
+        // macOS asks "Keep meeting audio?" as soon as the recording stops. The answer is applied
+        // after the notes are made, because gap repair and speaker naming still read the files.
+        var keepAudio = savePolicy == MeetingRecordingSavePolicies.Prompt && HasOwnAudio(persisted) && AskToKeepRecordingAsync is { } ask
+            ? ask(persisted.Title)
+            : null;
         var meeting = unchangedSpeech ? persisted : await FinalizeMeetingAsync(persisted, cancellationToken);
+        if (keepAudio is not null && !await keepAudio) meeting = DropOwnAudio(meeting);
         LiveTranscript = "";
         LatestLiveSnapshot = null;
         CaptureStatus = MeetingCaptureStatusFormatter.Describe(_coordinator.CaptureSnapshot);
         RaiseChanged();
         return meeting;
+    }
+
+    /// <summary>
+    /// Shows macOS's "Keep meeting audio?" question for the named meeting and returns true to keep
+    /// the audio. Set by the app; when unset (or the question cannot be shown) the audio is kept.
+    /// </summary>
+    public Func<string, Task<bool>>? AskToKeepRecordingAsync { get; set; }
+
+    private static bool HasOwnAudio(PersistedMeeting meeting) =>
+        !string.IsNullOrWhiteSpace(meeting.MicrophoneAudioPath) || !string.IsNullOrWhiteSpace(meeting.SystemAudioPath);
+
+    /// <summary>
+    /// Deletes this meeting's Muesli-owned recording files (never an imported original) and saves
+    /// the meeting without them. Notes and transcript are kept.
+    /// </summary>
+    private PersistedMeeting DropOwnAudio(PersistedMeeting meeting)
+    {
+        var latest = _library.FindMeeting(meeting.Id) ?? meeting;
+        var cleanup = _library.DeleteOwnedMeetingAudio(latest);
+        var updated = latest with { MicrophoneAudioPath = null, SystemAudioPath = null };
+        SaveMeeting(updated);
+        _log.Info($"Meeting audio not kept, as answered. failed={cleanup}");
+        return updated;
     }
 
     /// <summary>

@@ -78,7 +78,15 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool IsStartupAvailable { get; private set; } = true;
     [ObservableProperty] public partial string StartupAvailabilityNotice { get; private set; } = "";
     [ObservableProperty] public partial bool AutoMeetingDetectionEnabled { get; set; }
-    [ObservableProperty] public partial bool SaveMeetingRecordings { get; set; }
+    [ObservableProperty] public partial SettingsChoice? SelectedMeetingRecordingSavePolicy { get; set; }
+
+    /// <summary>macOS "Save meeting recordings" choices, in macOS order.</summary>
+    public IReadOnlyList<SettingsChoice> MeetingRecordingSavePolicyChoices { get; } =
+    [
+        new(MeetingRecordingSavePolicies.Never, "Never"),
+        new(MeetingRecordingSavePolicies.Prompt, "Ask every time"),
+        new(MeetingRecordingSavePolicies.Always, "Always")
+    ];
     [ObservableProperty] public partial bool AutoExportMarkdownEnabled { get; set; }
     [ObservableProperty] public partial string AutoExportMarkdownDirectory { get; set; } = "";
     [ObservableProperty] public partial SettingsChoice? SelectedAutoExportContent { get; set; }
@@ -466,7 +474,13 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(OpenDashboardOnLaunch) => settings with { OpenDashboardOnLaunch = OpenDashboardOnLaunch },
         nameof(StartAtLogin) => settings with { StartAtLogin = StartAtLogin },
         nameof(AutoMeetingDetectionEnabled) => settings with { AutoMeetingDetectionEnabled = AutoMeetingDetectionEnabled },
-        nameof(SaveMeetingRecordings) => settings with { SaveMeetingRecordings = SaveMeetingRecordings },
+        // The legacy switch follows along so an older build keeps audio unless the choice is Never.
+        nameof(SelectedMeetingRecordingSavePolicy) when SelectedMeetingRecordingSavePolicy is { } policy =>
+            settings with
+            {
+                MeetingRecordingSavePolicy = policy.Id,
+                SaveMeetingRecordings = policy.Id != MeetingRecordingSavePolicies.Never
+            },
         nameof(AutoExportMarkdownEnabled) => settings with { AutoExportMarkdownEnabled = AutoExportMarkdownEnabled },
         nameof(SelectedAutoExportContent) when SelectedAutoExportContent is { } content =>
             settings with { AutoExportMarkdownContent = content.Id },
@@ -667,7 +681,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         UserName = settings.UserName;
         OpenDashboardOnLaunch = settings.OpenDashboardOnLaunch;
         AutoMeetingDetectionEnabled = settings.AutoMeetingDetectionEnabled;
-        SaveMeetingRecordings = settings.SaveMeetingRecordings;
+        var recordingPolicy = MeetingRecordingSavePolicies.Resolve(settings);
+        SelectedMeetingRecordingSavePolicy = MeetingRecordingSavePolicyChoices.First(choice => choice.Id == recordingPolicy);
         AutoExportMarkdownEnabled = settings.AutoExportMarkdownEnabled;
         AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory;
         SelectedAutoExportContent = AutoExportContentChoices.FirstOrDefault(choice => choice.Id == settings.AutoExportMarkdownContent)

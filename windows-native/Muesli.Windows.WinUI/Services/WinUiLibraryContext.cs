@@ -137,6 +137,18 @@ public sealed class WinUiLibraryContext : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Deletes a meeting's Muesli-owned recording files under recordings/&lt;id&gt;, leaving the meeting
+    /// itself alone. Returns how many files could not be removed.
+    /// </summary>
+    public int DeleteOwnedMeetingAudio(PersistedMeeting meeting)
+    {
+        ArgumentNullException.ThrowIfNull(meeting);
+        var cleanup = new CaptureStorageService(Profile.CaptureDirectory).DeleteOwnedMeetingAudio(
+            meeting.Id, new[] { meeting.MicrophoneAudioPath, meeting.SystemAudioPath }.OfType<string>());
+        return cleanup.FailedPaths.Count;
+    }
+
     public bool SupportsMeetingThreads => History is SqliteLibraryHistoryAdapter;
 
     public void LinkFollowUp(PersistedMeeting predecessor, PersistedMeeting successor)
