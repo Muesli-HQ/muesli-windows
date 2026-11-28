@@ -67,9 +67,19 @@ public sealed class DictionarySuggestionPrompts : IDisposable
     private void Record(DictionarySuggestion suggestion)
     {
         if (_disposed) return;
-        var (updated, prompt) = DictionarySuggestionLedger.Add(_settings.Load(), suggestion, _library.LoadDictionary());
-        if (updated is not null) _settings.Save(updated);
-        if (prompt is not null) Enqueue(prompt);
+        try
+        {
+            var (updated, prompt) = DictionarySuggestionLedger.Add(_settings.Load(), suggestion, _library.LoadDictionary());
+            if (updated is not null) _settings.Save(updated);
+            if (prompt is not null) Enqueue(prompt);
+        }
+        catch (Exception exception)
+        {
+            // This runs as a bare dispatcher callback: an IOException from a full disk or a locked
+            // settings file would otherwise reach UiExceptionPolicy, which treats it as fatal. The
+            // feature is optional, so a failed save only loses this one suggestion.
+            _log.Error("Dictionary suggestion could not be recorded.", exception);
+        }
     }
 
     private void Enqueue(DictionarySuggestion suggestion)
@@ -149,7 +159,15 @@ public sealed class DictionarySuggestionPrompts : IDisposable
         _ = Task.Delay(PromptAdvanceDelay).ContinueWith(_ => _dispatcher.TryEnqueue(() =>
         {
             _advancePending = false;
-            PresentNext();
+            try
+            {
+                PresentNext();
+            }
+            catch (Exception exception)
+            {
+                // Same containment as Record: reading settings or the dictionary must not end the app.
+                _log.Error("Next dictionary suggestion could not be shown.", exception);
+            }
         }), TaskScheduler.Default);
     }
 

@@ -215,6 +215,49 @@ public sealed class DictionaryCorrectionDetectorTests
     }
 }
 
+public sealed class DictationCorrectionBaselineTests
+{
+    // Long enough to keep a run of unchanged words, which the shared-context rule needs.
+    private const string Pasted = "I like museli for breakfast every single morning";
+    private const string Box = "Shopping list: museli, oats. " + Pasted;
+    private const string Edited = "Shopping list: museli, oats. I like muesli for breakfast every single morning";
+
+    [Fact]
+    public void Against_the_dictation_alone_a_repeated_word_hides_the_correction() =>
+        // What macOS does today: "museli" appears once before and once after, so it is not a substitution.
+        Assert.Empty(DictionaryCorrectionDetector.Suggestions(Pasted, Edited, 3));
+
+    [Fact]
+    public void Against_the_box_as_pasted_the_correction_is_found()
+    {
+        var baseline = new DictationCorrectionBaseline(Pasted);
+        Assert.Empty(baseline.EditedSnapshots([Box]));
+        Assert.Equal(Box, baseline.Before);
+
+        var edited = Assert.Single(baseline.EditedSnapshots([Edited]));
+        var suggestion = Assert.Single(DictionaryCorrectionDetector.Suggestions(Pasted, baseline.Before, edited, 3, null));
+        Assert.Equal(("museli", "muesli"), (suggestion.Observed, suggestion.Replacement));
+    }
+
+    [Fact]
+    public void Unrelated_text_never_becomes_the_baseline()
+    {
+        var baseline = new DictationCorrectionBaseline(Pasted);
+        Assert.Empty(baseline.EditedSnapshots(["completely different editor content here"]));
+        Assert.Null(baseline.Text);
+        Assert.Equal(Pasted, baseline.Before);
+    }
+
+    [Fact]
+    public void An_empty_box_still_detects_as_before()
+    {
+        var baseline = new DictationCorrectionBaseline("I love museli");
+        Assert.Empty(baseline.EditedSnapshots(["I love museli "]));
+        var edited = Assert.Single(baseline.EditedSnapshots(["I love muesli "]));
+        Assert.Equal("museli", Assert.Single(DictionaryCorrectionDetector.Suggestions("I love museli", baseline.Before, edited, 3, null)).Observed);
+    }
+}
+
 public sealed class DictationCorrectionSnapshotStabilizerTests
 {
     private static readonly DateTime Start = new(2026, 11, 28, 10, 0, 0, DateTimeKind.Utc);

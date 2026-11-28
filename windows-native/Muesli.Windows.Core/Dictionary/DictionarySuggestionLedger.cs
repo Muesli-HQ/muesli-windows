@@ -160,8 +160,46 @@ public static class DictationCorrectionMonitorPolicy
         }
     }
 
-    private static string CollapsedWhitespace(string value) =>
+    internal static string CollapsedWhitespace(string value) =>
         string.Join(' ', value.Replace(' ', ' ').Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+}
+
+/// <summary>
+/// The text box as it stood just after the paste, before the user edited it. Edits are judged
+/// against this rather than against the dictation alone, so a correction still counts when the
+/// box already held the same misheard word elsewhere (the substitution guard compares occurrence
+/// counts before and after). macOS compares with the dictation only; this is a Windows refinement.
+/// </summary>
+public sealed class DictationCorrectionBaseline
+{
+    private readonly string _original;
+
+    public DictationCorrectionBaseline(string original) => _original = original;
+
+    /// <summary>The first readable content after the paste, or null until one has been seen.</summary>
+    public string? Text { get; private set; }
+
+    /// <summary>
+    /// Takes one poll's raw reads and returns the ones that are edits worth judging. The first read
+    /// that shares the dictation's context becomes the baseline; later reads equal to it are not edits.
+    /// </summary>
+    public IReadOnlyList<string> EditedSnapshots(IEnumerable<string> reads)
+    {
+        var edited = new List<string>();
+        foreach (var read in reads)
+        {
+            var collapsed = DictationCorrectionMonitorPolicy.CollapsedWhitespace(read);
+            if (collapsed.Length == 0 || collapsed.Length > DictationCorrectionMonitorPolicy.MaxCandidateCharacters) continue;
+            if (!DictionaryCorrectionDetector.HasSufficientSharedContext(_original, collapsed)) continue;
+            Text ??= collapsed;
+            if (collapsed == Text || edited.Contains(collapsed)) continue;
+            if (DictationCorrectionMonitorPolicy.NormalizedSnapshot(read, _original) is not null) edited.Add(collapsed);
+        }
+        return edited;
+    }
+
+    /// <summary>What the detector compares an edit with: the baseline once seen, else the dictation.</summary>
+    public string Before => Text ?? _original;
 }
 
 /// <summary>

@@ -21,6 +21,15 @@ public sealed class WindowsSpellChecker
     private ISpellChecker? _checker;
     private bool _unavailable;
 
+    /// <summary>Whether an English spell checker is registered on this PC (en-US, en-GB or en).</summary>
+    public bool IsAvailable
+    {
+        get
+        {
+            lock (_gate) return Checker() is not null;
+        }
+    }
+
     /// <summary>The lower-cased words in <paramref name="candidates"/> that are spelled correctly in English.</summary>
     public IReadOnlySet<string> RecognizedWords(IEnumerable<string> candidates)
     {

@@ -46,6 +46,7 @@ public sealed class DictationCorrectionMonitor : IDisposable
     {
         var started = DateTime.UtcNow;
         var stabilizer = new DictationCorrectionSnapshotStabilizer();
+        var baseline = new DictationCorrectionBaseline(original);
         var emitted = new HashSet<string>(StringComparer.Ordinal);
         int polls = 0, stable = 0, lastSnapshotCount = 0;
         try
@@ -55,12 +56,7 @@ public sealed class DictationCorrectionMonitor : IDisposable
             while (!cancellation.IsCancellationRequested && DateTime.UtcNow - started < DictationCorrectionMonitorPolicy.MonitoringWindow)
             {
                 polls++;
-                var snapshots = reader.ReadSnapshots(target, DictationCorrectionMonitorPolicy.MaxCandidateCharacters)
-                    .Select(value => DictationCorrectionMonitorPolicy.NormalizedSnapshot(value, original))
-                    .OfType<string>()
-                    .Where(snapshot => DictionaryCorrectionDetector.HasSufficientSharedContext(original, snapshot))
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList();
+                var snapshots = baseline.EditedSnapshots(reader.ReadSnapshots(target, DictationCorrectionMonitorPolicy.MaxCandidateCharacters));
                 if (snapshots.Count != lastSnapshotCount)
                 {
                     // Counts only, as macOS logs: whether the text box is readable and edited at all.
@@ -73,7 +69,7 @@ public sealed class DictationCorrectionMonitor : IDisposable
                     stable++;
                     var recognized = SpellChecker.RecognizedWords(DictationCorrectionMonitorPolicy.EnglishWordCandidates(original, snapshot));
                     var suggestions = DictionaryCorrectionDetector.Suggestions(
-                        original, snapshot, DictationCorrectionMonitorPolicy.MaxSuggestionsPerSession, recognized);
+                        original, baseline.Before, snapshot, DictationCorrectionMonitorPolicy.MaxSuggestionsPerSession, recognized);
                     foreach (var suggestion in suggestions)
                     {
                         if (cancellation.IsCancellationRequested) return;
