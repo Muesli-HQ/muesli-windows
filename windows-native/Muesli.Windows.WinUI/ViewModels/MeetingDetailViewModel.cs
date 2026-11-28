@@ -52,7 +52,8 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string MetadataDuration { get; private set; } = "";
     [ObservableProperty] public partial string MetadataWords { get; private set; } = "";
     [ObservableProperty] public partial string TitleOwnershipLabel { get; private set; } = "";
-    [ObservableProperty] public partial string Summary { get; private set; } = "";
+    /// <summary>The generated notes. Editable, as on macOS; edits autosave with My notes.</summary>
+    [ObservableProperty] public partial string Summary { get; set; } = "";
     [ObservableProperty] public partial string Transcript { get; set; } = "";
     [ObservableProperty] public partial string ManualNotes { get; set; } = "";
     [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
@@ -210,7 +211,19 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
 
     partial void OnManualNotesChanged(string value)
     {
-        if (_meeting is null || value == _meeting.ManualNotes || Volatile.Read(ref _disposed) != 0) return;
+        if (_meeting is null || value == _meeting.ManualNotes) return;
+        ScheduleNotesSave();
+    }
+
+    partial void OnSummaryChanged(string value)
+    {
+        if (_meeting is null || value == (_meeting.Summary ?? "")) return;
+        ScheduleNotesSave();
+    }
+
+    private void ScheduleNotesSave()
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
         // Persist after a typing pause, not per keystroke.
         _notesPending = true;
         _notesDebounce?.Cancel();
@@ -229,6 +242,9 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         try
         {
             var updated = MeetingNotesComposer.ApplyManualNotes(target, ManualNotes);
+            // Edited generated notes are saved as they are; an untouched editor leaves the stored
+            // notes alone so a regeneration that landed meanwhile is not overwritten.
+            if (_meeting is { } shown && Summary != (shown.Summary ?? "")) updated = updated with { Summary = Summary };
             if (_library.UpdateMeeting(updated)) _meeting = updated;
             else ShowStatus("The meeting no longer exists. Your writing has not been saved.", true);
         }
@@ -301,6 +317,9 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
     private async Task GenerateSummaryAsync(CancellationToken cancellationToken)
     {
         if (_meeting is null || string.IsNullOrWhiteSpace(_meeting.Transcript)) return;
+        // Generate from what is on screen: save notes typed in the last moment first.
+        FlushNotes();
+        if (_meeting is null) return;
         SetWorking(true, "Generating meeting notes…");
         try
         {
@@ -429,6 +448,7 @@ public partial class MeetingDetailViewModel : ObservableObject, IDisposable
         {
             Title = string.IsNullOrWhiteSpace(Title) ? item.Title : Title.Trim(),
             Transcript = unchanged ? item.Transcript : Transcript ?? "",
+            Summary = HasGeneratedSummary ? Summary ?? "" : item.Summary,
             ManualNotes = ManualNotes ?? ""
         };
     }
