@@ -222,6 +222,7 @@ public sealed class SettingsStore
             RecordingColorHex = NormalizeColorHex(settings.RecordingColorHex),
             IndicatorStyle = string.Equals(settings.IndicatorStyle?.Trim(), "minimal", StringComparison.OrdinalIgnoreCase) ? "minimal" : "classic",
             DictationRecordingMode = DictationRecordingModes.Normalize(settings.DictationRecordingMode),
+            PasteShortcut = PasteShortcuts.Normalize(settings.PasteShortcut),
             MeetingSummaryProvider = DefaultIfBlank(settings.MeetingSummaryProvider, "local").Trim(),
             MeetingSummaryTemplate = DefaultIfBlank(settings.MeetingSummaryTemplate, "standard").Trim(),
             MeetingSummaryPromptOverride = settings.MeetingSummaryPromptOverride ?? "",
@@ -461,6 +462,13 @@ public sealed record MuesliSettings
     /// Kept only so existing settings files keep round-tripping; do not give it meaning.
     /// </summary>
     public string PasteBehavior { get; init; } = "active-app";
+
+    /// <summary>
+    /// macOS <c>paste_shortcut</c>: how dictated text is inserted. <c>ctrl_v</c> (Automatic, the
+    /// default), <c>ctrl_shift_v</c>, <c>shift_insert</c>, or <c>type</c> to type it out.
+    /// See <see cref="PasteShortcuts"/>.
+    /// </summary>
+    public string PasteShortcut { get; init; } = PasteShortcuts.Automatic;
     public string DictationModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
 
     /// <summary>

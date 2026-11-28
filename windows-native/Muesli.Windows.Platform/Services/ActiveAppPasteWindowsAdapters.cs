@@ -43,7 +43,7 @@ public sealed class NativeWindowActivationAdapter : IWindowActivationAdapter, IW
 
 public sealed class NativeKeyboardInputAdapter : IKeyboardInputAdapter
 {
-    public bool SendPasteShortcut() => WindowsInputInterop.SendCtrlV();
+    public bool SendPasteShortcut(PasteChord chord) => WindowsInputInterop.SendPasteChord(chord);
 
     public TextInputResult SendText(string text) => WindowsInputInterop.SendUnicodeText(text);
 }
@@ -55,19 +55,32 @@ internal static class WindowsInputInterop
     private const uint KeyeventfUnicode = 0x0004;
     private const ushort VkControl = 0x11;
     private const ushort VkV = 0x56;
+    private const ushort VkShift = 0x10;
+    private const ushort VkInsert = 0x2D;
+    private const uint KeyeventfExtendedKey = 0x0001;
     private const int SwRestore = 9;
     private const int UnicodeTextBatchLength = 256;
 
-    internal static bool SendCtrlV()
+    /// <summary>
+    /// Presses and releases the chord as one input batch: modifiers down, key down, key up,
+    /// modifiers up in reverse. Insert is an extended key; without the flag Windows reads it as
+    /// numpad 0 when Num Lock is on.
+    /// </summary>
+    internal static bool SendPasteChord(PasteChord chord)
     {
-        var inputs = new[]
+        var (modifiers, key, keyFlags) = chord switch
         {
-            KeyboardInput(VkControl, 0),
-            KeyboardInput(VkV, 0),
-            KeyboardInput(VkV, KeyeventfKeyup),
-            KeyboardInput(VkControl, KeyeventfKeyup)
+            PasteChord.CtrlShiftV => (new[] { VkControl, VkShift }, VkV, 0u),
+            PasteChord.ShiftInsert => (new[] { VkShift }, VkInsert, KeyeventfExtendedKey),
+            _ => (new[] { VkControl }, VkV, 0u)
         };
-        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>()) == inputs.Length;
+        var inputs = new List<Input>();
+        inputs.AddRange(modifiers.Select(modifier => KeyboardInput(modifier, 0)));
+        inputs.Add(KeyboardInput(key, keyFlags));
+        inputs.Add(KeyboardInput(key, keyFlags | KeyeventfKeyup));
+        inputs.AddRange(modifiers.Reverse().Select(modifier => KeyboardInput(modifier, KeyeventfKeyup)));
+        var batch = inputs.ToArray();
+        return SendInput((uint)batch.Length, batch, Marshal.SizeOf<Input>()) == batch.Length;
     }
 
     internal static TextInputResult SendUnicodeText(string text)

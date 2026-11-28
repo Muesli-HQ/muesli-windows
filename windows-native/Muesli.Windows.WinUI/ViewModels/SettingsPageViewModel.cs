@@ -112,6 +112,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial IReadOnlyList<string> MeetingTemplates { get; private set; } = [];
     [ObservableProperty] public partial bool RemoveFillerWords { get; set; }
     [ObservableProperty] public partial bool EnableDictionaryCorrectionPrompts { get; set; }
+    [ObservableProperty] public partial int PasteShortcutIndex { get; set; }
     [ObservableProperty] public partial bool EnableLocalCleanup { get; set; }
     [ObservableProperty] public partial bool ComputerUseEnabled { get; set; }
     [ObservableProperty] public partial bool ShareUsageAnalytics { get; set; }
@@ -492,6 +493,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(ShowFloatingIndicator) => settings with { ShowFloatingIndicator = ShowFloatingIndicator },
         nameof(SoundEnabled) => settings with { SoundEnabled = SoundEnabled },
         nameof(ShowLiveWaveformOnHover) => settings with { ShowLiveWaveformOnHover = ShowLiveWaveformOnHover },
+        // The picker lists PasteShortcuts.All in order.
+        nameof(PasteShortcutIndex) when PasteShortcutIndex >= 0 && PasteShortcutIndex < PasteShortcuts.All.Count =>
+            settings with { PasteShortcut = PasteShortcuts.All[PasteShortcutIndex] },
         nameof(HotkeyTriggerThresholdMs) =>
             settings with { HotkeyTriggerThresholdMs = HotkeyTriggerTiming.ClampMilliseconds(HotkeyTriggerThresholdMs) },
         nameof(ThemeIndex) when ThemeIndex >= 0 =>
@@ -694,6 +698,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         SoundEnabled = settings.SoundEnabled;
         ShowLiveWaveformOnHover = settings.ShowLiveWaveformOnHover;
         HotkeyTriggerThresholdMs = settings.HotkeyTriggerThresholdMs;
+        PasteShortcutIndex = PasteShortcuts.All.ToList().IndexOf(PasteShortcuts.Normalize(settings.PasteShortcut));
         Hotkey = settings.Hotkey;
         ThemeIndex = settings.Theme.Trim().ToLowerInvariant() switch { "light" => 1, "dark" => 2, _ => 0 };
         IndicatorStyleIndex = settings.IndicatorStyle == "minimal" ? 1 : 0;

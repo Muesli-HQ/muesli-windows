@@ -705,7 +705,8 @@ public sealed class WinUiDictationContext : IDisposable
                     _operationCancellation.Token.ThrowIfCancellationRequested();
                     stageStarted.Restart();
                     var paste = await _paste.PasteTextAsync(
-                        text + DictationPasteSpacing.TrailingSeparator(text), _pasteTarget, _operationCancellation.Token);
+                        text + DictationPasteSpacing.TrailingSeparator(text), _pasteTarget, _operationCancellation.Token,
+                        settings.PasteShortcut);
                     deliveryMs = stageStarted.ElapsedMilliseconds;
                     deliveryFocusMs = paste.FocusWaitMs;
                     deliveryInputMs = paste.InputMs;
