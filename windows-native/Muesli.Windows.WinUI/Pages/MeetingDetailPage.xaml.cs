@@ -164,7 +164,7 @@ public sealed partial class MeetingDetailPage : Page
             Grid.SetRow(ChromeActions, 1);
             Grid.SetColumn(ChromeActions, 0);
             Grid.SetColumnSpan(ChromeActions, 2);
-            foreach (var button in new[] { SaveButton, CopyTranscriptButton, ExportButton, MoreActionsButton })
+            foreach (var button in new[] { SaveButton, CopyButton, ExportButton, MoreActionsButton })
             {
                 button.HorizontalAlignment = HorizontalAlignment.Stretch;
             }
@@ -207,7 +207,7 @@ public sealed partial class MeetingDetailPage : Page
             Grid.SetRow(ChromeActions, 0);
             Grid.SetColumn(ChromeActions, 1);
             Grid.SetColumnSpan(ChromeActions, 1);
-            foreach (var button in new[] { SaveButton, CopyTranscriptButton, ExportButton, MoreActionsButton })
+            foreach (var button in new[] { SaveButton, CopyButton, ExportButton, MoreActionsButton })
             {
                 button.HorizontalAlignment = HorizontalAlignment.Left;
             }

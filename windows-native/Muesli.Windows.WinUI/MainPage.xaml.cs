@@ -400,6 +400,15 @@ public sealed partial class MainPage : Page
         ContentFrame.Navigate(pageType, tag);
     }
 
+    /// <summary>Opens one saved meeting's page, with Meetings highlighted in the rail.</summary>
+    public void OpenMeeting(string meetingId)
+    {
+        DismissSearchQuery();
+        _selectedTag = "meetings";
+        RefreshNavigationVisuals();
+        ContentFrame.Navigate(typeof(Pages.MeetingDetailPage), meetingId);
+    }
+
     public void NavigateTo(string tag)
     {
         DismissSearchQuery();

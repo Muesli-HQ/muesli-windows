@@ -78,10 +78,19 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool IsStartupAvailable { get; private set; } = true;
     [ObservableProperty] public partial string StartupAvailabilityNotice { get; private set; } = "";
     [ObservableProperty] public partial bool AutoMeetingDetectionEnabled { get; set; }
-    [ObservableProperty] public partial bool SaveMeetingRecordings { get; set; }
+    [ObservableProperty] public partial SettingsChoice? SelectedMeetingRecordingSavePolicy { get; set; }
+
+    /// <summary>macOS "Save meeting recordings" choices, in macOS order.</summary>
+    public IReadOnlyList<SettingsChoice> MeetingRecordingSavePolicyChoices { get; } =
+    [
+        new(MeetingRecordingSavePolicies.Never, "Never"),
+        new(MeetingRecordingSavePolicies.Prompt, "Ask every time"),
+        new(MeetingRecordingSavePolicies.Always, "Always")
+    ];
     [ObservableProperty] public partial bool AutoExportMarkdownEnabled { get; set; }
     [ObservableProperty] public partial string AutoExportMarkdownDirectory { get; set; } = "";
-    [ObservableProperty] public partial bool AutoExportPdfEnabled { get; set; }
+    [ObservableProperty] public partial SettingsChoice? SelectedAutoExportContent { get; set; }
+    [ObservableProperty] public partial SettingsChoice? SelectedAutoExportFileFormat { get; set; }
     [ObservableProperty] public partial bool PostMeetingHookEnabled { get; set; }
     [ObservableProperty] public partial string PostMeetingHookExecutablePath { get; set; } = "";
     [ObservableProperty] public partial int PostMeetingHookTimeoutSeconds { get; set; } = 30;
@@ -187,14 +196,28 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     /// blank box. An empty directory makes the exporter fail with "Select a rooted auto-export
     /// directory." (Muesli.Windows.Platform/Services/PostMeetingAutomationService.cs:423-424).
     /// </summary>
-    public string PdfAutoExportHelp => "Save a PDF copy beside the Markdown file. Existing edited files are kept.";
+    /// <summary>macOS <c>MeetingExportContent</c>, with the ids Windows already stores.</summary>
+    public IReadOnlyList<SettingsChoice> AutoExportContentChoices { get; } =
+    [
+        new("notes", "Notes"),
+        new("transcript", "Transcript"),
+        new("full-meeting", "Full Meeting")
+    ];
+
+    /// <summary>macOS <c>MeetingAutoExportFileFormat</c>.</summary>
+    public IReadOnlyList<SettingsChoice> AutoExportFileFormatChoices { get; } =
+    [
+        new(AutoExportFileFormats.Markdown, "Markdown"),
+        new(AutoExportFileFormats.Pdf, "PDF"),
+        new(AutoExportFileFormats.MarkdownAndPdf, "Markdown and PDF")
+    ];
 
     public string AutoExportFolderHelp =>
         !AutoExportMarkdownEnabled
-            ? "Turn on automatic export to choose where the Markdown copy is written."
+            ? "Turn on Auto-export meetings to choose where copies are written."
             : string.IsNullOrWhiteSpace(AutoExportMarkdownDirectory)
                 ? "Nothing is exported until you choose a folder on this PC."
-                : "A Markdown copy of each completed meeting is written here.";
+                : "A copy of each completed meeting is written here.";
 
     public void ReportFolderPickerFailure(string message) =>
         ShowStatus($"The folder could not be chosen: {message}", isError: true);
@@ -212,6 +235,27 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly HashSet<string> _pendingText = [];
     private CancellationTokenSource? _debounce;
     private bool _tracking;
+
+    /// <summary>macOS mutedMeetingDetectionAppsControl: one checkbox per meeting app.</summary>
+    public IReadOnlyList<MutedDetectionAppOption> MutedDetectionApps => _mutedDetectionApps ??= CreateMutedDetectionApps();
+    private IReadOnlyList<MutedDetectionAppOption>? _mutedDetectionApps;
+
+    /// <summary>The muted app ids as one value, so autosave treats the checkboxes as one setting.</summary>
+    public IReadOnlyList<string> MutedMeetingDetectionApps =>
+        MutedDetectionApps.Where(app => app.IsMuted).Select(app => app.Id).ToList();
+
+    private IReadOnlyList<MutedDetectionAppOption> CreateMutedDetectionApps()
+    {
+        var options = MeetingDetectionApps.All.Select(app => new MutedDetectionAppOption(app.Id, app.Name)).ToList();
+        foreach (var option in options)
+        {
+            option.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(MutedDetectionAppOption.IsMuted)) OnPropertyChanged(nameof(MutedMeetingDetectionApps));
+            };
+        }
+        return options;
+    }
     private bool _fillingAnalyticsChoice;
     private string? _errorField;
 
@@ -298,7 +342,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         [nameof(UserName)] = new("Your name",
             vm => vm.UserName, (vm, value) => vm.UserName = value,
             settings => settings.UserName, (settings, value) => settings with { UserName = value }),
-        [nameof(AutoExportMarkdownDirectory)] = new("Export folder",
+        [nameof(AutoExportMarkdownDirectory)] = new("Destination folder",
             vm => vm.AutoExportMarkdownDirectory, (vm, value) => vm.AutoExportMarkdownDirectory = value,
             settings => settings.AutoExportMarkdownDirectory,
             (settings, value) => settings with { AutoExportMarkdownDirectory = value },
@@ -451,9 +495,26 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(OpenDashboardOnLaunch) => settings with { OpenDashboardOnLaunch = OpenDashboardOnLaunch },
         nameof(StartAtLogin) => settings with { StartAtLogin = StartAtLogin },
         nameof(AutoMeetingDetectionEnabled) => settings with { AutoMeetingDetectionEnabled = AutoMeetingDetectionEnabled },
-        nameof(SaveMeetingRecordings) => settings with { SaveMeetingRecordings = SaveMeetingRecordings },
+        // The legacy switch follows along so an older build keeps audio unless the choice is Never.
+        nameof(SelectedMeetingRecordingSavePolicy) when SelectedMeetingRecordingSavePolicy is { } policy =>
+            settings with
+            {
+                MeetingRecordingSavePolicy = policy.Id,
+                SaveMeetingRecordings = policy.Id != MeetingRecordingSavePolicies.Never
+            },
         nameof(AutoExportMarkdownEnabled) => settings with { AutoExportMarkdownEnabled = AutoExportMarkdownEnabled },
-        nameof(AutoExportPdfEnabled) => settings with { AutoExportPdfEnabled = AutoExportPdfEnabled },
+        nameof(MutedMeetingDetectionApps) => settings.MutedMeetingDetectionApps.SequenceEqual(MutedMeetingDetectionApps, StringComparer.OrdinalIgnoreCase)
+            ? null
+            : settings with { MutedMeetingDetectionApps = MutedMeetingDetectionApps },
+        nameof(SelectedAutoExportContent) when SelectedAutoExportContent is { } content =>
+            settings with { AutoExportMarkdownContent = content.Id },
+        // The legacy PDF switch is kept in step so an older build reading this file agrees.
+        nameof(SelectedAutoExportFileFormat) when SelectedAutoExportFileFormat is { } format =>
+            settings with
+            {
+                AutoExportFileFormat = format.Id,
+                AutoExportPdfEnabled = AutoExportFileFormats.IncludesPdf(format.Id)
+            },
         nameof(PostMeetingHookEnabled) => settings with { PostMeetingHookEnabled = PostMeetingHookEnabled },
         nameof(PostMeetingHookTimeoutSeconds) =>
             settings with { PostMeetingHookTimeoutSeconds = Math.Clamp(PostMeetingHookTimeoutSeconds, 1, 600) },
@@ -644,10 +705,16 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         UserName = settings.UserName;
         OpenDashboardOnLaunch = settings.OpenDashboardOnLaunch;
         AutoMeetingDetectionEnabled = settings.AutoMeetingDetectionEnabled;
-        SaveMeetingRecordings = settings.SaveMeetingRecordings;
+        var muted = new HashSet<string>(settings.MutedMeetingDetectionApps ?? [], StringComparer.OrdinalIgnoreCase);
+        foreach (var app in MutedDetectionApps) app.IsMuted = muted.Contains(app.Id);
+        var recordingPolicy = MeetingRecordingSavePolicies.Resolve(settings);
+        SelectedMeetingRecordingSavePolicy = MeetingRecordingSavePolicyChoices.First(choice => choice.Id == recordingPolicy);
         AutoExportMarkdownEnabled = settings.AutoExportMarkdownEnabled;
         AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory;
-        AutoExportPdfEnabled = settings.AutoExportPdfEnabled;
+        SelectedAutoExportContent = AutoExportContentChoices.FirstOrDefault(choice => choice.Id == settings.AutoExportMarkdownContent)
+            ?? AutoExportContentChoices[0];
+        var autoExportFormat = AutoExportFileFormats.Resolve(settings);
+        SelectedAutoExportFileFormat = AutoExportFileFormatChoices.First(choice => choice.Id == autoExportFormat);
         PostMeetingHookEnabled = settings.PostMeetingHookEnabled;
         PostMeetingHookExecutablePath = settings.PostMeetingHookExecutablePath;
         PostMeetingHookTimeoutSeconds = settings.PostMeetingHookTimeoutSeconds;
@@ -1134,6 +1201,14 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 }
 
 /// <summary>An id with the label a picker shows for it.</summary>
+/// <summary>One checkbox under "Don't notify me when a call is detected in these apps:".</summary>
+public sealed partial class MutedDetectionAppOption(string id, string name) : ObservableObject
+{
+    public string Id { get; } = id;
+    public string Name { get; } = name;
+    [ObservableProperty] public partial bool IsMuted { get; set; }
+}
+
 public sealed record SettingsChoice(string Id, string Label)
 {
     public override string ToString() => Label;

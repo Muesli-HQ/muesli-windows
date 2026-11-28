@@ -58,7 +58,7 @@ public sealed class WinUiMeetingNotificationService : IDisposable
                 request.IsScheduled
                     ? MeetingNotificationOutcome.UpcomingScheduledMeeting
                     : MeetingNotificationOutcome.ActiveMeetingDetected,
-                "preview",
+                request.Kind == MeetingNotificationKind.MeetingCompleted ? "meeting-completed" : "preview",
                 request.PromptId)
             : _state.Evaluate(request, _detectionEnabled(), _isRecording(), _isBusy());
         LastOutcome = decision.Outcome;

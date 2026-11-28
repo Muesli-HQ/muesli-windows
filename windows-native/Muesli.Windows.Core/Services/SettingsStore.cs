@@ -76,6 +76,7 @@ public sealed class SettingsStore
             PostMeetingHookMaxAttempts = Math.Clamp(settings.PostMeetingHookMaxAttempts, 1, 3),
             AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory?.Trim() ?? "",
             AutoExportMarkdownContent = NormalizeAutoExportContent(settings.AutoExportMarkdownContent),
+            MutedMeetingDetectionApps = settings.MutedMeetingDetectionApps ?? [],
             ComputerUsePlannerProvider = NormalizeComputerUseProvider(settings.ComputerUsePlannerProvider),
             ComputerUsePlannerModel = settings.ComputerUsePlannerModel?.Trim() ?? "",
             ComputerUsePlannerTimeoutSeconds = Math.Clamp(settings.ComputerUsePlannerTimeoutSeconds, 5, 120),
@@ -168,6 +169,7 @@ public sealed class SettingsStore
             PostMeetingHookMaxAttempts = Math.Clamp(settings.PostMeetingHookMaxAttempts, 1, 3),
             AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory?.Trim() ?? "",
             AutoExportMarkdownContent = NormalizeAutoExportContent(settings.AutoExportMarkdownContent),
+            MutedMeetingDetectionApps = settings.MutedMeetingDetectionApps ?? [],
             ComputerUsePlannerProvider = NormalizeComputerUseProvider(settings.ComputerUsePlannerProvider),
             ComputerUsePlannerModel = settings.ComputerUsePlannerModel?.Trim() ?? "",
             ComputerUsePlannerTimeoutSeconds = Math.Clamp(settings.ComputerUsePlannerTimeoutSeconds, 5, 120),
@@ -230,6 +232,7 @@ public sealed class SettingsStore
             PostMeetingHookMaxAttempts = Math.Clamp(settings.PostMeetingHookMaxAttempts, 1, 3),
             AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory?.Trim() ?? "",
             AutoExportMarkdownContent = NormalizeAutoExportContent(settings.AutoExportMarkdownContent),
+            MutedMeetingDetectionApps = settings.MutedMeetingDetectionApps ?? [],
             ComputerUsePlannerProvider = NormalizeComputerUseProvider(settings.ComputerUsePlannerProvider),
             ComputerUsePlannerModel = settings.ComputerUsePlannerModel?.Trim() ?? "",
             ComputerUsePlannerTimeoutSeconds = Math.Clamp(settings.ComputerUsePlannerTimeoutSeconds, 5, 120),
@@ -479,7 +482,12 @@ public sealed record MuesliSettings
     /// <summary>Selected local cleanup model id, or empty when none is chosen.</summary>
     public string CleanupModelId { get; init; } = "";
 
-    public bool ShowLiveWaveformOnHover { get; init; }
+    /// <summary>
+    /// "Show transcript on hover": hovering the meeting pill opens the live transcript, whose header
+    /// holds Pause/Resume, as on macOS (<c>showMeetingTranscriptOnIndicatorHover</c>, default on).
+    /// Saved files always carry this key, so the default only reaches new installs.
+    /// </summary>
+    public bool ShowLiveWaveformOnHover { get; init; } = true;
     [JsonPropertyName("TranscriptionModelId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string? LegacyTranscriptionModelIdForMigration { get; init; }
@@ -507,7 +515,25 @@ public sealed record MuesliSettings
     public string MeetingSummaryTemplate { get; init; } = "standard";
     public string MeetingSummaryPromptOverride { get; init; } = "";
     public bool OpenDashboardOnLaunch { get; init; } = true;
-    public bool SaveMeetingRecordings { get; init; } = true;
+    /// <summary>
+    /// Legacy keep/delete switch. Every saved settings file carries it, so its default only reaches
+    /// new installs: false, which makes their recording policy macOS's default, Never. Still written
+    /// beside <see cref="MeetingRecordingSavePolicy"/> for older builds.
+    /// </summary>
+    public bool SaveMeetingRecordings { get; init; }
+
+    /// <summary>
+    /// macOS "Save meeting recordings": "never", "prompt" (Ask every time) or "always". Null in files
+    /// written before the choice; <see cref="MeetingRecordingSavePolicies.Resolve"/> then derives it
+    /// from <see cref="SaveMeetingRecordings"/>.
+    /// </summary>
+    public string? MeetingRecordingSavePolicy { get; init; }
+
+    /// <summary>
+    /// Ids from <see cref="MeetingDetectionApps"/> whose detected calls never raise the
+    /// "Meeting detected" prompt (macOS <c>mutedMeetingDetectionAppBundleIDs</c>). Empty by default.
+    /// </summary>
+    public IReadOnlyList<string> MutedMeetingDetectionApps { get; init; } = [];
     public bool PostMeetingHookEnabled { get; init; }
     public string PostMeetingHookExecutablePath { get; init; } = "";
     public string PostMeetingHookTranscriptPolicy { get; init; } = "metadata-only";
@@ -518,9 +544,18 @@ public sealed record MuesliSettings
     public string AutoExportMarkdownContent { get; init; } = "notes";
 
     /// <summary>
-    /// Asks for an automatic PDF beside the Markdown copy.
+    /// Legacy "Also export PDF" switch. Still written alongside <see cref="AutoExportFileFormat"/>
+    /// so an older build reading this file keeps exporting PDFs, and read only when that field is
+    /// absent.
     /// </summary>
     public bool AutoExportPdfEnabled { get; init; }
+
+    /// <summary>
+    /// The macOS auto-export file format: "markdown", "pdf" or "markdown_and_pdf". Null in files
+    /// written before the format picker; <see cref="AutoExportFileFormats.Resolve"/> then derives
+    /// it from <see cref="AutoExportPdfEnabled"/>.
+    /// </summary>
+    public string? AutoExportFileFormat { get; init; }
     public bool ComputerUseEnabled { get; init; }
     public string ComputerUsePlannerProvider { get; init; } = "none";
     public string ComputerUsePlannerModel { get; init; } = "";

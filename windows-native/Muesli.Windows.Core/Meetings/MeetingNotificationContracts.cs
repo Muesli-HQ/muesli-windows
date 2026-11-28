@@ -10,7 +10,9 @@ public enum MeetingNotificationKind
 {
     ActiveDetected,
     ScheduledUpcoming,
-    SignalLost
+    SignalLost,
+    /// <summary>A meeting finished processing (macOS "Transcription complete" / "View Notes").</summary>
+    MeetingCompleted
 }
 
 /// <summary>The three configurable scheduled-meeting actions, mirroring the macOS default action.</summary>
@@ -76,7 +78,8 @@ public enum MeetingNotificationAction
     JoinOnly,
     TranscribeOnly,
     Dismiss,
-    StopTranscribing
+    StopTranscribing,
+    ViewNotes
 }
 
 /// <summary>
@@ -115,8 +118,12 @@ public sealed record MeetingNotificationRequest(
     nint WindowHandle = 0)
 {
     public bool IsScheduled => Kind == MeetingNotificationKind.ScheduledUpcoming;
-    public MeetingNotificationAction SingleAction => Kind == MeetingNotificationKind.SignalLost
-        ? MeetingNotificationAction.StopTranscribing : MeetingNotificationAction.StartTranscribing;
+    public MeetingNotificationAction SingleAction => Kind switch
+    {
+        MeetingNotificationKind.SignalLost => MeetingNotificationAction.StopTranscribing,
+        MeetingNotificationKind.MeetingCompleted => MeetingNotificationAction.ViewNotes,
+        _ => MeetingNotificationAction.StartTranscribing
+    };
 
     public bool HasJoinActions =>
         IsScheduled && !string.IsNullOrWhiteSpace(MeetingUrl);

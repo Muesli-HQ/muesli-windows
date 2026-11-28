@@ -157,21 +157,41 @@
                                     Content="Save"
                                     AutomationProperties.Name="Save meeting"
                                     AutomationProperties.AutomationId="MeetingSaveButton" />
-                            <Button x:Name="CopyTranscriptButton"
+                            <!-- macOS "Copy": copies the document that is showing (Notes or Transcript). -->
+                            <Button x:Name="CopyButton"
                                     Style="{StaticResource MeetingToolbarButtonStyle}"
-                                    Command="{x:Bind ViewModel.CopyTranscriptCommand}"
-                                    AutomationProperties.Name="Copy Transcript"
-                                    AutomationProperties.AutomationId="MeetingCopyTranscriptButton">
+                                    Command="{x:Bind ViewModel.CopyCommand}"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.CopyHint, Mode=OneWay}"
+                                    AutomationProperties.Name="{x:Bind ViewModel.CopyHint, Mode=OneWay}"
+                                    AutomationProperties.AutomationId="MeetingCopyButton">
                                 <StackPanel Orientation="Horizontal" Spacing="7">
                                     <FontIcon Glyph="&#xE8C8;" FontSize="14" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
-                                    <TextBlock Text="Copy Transcript" />
+                                    <TextBlock Text="Copy" />
                                 </StackPanel>
                             </Button>
+                            <!-- macOS exportMenu: the showing document, or the full meeting; Markdown or PDF is picked in the save dialog. -->
                             <Button x:Name="ExportButton"
                                     Style="{StaticResource MeetingToolbarButtonStyle}"
-                                    Command="{x:Bind ViewModel.ExportMarkdownCommand}"
                                     AutomationProperties.Name="Export"
                                     AutomationProperties.AutomationId="MeetingExportButton">
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuFlyoutItem Text="{x:Bind ViewModel.ExportCurrentLabel, Mode=OneWay}"
+                                                        Command="{x:Bind ViewModel.ExportCurrentCommand}"
+                                                        AutomationProperties.AutomationId="MeetingExportCurrentButton">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE8A5;" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem Text="Export Full Meeting"
+                                                        Command="{x:Bind ViewModel.ExportFullMeetingCommand}"
+                                                        AutomationProperties.AutomationId="MeetingExportFullButton">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xF0E3;" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </Button.Flyout>
                                 <StackPanel Orientation="Horizontal" Spacing="7">
                                     <FontIcon Glyph="&#xE74E;" FontSize="14" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
                                     <TextBlock Text="Export" />
@@ -495,10 +515,15 @@
                             Visibility="{x:Bind BoolToVisibility(ViewModel.ShowGeneratedNotes), Mode=OneWay}"
                             AutomationProperties.AutomationId="MeetingSummaryCard">
                         <StackPanel Spacing="8">
-                            <controls:MarkdownNotesEditor Markdown="{x:Bind ViewModel.Summary, Mode=OneWay}"
-                                       TextWrapping="Wrap" IsReadOnly="True" BorderThickness="0" Padding="0"
-                                       Background="Transparent" MinHeight="80" MaxHeight="560"
+                            <!-- macOS keeps generated notes editable; edits autosave like My notes. -->
+                            <controls:NotesFormattingBar Editor="{x:Bind SummaryEditor}"
+                                                         Visibility="{x:Bind BoolToVisibility(ViewModel.HasGeneratedSummary), Mode=OneWay}" />
+                            <controls:MarkdownNotesEditor x:Name="SummaryEditor"
+                                       Markdown="{x:Bind ViewModel.Summary, Mode=TwoWay}"
+                                       TextWrapping="Wrap" AcceptsReturn="True" BorderThickness="0" Padding="0"
+                                       Background="Transparent" MinHeight="80"
                                        Visibility="{x:Bind BoolToVisibility(ViewModel.HasGeneratedSummary), Mode=OneWay}"
+                                       AutomationProperties.Name="Generated meeting notes"
                                        AutomationProperties.AutomationId="MeetingSummaryText" />
                             <StackPanel Spacing="6"
                                         Visibility="{x:Bind InvertBoolToVisibility(ViewModel.HasGeneratedSummary), Mode=OneWay}">

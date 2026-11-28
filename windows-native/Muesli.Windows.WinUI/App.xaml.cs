@@ -77,6 +77,8 @@ public partial class App : Application
     private bool _meetingWasLive;
     private bool _ownAudioActive;
     private readonly HashSet<string> _repromptedMeetings = new(StringComparer.OrdinalIgnoreCase);
+    private PersistedMeeting? _pendingCompletedMeeting;
+    private DispatcherTimer? _completionRetry;
     private bool _exiting;
     private readonly AppLogService _log = new();
     private UiExceptionPolicy _uiExceptionPolicy = null!;
@@ -302,6 +304,8 @@ public partial class App : Application
             else if (!ownAudio && _ownAudioActive) MeetingDetection.ResumeAfterOwnAudio();
             _ownAudioActive = ownAudio;
         };
+        Meetings.MeetingCompleted += (_, meeting) => PresentMeetingCompleted(meeting);
+        Meetings.AskToKeepRecordingAsync = AskToKeepRecordingAsync;
         Meetings.Changed += (_, _) =>
         {
             Tray.Refresh();
@@ -423,6 +427,83 @@ public partial class App : Application
             UiDispatcher.TryEnqueue(() => ShowMeetingNotificationPreview(previewState));
         }
 #endif
+    }
+
+    /// <summary>
+    /// macOS shows "Transcription complete" with the meeting title and a "View Notes" button in the
+    /// meeting panel once a meeting's notes are saved. A meeting-detected or signal-lost prompt
+    /// already on screen is not replaced; the notice waits for it (macOS queues it the same way).
+    /// </summary>
+    private void PresentMeetingCompleted(PersistedMeeting meeting)
+    {
+        if (_meetingNotifications is null) return;
+        if (_meetingNotifications.IsVisible)
+        {
+            _pendingCompletedMeeting = meeting;
+            _completionRetry ??= CreateCompletionRetryTimer();
+            _completionRetry.Start();
+            return;
+        }
+
+        _pendingCompletedMeeting = null;
+        _signalLossPromptId = null;
+        var title = string.IsNullOrWhiteSpace(meeting.Title) ? "Meeting" : meeting.Title.Trim();
+        var request = new MeetingNotificationRequest($"meeting-completed:{meeting.Id}", MeetingNotificationKind.MeetingCompleted,
+            "Transcription complete", title, "Muesli", "", "#34C759", "", "View Notes", null);
+        _meetingNotifications.Forget(request.PromptId);
+        _meetingNotifications.Present(request, new MeetingNotificationCallbacks(
+            OnAction: action =>
+            {
+                if (action != MeetingNotificationAction.ViewNotes) return;
+                var mainWindow = (MainWindow)Window;
+                mainWindow.ShowDashboard("meetings");
+                mainWindow.ShellPage?.OpenMeeting(meeting.Id);
+            },
+            OnDismiss: () => { },
+            OnAutoDismiss: () => { }), bypassSuppression: true);
+    }
+
+    /// <summary>
+    /// macOS promptToSaveMeetingRecording, worded the same. The window is shown so the dialog is
+    /// visible; if it cannot be shown the audio is kept, as on macOS.
+    /// </summary>
+    private Task<bool> AskToKeepRecordingAsync(string title)
+    {
+        var answer = new TaskCompletionSource<bool>();
+        if (!UiDispatcher.TryEnqueue(async () =>
+            {
+                try
+                {
+                    if (Window is MainWindow main) { main.AppWindow.Show(true); main.Activate(); }
+                    var name = string.IsNullOrWhiteSpace(title) ? "this meeting" : $"“{title.Trim()}”";
+                    var choice = await Dialogs.ConfirmAsync(
+                        $"Save an audio file for {name} for playback and re-transcription. Your notes and transcript are saved either way.",
+                        "Keep meeting audio?", "Keep Audio", "Don't Keep Audio");
+                    answer.TrySetResult(choice == AppDialogChoice.Primary);
+                }
+                catch (Exception exception)
+                {
+                    _log.Error("The keep-audio question could not be shown; the audio is kept.", exception);
+                    answer.TrySetResult(true);
+                }
+            }))
+        {
+            answer.TrySetResult(true);
+        }
+        return answer.Task;
+    }
+
+    private DispatcherTimer CreateCompletionRetryTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        timer.Tick += (_, _) =>
+        {
+            if (_pendingCompletedMeeting is not { } pending) { timer.Stop(); return; }
+            if (_meetingNotifications?.IsVisible == true) return;
+            timer.Stop();
+            PresentMeetingCompleted(pending);
+        };
+        return timer;
     }
 
     private async Task StopDetectedMeetingAsync()
@@ -684,6 +765,11 @@ public partial class App : Application
     private void PresentDetectedMeeting(WinUiDetectedMeeting detected)
     {
         if (detected.Meeting is not { } meeting || _meetingNotifications is null) return;
+        if (MeetingDetectionApps.IsMuted(Settings.Load().MutedMeetingDetectionApps, meeting.ProcessName))
+        {
+            _log.Info($"Meeting detection muted for this app. app={MeetingDetectionApps.ForProcess(meeting.ProcessName)?.Id}");
+            return;
+        }
         var request = MeetingNotificationRequestFactory.FromDetectedMeeting(meeting);
         var callbacks = new MeetingNotificationCallbacks(
             OnAction: action => _ = HandleMeetingNotificationActionAsync(meeting, action),

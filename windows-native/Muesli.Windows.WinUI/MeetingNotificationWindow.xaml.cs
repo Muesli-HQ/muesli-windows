@@ -338,7 +338,9 @@ public sealed partial class MeetingNotificationWindow : Window
     private void ApplyAccessibility()
     {
         AutomationProperties.SetAutomationId(Root, "MeetingNotificationWindow");
-        AutomationProperties.SetName(Root, $"Meeting detected. {_request.Title}. {_request.Subtitle}");
+        // The title already says what the notice is ("Meeting detected", "Transcription complete",
+        // "Meeting signal lost"); prefixing "Meeting detected" would misreport the other kinds.
+        AutomationProperties.SetName(Root, $"{_request.Title}. {_request.Subtitle}");
         AutomationProperties.SetAutomationId(TitleText, "MeetingNotificationTitle");
         AutomationProperties.SetName(TitleText, _request.Title);
         AutomationProperties.SetAutomationId(SubtitleText, "MeetingNotificationSubtitle");

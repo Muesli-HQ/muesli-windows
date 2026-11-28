@@ -111,7 +111,9 @@ public sealed class PostMeetingAutomationService
                 pdfExport: pdfExport);
         }
 
-        var payload = BuildPayload(meeting, completionEvent, options.TranscriptPolicy, export);
+        // With PDF-only auto-export the PDF is the exported file the hook should be pointed at.
+        var payloadExport = !export.Requested && pdfExport is { Requested: true } ? pdfExport : export;
+        var payload = BuildPayload(meeting, completionEvent, options.TranscriptPolicy, payloadExport);
         var sensitiveValues = SensitiveValues(meeting);
         return await RunHookWithRetriesAsync(
             runId,
