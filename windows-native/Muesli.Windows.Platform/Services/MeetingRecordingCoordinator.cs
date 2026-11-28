@@ -16,6 +16,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
     private LiveTranscriptionConfiguration? _liveConfiguration;
     private CancellationTokenSource? _lifecycleCancellation;
     private Task<ModelOperationResult>? _modelWarmupTask;
+    private LiveMeetingDiarizationSession? _liveDiarization;
     private DateTime _startedAt;
     private string _meetingId = "";
     private int? _targetProcessId;
@@ -54,6 +55,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
         _capture.LevelChanged += (_, args) => LevelChanged?.Invoke(this, args);
         _capture.LiveTranscriptChanged += (_, args) => LiveTranscriptChanged?.Invoke(this, args);
         _capture.LiveTranscriptionFailed += (_, args) => LiveTranscriptionFailed?.Invoke(this, args);
+        _capture.SystemPcmSamplesAvailable += samples => Volatile.Read(ref _liveDiarization)?.Feed(samples);
         _capture.FinishingTranscript += () =>
         {
             // Only a real stop shows a stage; a pause finishes its pieces quietly.
@@ -147,6 +149,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             _capture.Prepare(_startedAt, resolvedMicrophone, _targetProcessId, _liveConfiguration, resetLiveResult: true);
 
             await _capture.StartLiveAsync(_lifecycleCancellation.Token).ConfigureAwait(false);
+            BeginLiveDiarization();
 
             var start = await _capture.StartPairAsync(_journal, _lifecycleCancellation.Token).ConfigureAwait(false);
             _journal = _journal with
@@ -159,6 +162,11 @@ public sealed class MeetingRecordingCoordinator : IDisposable
                 SaveJournalState(MeetingSessionState.Failed, "capture-start-failed");
                 _recovery.DeleteWorkingSession(_meetingId, MeetingAudioCleanupReason.FailedStartWithoutAudio);
                 throw new InvalidOperationException("Neither microphone nor system audio could start.");
+            }
+
+            if (!_capture.SystemAvailable)
+            {
+                EndLiveDiarization();
             }
 
             Transition(
@@ -184,6 +192,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             {
                 Transition(MeetingSessionTrigger.Fail, "meeting preparation failed");
             }
+            EndLiveDiarization();
             await _capture.CancelCaptureAsync().ConfigureAwait(false);
             throw;
         }
@@ -243,6 +252,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
         }
         finally
         {
+            EndLiveDiarization();
             await _capture.DisposeCaptureAsync().ConfigureAwait(false);
             _gate.Release();
         }
@@ -413,6 +423,7 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             }
             StopHealthLoop();
             _lifecycleCancellation?.Cancel();
+            EndLiveDiarization();
             await _capture.CancelLiveAsync().ConfigureAwait(false);
             await _capture.CancelCaptureAsync().ConfigureAwait(false);
             Transition(MeetingSessionTrigger.Cancel, "user discarded meeting recording");
@@ -513,10 +524,30 @@ public sealed class MeetingRecordingCoordinator : IDisposable
         {
             // Finalization owns user-visible ASR initialization errors when a meeting is stopped.
         }
+        EndLiveDiarization();
         _finalization.DisposeDiarization();
         _capture.Dispose();
         _gate.Dispose();
     }
+
+    /// <summary>
+    /// Starts block diarization of the system track before capture starts, so it sees the
+    /// track from its first sample. Without verified models finalization diarizes the file.
+    /// </summary>
+    private void BeginLiveDiarization()
+    {
+        EndLiveDiarization();
+        try
+        {
+            Volatile.Write(ref _liveDiarization, _finalization.TryBeginLiveDiarization());
+        }
+        catch (Exception exception)
+        {
+            _logService?.Info($"Live diarization could not start. category={exception.GetType().Name}");
+        }
+    }
+
+    private void EndLiveDiarization() => Interlocked.Exchange(ref _liveDiarization, null)?.Dispose();
 
     private void BeginFinalModelWarmup()
     {
@@ -579,7 +610,8 @@ public sealed class MeetingRecordingCoordinator : IDisposable
             _startedAt,
             CurrentHealthWarnings(),
             _capture.LiveResult,
-            cancellationToken)).ConfigureAwait(false);
+            cancellationToken,
+            Volatile.Read(ref _liveDiarization))).ConfigureAwait(false);
         _journal = outcome.Journal;
         if (outcome.TerminalState == MeetingSessionState.Failed &&
             _stateMachine.CanApply(MeetingSessionTrigger.Fail))
