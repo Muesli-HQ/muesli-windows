@@ -37,7 +37,7 @@ internal sealed class FloatingIndicatorWindow : Window
     private readonly Func<float> _liveLevel;
     private readonly Action<Exception> _onFailure;
     private readonly IntPtr _hwnd;
-    private readonly Grid _root = new();
+    private readonly ArrowCursorGrid _root = new();
     private readonly Border _pill = new() { BorderThickness = new Thickness(1) };
     private readonly Grid _content = new();
     private readonly List<Border> _waveBars = [];
@@ -333,7 +333,7 @@ internal sealed class FloatingIndicatorWindow : Window
     private void Render()
     {
         var size = MinimalResting
-            ? FloatingIndicatorLayout.MinimalRestingSize(_indicatorAnchor)
+            ? FloatingIndicatorLayout.MinimalRestingSize
             : FloatingIndicatorLayout.SizeFor(_state, _hovered, _message);
         _widthDip = size.Width;
         _heightDip = size.Height;
@@ -397,12 +397,11 @@ internal sealed class FloatingIndicatorWindow : Window
     {
         if (MinimalResting)
         {
-            // macOS Minimal: a quiet grey grip until hovered.
-            var vertical = FloatingIndicatorLayout.MinimalGripIsVertical(_indicatorAnchor);
+            // Minimal: a quiet grey horizontal grip until hovered.
             _content.Children.Add(new Border
             {
-                Width = vertical ? FloatingIndicatorLayout.MinimalGripThickness : FloatingIndicatorLayout.MinimalGripLength,
-                Height = vertical ? FloatingIndicatorLayout.MinimalGripLength : FloatingIndicatorLayout.MinimalGripThickness,
+                Width = FloatingIndicatorLayout.MinimalGripLength,
+                Height = FloatingIndicatorLayout.MinimalGripThickness,
                 CornerRadius = new CornerRadius(FloatingIndicatorLayout.MinimalGripThickness / 2),
                 Background = Solid(0xD1, 0x69, 0x69, 0x69),
                 HorizontalAlignment = HorizontalAlignment.Center,
@@ -1094,4 +1093,14 @@ internal sealed class FloatingIndicatorWindow : Window
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+    /// <summary>
+    /// The pill's XAML host windows register no class cursor, and nothing in the pill set one, so
+    /// the pointer kept whatever shape it last had: over a just-launched app that was the
+    /// "working in background" spinner. Setting the arrow here makes XAML choose it on every hover.
+    /// </summary>
+    private sealed partial class ArrowCursorGrid : Grid
+    {
+        public ArrowCursorGrid() => ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.Arrow);
+    }
 }
