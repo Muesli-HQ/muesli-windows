@@ -254,6 +254,16 @@ public sealed class DictationCorrectionBaselineTests
     }
 
     [Fact]
+    public void An_edit_to_a_word_outside_the_dictation_is_not_tied_to_it()
+    {
+        // "cat" is inside the dictated "concatenate" as letters, not as a word.
+        Assert.Empty(DictionaryCorrectionDetector.Suggestions("concatenate", "cat concatenate", "bat concatenate", 3, null));
+        Assert.False(DictionaryCorrectionDetector.ContainsPhrase("concatenate", "cat"));
+        Assert.True(DictionaryCorrectionDetector.ContainsPhrase("Hey Musley, can you", "musley"));
+        Assert.True(DictionaryCorrectionDetector.ContainsPhrase("café au lait", "cafe au"));
+    }
+
+    [Fact]
     public void Unrelated_text_never_becomes_the_baseline()
     {
         var baseline = new DictationCorrectionBaseline(Pasted);
@@ -369,7 +379,10 @@ public sealed class DictionarySuggestionLedgerTests
     public void Accepting_a_correction_of_a_rules_output_retargets_that_rule()
     {
         var rule = new DictionaryEntryRecord { Id = "d1", Phrase = "museli", Replacement = "Musli", MatchingThreshold = 0.85 };
-        var (_, dictionary) = DictionarySuggestionLedger.Accept(Enabled, new DictionarySuggestion("Musli", "Muesli"), [rule]);
+        // Recognition heard "museli"; the rule turned it into "Musli", which the user corrected.
+        var producer = DictionarySuggestionLedger.ProducingRule([rule], "Musli", "I like museli");
+        Assert.Equal("d1", producer);
+        var (_, dictionary) = DictionarySuggestionLedger.Accept(Enabled, new DictionarySuggestion("Musli", "Muesli"), [rule], producer);
 
         Assert.NotNull(dictionary);
         var retargeted = Assert.Single(dictionary!, entry => entry.Id == "d1");
@@ -377,6 +390,34 @@ public sealed class DictionarySuggestionLedgerTests
         Assert.Contains(dictionary!, entry => entry.Phrase == "Musli" && entry.Replacement == "Muesli");
         // What the prompt promised: the next dictation of the misheard word comes out corrected.
         Assert.Equal("I like Muesli", DictionaryCorrectionService.Apply("I like museli", dictionary!));
+    }
+
+    [Fact]
+    public void Rules_that_merely_share_the_output_are_left_alone()
+    {
+        var foo = new DictionaryEntryRecord { Id = "foo", Phrase = "foo", Replacement = "bar" };
+        var baz = new DictionaryEntryRecord { Id = "baz", Phrase = "baz", Replacement = "bar" };
+        // Recognition produced "bar" itself, and two rules output "bar": no producer can be named.
+        Assert.Null(DictionarySuggestionLedger.ProducingRule([foo, baz], "bar", "the bar is open"));
+        Assert.Null(DictionarySuggestionLedger.ProducingRule([foo, baz], "bar", "the foo is open"));
+        Assert.Null(DictionarySuggestionLedger.ProducingRule([foo], "bar", "the bar is open"));
+
+        var (_, dictionary) = DictionarySuggestionLedger.Accept(Enabled, new DictionarySuggestion("bar", "bard"), [foo, baz]);
+        Assert.Contains(dictionary!, entry => entry.Id == "foo" && entry.Replacement == "bar");
+        Assert.Contains(dictionary!, entry => entry.Id == "baz" && entry.Replacement == "bar");
+        Assert.Contains(dictionary!, entry => entry.Phrase == "bar" && entry.Replacement == "bard");
+    }
+
+    [Theory]
+    [InlineData("museli", "")]
+    [InlineData("museli", "   ")]
+    [InlineData("", "muesli")]
+    public void A_suggestion_with_a_blank_side_never_becomes_a_rule(string observed, string replacement)
+    {
+        var suggestion = new DictionarySuggestion(observed, replacement);
+        var (settings, dictionary) = DictionarySuggestionLedger.Accept(Enabled with { DictionarySuggestions = [suggestion] }, suggestion, []);
+        Assert.Null(dictionary);
+        Assert.Empty(settings.DictionarySuggestions);
     }
 
     [Fact]

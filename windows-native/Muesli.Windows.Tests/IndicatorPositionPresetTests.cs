@@ -34,6 +34,13 @@ public sealed class IndicatorPositionPresetTests
         Assert.Equal("Middle Right", FloatingIndicatorLayout.PositionChoice(new MuesliSettings { IndicatorAnchor = anchor }));
 
     [Fact]
+    public void The_pill_uses_the_same_choice_the_picker_shows()
+    {
+        var host = File.ReadAllText(TestRepositoryLayout.Combine("windows-native", "Muesli.Windows.WinUI", "Services", "WinUiIndicatorHost.cs"));
+        Assert.Contains("_indicatorAnchor = FloatingIndicatorLayout.PositionChoice(settings);", host, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Settings_page_binds_the_picker_and_saves_the_anchor()
     {
         var xaml = File.ReadAllText(TestRepositoryLayout.Combine("windows-native", "Muesli.Windows.WinUI", "Pages", "SettingsPage.xaml"));

@@ -22,6 +22,7 @@ public sealed class DictionarySuggestionPrompts : IDisposable
     private readonly AppLogService _log = new();
     private readonly DictationCorrectionMonitor _monitor;
     private readonly List<string> _queue = [];
+    private readonly Dictionary<string, string?> _producingRules = new(StringComparer.Ordinal);
     private DictionarySuggestionPromptWindow? _prompt;
     private string? _activeKey;
     private bool _advancePending;
@@ -47,10 +48,10 @@ public sealed class DictionarySuggestionPrompts : IDisposable
 
     private void OnDictationStarting() => _monitor.Cancel();
 
-    private void OnDictationPasted(string text, IntPtr target)
+    private void OnDictationPasted(string text, string recognized, IntPtr target)
     {
         if (_disposed || !_settings.Load().EnableDictionaryCorrectionPrompts) return;
-        _monitor.Start(text, target, suggestion => _dispatcher.TryEnqueue(() => Record(suggestion)));
+        _monitor.Start(text, target, suggestion => _dispatcher.TryEnqueue(() => Record(suggestion, recognized)));
     }
 
     /// <summary>Turning the setting off stops watching and closes any card, as on macOS.</summary>
@@ -86,14 +87,21 @@ public sealed class DictionarySuggestionPrompts : IDisposable
         ScheduleNext();
     }
 
-    private void Record(DictionarySuggestion suggestion)
+    private void Record(DictionarySuggestion suggestion, string recognized)
     {
         if (_disposed) return;
         try
         {
-            var (updated, prompt) = DictionarySuggestionLedger.Add(_settings.Load(), suggestion, _library.LoadDictionary());
+            var dictionary = _library.LoadDictionary();
+            var (updated, prompt) = DictionarySuggestionLedger.Add(_settings.Load(), suggestion, dictionary);
             if (updated is not null) _settings.Save(updated);
-            if (prompt is not null) Enqueue(prompt);
+            if (prompt is null) return;
+            // Which rule produced the corrected word is only knowable now, while this dictation's
+            // recognition result is at hand; the card's Add uses it. Kept in memory only.
+            var key = DictionarySuggestionLedger.Key(prompt.Observed, prompt.Replacement);
+            if (_producingRules.Count >= DictionarySuggestionLedger.MaxSuggestions) _producingRules.Clear();
+            _producingRules[key] =DictionarySuggestionLedger.ProducingRule(dictionary, prompt.Observed, recognized);
+            Enqueue(prompt);
         }
         catch (Exception exception)
         {
@@ -159,7 +167,10 @@ public sealed class DictionarySuggestionPrompts : IDisposable
 
     private void Accept(DictionarySuggestion suggestion)
     {
-        var (settings, dictionary) = DictionarySuggestionLedger.Accept(_settings.Load(), suggestion, _library.LoadDictionary());
+        var key = DictionarySuggestionLedger.Key(suggestion.Observed, suggestion.Replacement);
+        _producingRules.TryGetValue(key, out var producingRule);
+        _producingRules.Remove(key);
+        var (settings, dictionary) = DictionarySuggestionLedger.Accept(_settings.Load(), suggestion, _library.LoadDictionary(), producingRule);
         if (dictionary is not null) _library.SaveDictionary(dictionary);
         _settings.Save(settings);
     }

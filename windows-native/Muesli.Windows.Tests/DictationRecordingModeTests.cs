@@ -47,6 +47,17 @@ public sealed class DictationRecordingModeTests
         Assert.Equal(DictationHotkeyAction.StopRecording, machine.KeyUp(doubleTapEnabled: false));
     }
 
+    [Fact]
+    public void A_hands_free_recording_still_stops_after_switching_to_toggle()
+    {
+        var machine = new DictationHotkeyStateMachine();
+        machine.KeyDown(doubleTapEnabled: true);
+        machine.KeyUp(doubleTapEnabled: true);
+        Assert.Equal(DictationHotkeyAction.EnterHandsFree, machine.KeyDown(doubleTapEnabled: true));
+        Assert.Equal(DictationHotkeyAction.StopRecording, machine.KeyDown(doubleTapEnabled: true, pressToToggle: true));
+        Assert.Equal(DictationHotkeyState.Idle, machine.State);
+    }
+
     [Theory]
     [InlineData("Ctrl+Shift+D", true)]
     [InlineData("Alt+F9", true)]

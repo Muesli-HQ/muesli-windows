@@ -47,26 +47,58 @@ public static class DictionarySuggestionLedger
     }
 
     /// <summary>Add: the correction becomes a dictionary entry and leaves the suggestion list.</summary>
+    /// <summary>
+    /// The dictionary rule that produced <paramref name="observed"/> in this dictation, if one can be
+    /// identified: the word is not in what speech recognition returned (<paramref name="recognized"/>),
+    /// and exactly one rule outputs it. Otherwise null, and no existing rule is changed on Add.
+    /// </summary>
+    public static string? ProducingRule(IEnumerable<DictionaryEntryRecord> dictionary, string observed, string? recognized)
+    {
+        if (string.IsNullOrWhiteSpace(observed) || string.IsNullOrWhiteSpace(recognized)) return null;
+        if (DictionaryCorrectionDetector.ContainsPhrase(recognized, observed)) return null;
+        var producers = dictionary.Where(entry => Normalize(entry.Replacement) == Normalize(observed)).Take(2).ToList();
+        return producers.Count == 1 ? producers[0].Id : null;
+    }
+
+    /// <summary>
+    /// Add: the correction becomes a dictionary entry and leaves the suggestion list. When
+    /// <paramref name="producingRuleId"/> names the rule that produced the corrected word, that rule is
+    /// pointed at the correction too.
+    /// </summary>
     public static (MuesliSettings Settings, IReadOnlyList<DictionaryEntryRecord>? Dictionary) Accept(
         MuesliSettings settings,
         DictionarySuggestion suggestion,
-        IReadOnlyList<DictionaryEntryRecord> dictionary)
+        IReadOnlyList<DictionaryEntryRecord> dictionary,
+        string? producingRuleId = null)
     {
         var key = Key(suggestion.Observed, suggestion.Replacement);
-        var replacement = suggestion.Replacement.Trim();
+        var replacement = (suggestion.Replacement ?? "").Trim();
         var observed = Normalize(suggestion.Observed);
+        var remaining = settings with
+        {
+            DictionarySuggestions = (settings.DictionarySuggestions ?? []).Where(item => Key(item.Observed, item.Replacement) != key).ToArray(),
+            DismissedDictionarySuggestionKeys = (settings.DismissedDictionarySuggestionKeys ?? []).Where(item => item != key).ToArray()
+        };
+
+        // A suggestion with a blank side (only possible from a damaged settings file) would become a
+        // rule that deletes words. It is dropped without touching the dictionary.
+        if (observed.Length == 0 || replacement.Length == 0 || observed == Normalize(replacement)) return (remaining, null);
+
         var entries = dictionary.ToList();
         var changed = false;
 
         // The pasted word may itself be a rule's output (museli -> Musli, then Musli corrected to
         // Muesli). The dictionary pass does not chain rules, so a new Musli -> Muesli rule would never
-        // fire; the rule that produced the word is pointed at the correction instead.
-        for (var index = 0; index < entries.Count; index++)
+        // fire; the one rule known to have produced the word is pointed at the correction. Rules that
+        // merely share the output are the user's own and are left alone.
+        if (producingRuleId is not null)
         {
-            var entry = entries[index];
-            if (Normalize(entry.Replacement) == observed && Normalize(entry.Phrase) != Normalize(replacement))
+            var index = entries.FindIndex(entry => entry.Id == producingRuleId &&
+                                                   Normalize(entry.Replacement) == observed &&
+                                                   Normalize(entry.Phrase) != Normalize(replacement));
+            if (index >= 0)
             {
-                entries[index] = entry with { Replacement = replacement };
+                entries[index] = entries[index] with { Replacement = replacement };
                 changed = true;
             }
         }
@@ -84,13 +116,7 @@ public static class DictionarySuggestionLedger
             changed = true;
         }
 
-        IReadOnlyList<DictionaryEntryRecord>? updated = changed ? entries : null;
-
-        return (settings with
-        {
-            DictionarySuggestions = (settings.DictionarySuggestions ?? []).Where(item => Key(item.Observed, item.Replacement) != key).ToArray(),
-            DismissedDictionarySuggestionKeys = (settings.DismissedDictionarySuggestionKeys ?? []).Where(item => item != key).ToArray()
-        }, updated);
+        return (remaining, changed ? entries : null);
     }
 
     /// <summary>Ignore: the correction leaves the list and is never offered again.</summary>

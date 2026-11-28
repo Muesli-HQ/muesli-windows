@@ -613,8 +613,37 @@ public static class DictionaryCorrectionDetector
         return candidates;
     }
 
-    private static bool ContainsIgnoringCaseAndDiacritics(string text, string value) =>
-        CultureInfo.InvariantCulture.CompareInfo.IndexOf(text, value, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) >= 0;
+    /// <summary>
+    /// Whether <paramref name="phrase"/> occurs in <paramref name="text"/>, ignoring case and
+    /// diacritics, with whole words at both ends. This is macOS's substring search (so punctuation
+    /// inside the phrase must match exactly, as there) plus a word-boundary check: an edit to "cat" in
+    /// the box is not tied to a dictated "concatenate".
+    /// </summary>
+    public static bool ContainsPhrase(string text, string phrase)
+    {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(phrase)) return false;
+        var compare = CultureInfo.InvariantCulture.CompareInfo;
+        const CompareOptions options = CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
+        var start = 0;
+        while (start < text.Length)
+        {
+            var index = compare.IndexOf(text.AsSpan(start), phrase.AsSpan(), options, out var length);
+            if (index < 0) return false;
+            index += start;
+            var end = index + length;
+            var startsWord = index == 0 || !IsWordCharacter(text[index - 1]);
+            var endsWord = end >= text.Length || !IsWordCharacter(text[end]);
+            if (startsWord && endsWord) return true;
+            start = index + 1;
+        }
+        return false;
+    }
+
+    private static bool IsWordCharacter(char character) =>
+        char.IsLetterOrDigit(character) ||
+        char.GetUnicodeCategory(character) is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark;
+
+    private static bool ContainsIgnoringCaseAndDiacritics(string text, string value) => ContainsPhrase(text, value);
 
     private static string[] SplitWhitespace(string value) =>
         value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);

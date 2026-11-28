@@ -332,7 +332,8 @@ public sealed class SettingsStore
             : suggestions
                 .Where(item => item is not null)
                 .Select(item => new DictionarySuggestion(item.Observed ?? "", item.Replacement ?? ""))
-                .Where(item => !string.IsNullOrWhiteSpace(item.Observed))
+                // Both sides: a blank replacement would offer a rule that deletes the word.
+                .Where(item => !string.IsNullOrWhiteSpace(item.Observed) && !string.IsNullOrWhiteSpace(item.Replacement))
                 .ToArray();
 
     /// <summary>

@@ -14,7 +14,9 @@ public sealed class DictationHotkeyStateMachine
     /// </summary>
     public DictationHotkeyAction KeyDown(bool doubleTapEnabled, bool pressToToggle = false)
     {
-        if (State == DictationHotkeyState.Toggled)
+        // A recording that is already live stops on a press whatever the mode is now, so switching
+        // modes mid-recording never leaves the shortcut unable to end it.
+        if (State is DictationHotkeyState.Toggled or DictationHotkeyState.HandsFree)
         {
             return Transition(DictationHotkeyState.Idle, DictationHotkeyAction.StopRecording);
         }
@@ -24,11 +26,6 @@ public sealed class DictationHotkeyStateMachine
             return State == DictationHotkeyState.Idle
                 ? Transition(DictationHotkeyState.Toggled, DictationHotkeyAction.StartToggleRecording)
                 : DictationHotkeyAction.None;
-        }
-
-        if (State == DictationHotkeyState.HandsFree)
-        {
-            return Transition(DictationHotkeyState.Idle, DictationHotkeyAction.StopRecording);
         }
 
         if (State == DictationHotkeyState.AwaitingSecondTap && doubleTapEnabled)

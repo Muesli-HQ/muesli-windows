@@ -66,9 +66,11 @@ public sealed class WinUiDictationContext : IDisposable
 
     /// <summary>
     /// A dictation's text (without the trailing separator) was pasted into this window. Raised on the
-    /// UI thread after the paste succeeded, for the dictionary correction monitor.
+    /// UI thread after the paste succeeded, for the dictionary correction monitor. The second value
+    /// is what speech recognition returned before cleanup and dictionary rules, so a corrected word
+    /// can be traced to the rule that produced it.
     /// </summary>
-    public event Action<string, IntPtr>? DictationPasted;
+    public event Action<string, string, IntPtr>? DictationPasted;
 
     /// <summary>
     /// Raised with the live microphone RMS level while a dictation is recording. Marshalled to the UI
@@ -713,7 +715,7 @@ public sealed class WinUiDictationContext : IDisposable
                     deliveryClipboardMs = paste.ClipboardMs;
                     Status = fellBack ? "Dictation inserted (transcribed on this PC)" : "Dictation inserted";
                     analyticsDelivery = AnalyticsValue.Success;
-                    DictationPasted?.Invoke(text, _pasteTarget);
+                    DictationPasted?.Invoke(text, recognized, _pasteTarget);
                 }
                 catch (OperationCanceledException) when (_operationCancellation.IsCancellationRequested)
                 {

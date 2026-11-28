@@ -352,7 +352,9 @@ public sealed class WinUiIndicatorHost : IDisposable
     private void LoadPosition()
     {
         var settings = App.Settings.Load();
-        _indicatorAnchor = string.IsNullOrWhiteSpace(settings.IndicatorAnchor) ? "Middle Right" : settings.IndicatorAnchor;
+        // The same choice Settings shows: an unusable anchor (Notch, or Custom without a saved spot)
+        // is Middle Right in both places.
+        _indicatorAnchor = FloatingIndicatorLayout.PositionChoice(settings);
         _savedLeft = settings.IndicatorLeft;
         _savedTop = settings.IndicatorTop;
     }

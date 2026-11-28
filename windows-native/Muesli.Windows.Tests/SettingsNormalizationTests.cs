@@ -196,6 +196,8 @@ public sealed class SettingsNormalizationTests
             Assert.NotNull(item.Observed);
             Assert.NotNull(item.Replacement);
         });
-        Assert.Equal(3, normalized.DictionarySuggestions.Count); // the entry without Observed is dropped
+        // Entries without an observed word or without a replacement are dropped: a blank replacement
+        // would offer a dictionary rule that deletes the word.
+        Assert.Equal(2, normalized.DictionarySuggestions.Count);
     }
 }
