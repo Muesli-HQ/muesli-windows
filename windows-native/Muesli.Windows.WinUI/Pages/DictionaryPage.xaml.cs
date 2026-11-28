@@ -32,9 +32,15 @@ public sealed partial class DictionaryPage : Page
             ViewModel.Load();
             ApplyResponsiveLayout(ActualWidth);
             UpdateState();
+            App.Settings.Changed += OnSettingsChanged;
         };
+        Unloaded += (_, _) => App.Settings.Changed -= OnSettingsChanged;
         SizeChanged += (_, args) => ApplyResponsiveLayout(args.NewSize.Width);
     }
+
+    /// <summary>A suggestion saved by the correction monitor shows up while this page is open.</summary>
+    private void OnSettingsChanged(object? sender, MuesliSettings settings) =>
+        DispatcherQueue.TryEnqueue(() => ViewModel.RefreshSuggestions(settings));
 
     public static double MinimumThreshold => DictionaryCorrectionService.MinimumThreshold;
 

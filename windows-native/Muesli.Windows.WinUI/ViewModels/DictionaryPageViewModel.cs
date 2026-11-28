@@ -288,6 +288,27 @@ public partial class DictionaryPageViewModel(
 
     private bool _loadingSuggestionsEnabled;
 
+    /// <summary>
+    /// Picks up suggestions the correction monitor saved while this page stayed loaded, and the
+    /// switch if Settings changed it. The dictionary entries and any half-typed edit are left alone.
+    /// </summary>
+    public void RefreshSuggestions(MuesliSettings current)
+    {
+        var suggestions = current.DictionarySuggestions?.Take(50).ToList() ?? [];
+        if (!suggestions.SequenceEqual(Suggestions))
+        {
+            Suggestions = suggestions;
+            OnPropertyChanged(nameof(HasSuggestions));
+        }
+
+        if (SuggestionsEnabled != current.EnableDictionaryCorrectionPrompts)
+        {
+            _loadingSuggestionsEnabled = true;
+            SuggestionsEnabled = current.EnableDictionaryCorrectionPrompts;
+            _loadingSuggestionsEnabled = false;
+        }
+    }
+
     /// <summary>The macOS header switch: saved as soon as it changes.</summary>
     partial void OnSuggestionsEnabledChanged(bool value)
     {

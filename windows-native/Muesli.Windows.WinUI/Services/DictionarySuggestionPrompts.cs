@@ -126,10 +126,12 @@ public sealed class DictionarySuggestionPrompts : IDisposable
         }
         catch (Exception exception)
         {
-            // The card is optional; the suggestion stays on the Dictionary page.
+            // The card is optional; the suggestion stays on the Dictionary page, and the cards
+            // queued behind it still get their turn.
             _log.Error("Dictionary suggestion card could not be shown.", exception);
             _prompt = null;
             _activeKey = null;
+            ScheduleNext();
         }
     }
 
@@ -155,6 +157,13 @@ public sealed class DictionarySuggestionPrompts : IDisposable
         _log.Info($"Dictionary suggestion answered. action={action}; queued={_queue.Count}");
         _activeKey = null;
         _prompt = null;
+        ScheduleNext();
+    }
+
+    /// <summary>Shows the next queued card 150 ms from now, as macOS does between cards.</summary>
+    private void ScheduleNext()
+    {
+        if (_advancePending) return;
         _advancePending = true;
         _ = Task.Delay(PromptAdvanceDelay).ContinueWith(_ => _dispatcher.TryEnqueue(() =>
         {
