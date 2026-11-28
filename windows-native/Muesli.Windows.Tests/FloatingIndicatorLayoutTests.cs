@@ -301,10 +301,11 @@ public sealed class FloatingIndicatorLayoutTests
     [Theory]
     [InlineData(5, FloatingIndicatorAction.Cancel)]
     [InlineData(38, FloatingIndicatorAction.None)]
-    [InlineData(70, FloatingIndicatorAction.Stop)]
+    [InlineData(60, FloatingIndicatorAction.TogglePause)]
+    [InlineData(92, FloatingIndicatorAction.Stop)]
     public void MeetingActionForClick_never_stops_from_the_waveform_body(double x, FloatingIndicatorAction expected)
     {
-        Assert.Equal(expected, FloatingIndicatorLayout.MeetingActionForClick(x, FloatingIndicatorLayout.LiveWidth));
+        Assert.Equal(expected, FloatingIndicatorLayout.MeetingActionForClick(x, FloatingIndicatorLayout.MeetingLiveWidth));
     }
 
     // ─── Status return durations ─────────────────────────────────────────────────────────────
