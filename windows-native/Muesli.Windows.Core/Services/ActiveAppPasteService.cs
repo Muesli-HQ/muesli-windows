@@ -51,10 +51,17 @@ public sealed class ActiveAppPasteService
         return started.ElapsedMilliseconds;
     }
 
+    /// <summary>
+    /// Inserts <paramref name="text"/> into <paramref name="targetWindow"/>. <paramref name="pasteShortcut"/>
+    /// is a <see cref="PasteShortcuts"/> value: a chord pastes through the clipboard (typing only if
+    /// Windows refuses the chord, as before); <see cref="PasteShortcuts.TypeText"/> types the text
+    /// and leaves the clipboard alone.
+    /// </summary>
     public async Task<PasteOperationResult> PasteTextAsync(
         string text,
         IntPtr targetWindow,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string pasteShortcut = PasteShortcuts.Automatic)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -78,24 +85,29 @@ public sealed class ActiveAppPasteService
                 "Windows could not restore focus to the original app. The transcript was saved in Muesli history and the clipboard was left unchanged.");
         }
 
-        // One Ctrl+V lands the whole transcript at once, as on macOS. Typed Unicode input reaches
-        // the target one character at a time, which long dictations showed as visible bursts.
-        try
+        // One paste chord lands the whole transcript at once, as on macOS. Typed Unicode input reaches
+        // the target one character at a time, which long dictations showed as visible bursts, so
+        // typing is used only when chosen or when Windows refuses the chord.
+        if (PasteShortcuts.Chord(pasteShortcut) is { } chord)
         {
-            return await PasteThroughClipboardAsync(
-                text,
-                totalStarted,
-                focusStarted.ElapsedMilliseconds,
-                cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            // The paste shortcut was never accepted, so nothing was inserted and the clipboard
-            // has been restored. Typing the text is the remaining way to deliver it.
+            try
+            {
+                return await PasteThroughClipboardAsync(
+                    text,
+                    chord,
+                    totalStarted,
+                    focusStarted.ElapsedMilliseconds,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                // The paste shortcut was never accepted, so nothing was inserted and the clipboard
+                // has been restored. Typing the text is the remaining way to deliver it.
+            }
         }
 
         var inputStarted = Stopwatch.StartNew();
@@ -147,6 +159,7 @@ public sealed class ActiveAppPasteService
 
     private async Task<PasteOperationResult> PasteThroughClipboardAsync(
         string text,
+        PasteChord chord,
         Stopwatch totalStarted,
         long focusWaitMs,
         CancellationToken cancellationToken)
@@ -164,7 +177,7 @@ public sealed class ActiveAppPasteService
             clipboardStarted.Stop();
 
             var inputStarted = Stopwatch.StartNew();
-            var sent = _keyboard.SendPasteShortcut();
+            var sent = _keyboard.SendPasteShortcut(chord);
             inputStarted.Stop();
             if (!sent)
             {
@@ -240,7 +253,7 @@ public interface IWindowDescriptionAdapter
 
 public interface IKeyboardInputAdapter
 {
-    bool SendPasteShortcut();
+    bool SendPasteShortcut(PasteChord chord);
     TextInputResult SendText(string text);
 }
 

@@ -287,15 +287,11 @@ public sealed class FloatingIndicatorLayoutTests
         Assert.True(heights[3] > heights[0] && heights[3] > heights[6]);
     }
 
-    [Theory]
-    [InlineData("Middle Right", 20, 42)]
-    [InlineData("Middle Left", 20, 42)]
-    [InlineData("Top Center", 42, 20)]
-    [InlineData("Custom", 42, 20)]
-    public void MinimalRestingSize_turns_the_grip_vertical_beside_side_anchors(string anchor, double width, double height)
+    [Fact]
+    public void MinimalRestingSize_is_a_horizontal_grip_at_every_position()
     {
-        var size = FloatingIndicatorLayout.MinimalRestingSize(anchor);
-        Assert.Equal((width, height), (size.Width, size.Height));
+        var size = FloatingIndicatorLayout.MinimalRestingSize;
+        Assert.Equal((42.0, 20.0), (size.Width, size.Height));
     }
 
     [Theory]

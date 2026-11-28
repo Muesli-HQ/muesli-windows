@@ -1,3 +1,5 @@
+using Muesli.Windows.Services;
+
 namespace Muesli.Windows.Core.Services;
 
 /// <summary>A size plus corner radius, in DIPs, for the floating indicator pill.</summary>
@@ -234,19 +236,17 @@ public static class FloatingIndicatorLayout
     public static readonly double[] WaveformBarMultipliers = [0.6, 0.85, 1.0, 0.85, 0.6];
 
     /// <summary>
-    /// macOS Minimal style rests as a 30×8 grip (8×30 beside a middle-left/right anchor). The window
-    /// keeps a 6 DIP margin around it, matching macOS's interactive inset, so the grip is hoverable.
+    /// Minimal style rests as a horizontal 30×8 grip at every position. macOS turns it upright
+    /// (8×30) beside a middle-left/right anchor; on Windows the product owner chose horizontal
+    /// everywhere. The window keeps a 6 DIP margin around it, matching macOS's interactive inset,
+    /// so the grip is hoverable.
     /// </summary>
     public const double MinimalGripLength = 30;
     public const double MinimalGripThickness = 8;
     public const double MinimalGripHitMargin = 6;
 
-    public static bool MinimalGripIsVertical(string? anchor) => anchor is "Middle Left" or "Middle Right";
-
-    public static DipSize MinimalRestingSize(string? anchor) =>
-        MinimalGripIsVertical(anchor)
-            ? new DipSize(MinimalGripThickness + 2 * MinimalGripHitMargin, MinimalGripLength + 2 * MinimalGripHitMargin, 0)
-            : new DipSize(MinimalGripLength + 2 * MinimalGripHitMargin, MinimalGripThickness + 2 * MinimalGripHitMargin, 0);
+    public static DipSize MinimalRestingSize =>
+        new(MinimalGripLength + 2 * MinimalGripHitMargin, MinimalGripThickness + 2 * MinimalGripHitMargin, 0);
 
     public static DipSize SizeFor(FloatingIndicatorState state, bool hovered, string? message = "")
     {
@@ -319,6 +319,30 @@ public static class FloatingIndicatorLayout
     /// Top-left position for an anchored indicator, following the eight supported anchors inside
     /// <paramref name="workArea"/>. The default anchor is "Middle Right".
     /// </summary>
+    /// <summary>
+    /// The positions offered in Settings, in macOS <c>IndicatorAnchor</c> order and labels. Notch is
+    /// Apple-only; Custom is what dragging the pill sets, so it is offered only once a dragged
+    /// position has been saved.
+    /// </summary>
+    public static readonly IReadOnlyList<string> PositionPresets =
+    [
+        "Top Left", "Top Center", "Top Right",
+        "Middle Left", "Middle Right",
+        "Bottom Left", "Bottom Center", "Bottom Right"
+    ];
+
+    public const string CustomPosition = "Custom";
+
+    /// <summary>The Settings position choices for these saved settings.</summary>
+    public static IReadOnlyList<string> PositionChoices(MuesliSettings settings) =>
+        settings.IndicatorLeft is not null && settings.IndicatorTop is not null
+            ? [.. PositionPresets, CustomPosition]
+            : PositionPresets;
+
+    /// <summary>The choice that shows the saved position; unknown values read as the default.</summary>
+    public static string PositionChoice(MuesliSettings settings) =>
+        PositionChoices(settings).Contains(settings.IndicatorAnchor) ? settings.IndicatorAnchor : "Middle Right";
+
     public static DipPoint AnchorTopLeft(string anchor, DipSize size, DipRect workArea)
     {
         var anchorName = string.IsNullOrWhiteSpace(anchor) ? "Middle Right" : anchor;

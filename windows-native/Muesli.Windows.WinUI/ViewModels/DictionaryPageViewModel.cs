@@ -18,7 +18,7 @@ public partial class DictionaryPageViewModel(
 
     [ObservableProperty] public partial IReadOnlyList<DictionaryListItem> Items { get; private set; } = [];
     [ObservableProperty] public partial IReadOnlyList<DictionarySuggestion> Suggestions { get; private set; } = [];
-    [ObservableProperty] public partial bool SuggestionsEnabled { get; set; } = true;
+    [ObservableProperty] public partial bool SuggestionsEnabled { get; set; }
     [ObservableProperty] public partial string SearchText { get; set; } = "";
     [ObservableProperty] public partial string EditingId { get; private set; } = "";
     [ObservableProperty] public partial string Phrase { get; set; } = "";
@@ -42,7 +42,11 @@ public partial class DictionaryPageViewModel(
     /// that bar, so a rejected Save had no visible cause next to the field that caused it.
     /// </summary>
     public bool HasValidationMessage => ValidationMessage.Length > 0;
-    public bool HasSuggestions => SuggestionsEnabled && Suggestions.Count > 0;
+    /// <summary>
+    /// Corrections the monitor noticed and the user has not yet answered. Shown even with the
+    /// switch off, as on macOS, so earlier suggestions can still be added or dismissed.
+    /// </summary>
+    public bool HasSuggestions => Suggestions.Count > 0;
     public bool IsEditing => !string.IsNullOrWhiteSpace(EditingId);
     public bool ShowEmptyAddAction => !HasItems && string.IsNullOrWhiteSpace(SearchText);
     public string EditorTitle => IsEditing ? "Edit dictionary entry" : "Add dictionary entry";
@@ -85,7 +89,6 @@ public partial class DictionaryPageViewModel(
         ApplyFilter();
         NotifyEmptyState();
     }
-    partial void OnSuggestionsEnabledChanged(bool value) => OnPropertyChanged(nameof(HasSuggestions));
     partial void OnItemsChanged(IReadOnlyList<DictionaryListItem> value)
     {
         OnPropertyChanged(nameof(HasItems));
@@ -131,21 +134,10 @@ public partial class DictionaryPageViewModel(
     private void AcceptSuggestion(DictionarySuggestion? suggestion)
     {
         if (suggestion is null) return;
-        var entries = library.LoadDictionary().ToList();
-        if (!entries.Any(entry =>
-                string.Equals(entry.Phrase, suggestion.Observed, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(entry.Replacement, suggestion.Replacement, StringComparison.OrdinalIgnoreCase)))
-        {
-            entries.Add(new DictionaryEntryRecord
-            {
-                Id = $"dict_{Guid.NewGuid():N}",
-                Phrase = suggestion.Observed,
-                Replacement = suggestion.Replacement,
-                MatchingThreshold = .90
-            });
-            library.SaveDictionary(entries);
-        }
-        RemoveSuggestion(suggestion);
+        // Same rules as the "Add correction?" card (macOS acceptDictionarySuggestion).
+        var (updated, dictionary) = DictionarySuggestionLedger.Accept(settings.Load(), suggestion, library.LoadDictionary());
+        if (dictionary is not null) library.SaveDictionary(dictionary);
+        settings.Save(updated);
         Reload();
         ShowStatus("Suggested correction added to the dictionary.");
     }
@@ -154,7 +146,9 @@ public partial class DictionaryPageViewModel(
     private void DismissSuggestion(DictionarySuggestion? suggestion)
     {
         if (suggestion is null) return;
-        RemoveSuggestion(suggestion);
+        // Dismissing here is the card's Ignore: the correction is not offered again.
+        settings.Save(DictionarySuggestionLedger.Ignore(settings.Load(), suggestion));
+        Reload();
         ShowStatus("Suggestion dismissed.");
     }
 
@@ -283,9 +277,55 @@ public partial class DictionaryPageViewModel(
         // this used to throw ArgumentNullException out of Load() and take the whole shell down
         // with an unhandled exception the moment Dictionary was opened. Reproduced on a profile
         // whose settings file had that key nulled.
-        Suggestions = settings.Load().DictionarySuggestions?.Take(50).ToList() ?? [];
+        var current = settings.Load();
+        Suggestions = current.DictionarySuggestions?.Take(50).ToList() ?? [];
+        _loadingSuggestionsEnabled = true;
+        SuggestionsEnabled = current.EnableDictionaryCorrectionPrompts;
+        _loadingSuggestionsEnabled = false;
         OnPropertyChanged(nameof(HasSuggestions));
         ApplyFilter();
+    }
+
+    private bool _loadingSuggestionsEnabled;
+
+    /// <summary>
+    /// Picks up suggestions the correction monitor saved while this page stayed loaded, and the
+    /// switch if Settings changed it. The dictionary entries and any half-typed edit are left alone.
+    /// </summary>
+    public void RefreshSuggestions(MuesliSettings current)
+    {
+        var suggestions = current.DictionarySuggestions?.Take(50).ToList() ?? [];
+        if (!suggestions.SequenceEqual(Suggestions))
+        {
+            Suggestions = suggestions;
+            OnPropertyChanged(nameof(HasSuggestions));
+        }
+
+        if (SuggestionsEnabled != current.EnableDictionaryCorrectionPrompts)
+        {
+            _loadingSuggestionsEnabled = true;
+            SuggestionsEnabled = current.EnableDictionaryCorrectionPrompts;
+            _loadingSuggestionsEnabled = false;
+        }
+    }
+
+    /// <summary>The macOS header switch: saved as soon as it changes.</summary>
+    partial void OnSuggestionsEnabledChanged(bool value)
+    {
+        if (_loadingSuggestionsEnabled) return;
+        var current = settings.Load();
+        if (current.EnableDictionaryCorrectionPrompts == value) return;
+        try
+        {
+            settings.Save(current with { EnableDictionaryCorrectionPrompts = value });
+        }
+        catch (Exception exception)
+        {
+            ShowStatus($"Could not save dictionary suggestions: {exception.Message}", isError: true);
+            _loadingSuggestionsEnabled = true;
+            SuggestionsEnabled = current.EnableDictionaryCorrectionPrompts;
+            _loadingSuggestionsEnabled = false;
+        }
     }
 
     private void ApplyFilter()
@@ -306,17 +346,6 @@ public partial class DictionaryPageViewModel(
         OnPropertyChanged(nameof(IsSearchUseful));
         PreviousPageCommand.NotifyCanExecuteChanged();
         NextPageCommand.NotifyCanExecuteChanged();
-    }
-
-    private void RemoveSuggestion(DictionarySuggestion suggestion)
-    {
-        var current = settings.Load();
-        var remaining = (current.DictionarySuggestions ?? []).Where(item =>
-            !(string.Equals(item.Observed, suggestion.Observed, StringComparison.OrdinalIgnoreCase) &&
-              string.Equals(item.Replacement, suggestion.Replacement, StringComparison.OrdinalIgnoreCase))).ToList();
-        settings.Save(current with { DictionarySuggestions = remaining });
-        Suggestions = remaining;
-        OnPropertyChanged(nameof(HasSuggestions));
     }
 
     private bool CanDeleteEntry() => !string.IsNullOrWhiteSpace(EditingId);

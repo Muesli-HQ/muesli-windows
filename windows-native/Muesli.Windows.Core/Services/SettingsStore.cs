@@ -221,6 +221,8 @@ public sealed class SettingsStore
             LiveTranscriptOwnership = NormalizeOwnership(settings.LiveTranscriptOwnership),
             RecordingColorHex = NormalizeColorHex(settings.RecordingColorHex),
             IndicatorStyle = string.Equals(settings.IndicatorStyle?.Trim(), "minimal", StringComparison.OrdinalIgnoreCase) ? "minimal" : "classic",
+            DictationRecordingMode = DictationRecordingModes.Normalize(settings.DictationRecordingMode),
+            PasteShortcut = PasteShortcuts.Normalize(settings.PasteShortcut),
             MeetingSummaryProvider = DefaultIfBlank(settings.MeetingSummaryProvider, "local").Trim(),
             MeetingSummaryTemplate = DefaultIfBlank(settings.MeetingSummaryTemplate, "standard").Trim(),
             MeetingSummaryPromptOverride = settings.MeetingSummaryPromptOverride ?? "",
@@ -241,6 +243,11 @@ public sealed class SettingsStore
             ComputerUseBrowserEndpoint = NormalizeLoopbackEndpoint(settings.ComputerUseBrowserEndpoint),
             IndicatorAnchor = DefaultIfBlank(settings.IndicatorAnchor, "Middle Right").Trim(),
             DictionarySuggestions = NormalizeDictionarySuggestions(settings.DictionarySuggestions),
+            DismissedDictionarySuggestionKeys = (settings.DismissedDictionarySuggestionKeys ?? [])
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .Distinct(StringComparer.Ordinal)
+                .TakeLast(DictionarySuggestionLedger.MaxDismissedKeys)
+                .ToArray(),
             ModelLanguages = NormalizeModelLanguages(settings.ModelLanguages),
             ExecutionProvider = NormalizeExecutionProvider(settings.ExecutionProvider),
             CleanupModelId = CleanupModelCatalog.Normalize(settings.CleanupModelId),
@@ -325,7 +332,8 @@ public sealed class SettingsStore
             : suggestions
                 .Where(item => item is not null)
                 .Select(item => new DictionarySuggestion(item.Observed ?? "", item.Replacement ?? ""))
-                .Where(item => !string.IsNullOrWhiteSpace(item.Observed))
+                // Both sides: a blank replacement would offer a rule that deletes the word.
+                .Where(item => !string.IsNullOrWhiteSpace(item.Observed) && !string.IsNullOrWhiteSpace(item.Replacement))
                 .ToArray();
 
     /// <summary>
@@ -450,7 +458,18 @@ public sealed record MuesliSettings
     /// <summary>What setup was told muesli is for (macOS onboarding_use_case values).</summary>
     public string OnboardingUseCase { get; init; } = OnboardingUseCases.Everything;
     public string Hotkey { get; init; } = "F8";
+    /// <summary>
+    /// Read by nothing: insertion always pastes into the window focused when dictation started.
+    /// Kept only so existing settings files keep round-tripping; do not give it meaning.
+    /// </summary>
     public string PasteBehavior { get; init; } = "active-app";
+
+    /// <summary>
+    /// macOS <c>paste_shortcut</c>: how dictated text is inserted. <c>ctrl_v</c> (Automatic, the
+    /// default), <c>ctrl_shift_v</c>, <c>shift_insert</c>, or <c>type</c> to type it out.
+    /// See <see cref="PasteShortcuts"/>.
+    /// </summary>
+    public string PasteShortcut { get; init; } = PasteShortcuts.Automatic;
     public string DictationModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
 
     /// <summary>
@@ -495,6 +514,20 @@ public sealed record MuesliSettings
     public bool OnboardingCompleted { get; init; }
     public int LastCompletedFeatureTourVersion { get; init; }
     public bool EnableDoubleTapDictation { get; init; }
+
+    /// <summary>
+    /// macOS <c>dictation_combination_activation</c>: <c>push_to_talk</c> (hold to talk, the default)
+    /// or <c>toggle</c> (press to start, press again to stop). Toggle needs a modifier + key
+    /// shortcut; with any other shortcut dictation stays hold to talk.
+    /// </summary>
+    public string DictationRecordingMode { get; init; } = DictationRecordingModes.HoldToTalk;
+
+    /// <summary>
+    /// macOS "Privacy mode" (<c>private_mode</c>): new dictations are still pasted but are not saved
+    /// to history, no audio is kept and no dictionary suggestions are made from them. A dictation is
+    /// private if the mode was on when it started or is on when it finishes. Off by default.
+    /// </summary>
+    public bool PrivateMode { get; init; }
     public int HotkeyTriggerThresholdMs { get; init; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
     public string RecordingColorHex { get; init; } = "1e1e2e";
     /// <summary>Idle indicator style: <c>classic</c> pill or macOS-style <c>minimal</c> grip.</summary>
@@ -539,6 +572,15 @@ public sealed record MuesliSettings
     public bool SoundEnabled { get; init; } = true;
     public string IndicatorAnchor { get; init; } = "Middle Right";
     public IReadOnlyList<DictionarySuggestion> DictionarySuggestions { get; init; } = [];
+
+    /// <summary>
+    /// macOS <c>enable_dictionary_correction_prompts</c>: after a dictation is pasted, briefly read the
+    /// focused text box to notice corrections and offer them as dictionary entries. Off by default.
+    /// </summary>
+    public bool EnableDictionaryCorrectionPrompts { get; init; }
+
+    /// <summary>Corrections the user answered "Ignore" to; never offered again (macOS keeps 200).</summary>
+    public IReadOnlyList<string> DismissedDictionarySuggestionKeys { get; init; } = [];
 
     /// <summary>Per-model language code selections, keyed by model id. Empty uses each model's default.</summary>
     public IReadOnlyDictionary<string, string> ModelLanguages { get; init; } =

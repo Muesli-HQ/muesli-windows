@@ -6,13 +6,26 @@ public sealed class DictationHotkeyStateMachine
 
     public bool IsHandsFree => State == DictationHotkeyState.HandsFree;
     public bool IsArmed => State is DictationHotkeyState.Armed or DictationHotkeyState.Preparing;
-    public bool IsLive => State is DictationHotkeyState.Holding or DictationHotkeyState.HandsFree or DictationHotkeyState.Preparing or DictationHotkeyState.Armed;
+    public bool IsLive => State is DictationHotkeyState.Holding or DictationHotkeyState.HandsFree or DictationHotkeyState.Preparing or DictationHotkeyState.Armed or DictationHotkeyState.Toggled;
 
-    public DictationHotkeyAction KeyDown(bool doubleTapEnabled)
+    /// <summary>
+    /// A shortcut press. With <paramref name="pressToToggle"/> (macOS "Press to toggle") a press in
+    /// idle starts recording at once, with no activation delay, and the next press stops it.
+    /// </summary>
+    public DictationHotkeyAction KeyDown(bool doubleTapEnabled, bool pressToToggle = false)
     {
-        if (State == DictationHotkeyState.HandsFree)
+        // A recording that is already live stops on a press whatever the mode is now, so switching
+        // modes mid-recording never leaves the shortcut unable to end it.
+        if (State is DictationHotkeyState.Toggled or DictationHotkeyState.HandsFree)
         {
             return Transition(DictationHotkeyState.Idle, DictationHotkeyAction.StopRecording);
+        }
+
+        if (pressToToggle)
+        {
+            return State == DictationHotkeyState.Idle
+                ? Transition(DictationHotkeyState.Toggled, DictationHotkeyAction.StartToggleRecording)
+                : DictationHotkeyAction.None;
         }
 
         if (State == DictationHotkeyState.AwaitingSecondTap && doubleTapEnabled)
@@ -28,8 +41,17 @@ public sealed class DictationHotkeyStateMachine
         return Transition(DictationHotkeyState.Armed, DictationHotkeyAction.Arm);
     }
 
+    /// <summary>
+    /// A shortcut release. Releasing never ends a toggled recording; a hold that began before the
+    /// mode changed still finishes as a hold.
+    /// </summary>
     public DictationHotkeyAction KeyUp(bool doubleTapEnabled)
     {
+        if (State == DictationHotkeyState.Toggled)
+        {
+            return DictationHotkeyAction.None;
+        }
+
         if (State == DictationHotkeyState.Holding)
         {
             return Transition(DictationHotkeyState.Idle, DictationHotkeyAction.StopRecording);
@@ -93,7 +115,10 @@ public enum DictationHotkeyState
     Preparing,
     Holding,
     AwaitingSecondTap,
-    HandsFree
+    HandsFree,
+
+    /// <summary>Recording started by a press in "Press to toggle" mode; the next press stops it.</summary>
+    Toggled
 }
 
 public enum DictationHotkeyAction
@@ -105,5 +130,6 @@ public enum DictationHotkeyAction
     StopRecording,
     Cancel,
     StartDoubleTapTimer,
-    EnterHandsFree
+    EnterHandsFree,
+    StartToggleRecording
 }

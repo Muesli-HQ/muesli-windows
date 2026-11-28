@@ -22,6 +22,10 @@ public sealed class WinUiIndicatorHost : IDisposable
     private readonly AppLogService _log = new();
 
     private FloatingIndicatorWindow? _window;
+
+    /// <summary>The pill's screen rectangle in physical pixels while it is shown, for placing prompts next to it.</summary>
+    public global::Windows.Graphics.RectInt32? CurrentFrame => _window?.CurrentFrame;
+
     private CancellationTokenSource? _dwell;
     private FileSystemWatcher? _probeWatcher;
     private int _disposed;
@@ -82,7 +86,15 @@ public sealed class WinUiIndicatorHost : IDisposable
 
     private void OnStateSourceChanged(object? sender, EventArgs e) => _dispatcher.TryEnqueue(UpdateState);
 
-    private void OnSettingsChanged(object? sender, MuesliSettings settings) => _dispatcher.TryEnqueue(UpdateState);
+    /// <summary>
+    /// A position picked in Settings moves the pill at once. A drag saves the position it already
+    /// holds, so reloading it here changes nothing.
+    /// </summary>
+    private void OnSettingsChanged(object? sender, MuesliSettings settings) => _dispatcher.TryEnqueue(() =>
+    {
+        LoadPosition();
+        UpdateState();
+    });
 
     private void OnRecordingLevel(object? sender, float peak) => Volatile.Write(ref _amplitude, Math.Clamp(peak, 0f, 1f));
 
@@ -221,7 +233,9 @@ public sealed class WinUiIndicatorHost : IDisposable
             RecordingColorHex = settings.RecordingColorHex,
             IndicatorStyle = settings.IndicatorStyle,
             MeetingPaused = _meetingPaused,
-            HandsFree = settings.EnableDoubleTapDictation,
+            // Double-tap does nothing while the shortcut toggles, so the hint does not offer it.
+            PressToToggle = DictationRecordingModes.IsToggleActive(settings),
+            HandsFree = settings.EnableDoubleTapDictation && !DictationRecordingModes.IsToggleActive(settings),
             IndicatorAnchor = _indicatorAnchor,
             SavedLeft = _savedLeft,
             SavedTop = _savedTop,
@@ -338,7 +352,9 @@ public sealed class WinUiIndicatorHost : IDisposable
     private void LoadPosition()
     {
         var settings = App.Settings.Load();
-        _indicatorAnchor = string.IsNullOrWhiteSpace(settings.IndicatorAnchor) ? "Middle Right" : settings.IndicatorAnchor;
+        // The same choice Settings shows: an unusable anchor (Notch, or Custom without a saved spot)
+        // is Middle Right in both places.
+        _indicatorAnchor = FloatingIndicatorLayout.PositionChoice(settings);
         _savedLeft = settings.IndicatorLeft;
         _savedTop = settings.IndicatorTop;
     }

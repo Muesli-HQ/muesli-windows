@@ -21,6 +21,7 @@ public sealed class WinUiDictationContext : IDisposable
     private CancellationTokenSource? _timerCancellation;
     private CancellationTokenSource? _operationCancellation;
     private IntPtr _pasteTarget;
+    private bool _privateAtStart;
     private string? _captureTraceId;
     private volatile bool _auxiliarySession;
     private volatile bool _delivering;
@@ -61,6 +62,17 @@ public sealed class WinUiDictationContext : IDisposable
 
     public event EventHandler? Changed;
 
+    /// <summary>A dictation is starting; anything still watching the previous one should stop.</summary>
+    public event Action? DictationStarting;
+
+    /// <summary>
+    /// A dictation's text (without the trailing separator) was pasted into this window. Raised on the
+    /// UI thread after the paste succeeded, for the dictionary correction monitor. The second value
+    /// is what speech recognition returned before cleanup and dictionary rules, so a corrected word
+    /// can be traced to the rule that produced it.
+    /// </summary>
+    public event Action<string, string, IntPtr>? DictationPasted;
+
     /// <summary>
     /// Raised with the live microphone RMS level while a dictation is recording. Marshalled to the UI
     /// thread so the indicator can drive its waveform bars from real capture data.
@@ -92,8 +104,12 @@ public sealed class WinUiDictationContext : IDisposable
                         _testKeyHeld = true;
                         EnqueueHotkeyWork(() => StartTestAsync(route), "test-down");
                     }
-                    else EnqueueHotkeyWork(() => ExecuteActionAsync(
-                        _hotkeyState.KeyDown(_settings.Load().EnableDoubleTapDictation)), "down");
+                    else EnqueueHotkeyWork(() =>
+                    {
+                        var current = _settings.Load();
+                        return ExecuteActionAsync(_hotkeyState.KeyDown(
+                            current.EnableDoubleTapDictation, DictationRecordingModes.IsToggleActive(current)));
+                    }, "down");
                 },
                 () =>
                 {
@@ -454,6 +470,15 @@ public sealed class WinUiDictationContext : IDisposable
                 if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
                 break;
 
+            case DictationHotkeyAction.StartToggleRecording:
+                // macOS "Press to toggle": recording starts on the press, with no activation delay,
+                // and runs until the next press. Like hands-free it can be long, so it decodes during
+                // capture.
+                StopTimers();
+                await StartAsync(shouldPasteToActiveApp: true, decodeDuringCapture: true);
+                if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
+                break;
+
             case DictationHotkeyAction.StopRecording:
                 StopTimers();
                 await StopAsync();
@@ -497,6 +522,7 @@ public sealed class WinUiDictationContext : IDisposable
         }
         _captureTraceId = Guid.NewGuid().ToString("N")[..12];
         _log.Info($"Dictation start requested. trace={_captureTraceId}; source={(shouldPasteToActiveApp ? "shortcut" : "dashboard")}");
+        DictationStarting?.Invoke();
         var current = _settings.Load();
         if (!string.Equals(_coordinator.ModelId, current.DictationModelId, StringComparison.OrdinalIgnoreCase))
         {
@@ -530,6 +556,9 @@ public sealed class WinUiDictationContext : IDisposable
         // the foreground window that the transcript is pasted into.
         _pasteTarget = shouldPasteToActiveApp ? _paste.CaptureForegroundWindow() : IntPtr.Zero;
         _coordinator.SoundFeedback.Enabled = current.SoundEnabled;
+        // macOS captures the privacy state when a dictation begins; turning privacy mode off
+        // mid-dictation does not make this one saveable.
+        _privateAtStart = current.PrivateMode;
         Status = "Listening";
         RaiseChanged();
         try
@@ -618,9 +647,13 @@ public sealed class WinUiDictationContext : IDisposable
         RaiseChanged();
         try
         {
+            // Private if privacy mode was on at the start or is on now (macOS revokes saving the
+            // moment the mode is enabled). A private dictation keeps no audio.
+            var isPrivate = DictationPrivacy.IsPrivate(_privateAtStart, _settings.Load().PrivateMode);
             var stop = await _coordinator.StopAsync(
                 _captureTraceId ?? Guid.NewGuid().ToString("N")[..12],
-                _operationCancellation.Token);
+                _operationCancellation.Token,
+                keepLatestDictationAlias: !isPrivate);
             latency = stop.Latency;
             var result = stop.Transcription;
             audioDurationMs = result.DurationMs;
@@ -665,13 +698,19 @@ public sealed class WinUiDictationContext : IDisposable
             }
 
             stageStarted.Restart();
-            _library.History.AppendDictation(new PersistedDictation(
-                $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}",
-                DateTime.Now,
-                text,
-                result.DurationMs,
-                hostedText ? HostedDictationTranscriber.ModelLabel(result) : _coordinator.ModelId));
-            persisted = true;
+            // Checked again here: privacy mode switched on while this dictation was transcribing
+            // still keeps it out of history.
+            isPrivate = DictationPrivacy.IsPrivate(_privateAtStart, settings.PrivateMode);
+            if (!isPrivate)
+            {
+                _library.History.AppendDictation(new PersistedDictation(
+                    $"dict_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}",
+                    DateTime.Now,
+                    text,
+                    result.DurationMs,
+                    hostedText ? HostedDictationTranscriber.ModelLabel(result) : _coordinator.ModelId));
+                persisted = true;
+            }
             analyticsOutcome = AnalyticsOutcome.Success;
             persistenceMs = stageStarted.ElapsedMilliseconds;
 
@@ -682,13 +721,17 @@ public sealed class WinUiDictationContext : IDisposable
                     _operationCancellation.Token.ThrowIfCancellationRequested();
                     stageStarted.Restart();
                     var paste = await _paste.PasteTextAsync(
-                        text + DictationPasteSpacing.TrailingSeparator(text), _pasteTarget, _operationCancellation.Token);
+                        text + DictationPasteSpacing.TrailingSeparator(text), _pasteTarget, _operationCancellation.Token,
+                        settings.PasteShortcut);
                     deliveryMs = stageStarted.ElapsedMilliseconds;
                     deliveryFocusMs = paste.FocusWaitMs;
                     deliveryInputMs = paste.InputMs;
                     deliveryClipboardMs = paste.ClipboardMs;
-                    Status = fellBack ? "Dictation inserted (transcribed on this PC)" : "Dictation inserted";
+                    Status = isPrivate ? DictationPrivacy.InsertedStatus
+                        : fellBack ? "Dictation inserted (transcribed on this PC)" : "Dictation inserted";
                     analyticsDelivery = AnalyticsValue.Success;
+                    // As on macOS, no dictionary suggestions are made from a private dictation.
+                    if (!isPrivate) DictationPasted?.Invoke(text, recognized, _pasteTarget);
                 }
                 catch (OperationCanceledException) when (_operationCancellation.IsCancellationRequested)
                 {
@@ -698,11 +741,18 @@ public sealed class WinUiDictationContext : IDisposable
                 {
                     await _paste.CopyTextAsync(text, CancellationToken.None);
                     deliveryMs = stageStarted.ElapsedMilliseconds;
-                    Status = "Paste failed; transcript saved and copied";
+                    Status = isPrivate ? "Paste failed; transcript copied" : "Paste failed; transcript saved and copied";
                     analyticsOutcome = AnalyticsOutcome.Partial;
                     analyticsDelivery = AnalyticsValue.Failed;
                     _log.Error("WinUI active-app paste failed after dictation persistence.", pasteException);
                 }
+            }
+            else if (isPrivate)
+            {
+                // Nothing to paste into and nothing saved: the clipboard is the only place the text
+                // can go, so it is not lost.
+                await _paste.CopyTextAsync(text, CancellationToken.None);
+                Status = DictationPrivacy.CopiedStatus;
             }
             else
             {

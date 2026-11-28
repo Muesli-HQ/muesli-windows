@@ -434,15 +434,13 @@
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Dictionary suggestions" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Review suggested replacements on the Dictionary page." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Suggests words from your corrections. Briefly reads focused app text after dictation." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
-                                <Button Grid.Column="1"
-                                        Content="Open Dictionary"
-                                        Style="{StaticResource CompactActionStyle}"
-                                        VerticalAlignment="Center"
-                                        Click="OpenDictionaryPage_Click"
-                                        AutomationProperties.Name="Open the Dictionary page"
-                                        AutomationProperties.AutomationId="OpenDictionaryPageButton" />
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.EnableDictionaryCorrectionPrompts, Mode=TwoWay}"
+                                              AutomationProperties.Name="Dictionary suggestions"
+                                              AutomationProperties.AutomationId="DictionarySuggestionsSettingToggle" />
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -479,10 +477,30 @@
                     <TextBlock Text="ADVANCED" Style="{StaticResource SettingsSectionLabelStyle}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
+                            <!-- macOS Dictations > Advanced > Paste shortcut. -->
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Paste shortcut" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Ctrl+V works in most apps. Terminals often need Ctrl+Shift+V or Shift+Insert; Type the text works where pasting is blocked."
+                                               Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          SelectedIndex="{x:Bind ViewModel.PasteShortcutIndex, Mode=TwoWay}"
+                                          ToolTipService.ToolTip="Type the text sends each character, leaves the clipboard alone, and is slower for long dictations."
+                                          AutomationProperties.Name="Paste shortcut"
+                                          AutomationProperties.AutomationId="PasteShortcutPicker">
+                                    <ComboBoxItem Content="Automatic (Ctrl+V)" />
+                                    <ComboBoxItem Content="Ctrl+Shift+V" />
+                                    <ComboBoxItem Content="Shift+Insert" />
+                                    <ComboBoxItem Content="Type the text" />
+                                </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
                                 <StackPanel MinWidth="0">
                                     <TextBlock Text="Push-to-talk shortcut" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Hold to record, release to transcribe. Change it on the Shortcuts page." Style="{StaticResource RowHelpStyle}" />
+                                    <TextBlock Text="Change the shortcut and its recording mode (hold or press to toggle) on the Shortcuts page." Style="{StaticResource RowHelpStyle}" />
                                 </StackPanel>
                                 <StackPanel x:Name="PushToTalkHost" Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Right">
                                     <Border Background="{ThemeResource MuesliSurfaceRaisedBrush}"
@@ -1229,6 +1247,19 @@
                                               IsOn="{x:Bind ViewModel.ShowFloatingIndicator, Mode=TwoWay}"
                                               AutomationProperties.Name="Floating dictation indicator"
                                               AutomationProperties.AutomationId="FloatingIndicatorToggle" />
+                            </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Position" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Where the indicator sits on screen. Dragging it sets Custom." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1"
+                                          Style="{StaticResource PickerStyle}"
+                                          ItemsSource="{x:Bind ViewModel.IndicatorPositionChoices, Mode=OneWay}"
+                                          SelectedItem="{x:Bind ViewModel.IndicatorPosition, Mode=TwoWay}"
+                                          AutomationProperties.Name="Indicator position"
+                                          AutomationProperties.AutomationId="IndicatorPositionPicker" />
                             </Grid>
                             <Border Style="{StaticResource DividerStyle}" />
                             <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">

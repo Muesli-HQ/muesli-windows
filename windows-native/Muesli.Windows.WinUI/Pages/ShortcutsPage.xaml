@@ -98,6 +98,7 @@
                                     AutomationProperties.AutomationId="ChangePushToTalkButton"
                                     ToolTipService.ToolTip="Press to capture a new Windows shortcut. Escape cancels." />
                             <StackPanel x:Name="PttHoldRow" Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                        Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.IsHoldToTalk), Mode=OneWay}"
                                         ToolTipService.ToolTip="How long to hold the shortcut before it activates.">
                                 <TextBlock Text="Activation delay" Style="{StaticResource ShortcutCaptionStyle}" />
                                 <NumberBox Width="76" Minimum="50" Maximum="2000" SmallChange="25" LargeChange="50"
@@ -115,6 +116,20 @@
                                        Style="{StaticResource ShortcutCaptionStyle}"
                                        Visibility="{x:Bind local:ShortcutsPage.BoolToVisibility(ViewModel.IsCapturing), Mode=OneWay}"
                                        AutomationProperties.LiveSetting="Assertive" />
+                        </Grid>
+                        <!-- macOS "Recording mode": Hold to talk or Press to toggle (modifier + key only). -->
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                            <TextBlock Text="Recording mode" Style="{StaticResource ShortcutCaptionStyle}" VerticalAlignment="Center" />
+                            <ComboBox x:Name="RecordingModePicker" Grid.Column="1" Width="200"
+                                      SelectedIndex="{x:Bind local:ShortcutsPage.ModeIndex(ViewModel.IsPressToToggle), Mode=OneWay}"
+                                      IsEnabled="{x:Bind local:ShortcutsPage.Not(ViewModel.IsCapturing), Mode=OneWay}"
+                                      SelectionChanged="RecordingMode_SelectionChanged"
+                                      ToolTipService.ToolTip="Choose Press to toggle to use a modifier + key shortcut."
+                                      AutomationProperties.Name="Dictation recording mode"
+                                      AutomationProperties.AutomationId="DictationRecordingModePicker">
+                                <ComboBoxItem Content="Hold to talk" />
+                                <ComboBoxItem Content="Press to toggle" />
+                            </ComboBox>
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -150,25 +165,8 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Quill: no Windows runtime yet, so the card says so instead of offering a dead control. -->
-                <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Quill shortcut">
-                    <StackPanel Spacing="16">
-                        <StackPanel Spacing="4">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE70F;" FontSize="15" Foreground="{ThemeResource MuesliAccentBrush}" AutomationProperties.AccessibilityView="Raw" />
-                                <TextBlock Text="Quill" Style="{StaticResource ShortcutTitleStyle}" />
-                            </StackPanel>
-                            <TextBlock Text="Highlight text, hold to speak an editing instruction, then release to replace" Style="{StaticResource ShortcutCaptionStyle}" />
-                        </StackPanel>
-                        <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Opacity="0.7">
-                            <Border Style="{StaticResource ShortcutBadgeStyle}">
-                                <TextBlock Text="None" Style="{StaticResource ShortcutBadgeTextStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.QuillUnavailableReason, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
+                <!-- Quill (macOS: highlight text, hold to speak an edit) has no Windows runtime,
+                     so it has no card here until it does. -->
 
                 <!-- Meeting Recording: no dedicated Windows global shortcut yet. -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Meeting Recording shortcut">
@@ -200,6 +198,8 @@
                         <ToggleSwitch x:Name="HandsFreeToggle" Grid.Column="1"
                                       Style="{StaticResource ShortcutToggleStyle}"
                                       IsOn="{x:Bind ViewModel.HandsFreeEnabled, Mode=OneWay}"
+                                      IsEnabled="{x:Bind ViewModel.IsHoldToTalk, Mode=OneWay}"
+                                      ToolTipService.ToolTip="Double-tap applies to Hold to talk only."
                                       Toggled="HandsFree_Toggled"
                                       AutomationProperties.Name="Hands-free dictation enabled"
                                       AutomationProperties.HelpText="Double-tap the dictation shortcut to lock recording hands-free." />

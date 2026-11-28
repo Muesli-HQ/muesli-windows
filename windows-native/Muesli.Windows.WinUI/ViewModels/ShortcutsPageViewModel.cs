@@ -41,9 +41,39 @@ public partial class ShortcutsPageViewModel(
     [NotifyPropertyChangedFor(nameof(PushToTalkDescription))]
     [ObservableProperty] public partial bool HandsFreeEnabled { get; private set; }
 
-    public string PushToTalkDescription => HandsFreeEnabled
-        ? "Hold to record, release to transcribe, or double-tap to lock hands-free"
-        : "Hold to record, release to transcribe";
+    /// <summary>macOS "Recording mode": Press to toggle is on and the shortcut allows it.</summary>
+    [NotifyPropertyChangedFor(nameof(PushToTalkDescription), nameof(IsHoldToTalk))]
+    [ObservableProperty] public partial bool IsPressToToggle { get; private set; }
+
+    public bool IsHoldToTalk => !IsPressToToggle;
+
+    public string PushToTalkDescription => IsPressToToggle
+        ? "Press to start recording, press again to transcribe"
+        : HandsFreeEnabled
+            ? "Hold to record, release to transcribe, or double-tap to lock hands-free"
+            : "Hold to record, release to transcribe";
+
+    /// <summary>
+    /// Saves the recording mode. As on macOS, Press to toggle is refused until the shortcut is a
+    /// modifier + key; the dictation context reads the mode on every press, so no re-registration.
+    /// </summary>
+    public void SetRecordingMode(bool pressToToggle)
+    {
+        if (pressToToggle == IsPressToToggle) return;
+        if (pressToToggle && !DictationRecordingModes.IsCombination(_settings.Hotkey))
+        {
+            ShowStatus(DictationRecordingModes.ToggleNeedsCombination, isError: true);
+            return;
+        }
+
+        var mode = pressToToggle ? DictationRecordingModes.PressToToggle : DictationRecordingModes.HoldToTalk;
+        _settings = settingsContext.Load() with { DictationRecordingMode = mode };
+        settingsContext.Save(_settings);
+        IsPressToToggle = DictationRecordingModes.IsToggleActive(_settings);
+        ShowStatus(pressToToggle
+            ? $"Press to toggle: press {Hotkey} to start dictating and again to stop."
+            : $"Hold to talk: hold {Hotkey} to dictate.");
+    }
     public string CaptureCancelHint => "Escape cancels capture";
 
     /// <summary>
@@ -71,12 +101,6 @@ public partial class ShortcutsPageViewModel(
 
     public bool ComputerUseNeedsConfiguration => !ComputerUseConfigured;
 
-    /// <summary>
-    /// P5-02. No Windows global shortcut exists for Quill; say that in Windows terms rather than
-    /// describing it as "this macOS command".
-    /// </summary>
-    public string QuillUnavailableReason =>
-        "Not available on Windows yet.";
     public string MeetingRecordingUnavailableReason =>
         "No global shortcut yet. Start and stop recording from Meetings or the tray.";
 
@@ -86,6 +110,7 @@ public partial class ShortcutsPageViewModel(
         ApplyHotkey(_settings.Hotkey);
         ComputerUseEnabled = _settings.ComputerUseEnabled;
         HandsFreeEnabled = _settings.EnableDoubleTapDictation;
+        IsPressToToggle = DictationRecordingModes.IsToggleActive(_settings);
         HoldThresholdMs = _settings.HotkeyTriggerThresholdMs;
         RefreshComputerUseConfiguration();
     }
@@ -176,13 +201,22 @@ public partial class ShortcutsPageViewModel(
                 throw new InvalidOperationException("Windows reports that this shortcut is already registered by another app.");
             }
 
-            _settings = _settings with { Hotkey = parsed.DisplayName };
+            // Press to toggle needs a modifier + key; a single key goes back to Hold to talk so
+            // releasing it still ends a recording.
+            var leavesToggle = DictationRecordingModes.Normalize(_settings.DictationRecordingMode) == DictationRecordingModes.PressToToggle &&
+                               !DictationRecordingModes.IsCombination(parsed.DisplayName);
+            _settings = _settings with
+            {
+                Hotkey = parsed.DisplayName,
+                DictationRecordingMode = leavesToggle ? DictationRecordingModes.HoldToTalk : _settings.DictationRecordingMode
+            };
             settingsContext.Save(_settings);
             ApplyHotkey(parsed.DisplayName);
+            IsPressToToggle = DictationRecordingModes.IsToggleActive(_settings);
             var failure = reapplyHotkey?.Invoke();
             ShowStatus(
                 failure is null
-                    ? $"Push-to-talk shortcut changed to {Hotkey}.{(HotkeyGestureParser.IsRightAlt(parsed) ? AltGrNote : string.Empty)}"
+                    ? $"Dictation shortcut changed to {Hotkey}.{(leavesToggle ? " Press to toggle needs a modifier + key, so dictation is back to Hold to talk." : string.Empty)}{(HotkeyGestureParser.IsRightAlt(parsed) ? AltGrNote : string.Empty)}"
                     : $"{Hotkey} was saved, but it is not listening yet: {failure}",
                 isError: failure is not null);
         }

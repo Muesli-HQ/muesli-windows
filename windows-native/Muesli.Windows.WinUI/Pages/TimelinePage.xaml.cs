@@ -38,11 +38,40 @@ public sealed partial class TimelinePage : Page
         {
             UpdateEmptyState();
             UpdateSortPill();
+            ShowPrivacy(App.Settings.Load().PrivateMode);
             // Anything recorded between this page being built and shown is picked up here.
             ViewModel.RefreshIfHistoryChanged();
             activity.Start();
         };
         Unloaded += (_, _) => activity.Stop();
+    }
+
+    private bool _showingPrivacy;
+
+    /// <summary>Shows the saved privacy mode without treating it as a change.</summary>
+    private void ShowPrivacy(bool privateMode)
+    {
+        _showingPrivacy = true;
+        PrivacyToggle.IsOn = privateMode;
+        _showingPrivacy = false;
+        PrivacyNote.Visibility = privateMode ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>macOS Timeline "Privacy" switch: saved at once (settings autosave).</summary>
+    private void PrivacyToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_showingPrivacy) return;
+        var current = App.Settings.Load();
+        try
+        {
+            if (current.PrivateMode != PrivacyToggle.IsOn) App.Settings.Save(current with { PrivateMode = PrivacyToggle.IsOn });
+            PrivacyNote.Visibility = PrivacyToggle.IsOn ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // The saved value stays in effect; the switch shows it again.
+            ShowPrivacy(current.PrivateMode);
+        }
     }
 
     public static Visibility BoolToVisibility(bool value) =>

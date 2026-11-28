@@ -83,6 +83,7 @@ public partial class App : Application
     private OnboardingWindow? _onboarding;
     private ComputerUseConfirmationWindow? _computerUseConfirmation;
     private WinUiMeetingNotificationService? _meetingNotifications;
+    private DictionarySuggestionPrompts? _dictionarySuggestions;
 
     /// <summary>
     /// The native window handle (HWND). Use for file pickers,
@@ -266,6 +267,7 @@ public partial class App : Application
         Share = new WinUiShareService(() => WindowHandle);
         IndicatorHost = new WinUiIndicatorHost(Dictation, Meetings, ComputerUse, UiDispatcher);
         IndicatorHost.Start();
+        _dictionarySuggestions = new DictionarySuggestionPrompts(Dictation, Settings, Library, UiDispatcher, () => IndicatorHost?.CurrentFrame);
         LiveTranscript = new MeetingLiveTranscriptWindow(Meetings, UiDispatcher, Clipboard);
         TrackTheme(LiveTranscript);
         var mainWindow = (MainWindow)Window;
@@ -391,6 +393,7 @@ public partial class App : Application
                 _onboarding?.Close();
                 _computerUseConfirmation?.Close();
                 _meetingNotifications?.Dispose();
+                _dictionarySuggestions?.Dispose();
                 Tray.Dispose();
                 IndicatorHost?.Dispose();
                 LiveTranscript.Dispose();

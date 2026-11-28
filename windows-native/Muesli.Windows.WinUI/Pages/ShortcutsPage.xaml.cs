@@ -63,6 +63,9 @@ public sealed partial class ShortcutsPage : Page
 
     public static bool Not(bool value) => !value;
 
+    /// <summary>The recording-mode picker's index: 0 Hold to talk, 1 Press to toggle.</summary>
+    public static int ModeIndex(bool pressToToggle) => pressToToggle ? 1 : 0;
+
     /// <summary>macOS hotkeyBadge prints the whole chord in one badge: "Ctrl + Shift + F8".</summary>
     public static string Keys(IReadOnlyList<string> parts) => string.Join(" + ", parts);
 
@@ -78,6 +81,14 @@ public sealed partial class ShortcutsPage : Page
     {
         if (!_ready) return;
         ViewModel.SetHandsFreeEnabled(HandsFreeToggle.IsOn);
+    }
+
+    /// <summary>Saves "Hold to talk" or "Press to toggle"; a refused toggle snaps the picker back.</summary>
+    private void RecordingMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || RecordingModePicker.SelectedIndex < 0) return;
+        ViewModel.SetRecordingMode(RecordingModePicker.SelectedIndex == 1);
+        RecordingModePicker.SelectedIndex = ViewModel.IsPressToToggle ? 1 : 0;
     }
 
     /// <summary>Persists Computer Use enablement from this page once the user toggles it.</summary>

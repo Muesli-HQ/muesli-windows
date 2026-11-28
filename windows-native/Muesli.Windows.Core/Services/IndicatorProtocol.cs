@@ -70,6 +70,7 @@ public static class IndicatorProtocol
         previous.MeetingPaused != current.MeetingPaused ||
         !string.Equals(previous.IndicatorStyle, current.IndicatorStyle, StringComparison.Ordinal) ||
         previous.HandsFree != current.HandsFree ||
+        previous.PressToToggle != current.PressToToggle ||
         !string.Equals(previous.IndicatorAnchor, current.IndicatorAnchor, StringComparison.Ordinal) ||
         previous.SavedLeft != current.SavedLeft ||
         previous.SavedTop != current.SavedTop ||
@@ -172,6 +173,12 @@ public sealed record IndicatorSnapshot
     /// it. Matches the macOS reference's "Hold … or double-tap for hands-free" hint.
     /// </summary>
     public bool HandsFree { get; init; }
+
+    /// <summary>
+    /// The shortcut toggles ("Press to toggle"), so the hint reads "Press … to dictate", as macOS
+    /// <c>dictationStartPrompt</c> does; otherwise "Hold … to dictate".
+    /// </summary>
+    public bool PressToToggle { get; init; }
 
     public string IndicatorAnchor { get; init; } = "Middle Right";
     public double? SavedLeft { get; init; }
