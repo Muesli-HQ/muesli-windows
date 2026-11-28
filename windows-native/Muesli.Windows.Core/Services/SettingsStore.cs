@@ -76,6 +76,7 @@ public sealed class SettingsStore
             PostMeetingHookMaxAttempts = Math.Clamp(settings.PostMeetingHookMaxAttempts, 1, 3),
             AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory?.Trim() ?? "",
             AutoExportMarkdownContent = NormalizeAutoExportContent(settings.AutoExportMarkdownContent),
+            MutedMeetingDetectionApps = settings.MutedMeetingDetectionApps ?? [],
             ComputerUsePlannerProvider = NormalizeComputerUseProvider(settings.ComputerUsePlannerProvider),
             ComputerUsePlannerModel = settings.ComputerUsePlannerModel?.Trim() ?? "",
             ComputerUsePlannerTimeoutSeconds = Math.Clamp(settings.ComputerUsePlannerTimeoutSeconds, 5, 120),
@@ -168,6 +169,7 @@ public sealed class SettingsStore
             PostMeetingHookMaxAttempts = Math.Clamp(settings.PostMeetingHookMaxAttempts, 1, 3),
             AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory?.Trim() ?? "",
             AutoExportMarkdownContent = NormalizeAutoExportContent(settings.AutoExportMarkdownContent),
+            MutedMeetingDetectionApps = settings.MutedMeetingDetectionApps ?? [],
             ComputerUsePlannerProvider = NormalizeComputerUseProvider(settings.ComputerUsePlannerProvider),
             ComputerUsePlannerModel = settings.ComputerUsePlannerModel?.Trim() ?? "",
             ComputerUsePlannerTimeoutSeconds = Math.Clamp(settings.ComputerUsePlannerTimeoutSeconds, 5, 120),
@@ -230,6 +232,7 @@ public sealed class SettingsStore
             PostMeetingHookMaxAttempts = Math.Clamp(settings.PostMeetingHookMaxAttempts, 1, 3),
             AutoExportMarkdownDirectory = settings.AutoExportMarkdownDirectory?.Trim() ?? "",
             AutoExportMarkdownContent = NormalizeAutoExportContent(settings.AutoExportMarkdownContent),
+            MutedMeetingDetectionApps = settings.MutedMeetingDetectionApps ?? [],
             ComputerUsePlannerProvider = NormalizeComputerUseProvider(settings.ComputerUsePlannerProvider),
             ComputerUsePlannerModel = settings.ComputerUsePlannerModel?.Trim() ?? "",
             ComputerUsePlannerTimeoutSeconds = Math.Clamp(settings.ComputerUsePlannerTimeoutSeconds, 5, 120),
@@ -520,6 +523,12 @@ public sealed record MuesliSettings
     /// from <see cref="SaveMeetingRecordings"/>.
     /// </summary>
     public string? MeetingRecordingSavePolicy { get; init; }
+
+    /// <summary>
+    /// Ids from <see cref="MeetingDetectionApps"/> whose detected calls never raise the
+    /// "Meeting detected" prompt (macOS <c>mutedMeetingDetectionAppBundleIDs</c>). Empty by default.
+    /// </summary>
+    public IReadOnlyList<string> MutedMeetingDetectionApps { get; init; } = [];
     public bool PostMeetingHookEnabled { get; init; }
     public string PostMeetingHookExecutablePath { get; init; } = "";
     public string PostMeetingHookTranscriptPolicy { get; init; } = "metadata-only";

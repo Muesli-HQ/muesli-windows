@@ -1182,6 +1182,27 @@
                                               AutomationProperties.Name="Detect supported meetings"
                                               AutomationProperties.AutomationId="MeetingDetectionToggle" />
                             </Grid>
+                            <!-- macOS mutedMeetingDetectionAppsControl, shown while detection is on. -->
+                            <Border Style="{StaticResource DividerStyle}"
+                                    Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.AutoMeetingDetectionEnabled), Mode=OneWay}" />
+                            <StackPanel Padding="16,10" Spacing="8"
+                                        Visibility="{x:Bind local:SettingsPage.BoolToVisibility(ViewModel.AutoMeetingDetectionEnabled), Mode=OneWay}">
+                                <TextBlock Text="Don't notify me when a call is detected in these apps:" Style="{StaticResource RowTitleStyle}" />
+                                <ItemsRepeater ItemsSource="{x:Bind ViewModel.MutedDetectionApps}"
+                                               AutomationProperties.Name="Apps with meeting detection muted"
+                                               AutomationProperties.AutomationId="MutedMeetingDetectionApps">
+                                    <ItemsRepeater.Layout>
+                                        <UniformGridLayout MinItemWidth="140" MinColumnSpacing="8" MinRowSpacing="0" ItemsStretch="Fill" />
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:MutedDetectionAppOption">
+                                            <CheckBox Content="{x:Bind Name}"
+                                                      IsChecked="{x:Bind IsMuted, Mode=TwoWay}"
+                                                      AutomationProperties.Name="{x:Bind Name}" />
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 

@@ -235,6 +235,27 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly HashSet<string> _pendingText = [];
     private CancellationTokenSource? _debounce;
     private bool _tracking;
+
+    /// <summary>macOS mutedMeetingDetectionAppsControl: one checkbox per meeting app.</summary>
+    public IReadOnlyList<MutedDetectionAppOption> MutedDetectionApps => _mutedDetectionApps ??= CreateMutedDetectionApps();
+    private IReadOnlyList<MutedDetectionAppOption>? _mutedDetectionApps;
+
+    /// <summary>The muted app ids as one value, so autosave treats the checkboxes as one setting.</summary>
+    public IReadOnlyList<string> MutedMeetingDetectionApps =>
+        MutedDetectionApps.Where(app => app.IsMuted).Select(app => app.Id).ToList();
+
+    private IReadOnlyList<MutedDetectionAppOption> CreateMutedDetectionApps()
+    {
+        var options = MeetingDetectionApps.All.Select(app => new MutedDetectionAppOption(app.Id, app.Name)).ToList();
+        foreach (var option in options)
+        {
+            option.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(MutedDetectionAppOption.IsMuted)) OnPropertyChanged(nameof(MutedMeetingDetectionApps));
+            };
+        }
+        return options;
+    }
     private bool _fillingAnalyticsChoice;
     private string? _errorField;
 
@@ -482,6 +503,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
                 SaveMeetingRecordings = policy.Id != MeetingRecordingSavePolicies.Never
             },
         nameof(AutoExportMarkdownEnabled) => settings with { AutoExportMarkdownEnabled = AutoExportMarkdownEnabled },
+        nameof(MutedMeetingDetectionApps) => settings.MutedMeetingDetectionApps.SequenceEqual(MutedMeetingDetectionApps, StringComparer.OrdinalIgnoreCase)
+            ? null
+            : settings with { MutedMeetingDetectionApps = MutedMeetingDetectionApps },
         nameof(SelectedAutoExportContent) when SelectedAutoExportContent is { } content =>
             settings with { AutoExportMarkdownContent = content.Id },
         // The legacy PDF switch is kept in step so an older build reading this file agrees.
@@ -681,6 +705,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         UserName = settings.UserName;
         OpenDashboardOnLaunch = settings.OpenDashboardOnLaunch;
         AutoMeetingDetectionEnabled = settings.AutoMeetingDetectionEnabled;
+        var muted = new HashSet<string>(settings.MutedMeetingDetectionApps ?? [], StringComparer.OrdinalIgnoreCase);
+        foreach (var app in MutedDetectionApps) app.IsMuted = muted.Contains(app.Id);
         var recordingPolicy = MeetingRecordingSavePolicies.Resolve(settings);
         SelectedMeetingRecordingSavePolicy = MeetingRecordingSavePolicyChoices.First(choice => choice.Id == recordingPolicy);
         AutoExportMarkdownEnabled = settings.AutoExportMarkdownEnabled;
@@ -1175,6 +1201,14 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 }
 
 /// <summary>An id with the label a picker shows for it.</summary>
+/// <summary>One checkbox under "Don't notify me when a call is detected in these apps:".</summary>
+public sealed partial class MutedDetectionAppOption(string id, string name) : ObservableObject
+{
+    public string Id { get; } = id;
+    public string Name { get; } = name;
+    [ObservableProperty] public partial bool IsMuted { get; set; }
+}
+
 public sealed record SettingsChoice(string Id, string Label)
 {
     public override string ToString() => Label;

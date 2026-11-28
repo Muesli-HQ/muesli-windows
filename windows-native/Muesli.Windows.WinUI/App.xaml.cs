@@ -765,6 +765,11 @@ public partial class App : Application
     private void PresentDetectedMeeting(WinUiDetectedMeeting detected)
     {
         if (detected.Meeting is not { } meeting || _meetingNotifications is null) return;
+        if (MeetingDetectionApps.IsMuted(Settings.Load().MutedMeetingDetectionApps, meeting.ProcessName))
+        {
+            _log.Info($"Meeting detection muted for this app. app={MeetingDetectionApps.ForProcess(meeting.ProcessName)?.Id}");
+            return;
+        }
         var request = MeetingNotificationRequestFactory.FromDetectedMeeting(meeting);
         var callbacks = new MeetingNotificationCallbacks(
             OnAction: action => _ = HandleMeetingNotificationActionAsync(meeting, action),
