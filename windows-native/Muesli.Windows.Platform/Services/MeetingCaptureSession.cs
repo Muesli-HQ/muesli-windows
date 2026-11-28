@@ -64,6 +64,9 @@ internal sealed class MeetingCaptureSession : IDisposable
     public event EventHandler<LiveTranscriptSnapshot>? LiveTranscriptChanged;
     public event EventHandler<Exception>? LiveTranscriptionFailed;
 
+    /// <summary>16 kHz mono system-track samples in capture order, for live diarization.</summary>
+    public event Action<float[]>? SystemPcmSamplesAvailable;
+
     /// <summary>Capture has stopped and the last pieces of the recording are being transcribed.</summary>
     public event Action? FinishingTranscript;
 
@@ -661,6 +664,10 @@ internal sealed class MeetingCaptureSession : IDisposable
     private void OnLivePcmSamples(object? sender, LivePcmSamplesEventArgs e)
     {
         _liveSession?.TryEnqueue(e);
+        if (e.Channel == LiveTranscriptChannel.System)
+        {
+            SystemPcmSamplesAvailable?.Invoke(e.Samples);
+        }
         var partOffsetMs = e.Channel == LiveTranscriptChannel.Microphone ? _micPartStartedAtMs : _systemPartStartedAtMs;
         _rollingPreview?.Feed(new LivePcmSamplesEventArgs(e.Channel, e.Samples,
             e.StartSample + (partOffsetMs ?? 0) * 16));

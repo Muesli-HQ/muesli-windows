@@ -9,7 +9,8 @@ internal sealed record MeetingFinalizationRequest(
     DateTime StartedAt,
     IReadOnlyList<string> HealthWarnings,
     MeetingLiveTranscriptionResult? LiveResult,
-    CancellationToken CancellationToken);
+    CancellationToken CancellationToken,
+    LiveMeetingDiarizationSession? LiveDiarization = null);
 
 internal sealed record MeetingFinalizationOutcome(
     RecordedMeetingResult Result,
@@ -51,6 +52,61 @@ internal sealed class MeetingFinalizationPipeline
 
     public void DisposeDiarization() => _diarizationClient.Dispose();
 
+    /// <summary>
+    /// Starts diarizing the system track while it records, or returns null when the verified
+    /// diarization models are not installed (finalization then diarizes the whole file, which
+    /// owns model setup and its errors). MUESLI_LIVE_DIARIZATION=0 turns it off.
+    /// </summary>
+    public LiveMeetingDiarizationSession? TryBeginLiveDiarization()
+    {
+        if (Environment.GetEnvironmentVariable("MUESLI_LIVE_DIARIZATION") == "0" ||
+            !NativeDiarizationClient.IsRuntimeAvailable ||
+            !NativeDiarizationClient.IsReady)
+        {
+            return null;
+        }
+        return new LiveMeetingDiarizationSession(_diarizationClient);
+    }
+
+    /// <summary>
+    /// Uses the live block result when it covers the final system track; otherwise diarizes the
+    /// whole file, after transcription unless both run on the GPU.
+    /// </summary>
+    private async Task<(DiarizationResult Result, string Mode)> DiarizeSystemTrackAsync(
+        LiveMeetingDiarizationSession? live,
+        string systemPath,
+        Task transcriptionFinished,
+        CancellationToken cancellationToken)
+    {
+        if (live is not null)
+        {
+            try
+            {
+                var completion = await live.CompleteAsync(systemPath, cancellationToken).ConfigureAwait(false);
+                _logService?.Info(
+                    $"Live diarization {(completion.Result is null ? "fell back to the whole track" : "covered the system track")}. reason={completion.FallbackReason ?? "none"}; blocks={completion.BlocksProcessed}; blockProcessingMs={completion.BlockProcessingMs}; fedSamples={completion.FedSamples}; trackSamples={completion.TrackSamples}");
+                if (completion.Result is not null)
+                {
+                    return (completion.Result, "live");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                _logService?.Info($"Live diarization fell back to the whole track. reason=exception-{exception.GetType().Name}");
+            }
+        }
+
+        if (!NativeDiarizationClient.ShouldOverlapWithAsr)
+        {
+            await transcriptionFinished.ConfigureAwait(false);
+        }
+        return (await _diarizationClient.DiarizeFileAsync(systemPath).ConfigureAwait(false), "file");
+    }
+
     public async Task<MeetingFinalizationOutcome> FinalizeAsync(MeetingFinalizationRequest request)
     {
         var journal = request.Journal;
@@ -71,13 +127,20 @@ internal sealed class MeetingFinalizationPipeline
             healthWarnings.Add(SystemAudioMissingWarning);
         }
 
-        Task<DiarizationResult>? diarizationTask = null;
+        Task<(DiarizationResult Result, string Mode)>? diarizationTask = null;
         var diarizationObserved = false;
+        var transcriptionFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
-            if (tracks.SystemPath is not null && NativeDiarizationClient.ShouldOverlapWithAsr)
+            // Live block diarization only has the tail left, so it overlaps transcription.
+            if (tracks.SystemPath is not null &&
+                (request.LiveDiarization is not null || NativeDiarizationClient.ShouldOverlapWithAsr))
             {
-                diarizationTask = _diarizationClient.DiarizeFileAsync(tracks.SystemPath);
+                diarizationTask = DiarizeSystemTrackAsync(
+                    request.LiveDiarization,
+                    tracks.SystemPath,
+                    transcriptionFinished.Task,
+                    request.CancellationToken);
             }
 
             request.CancellationToken.ThrowIfCancellationRequested();
@@ -121,9 +184,14 @@ internal sealed class MeetingFinalizationPipeline
                 healthWarnings.Add(SystemTranscriptEmptyWarning);
             }
 
+            transcriptionFinished.TrySetResult();
             if (diarizationTask is null && tracks.SystemPath is not null)
             {
-                diarizationTask = _diarizationClient.DiarizeFileAsync(tracks.SystemPath);
+                diarizationTask = DiarizeSystemTrackAsync(
+                    null,
+                    tracks.SystemPath,
+                    Task.CompletedTask,
+                    request.CancellationToken);
             }
             List<DiarizedSegment> diarizationSegments = [];
             if (diarizationTask is not null)
@@ -132,7 +200,7 @@ internal sealed class MeetingFinalizationPipeline
                 try
                 {
                     diarizationObserved = true;
-                    var diarization = await diarizationTask.ConfigureAwait(false);
+                    var (diarization, diarizationMode) = await diarizationTask.ConfigureAwait(false);
                     diarizationSegments = diarization.Segments ?? [];
                     if (diarizationSegments.Count == 0)
                     {
@@ -143,7 +211,7 @@ internal sealed class MeetingFinalizationPipeline
                         healthWarnings.Add(warning);
                     }
                     _logService?.Info(
-                        $"Meeting diarization completed. segments={diarizationSegments.Count}; provider={diarization.Provider}; processingMs={diarization.ProcessingMs}; modelReused={diarization.ModelReused}");
+                        $"Meeting diarization completed. segments={diarizationSegments.Count}; provider={diarization.Provider}; processingMs={diarization.ProcessingMs}; modelReused={diarization.ModelReused}; mode={diarizationMode}");
                 }
                 catch (Exception exception)
                 {
@@ -208,6 +276,8 @@ internal sealed class MeetingFinalizationPipeline
         }
         finally
         {
+            // A failed transcription must not leave a whole-file fallback waiting on it.
+            transcriptionFinished.TrySetResult();
             await AwaitDiarizationBeforeCleanupAsync(
                 diarizationTask,
                 diarizationObserved,

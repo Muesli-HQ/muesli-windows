@@ -98,6 +98,40 @@ public sealed class NativeDiarizationClient : IDisposable
         }
     }
 
+    /// <summary>Provider of the loaded diarizer, or "not initialized".</summary>
+    public string Provider => _provider;
+
+    public long InitialModelLoadMs => _initialModelLoadMs;
+
+    /// <summary>Speaker turn inside one diarized block, in seconds from the block start.</summary>
+    public readonly record struct LocalSpeakerSegment(float Start, float End, int Speaker);
+
+    /// <summary>Diarizes one block of 16 kHz mono samples with the shared model.</summary>
+    public async Task<IReadOnlyList<LocalSpeakerSegment>> DiarizeSamplesAsync(float[] samples)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            await EnsureModelsAsync();
+            return await Task.Run(() =>
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                EnsureDiarizer();
+                if (_diarizer!.SampleRate != LiveMeetingDiarizationSession.SampleRate)
+                {
+                    throw new InvalidOperationException($"Native diarization expected {_diarizer.SampleRate} Hz audio.");
+                }
+                return (IReadOnlyList<LocalSpeakerSegment>)_diarizer.Process(samples)
+                    .Select(segment => new LocalSpeakerSegment(segment.Start, segment.End, segment.Speaker))
+                    .ToList();
+            });
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<DiarizationResult> DiarizeFileAsync(string filePath)
     {
         await _gate.WaitAsync();
@@ -266,7 +300,27 @@ public sealed class NativeDiarizationClient : IDisposable
 
         return provider.Equals("cuda", StringComparison.OrdinalIgnoreCase)
             ? Math.Max(1, Math.Min(Environment.ProcessorCount, 4))
-            : Math.Max(1, Math.Min(Environment.ProcessorCount, 8));
+            : CpuThreadCount;
+    }
+
+    /// <summary>
+    /// CPU threads for the segmentation and embedding models. On a 4-core/8-thread laptop 8 threads
+    /// were consistently the slowest on a 139 s track (56-64 s, against 36-54 s for 2 or 4), and
+    /// diarization now also runs beside live transcription while recording, so stay at about a
+    /// quarter of the logical processors.
+    /// </summary>
+    public static int CpuThreadCount
+    {
+        get
+        {
+            var configured = Environment.GetEnvironmentVariable("MUESLI_DIARIZATION_THREADS");
+            if (int.TryParse(configured, out var count) && count > 0)
+            {
+                return Math.Clamp(count, 1, 32);
+            }
+
+            return Math.Max(1, Math.Min(Environment.ProcessorCount, Math.Clamp(Environment.ProcessorCount / 4, 2, 4)));
+        }
     }
 
     public static async Task EnsureModelsAsync(
@@ -554,9 +608,14 @@ public sealed class NativeDiarizationClient : IDisposable
         }
 
         _disposed = true;
+        // A live block or file may be mid-call in the native diarizer; let it return first.
+        var gateHeld = _gate.Wait(TimeSpan.FromSeconds(30));
         _diarizer?.Dispose();
         _diarizer = null;
-        _gate.Dispose();
+        if (gateHeld)
+        {
+            _gate.Dispose();
+        }
     }
 }
 
