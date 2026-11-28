@@ -479,7 +479,18 @@ internal sealed class FloatingIndicatorWindow : Window
         {
             // The bars stay centred in the space left of the Pause/Resume button.
             bars.Margin = new Thickness(0, 0, FloatingIndicatorLayout.MeetingPauseButtonDip, 0);
-            grid.Children.Add(PauseResumeMark(_highContrast ? brush : Solid(PauseMarkAlpha, 0xFF, 0xFF, 0xFF)));
+            grid.Children.Add(new TextBlock
+            {
+                Text = _meetingPaused ? FloatingIndicatorLayout.MeetingResumeGlyph : FloatingIndicatorLayout.MeetingPauseGlyph,
+                FontSize = FloatingIndicatorLayout.MeetingControlFontSize + 1,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = _highContrast ? brush : Solid(FloatingIndicatorLayout.MeetingControlAlpha, 0xFF, 0xFF, 0xFF),
+                Width = FloatingIndicatorLayout.MeetingPauseButtonDip,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, FloatingIndicatorLayout.MeetingButtonRegionDip, 0)
+            });
             ToolTipService.SetToolTip(_pill, _meetingPaused ? "Resume meeting" : "Pause meeting");
         }
         else
@@ -705,52 +716,6 @@ internal sealed class FloatingIndicatorWindow : Window
     };
 
     private static SolidColorBrush Solid(byte a, byte r, byte g, byte b) => new(Color.FromArgb(a, r, g, b));
-
-    /// <summary>White at 72%, as macOS fills its pause mark.</summary>
-    private const byte PauseMarkAlpha = 0xB8;
-
-    /// <summary>
-    /// The Pause/Resume button's mark, drawn rather than typed: the ⏸ character renders as a colour
-    /// emoji on Windows. Pause copies macOS <c>MeetingOverlapStatusView</c> (two 2×8 bars with
-    /// 1-point corners, centred 4 points apart); Resume is a small filled triangle like SF
-    /// Symbols' <c>play.fill</c>, nudged right so it looks centred.
-    /// </summary>
-    private FrameworkElement PauseResumeMark(Brush fill)
-    {
-        FrameworkElement mark;
-        if (_meetingPaused)
-        {
-            mark = new Microsoft.UI.Xaml.Shapes.Polygon
-            {
-                Points = { new global::Windows.Foundation.Point(0, 0), new global::Windows.Foundation.Point(7, 4), new global::Windows.Foundation.Point(0, 8) },
-                Fill = fill,
-                Width = 7,
-                Height = 8,
-                Margin = new Thickness(1, 0, 0, 0)
-            };
-        }
-        else
-        {
-            var bars = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
-            for (var index = 0; index < 2; index++)
-            {
-                bars.Children.Add(new Border { Width = 2, Height = 8, CornerRadius = new CornerRadius(1), Background = fill });
-            }
-            mark = bars;
-        }
-
-        mark.HorizontalAlignment = HorizontalAlignment.Center;
-        mark.VerticalAlignment = VerticalAlignment.Center;
-        // A transparent hit box the size of the button region, right of the bars and left of Stop.
-        return new Grid
-        {
-            Width = FloatingIndicatorLayout.MeetingPauseButtonDip,
-            Background = new SolidColorBrush(Colors.Transparent),
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 0, FloatingIndicatorLayout.MeetingButtonRegionDip, 0),
-            Children = { mark }
-        };
-    }
 
     // ─── Positioning ─────────────────────────────────────────────────────────────────────────
 
