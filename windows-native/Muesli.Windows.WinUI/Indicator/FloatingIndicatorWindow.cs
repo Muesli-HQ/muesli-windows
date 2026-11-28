@@ -68,6 +68,7 @@ internal sealed class FloatingIndicatorWindow : Window
     private DateTime _waveStart = DateTime.UtcNow;
     private bool _highContrast;
     private bool _handsFree;
+    private bool _pressToToggle;
     private bool _minimalStyle;
     private string _recordingAccentHex = "1e1e2e";
     private string _hotkeyLabel = "shortcut";
@@ -278,6 +279,7 @@ internal sealed class FloatingIndicatorWindow : Window
         _owner = snapshot.Owner;
         _visible = snapshot.Visible;
         _handsFree = snapshot.HandsFree;
+        _pressToToggle = snapshot.PressToToggle;
         _minimalStyle = string.Equals(snapshot.IndicatorStyle, "minimal", StringComparison.OrdinalIgnoreCase);
         _hotkeyLabel = string.IsNullOrWhiteSpace(snapshot.HotkeyLabel) ? "shortcut" : snapshot.HotkeyLabel;
         _recordingAccentHex = string.IsNullOrWhiteSpace(snapshot.RecordingColorHex) ? "1e1e2e" : snapshot.RecordingColorHex;
@@ -420,9 +422,11 @@ internal sealed class FloatingIndicatorWindow : Window
         stack.Children.Add(BrandMark(FloatingIndicatorLayout.HoverBrandMarkSize));
         stack.Children.Add(new TextBlock
         {
-            Text = _handsFree
-                ? $"Hold {_hotkeyLabel} to dictate, or double-tap for hands-free"
-                : $"Hold {_hotkeyLabel} to dictate",
+            Text = _pressToToggle
+                ? $"Press {_hotkeyLabel} to dictate"
+                : _handsFree
+                    ? $"Hold {_hotkeyLabel} to dictate, or double-tap for hands-free"
+                    : $"Hold {_hotkeyLabel} to dictate",
             FontSize = 11,
             Foreground = _highContrast ? ContentBrush() : Solid(0xBF, 0xFF, 0xFF, 0xFF),
             VerticalAlignment = VerticalAlignment.Center,

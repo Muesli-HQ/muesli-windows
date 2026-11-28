@@ -221,6 +221,7 @@ public sealed class SettingsStore
             LiveTranscriptOwnership = NormalizeOwnership(settings.LiveTranscriptOwnership),
             RecordingColorHex = NormalizeColorHex(settings.RecordingColorHex),
             IndicatorStyle = string.Equals(settings.IndicatorStyle?.Trim(), "minimal", StringComparison.OrdinalIgnoreCase) ? "minimal" : "classic",
+            DictationRecordingMode = DictationRecordingModes.Normalize(settings.DictationRecordingMode),
             MeetingSummaryProvider = DefaultIfBlank(settings.MeetingSummaryProvider, "local").Trim(),
             MeetingSummaryTemplate = DefaultIfBlank(settings.MeetingSummaryTemplate, "standard").Trim(),
             MeetingSummaryPromptOverride = settings.MeetingSummaryPromptOverride ?? "",
@@ -504,6 +505,13 @@ public sealed record MuesliSettings
     public bool OnboardingCompleted { get; init; }
     public int LastCompletedFeatureTourVersion { get; init; }
     public bool EnableDoubleTapDictation { get; init; }
+
+    /// <summary>
+    /// macOS <c>dictation_combination_activation</c>: <c>push_to_talk</c> (hold to talk, the default)
+    /// or <c>toggle</c> (press to start, press again to stop). Toggle needs a modifier + key
+    /// shortcut; with any other shortcut dictation stays hold to talk.
+    /// </summary>
+    public string DictationRecordingMode { get; init; } = DictationRecordingModes.HoldToTalk;
     public int HotkeyTriggerThresholdMs { get; init; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
     public string RecordingColorHex { get; init; } = "1e1e2e";
     /// <summary>Idle indicator style: <c>classic</c> pill or macOS-style <c>minimal</c> grip.</summary>

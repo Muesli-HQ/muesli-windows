@@ -233,7 +233,9 @@ public sealed class WinUiIndicatorHost : IDisposable
             RecordingColorHex = settings.RecordingColorHex,
             IndicatorStyle = settings.IndicatorStyle,
             MeetingPaused = _meetingPaused,
-            HandsFree = settings.EnableDoubleTapDictation,
+            // Double-tap does nothing while the shortcut toggles, so the hint does not offer it.
+            PressToToggle = DictationRecordingModes.IsToggleActive(settings),
+            HandsFree = settings.EnableDoubleTapDictation && !DictationRecordingModes.IsToggleActive(settings),
             IndicatorAnchor = _indicatorAnchor,
             SavedLeft = _savedLeft,
             SavedTop = _savedTop,

@@ -101,8 +101,12 @@ public sealed class WinUiDictationContext : IDisposable
                         _testKeyHeld = true;
                         EnqueueHotkeyWork(() => StartTestAsync(route), "test-down");
                     }
-                    else EnqueueHotkeyWork(() => ExecuteActionAsync(
-                        _hotkeyState.KeyDown(_settings.Load().EnableDoubleTapDictation)), "down");
+                    else EnqueueHotkeyWork(() =>
+                    {
+                        var current = _settings.Load();
+                        return ExecuteActionAsync(_hotkeyState.KeyDown(
+                            current.EnableDoubleTapDictation, DictationRecordingModes.IsToggleActive(current)));
+                    }, "down");
                 },
                 () =>
                 {
@@ -459,6 +463,15 @@ public sealed class WinUiDictationContext : IDisposable
                 StopTimers();
                 Status = "Hands-free dictation active";
                 RaiseChanged();
+                await StartAsync(shouldPasteToActiveApp: true, decodeDuringCapture: true);
+                if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
+                break;
+
+            case DictationHotkeyAction.StartToggleRecording:
+                // macOS "Press to toggle": recording starts on the press, with no activation delay,
+                // and runs until the next press. Like hands-free it can be long, so it decodes during
+                // capture.
+                StopTimers();
                 await StartAsync(shouldPasteToActiveApp: true, decodeDuringCapture: true);
                 if (!_coordinator.IsRecording) ReleaseAfterFailedStart();
                 break;
