@@ -66,13 +66,19 @@
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="ContentStack" Padding="{StaticResource MuesliPageContentPadding}" Spacing="24">
 
-                <!-- macOS header: title, then Import / Export / Add new. The macOS "Dictionary
-                     suggestions" switch drives its post-paste correction monitor, which Windows does
-                     not have yet, so the switch is left out rather than shown doing nothing. -->
+                <!-- macOS header: title, then the suggestions switch and Import / Export / Add new. -->
                 <StackPanel Spacing="8">
                     <Grid x:Name="TitleRow" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="12">
                         <TextBlock Text="Dictionary" Style="{StaticResource MuesliPageTitleStyle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <StackPanel x:Name="HeaderBar" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,4,0"
+                                        ToolTipService.ToolTip="Briefly reads focused app text after dictation to detect corrections.">
+                                <TextBlock Text="Dictionary suggestions" FontSize="12" Foreground="{ThemeResource MuesliTextSecondaryBrush}" VerticalAlignment="Center" />
+                                <ToggleSwitch IsOn="{x:Bind ViewModel.SuggestionsEnabled, Mode=TwoWay}"
+                                              OnContent="" OffContent="" MinWidth="0" Width="44" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Dictionary suggestions"
+                                              AutomationProperties.AutomationId="DictionarySuggestionsToggle" />
+                            </StackPanel>
                             <Button Style="{StaticResource DictionaryHeaderButtonStyle}"
                                     Command="{x:Bind ViewModel.ImportCommand}"
                                     AutomationProperties.Name="Import dictionary"

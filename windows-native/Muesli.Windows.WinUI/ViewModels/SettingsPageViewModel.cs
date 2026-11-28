@@ -88,6 +88,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string MeetingSummaryTemplate { get; set; } = "Standard Meeting Notes";
     [ObservableProperty] public partial IReadOnlyList<string> MeetingTemplates { get; private set; } = [];
     [ObservableProperty] public partial bool RemoveFillerWords { get; set; }
+    [ObservableProperty] public partial bool EnableDictionaryCorrectionPrompts { get; set; }
     [ObservableProperty] public partial bool EnableLocalCleanup { get; set; }
     [ObservableProperty] public partial bool ComputerUseEnabled { get; set; }
     [ObservableProperty] public partial bool ShareUsageAnalytics { get; set; }
@@ -460,6 +461,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         nameof(MeetingSummaryTemplate) when MeetingTemplates.Contains(MeetingSummaryTemplate) =>
             settings with { MeetingSummaryTemplate = MeetingSummaryTemplate },
         nameof(RemoveFillerWords) => settings with { RemoveFillerWords = RemoveFillerWords },
+        nameof(EnableDictionaryCorrectionPrompts) => settings with { EnableDictionaryCorrectionPrompts = EnableDictionaryCorrectionPrompts },
         nameof(EnableLocalCleanup) => settings with { EnableLocalCleanup = EnableLocalCleanup },
         nameof(ShareUsageAnalytics) => settings with { ShareUsageAnalytics = ShareUsageAnalytics },
         nameof(ShowFloatingIndicator) => settings with { ShowFloatingIndicator = ShowFloatingIndicator },
@@ -654,6 +656,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         MeetingTemplates = MeetingSummaryService.BuiltInTemplateNames.Concat(_library.LoadMeetingTemplates().Select(item => item.Name)).Distinct().ToList();
         MeetingSummaryTemplate = MeetingSummaryService.NormalizeTemplateName(settings.MeetingSummaryTemplate);
         RemoveFillerWords = settings.RemoveFillerWords;
+        EnableDictionaryCorrectionPrompts = settings.EnableDictionaryCorrectionPrompts;
         EnableLocalCleanup = settings.EnableLocalCleanup;
         ComputerUseEnabled = settings.ComputerUseEnabled;
         _fillingAnalyticsChoice = true;

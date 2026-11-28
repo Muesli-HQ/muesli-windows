@@ -61,6 +61,15 @@ public sealed class WinUiDictationContext : IDisposable
 
     public event EventHandler? Changed;
 
+    /// <summary>A dictation is starting; anything still watching the previous one should stop.</summary>
+    public event Action? DictationStarting;
+
+    /// <summary>
+    /// A dictation's text (without the trailing separator) was pasted into this window. Raised on the
+    /// UI thread after the paste succeeded, for the dictionary correction monitor.
+    /// </summary>
+    public event Action<string, IntPtr>? DictationPasted;
+
     /// <summary>
     /// Raised with the live microphone RMS level while a dictation is recording. Marshalled to the UI
     /// thread so the indicator can drive its waveform bars from real capture data.
@@ -497,6 +506,7 @@ public sealed class WinUiDictationContext : IDisposable
         }
         _captureTraceId = Guid.NewGuid().ToString("N")[..12];
         _log.Info($"Dictation start requested. trace={_captureTraceId}; source={(shouldPasteToActiveApp ? "shortcut" : "dashboard")}");
+        DictationStarting?.Invoke();
         var current = _settings.Load();
         if (!string.Equals(_coordinator.ModelId, current.DictationModelId, StringComparison.OrdinalIgnoreCase))
         {
@@ -689,6 +699,7 @@ public sealed class WinUiDictationContext : IDisposable
                     deliveryClipboardMs = paste.ClipboardMs;
                     Status = fellBack ? "Dictation inserted (transcribed on this PC)" : "Dictation inserted";
                     analyticsDelivery = AnalyticsValue.Success;
+                    DictationPasted?.Invoke(text, _pasteTarget);
                 }
                 catch (OperationCanceledException) when (_operationCancellation.IsCancellationRequested)
                 {

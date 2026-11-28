@@ -22,6 +22,10 @@ public sealed class WinUiIndicatorHost : IDisposable
     private readonly AppLogService _log = new();
 
     private FloatingIndicatorWindow? _window;
+
+    /// <summary>The pill's screen rectangle in physical pixels while it is shown, for placing prompts next to it.</summary>
+    public global::Windows.Graphics.RectInt32? CurrentFrame => _window?.CurrentFrame;
+
     private CancellationTokenSource? _dwell;
     private FileSystemWatcher? _probeWatcher;
     private int _disposed;

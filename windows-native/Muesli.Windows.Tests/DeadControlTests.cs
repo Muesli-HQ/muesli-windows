@@ -13,15 +13,26 @@ public sealed class DeadControlTests
         var settings = ReadPage("SettingsPage.xaml");
         var shortcuts = ReadPage("ShortcutsPage.xaml");
 
-        Assert.DoesNotContain("DictionarySuggestionsToggle", dictionary, StringComparison.Ordinal);
-        Assert.DoesNotContain("SuggestionsEnabled", dictionary, StringComparison.Ordinal);
         Assert.DoesNotContain("OpenDictionaryPageButton", settings, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"Dictionary suggestions\"", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("Quill shortcut", shortcuts, StringComparison.Ordinal);
         Assert.DoesNotContain("QuillUnavailableReason", shortcuts, StringComparison.Ordinal);
-
-        // Stored suggestions stay actionable even without a switch.
         Assert.Contains("DictionarySuggestionList", dictionary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DictionarySuggestionSwitchesSaveTheRealSetting()
+    {
+        var dictionary = ReadPage("DictionaryPage.xaml");
+        var settings = ReadPage("SettingsPage.xaml");
+        var dictionaryViewModel = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "ViewModels", "DictionaryPageViewModel.cs"));
+        var settingsViewModel = File.ReadAllText(TestRepositoryLayout.Combine(
+            "windows-native", "Muesli.Windows.WinUI", "ViewModels", "SettingsPageViewModel.cs"));
+
+        Assert.Contains("DictionarySuggestionsToggle", dictionary, StringComparison.Ordinal);
+        Assert.Contains("EnableDictionaryCorrectionPrompts = value", dictionaryViewModel, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.EnableDictionaryCorrectionPrompts", settings, StringComparison.Ordinal);
+        Assert.Contains("settings with { EnableDictionaryCorrectionPrompts = EnableDictionaryCorrectionPrompts }", settingsViewModel, StringComparison.Ordinal);
     }
 
     private static string ReadPage(string name) =>

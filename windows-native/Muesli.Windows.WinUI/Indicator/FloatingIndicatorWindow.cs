@@ -323,6 +323,10 @@ internal sealed class FloatingIndicatorWindow : Window
         else if (!animate && _waveTimer.IsRunning) _waveTimer.Stop();
     }
 
+    /// <summary>The pill's screen rectangle in physical pixels while it is shown; otherwise null.</summary>
+    public RectInt32? CurrentFrame =>
+        _closed || !_shown ? null : new RectInt32(AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
+
     private bool MinimalResting =>
         _minimalStyle && !_highContrast && _state == FloatingIndicatorState.Idle && !_hovered;
 

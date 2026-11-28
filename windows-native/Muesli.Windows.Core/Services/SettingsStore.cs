@@ -241,6 +241,11 @@ public sealed class SettingsStore
             ComputerUseBrowserEndpoint = NormalizeLoopbackEndpoint(settings.ComputerUseBrowserEndpoint),
             IndicatorAnchor = DefaultIfBlank(settings.IndicatorAnchor, "Middle Right").Trim(),
             DictionarySuggestions = NormalizeDictionarySuggestions(settings.DictionarySuggestions),
+            DismissedDictionarySuggestionKeys = (settings.DismissedDictionarySuggestionKeys ?? [])
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .Distinct(StringComparer.Ordinal)
+                .TakeLast(DictionarySuggestionLedger.MaxDismissedKeys)
+                .ToArray(),
             ModelLanguages = NormalizeModelLanguages(settings.ModelLanguages),
             ExecutionProvider = NormalizeExecutionProvider(settings.ExecutionProvider),
             CleanupModelId = CleanupModelCatalog.Normalize(settings.CleanupModelId),
@@ -543,6 +548,15 @@ public sealed record MuesliSettings
     public bool SoundEnabled { get; init; } = true;
     public string IndicatorAnchor { get; init; } = "Middle Right";
     public IReadOnlyList<DictionarySuggestion> DictionarySuggestions { get; init; } = [];
+
+    /// <summary>
+    /// macOS <c>enable_dictionary_correction_prompts</c>: after a dictation is pasted, briefly read the
+    /// focused text box to notice corrections and offer them as dictionary entries. Off by default.
+    /// </summary>
+    public bool EnableDictionaryCorrectionPrompts { get; init; }
+
+    /// <summary>Corrections the user answered "Ignore" to; never offered again (macOS keeps 200).</summary>
+    public IReadOnlyList<string> DismissedDictionarySuggestionKeys { get; init; } = [];
 
     /// <summary>Per-model language code selections, keyed by model id. Empty uses each model's default.</summary>
     public IReadOnlyDictionary<string, string> ModelLanguages { get; init; } =

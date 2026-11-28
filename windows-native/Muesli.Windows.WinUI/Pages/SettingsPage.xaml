@@ -430,6 +430,18 @@
                                           AutomationProperties.Name="Microphone"
                                           AutomationProperties.AutomationId="DictationMicrophonePicker" />
                             </Grid>
+                            <Border Style="{StaticResource DividerStyle}" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
+                                <StackPanel MinWidth="0">
+                                    <TextBlock Text="Dictionary suggestions" Style="{StaticResource RowTitleStyle}" />
+                                    <TextBlock Text="Suggests words from your corrections. Briefly reads focused app text after dictation." Style="{StaticResource RowHelpStyle}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              Style="{StaticResource SettingsToggleStyle}"
+                                              IsOn="{x:Bind ViewModel.EnableDictionaryCorrectionPrompts, Mode=TwoWay}"
+                                              AutomationProperties.Name="Dictionary suggestions"
+                                              AutomationProperties.AutomationId="DictionarySuggestionsSettingToggle" />
+                            </Grid>
                         </StackPanel>
                     </Border>
 
