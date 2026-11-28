@@ -112,8 +112,22 @@
                     borderless funnel menu that becomes an accent pill only when it is not the
                     default; the filter Windows carries there is the sort order.
                 -->
-                <Grid x:Name="TimelineToolbar" ColumnDefinitions="*,Auto" Margin="0,-4,0,-8">
-                    <Button x:Name="SortButton" Grid.Column="1"
+                <Grid x:Name="TimelineToolbar" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" RowDefinitions="Auto,Auto" Margin="0,-4,0,-8">
+                    <!-- macOS Timeline privacyControl: "Privacy" with eye.slash, then the switch, before the filter. -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                ToolTipService.ToolTip="New dictations are pasted but not saved to history, keep no audio and make no dictionary suggestions. Meetings are still saved, and cloud providers still process requests.">
+                        <FontIcon Glyph="&#xED1A;" FontSize="12" VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw" />
+                        <TextBlock Text="Privacy" FontFamily="{StaticResource MuesliFontFamilyMedium}" FontSize="12" VerticalAlignment="Center" />
+                        <ToggleSwitch x:Name="PrivacyToggle"
+                                      OnContent="" OffContent="" MinWidth="0" Width="44" VerticalAlignment="Center"
+                                      Toggled="PrivacyToggle_Toggled"
+                                      AutomationProperties.Name="Privacy mode"
+                                      AutomationProperties.AutomationId="PrivacyModeToggle" />
+                    </StackPanel>
+                    <TextBlock x:Name="PrivacyNote" Grid.Row="1" Grid.ColumnSpan="3" Visibility="Collapsed" Margin="0,4,0,0"
+                               Text="Of new activity on this PC, only meetings and their recordings are saved. Dictations are still pasted."
+                               FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource MuesliTextSecondaryBrush}" />
+                    <Button x:Name="SortButton" Grid.Column="2"
                             Style="{StaticResource MuesliGhostButtonStyle}"
                             Padding="8,3" MinHeight="0" MinWidth="0" CornerRadius="10"
                             ToolTipService.ToolTip="Sort"

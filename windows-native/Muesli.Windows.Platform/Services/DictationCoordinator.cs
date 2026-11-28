@@ -328,7 +328,11 @@ public sealed class DictationCoordinator : IDisposable
         return await StopAsync(traceId, cancellationToken, keepLatestDictationAlias: true);
     }
 
-    private async Task<DictationStopResult> StopAsync(string traceId, CancellationToken cancellationToken, bool keepLatestDictationAlias)
+    /// <summary>
+    /// Stops a dictation. With <paramref name="keepLatestDictationAlias"/> false (privacy mode, setup
+    /// tests) the bounded latest-dictation benchmark copy of the audio is not kept.
+    /// </summary>
+    public async Task<DictationStopResult> StopAsync(string traceId, CancellationToken cancellationToken, bool keepLatestDictationAlias)
     {
         await _gate.WaitAsync();
         CapturedAudio? capturedAudio = null;

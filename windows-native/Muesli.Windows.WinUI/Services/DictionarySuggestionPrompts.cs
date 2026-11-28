@@ -57,6 +57,9 @@ public sealed class DictionarySuggestionPrompts : IDisposable
     /// <summary>Turning the setting off stops watching and closes any card, as on macOS.</summary>
     private void OnSettingsChanged(object? sender, MuesliSettings settings)
     {
+        // Privacy mode revokes the watch on the last dictation at once, as macOS does.
+        if (settings.PrivateMode) _monitor.Cancel();
+
         if (settings.EnableDictionaryCorrectionPrompts)
         {
             _dispatcher.TryEnqueue(() => CloseIfAnsweredElsewhere(settings));
@@ -89,7 +92,7 @@ public sealed class DictionarySuggestionPrompts : IDisposable
 
     private void Record(DictionarySuggestion suggestion, string recognized)
     {
-        if (_disposed) return;
+        if (_disposed || _settings.Load().PrivateMode) return;
         try
         {
             var dictionary = _library.LoadDictionary();

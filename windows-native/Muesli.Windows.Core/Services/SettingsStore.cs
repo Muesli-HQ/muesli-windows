@@ -521,6 +521,13 @@ public sealed record MuesliSettings
     /// shortcut; with any other shortcut dictation stays hold to talk.
     /// </summary>
     public string DictationRecordingMode { get; init; } = DictationRecordingModes.HoldToTalk;
+
+    /// <summary>
+    /// macOS "Privacy mode" (<c>private_mode</c>): new dictations are still pasted but are not saved
+    /// to history, no audio is kept and no dictionary suggestions are made from them. A dictation is
+    /// private if the mode was on when it started or is on when it finishes. Off by default.
+    /// </summary>
+    public bool PrivateMode { get; init; }
     public int HotkeyTriggerThresholdMs { get; init; } = HotkeyTriggerTiming.DefaultThresholdMilliseconds;
     public string RecordingColorHex { get; init; } = "1e1e2e";
     /// <summary>Idle indicator style: <c>classic</c> pill or macOS-style <c>minimal</c> grip.</summary>
