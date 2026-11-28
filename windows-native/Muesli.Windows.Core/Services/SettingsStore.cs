@@ -450,6 +450,10 @@ public sealed record MuesliSettings
     /// <summary>What setup was told muesli is for (macOS onboarding_use_case values).</summary>
     public string OnboardingUseCase { get; init; } = OnboardingUseCases.Everything;
     public string Hotkey { get; init; } = "F8";
+    /// <summary>
+    /// Read by nothing: insertion always pastes into the window focused when dictation started.
+    /// Kept only so existing settings files keep round-tripping; do not give it meaning.
+    /// </summary>
     public string PasteBehavior { get; init; } = "active-app";
     public string DictationModelId { get; init; } = TranscriptionModelCatalog.DefaultModelId;
 

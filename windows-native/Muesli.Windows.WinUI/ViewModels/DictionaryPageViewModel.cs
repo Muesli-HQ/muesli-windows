@@ -18,7 +18,6 @@ public partial class DictionaryPageViewModel(
 
     [ObservableProperty] public partial IReadOnlyList<DictionaryListItem> Items { get; private set; } = [];
     [ObservableProperty] public partial IReadOnlyList<DictionarySuggestion> Suggestions { get; private set; } = [];
-    [ObservableProperty] public partial bool SuggestionsEnabled { get; set; } = true;
     [ObservableProperty] public partial string SearchText { get; set; } = "";
     [ObservableProperty] public partial string EditingId { get; private set; } = "";
     [ObservableProperty] public partial string Phrase { get; set; } = "";
@@ -42,7 +41,12 @@ public partial class DictionaryPageViewModel(
     /// that bar, so a rejected Save had no visible cause next to the field that caused it.
     /// </summary>
     public bool HasValidationMessage => ValidationMessage.Length > 0;
-    public bool HasSuggestions => SuggestionsEnabled && Suggestions.Count > 0;
+    /// <summary>
+    /// Nothing on Windows produces suggestions yet (macOS fills them from its post-paste
+    /// correction monitor), so the panel appears only for suggestions already in the settings file.
+    /// There is no on/off switch until something can feed the list.
+    /// </summary>
+    public bool HasSuggestions => Suggestions.Count > 0;
     public bool IsEditing => !string.IsNullOrWhiteSpace(EditingId);
     public bool ShowEmptyAddAction => !HasItems && string.IsNullOrWhiteSpace(SearchText);
     public string EditorTitle => IsEditing ? "Edit dictionary entry" : "Add dictionary entry";
@@ -85,7 +89,6 @@ public partial class DictionaryPageViewModel(
         ApplyFilter();
         NotifyEmptyState();
     }
-    partial void OnSuggestionsEnabledChanged(bool value) => OnPropertyChanged(nameof(HasSuggestions));
     partial void OnItemsChanged(IReadOnlyList<DictionaryListItem> value)
     {
         OnPropertyChanged(nameof(HasItems));

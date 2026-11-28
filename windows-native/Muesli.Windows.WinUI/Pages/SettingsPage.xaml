@@ -430,20 +430,6 @@
                                           AutomationProperties.Name="Microphone"
                                           AutomationProperties.AutomationId="DictationMicrophonePicker" />
                             </Grid>
-                            <Border Style="{StaticResource DividerStyle}" />
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10" ColumnSpacing="16">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock Text="Dictionary suggestions" Style="{StaticResource RowTitleStyle}" />
-                                    <TextBlock Text="Review suggested replacements on the Dictionary page." Style="{StaticResource RowHelpStyle}" />
-                                </StackPanel>
-                                <Button Grid.Column="1"
-                                        Content="Open Dictionary"
-                                        Style="{StaticResource CompactActionStyle}"
-                                        VerticalAlignment="Center"
-                                        Click="OpenDictionaryPage_Click"
-                                        AutomationProperties.Name="Open the Dictionary page"
-                                        AutomationProperties.AutomationId="OpenDictionaryPageButton" />
-                            </Grid>
                         </StackPanel>
                     </Border>
 

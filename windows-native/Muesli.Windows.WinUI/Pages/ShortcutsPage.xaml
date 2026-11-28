@@ -150,25 +150,8 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Quill: no Windows runtime yet, so the card says so instead of offering a dead control. -->
-                <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Quill shortcut">
-                    <StackPanel Spacing="16">
-                        <StackPanel Spacing="4">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE70F;" FontSize="15" Foreground="{ThemeResource MuesliAccentBrush}" AutomationProperties.AccessibilityView="Raw" />
-                                <TextBlock Text="Quill" Style="{StaticResource ShortcutTitleStyle}" />
-                            </StackPanel>
-                            <TextBlock Text="Highlight text, hold to speak an editing instruction, then release to replace" Style="{StaticResource ShortcutCaptionStyle}" />
-                        </StackPanel>
-                        <Rectangle Style="{StaticResource ShortcutDividerStyle}" />
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Opacity="0.7">
-                            <Border Style="{StaticResource ShortcutBadgeStyle}">
-                                <TextBlock Text="None" Style="{StaticResource ShortcutBadgeTextStyle}" Foreground="{ThemeResource MuesliTextTertiaryBrush}" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.QuillUnavailableReason, Mode=OneWay}" Style="{StaticResource ShortcutCaptionStyle}" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
+                <!-- Quill (macOS: highlight text, hold to speak an edit) has no Windows runtime,
+                     so it has no card here until it does. -->
 
                 <!-- Meeting Recording: no dedicated Windows global shortcut yet. -->
                 <Border Style="{StaticResource ShortcutSectionStyle}" AutomationProperties.Name="Meeting Recording shortcut">

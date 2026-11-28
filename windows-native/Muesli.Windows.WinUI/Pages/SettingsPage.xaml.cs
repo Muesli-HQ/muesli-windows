@@ -188,13 +188,6 @@ public sealed partial class SettingsPage : Page
     }
 
     /// <summary>
-    /// P5-01. The Dictation row routes to the page that actually owns dictionary suggestions
-    /// rather than showing a switch with no persisted setting behind it.
-    /// </summary>
-    private void OpenDictionaryPage_Click(object sender, RoutedEventArgs e) =>
-        (App.Window as MainWindow)?.ShellPage?.NavigateTo("dictionary");
-
-    /// <summary>
     /// P5-11. The export folder used to be an unexplained empty field with no way to pick one.
     /// </summary>
     private async void BrowseExportFolder_Click(object sender, RoutedEventArgs e)

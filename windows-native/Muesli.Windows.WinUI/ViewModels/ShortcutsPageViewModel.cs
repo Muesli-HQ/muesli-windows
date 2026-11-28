@@ -71,12 +71,6 @@ public partial class ShortcutsPageViewModel(
 
     public bool ComputerUseNeedsConfiguration => !ComputerUseConfigured;
 
-    /// <summary>
-    /// P5-02. No Windows global shortcut exists for Quill; say that in Windows terms rather than
-    /// describing it as "this macOS command".
-    /// </summary>
-    public string QuillUnavailableReason =>
-        "Not available on Windows yet.";
     public string MeetingRecordingUnavailableReason =>
         "No global shortcut yet. Start and stop recording from Meetings or the tray.";
 
