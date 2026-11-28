@@ -23,6 +23,9 @@ public sealed class LiveMeetingDiarizationSession : IDisposable
     /// <summary>A tail shorter than this carries no usable speaker turn and is not diarized.</summary>
     internal const int MinTailSamples = SampleRate;
 
+    /// <summary>Blocks waiting for the worker (two minutes of audio) before live diarization gives up.</summary>
+    internal const int MaxBacklogBlocks = 4;
+
     /// <summary>Audio per local speaker fed to the embedding model; longer turns add little.</summary>
     private const int MaxEmbeddingSamples = 20 * SampleRate;
 
@@ -32,6 +35,7 @@ public sealed class LiveMeetingDiarizationSession : IDisposable
 
     private readonly NativeDiarizationClient _client;
     private readonly int _blockSamples;
+    private readonly Func<float[], Task<IReadOnlyList<NativeDiarizationClient.LocalSpeakerSegment>>> _diarizeBlock;
     private readonly Channel<Block> _blocks = Channel.CreateUnbounded<Block>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
     private readonly object _feedGate = new();
@@ -49,12 +53,24 @@ public sealed class LiveMeetingDiarizationSession : IDisposable
     private int _blocksProcessed;
     private long _blockProcessingMs;
     private int _disposed;
+    private int _backlogBlocks;
+    private volatile bool _overflowed;
 
     private sealed record Block(float[] Samples, long OffsetSamples);
 
     public LiveMeetingDiarizationSession(NativeDiarizationClient client, int blockSeconds = DefaultBlockSeconds)
+        : this(client, blockSeconds, null)
+    {
+    }
+
+    /// <summary>Tests replace the native block diarizer through <paramref name="diarizeBlock"/>.</summary>
+    internal LiveMeetingDiarizationSession(
+        NativeDiarizationClient client,
+        int blockSeconds,
+        Func<float[], Task<IReadOnlyList<NativeDiarizationClient.LocalSpeakerSegment>>>? diarizeBlock)
     {
         _client = client;
+        _diarizeBlock = diarizeBlock ?? client.DiarizeSamplesAsync;
         _blockSamples = Math.Max(SampleRate, blockSeconds * SampleRate);
         _pending = new float[_blockSamples];
         _worker = Task.Run(ProcessBlocksAsync);
@@ -98,6 +114,16 @@ public sealed class LiveMeetingDiarizationSession : IDisposable
                 offset += count;
                 if (_pendingCount == _blockSamples)
                 {
+                    if (Volatile.Read(ref _backlogBlocks) >= MaxBacklogBlocks)
+                    {
+                        // Diarization is not keeping up; stop buffering and let Stop diarize the file.
+                        _overflowed = true;
+                        _accepting = false;
+                        _pending = [];
+                        _pendingCount = 0;
+                        _blocks.Writer.TryComplete();
+                        return;
+                    }
                     QueuePendingUnderLock();
                 }
             }
@@ -128,6 +154,10 @@ public sealed class LiveMeetingDiarizationSession : IDisposable
 
         await _worker.WaitAsync(cancellationToken).ConfigureAwait(false);
         var fed = FedSamples;
+        if (_overflowed)
+        {
+            return Fallback("backlog-overflow", fed, null);
+        }
         if (_failure is not null)
         {
             return Fallback($"block-failed-{_failure.GetType().Name}", fed, null);
@@ -197,6 +227,7 @@ public sealed class LiveMeetingDiarizationSession : IDisposable
     private void QueuePendingUnderLock()
     {
         var samples = _pendingCount == _pending.Length ? _pending : _pending[.._pendingCount];
+        Interlocked.Increment(ref _backlogBlocks);
         _blocks.Writer.TryWrite(new Block(samples, _queuedSamples));
         _queuedSamples += _pendingCount;
         _pending = new float[_blockSamples];
@@ -209,17 +240,20 @@ public sealed class LiveMeetingDiarizationSession : IDisposable
         {
             await foreach (var block in _blocks.Reader.ReadAllAsync(_cancellation.Token).ConfigureAwait(false))
             {
-                if (_failure is not null)
-                {
-                    continue;
-                }
                 try
                 {
-                    await ProcessBlockAsync(block).ConfigureAwait(false);
+                    if (_failure is null && !_overflowed)
+                    {
+                        await ProcessBlockAsync(block).ConfigureAwait(false);
+                    }
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
                     _failure = exception;
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _backlogBlocks);
                 }
             }
         }
@@ -234,7 +268,7 @@ public sealed class LiveMeetingDiarizationSession : IDisposable
     private async Task ProcessBlockAsync(Block block)
     {
         var stopwatch = Stopwatch.StartNew();
-        var local = await _client.DiarizeSamplesAsync(block.Samples).ConfigureAwait(false);
+        var local = await _diarizeBlock(block.Samples).ConfigureAwait(false);
         _cancellation.Token.ThrowIfCancellationRequested();
         var blockSegments = new List<DiarizedSegment>();
         foreach (var speaker in local.GroupBy(segment => segment.Speaker))

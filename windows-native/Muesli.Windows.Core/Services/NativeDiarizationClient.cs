@@ -609,13 +609,15 @@ public sealed class NativeDiarizationClient : IDisposable
 
         _disposed = true;
         // A live block or file may be mid-call in the native diarizer; let it return first.
-        var gateHeld = _gate.Wait(TimeSpan.FromSeconds(30));
+        // If it is still running after the wait, leak the native model rather than free it under
+        // a running call; this only happens while the app is shutting down.
+        if (!_gate.Wait(TimeSpan.FromSeconds(30)))
+        {
+            return;
+        }
         _diarizer?.Dispose();
         _diarizer = null;
-        if (gateHeld)
-        {
-            _gate.Dispose();
-        }
+        _gate.Dispose();
     }
 }
 

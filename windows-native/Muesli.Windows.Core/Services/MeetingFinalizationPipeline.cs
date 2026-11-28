@@ -213,8 +213,11 @@ internal sealed class MeetingFinalizationPipeline
                     _logService?.Info(
                         $"Meeting diarization completed. segments={diarizationSegments.Count}; provider={diarization.Provider}; processingMs={diarization.ProcessingMs}; modelReused={diarization.ModelReused}; mode={diarizationMode}");
                 }
-                catch (Exception exception)
+                catch (Exception exception) when (
+                    exception is not OperationCanceledException ||
+                    !request.CancellationToken.IsCancellationRequested)
                 {
+                    // A requested cancellation propagates so the meeting stays recoverable.
                     healthWarnings.Add(DiarizationFailedWarning);
                     _logService?.Info($"Meeting diarization failed. category={exception.GetType().Name}");
                 }

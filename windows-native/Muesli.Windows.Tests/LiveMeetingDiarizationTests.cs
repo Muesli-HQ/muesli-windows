@@ -104,6 +104,55 @@ public sealed class LiveMeetingDiarizationTests
         Assert.Equal(0, completion.BlocksProcessed);
     }
 
+    [Fact]
+    public async Task CompleteFallsBackWhenBlocksPileUpFasterThanTheyAreDiarized()
+    {
+        using var directory = new TestDirectory();
+        var path = WriteSilence(directory.Path, 16_000 * 8);
+        using var client = new NativeDiarizationClient();
+        var release = new TaskCompletionSource();
+        using var session = new LiveMeetingDiarizationSession(
+            client,
+            blockSeconds: 1,
+            async _ =>
+            {
+                await release.Task;
+                return [];
+            });
+
+        for (var second = 0; second < LiveMeetingDiarizationSession.MaxBacklogBlocks + 4; second++)
+        {
+            session.Feed(new float[16_000]);
+        }
+        release.SetResult();
+        var completion = await session.CompleteAsync(path, CancellationToken.None);
+
+        Assert.Null(completion.Result);
+        Assert.Equal("backlog-overflow", completion.FallbackReason);
+    }
+
+    [Fact]
+    public async Task CompleteOffsetsBlockSegmentsIntoTrackTime()
+    {
+        using var directory = new TestDirectory();
+        var path = WriteSilence(directory.Path, 16_000 * 2);
+        using var client = new NativeDiarizationClient();
+        using var session = new LiveMeetingDiarizationSession(
+            client,
+            blockSeconds: 1,
+            // Turns too short to embed, so no native model is touched.
+            _ => Task.FromResult<IReadOnlyList<NativeDiarizationClient.LocalSpeakerSegment>>(
+                [new NativeDiarizationClient.LocalSpeakerSegment(0.1f, 0.2f, 0)]));
+
+        session.Feed(new float[16_000 * 2]);
+        var completion = await session.CompleteAsync(path, CancellationToken.None);
+
+        Assert.NotNull(completion.Result);
+        Assert.Equal(2, completion.BlocksProcessed);
+        Assert.Equal([100, 1_100], completion.Result.Segments.Select(segment => segment.StartMs));
+        Assert.Equal(2, completion.Result.Segments.Select(segment => segment.SpeakerId).Distinct().Count());
+    }
+
     private static string WriteSilence(string directory, int samples)
     {
         var path = Path.Combine(directory, "system.wav");
